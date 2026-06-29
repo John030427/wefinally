@@ -6,6 +6,8 @@ const {
   requireVip,
   debounceMiddleware,
   daysSince,
+  isVipActive,
+  loadUser,
 } = require('../middleware/guard');
 const { success, fail, paginate } = require('../utils/response');
 const {
@@ -59,11 +61,32 @@ function formatSetting(row) {
   };
 }
 
-function formatMatchItem(row) {
+function ageBand(birthYear) {
+  if (!birthYear) return '';
+  const age = new Date().getFullYear() - Number(birthYear);
+  const lo = Math.floor(age / 5) * 5;
+  return `${lo}-${lo + 5}岁`;
+}
+
+function formatMatchItem(row, vip) {
+  if (!vip) {
+    return {
+      id: row.id,
+      matchId: row.id,
+      status: 'matched',
+      locked: true,
+      match_date: row.match_date,
+      match_type: row.match_type,
+      view_similarity: null,
+      message: '你有一位匹配对象，开通 VIP 查看完整匹配详情',
+    };
+  }
+
   return {
     id: row.id,
     matchId: row.id,
     status: 'matched',
+    locked: false,
     matchTime: row.create_time,
     createdAt: row.create_time,
     match_date: row.match_date,
@@ -71,11 +94,8 @@ function formatMatchItem(row) {
     view_similarity: row.view_similarity,
     compatibilityScore: row.view_similarity,
     matched_user_id: row.match_user_id,
-    gender: row.gender,
-    birth_year: row.birth_year,
-    height_range: row.height_range,
+    age_band: ageBand(row.birth_year),
     education: row.education,
-    city: row.city,
     baby_plan: row.baby_plan,
     circle_name: row.circle_name,
   };
@@ -218,7 +238,7 @@ router.post('/start', requireVip, async (req, res) => {
 });
 
 /** GET /api/match/latest — 最近一次匹配（首页用） */
-router.get('/latest', requireVip, async (req, res, next) => {
+router.get('/latest', async (req, res, next) => {
   try {
     const [rows] = await pool.query(
       `SELECT ml.id, ml.match_date, ml.match_type, ml.view_similarity, ml.create_time,
@@ -232,15 +252,17 @@ router.get('/latest', requireVip, async (req, res, next) => {
        LIMIT 1`,
       [req.auth.id]
     );
+    const me = req.user || (await loadUser(req.auth.id));
+    const vip = isVipActive(me);
     if (rows.length === 0) return success(res, null);
-    return success(res, formatMatchItem(rows[0]));
+    return success(res, formatMatchItem(rows[0], vip));
   } catch (err) {
     next(err);
   }
 });
 
 /** GET /api/match/list */
-router.get('/list', requireVip, async (req, res, next) => {
+router.get('/list', async (req, res, next) => {
   try {
     const page = Math.max(1, Number(req.query.page) || 1);
     const pageSize = Math.min(50, Number(req.query.pageSize) || 10);
@@ -265,7 +287,9 @@ router.get('/list', requireVip, async (req, res, next) => {
       [req.auth.id, pageSize, offset]
     );
 
-    const list = rows.map(formatMatchItem);
+    const me = req.user || (await loadUser(req.auth.id));
+    const vip = isVipActive(me);
+    const list = rows.map((r) => formatMatchItem(r, vip));
     return success(res, paginate(list, total, page, pageSize));
   } catch (err) {
     next(err);
@@ -273,7 +297,7 @@ router.get('/list', requireVip, async (req, res, next) => {
 });
 
 /** GET /api/match/detail */
-router.get('/detail', requireVip, async (req, res, next) => {
+router.get('/detail', async (req, res, next) => {
   try {
     const matchId = Number(req.query.id);
     if (!matchId) return fail(res, '缺少匹配ID');
@@ -286,9 +310,8 @@ router.get('/detail', requireVip, async (req, res, next) => {
 async function loadMatchDetail(req, res, next, matchId) {
   try {
     const [rows] = await pool.query(
-      `SELECT ml.*, u.gender, u.birth_year, u.height_range, u.education,
-              u.city, u.circle_id, u.baby_plan, u.income_range, u.house_car,
-              u.marry_status, oc.circle_name
+      `SELECT ml.*, u.birth_year, u.education,
+              u.circle_id, u.baby_plan, oc.circle_name
        FROM user_match_log ml
        JOIN \`user\` u ON u.id = ml.match_user_id
        LEFT JOIN occupation_circle oc ON oc.id = u.circle_id
@@ -299,38 +322,33 @@ async function loadMatchDetail(req, res, next, matchId) {
     if (rows.length === 0) return fail(res, '匹配记录不存在', 404, 404);
 
     const match = rows[0];
+    const me = req.user || (await loadUser(req.auth.id));
+    const vip = isVipActive(me);
+
+    if (!vip) {
+      return success(res, {
+        id: match.id,
+        matchId: match.id,
+        match_date: match.match_date,
+        match_type: match.match_type,
+        locked: true,
+        view_similarity: null,
+        message: '你有一位匹配对象，开通 VIP 查看完整匹配详情',
+      });
+    }
+
     return success(res, {
       id: match.id,
       matchId: match.id,
       match_date: match.match_date,
       match_type: match.match_type,
+      locked: false,
       view_similarity: match.view_similarity,
       compatibilityScore: match.view_similarity,
-      compatibility_score: match.view_similarity,
-      created_at: match.create_time,
-      gender: match.gender,
-      birth_year: match.birth_year,
-      height_range: match.height_range,
+      age_band: ageBand(match.birth_year),
       education: match.education,
-      city: match.city,
       circle_name: match.circle_name,
       baby_plan: match.baby_plan,
-      income_range: match.income_range,
-      house_car: match.house_car,
-      marry_status: match.marry_status,
-      matched_user: {
-        id: match.match_user_id,
-        gender: match.gender,
-        birth_year: match.birth_year,
-        height_range: match.height_range,
-        education: match.education,
-        city: match.city,
-        circle_name: match.circle_name,
-        baby_plan: match.baby_plan,
-        income_range: match.income_range,
-        house_car: match.house_car,
-        marry_status: match.marry_status,
-      },
     });
   } catch (err) {
     next(err);
@@ -338,7 +356,7 @@ async function loadMatchDetail(req, res, next, matchId) {
 }
 
 /** GET /api/match/:id — legacy alias */
-router.get('/:id', requireVip, async (req, res, next) => {
+router.get('/:id', async (req, res, next) => {
   const matchId = Number(req.params.id);
   if (!matchId) return fail(res, '无效ID');
   return loadMatchDetail(req, res, next, matchId);
