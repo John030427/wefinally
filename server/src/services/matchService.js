@@ -25,6 +25,18 @@ function calcAge(birthYear) {
   return new Date().getFullYear() - Number(birthYear);
 }
 
+/**
+ * 硬性条件：设了年龄区间，对方年龄必须落在区间内（双向各校验一次）。
+ * 用于真正落实「双向互配」——硬条件不满足直接排除，不靠软分门槛。
+ */
+function hardOk(settings, candidate) {
+  const age = calcAge(candidate.birth_year);
+  if (settings.age_min != null && settings.age_max != null && age != null) {
+    if (age < settings.age_min || age > settings.age_max) return false;
+  }
+  return true;
+}
+
 function parseHeightCm(heightRange) {
   if (!heightRange) return null;
   const m = String(heightRange).match(/(\d+)/);
@@ -162,6 +174,9 @@ async function runBatchMatch(batchDate, matchType) {
           [c.id, batchDate]
         );
         if (cHas.length > 0) continue;
+
+        // 硬性条件：双向年龄区间必须互相满足（设了才校验），否则直接排除
+        if (!hardOk(settingsA, c) || !hardOk(settingsOf(c), user)) continue;
 
         const viewSim = computeViewSimilarity(
           user.self_view_text,
