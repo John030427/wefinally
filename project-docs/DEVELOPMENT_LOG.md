@@ -312,6 +312,61 @@ John 以"产品经理/架构师协作"模式逐条拍板：锁定 188 PRD 方向
 
 ---
 
+## 2026-06-29 — 第 2 波 review + 修复「双向互配」硬条件
+
+### 类型
+代码 Review（带执行证据）+ Bug 修复
+
+### Review 结论
+Cursor 按 `plan-wave2.md` 提交 5 个 commit，实现**忠实且干净**。运行时实测通过：
+- Phase 1：候选放开非 VIP ✅、双向对称写入 ✅、每人每批次≤1 ✅（seed 脚本跑 runBatchMatch 验证）
+- Phase 2：非 VIP 详情 `locked:true`+引导 ✅、VIP 详情收紧为 age_band/education/circle_name/baby_plan、**无性别/城市/身高** ✅（curl VIP vs 非VIP 实测）
+
+### 发现的设计缺陷（属计划本身，非 Cursor 实现）
+软分门槛 `min(scoreAB,scoreBA) >= 20` **拦不住硬条件**：D 择偶年龄 18–22，候选 C 实际 31 岁，本应不配，但 D→C 软分 = 52.75（婚育/身高/圈层/同城基础分堆出来），仍被配上 → 用户设的年龄区间形同虚设，违背 B13「双向契合」。
+
+### 修复
+`server/src/services/matchService.js`：新增 `hardOk(settings, candidate)`（设了年龄区间则对方年龄必须落在区间内），在候选循环打分前**双向各校验一次**，不满足直接 `continue`。软分门槛保留作次级质量线。
+
+### 验证（修复后重跑，6/6 PASS）
+A↔B 双向互配成立且对称、各 1 条；D 因年龄被硬过滤→0 条；C 无可配→0 条。
+
+### 提交
+`e07aa55 fix(match): enforce age range as hard bidirectional filter (true mutual-fit)`
+
+### 备注
+- 后续可按需把身高/学历也升级为硬条件（目前仅年龄）。
+- 本机 git 无身份，已设 repo-local identity 沿用 Cursor Agent 以保持 author 一致。
+
+---
+
+## 2026-06-29 — 身高区间 + 匹配配置化 + 学历层级
+
+### 类型
+新功能 + 重构（直接实现，ponytail 模式）
+
+### 改动
+- **新增 `server/src/config/matchConfig.js`**：软分权重、`minSideScore`、硬条件开关(`hard.age/height/minEducation`)、`educationRank` 全部可配，不再写死。
+- **身高区间**：register 改用 `HEIGHT_RANGE_OPTIONS`；`matchService.parseHeightCm` 取区间中位数；match-detail（后端+前端）把身高以区间加回展示；新增 `database/migrate-height-to-range.js` 把存量精确身高(175cm→170-180cm)一次性迁移。
+- **年龄**：硬条件（一票否决），由 `matchConfig.hard.age=true` 控制（原写死，现配置化）。
+- **身高**：v1 软分，`hard.height=false` 预留，待区间稳定后开。
+- **学历**：软分逻辑由“完全相等”改为“层级比较”(`eduRank`，达标即满分)；`hard.minEducation=false` 预留最低学历硬门槛。
+
+### 涉及文件
+matchConfig.js(新)、matchService.js、routes/match.js、register.js、match-detail.js/.wxml、database/migrate-height-to-range.js(新)、server/match.selfcheck.js(自检)
+
+### 验证（全 PASS）
+- `match.selfcheck.js`（无DB）7/7：身高中位数/学历层级/年龄硬条件/学历软分达标
+- 迁移：`175cm → 170-180cm`（migrated 1/1）
+- runBatchMatch 冒烟：A↔B 互配对称、D(18-22)被年龄硬过滤
+- curl VIP 详情：返回 `height_range:170-180cm` + `age_band`，无性别/城市
+
+### 留给后续
+- 身高/学历的硬条件开关已就位，按用户池大小在 matchConfig 调即可，无需改码。
+- 配置下发前端（`GET /api/common/config`）仍属 R2，未做。
+
+---
+
 ## 模板（后续变更请复制）
 
 ```markdown
