@@ -29,6 +29,7 @@ async function loadUser(userId) {
 }
 
 function isVipActive(user) {
+  if (user && user.free_member) return true; // 公益免费会员：永久豁免
   if (!user || user.is_vip !== 1) return false;
   if (!user.vip_expire_time) return false;
   return new Date(user.vip_expire_time) > new Date();
