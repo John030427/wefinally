@@ -2,6 +2,24 @@ const pool = require('../config/db');
 const { computeViewSimilarity } = require('../utils/viewSimilarity');
 const { USER_STATUS } = require('../config/constants');
 
+const MIN_SIDE_SCORE = 20;
+const COMBINE = (ab, ba) => (ab + ba) / 2;
+
+function settingsOf(row) {
+  return {
+    age_min: row.age_min,
+    age_max: row.age_max,
+    height_min: row.height_min,
+    height_max: row.height_max,
+    min_education: row.min_education,
+    like_circle_ids: row.like_circle_ids,
+    like_marry_status: row.like_marry_status,
+    like_baby_plan: row.like_baby_plan,
+    like_income: row.like_income,
+    like_house_car: row.like_house_car,
+  };
+}
+
 function calcAge(birthYear) {
   if (!birthYear) return null;
   return new Date().getFullYear() - Number(birthYear);
