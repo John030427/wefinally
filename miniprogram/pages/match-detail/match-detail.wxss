@@ -127,8 +127,13 @@
 }
 
 .meet-link {
+  display: block;
   font-size: 26rpx;
   color: #ff6b8a;
+}
+
+.safety-link {
+  margin-bottom: 12rpx;
 }
 
 .privacy-note {

@@ -8,6 +8,8 @@
     "pages/index/index",
     "pages/match-list/match-list",
     "pages/match-detail/match-detail",
+    "pages/meet-safety/meet-safety",
+    "pages/meet-safety-list/meet-safety-list",
     "pages/vip/vip",
     "pages/profile/profile",
     "pages/marry-stat/marry-stat",
@@ -45,5 +47,11 @@
   },
   "style": "v2",
   "sitemapLocation": "sitemap.json",
-  "lazyCodeLoading": "requiredComponents"
+  "lazyCodeLoading": "requiredComponents",
+  "permission": {
+    "scope.userLocation": {
+      "desc": "用于线下见面报备与一键呼救定位，仅在你主动操作时使用"
+    }
+  },
+  "requiredPrivateInfos": ["getLocation"]
 }

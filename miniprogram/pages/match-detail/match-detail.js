@@ -56,6 +56,7 @@ Page({
         education: detail.education || '--',
         babyPlan: detail.baby_plan || '--',
         circleName: detail.circle_name || '--',
+        matchedUserId: detail.matched_user_id || detail.match_user_id || 0,
         matchType: detail.match_type || detail.matchType || '',
         matchDate: detail.match_date || detail.matchDate || '',
         lockMsg: detail.message || '开通 VIP 查看完整匹配详情'

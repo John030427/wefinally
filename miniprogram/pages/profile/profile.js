@@ -12,6 +12,7 @@ Page({
       { icon: '⚙️', title: '择偶配置', url: '/pages/match-setting/match-setting' },
       { icon: '👑', title: 'VIP 会员', url: '/pages/vip/vip' },
       { icon: '🎖️', title: '公益免费认证', action: 'claimFree' },
+      { icon: '🛡️', title: '见面安全记录', url: '/pages/meet-safety-list/meet-safety-list' },
       { icon: '💒', title: '领证数据公示', url: '/pages/marry-stat/marry-stat' },
       { icon: '📋', title: '婚姻报备', url: '/pages/marry-report/marry-report' },
       { icon: '💬', title: 'AI 智能客服', url: '/pages/chat/chat' },

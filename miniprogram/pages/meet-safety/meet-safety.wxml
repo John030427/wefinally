@@ -1,0 +1,41 @@
+<view class="meet-safety-page container">
+  <view class="card form-card" wx:if="{{!created}}">
+    <view class="form-item">
+      <view class="form-label">见面时间</view>
+      <input class="input" placeholder="如 2026-06-29 19:30" value="{{form.meet_time}}" data-k="meet_time" bindinput="onInput" />
+    </view>
+    <view class="form-item">
+      <view class="form-label">见面地点</view>
+      <input class="input" placeholder="填写公共场所名称或地址" value="{{form.meet_place}}" data-k="meet_place" bindinput="onInput" />
+    </view>
+    <view class="form-item">
+      <view class="form-label">定位</view>
+      <button class="btn-secondary loc-btn" bindtap="getLoc">获取定位</button>
+      <view class="loc-text" wx:if="{{form.lat && form.lng}}">{{form.lat}}，{{form.lng}}</view>
+    </view>
+    <view class="form-item">
+      <view class="form-label">见面说明</view>
+      <textarea class="textarea" maxlength="500" placeholder="选填，写下约见背景或备注" value="{{form.meet_note}}" data-k="meet_note" bindinput="onInput"></textarea>
+    </view>
+    <view class="form-item">
+      <view class="form-label">紧急联系人</view>
+      <input class="input" type="number" maxlength="11" placeholder="亲友手机号" value="{{form.emergency_contact}}" data-k="emergency_contact" bindinput="onInput" />
+    </view>
+    <view class="ack-row" bindtap="toggleAck">
+      <text class="checkbox">{{ack ? '✓' : ''}}</text>
+      <text>{{safetyTips}}</text>
+    </view>
+    <button class="btn-primary submit-btn" bindtap="submit">提交安全确认</button>
+  </view>
+
+  <view class="card safety-card" wx:else>
+    <view class="card-title">见面安全卡</view>
+    <view class="card-no">{{created.card_no}}</view>
+    <view class="info-row"><text>预计时间</text><text>{{form.meet_time || '未填写'}}</text></view>
+    <view class="info-row"><text>预计地点</text><text>{{form.meet_place || '未填写'}}</text></view>
+    <view class="info-row" wx:if="{{form.lat && form.lng}}"><text>定位</text><text>{{form.lat}}，{{form.lng}}</text></view>
+    <view class="note">{{form.meet_note || safetyTips}}</view>
+    <button class="btn-secondary share-btn" open-type="share">转发给信任的人</button>
+    <button class="sos-btn" bindtap="sos">一键呼救 110</button>
+  </view>
+</view>

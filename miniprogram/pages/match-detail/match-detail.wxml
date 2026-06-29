@@ -75,6 +75,7 @@
     <view class="meet-card card">
       <view class="meet-title">奔现对接</view>
       <view class="meet-desc">匹配成功后，平台提供官方一对一私密奔现对接服务。如需协助，请通过 AI 客服联系平台工作人员。</view>
+      <navigator url="/pages/meet-safety/meet-safety?matchUserId={{detail.matchedUserId}}" class="meet-link safety-link">线下见面安全确认 ›</navigator>
       <navigator url="/pages/chat/chat" class="meet-link">联系 AI 客服 ›</navigator>
     </view>
 
