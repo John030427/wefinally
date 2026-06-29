@@ -217,6 +217,101 @@ John 以"产品经理/架构师协作"模式逐条拍板：锁定 188 PRD 方向
 
 ---
 
+## 2026-06-29 — R0 续：本地 MySQL 通过 Docker 落地 + 导库验收通过
+
+### 类型
+工程地基（解除此前 DB 阻塞）
+
+### 背景
+此前本机无 MySQL/MariaDB/Docker，DB 导入被阻塞。现已安装 Docker Desktop（v29.5.3）。
+
+### 操作
+- 起容器 `wefinally-mysql`（mysql:8.0，root 密码 wefinally123，映射 3306，utf8mb4/utf8mb4_unicode_ci，TZ=Asia/Shanghai）
+- 导入 `database/init.sql` + `database/patch-002-partner-audit.sql`（exit 0/0）
+
+### 验收（已通过）
+- 表数量 = **15**（SHOW TABLES 列全）
+- 种子：occupation_circle = **50**（8 板块）、ai_knowledge = **13**、admin = **1**（admin/状态1）、system_stat 领证数 = 0、user = 0
+- CJK 完整性：`occupation_circle.id=1` HEX = `E7BBBCE59088E585ACE58AA1E59198`（"综合公务员"，5 字/15 字节）→ 数据按 utf8mb4 正确入库（命令行显示 `?????` 仅为终端编码问题，非存储损坏）
+- 列结构抽查：`user_privacy_auth_log` 有 `auth_time`、无 `create_time`（印证 R1 隐私日志 bug 修复方向）；`user` 暂无 `appearance_description`（外貌字段属 wave3）
+
+### 待办
+- 把 `server/.env` 的 `DB_PASSWORD` 设为 `wefinally123`（db.js 读 DB_HOST/PORT/USER/PASSWORD/NAME，其余可走默认）
+- `npm run dev` → `GET /api/common/health` → 补跑 wave1 四个 Bug 的运行时验收
+
+---
+
+## 2026-06-29 — R0 收尾：后端启动成功 + wave1 四个 Bug 运行时验收全部通过
+
+### 类型
+运行时验收（解除最后阻塞）
+
+### 操作
+- `server/.env` 填入 `DB_PASSWORD=wefinally123`（其余 DB 变量默认即可）
+- `node src/app.js` 启动成功；`GET /api/common/health` = 200 / ok
+- DB 连通性：`GET /api/common/circles` 返回 **50** 圈层；`admin-login`（admin/admin123456）成功签发 token
+
+### wave1 运行时验收（全部 PASS）
+- **Bug 1.1 提现驳回**：`PUT /admin/withdrawals/:id {status:2}` → `partner_withdraw.status=2` 且 partner.balance 100→150（退款）✅
+- **Bug 1.2 注销/结婚分支**：approve `report_type=3` → user.status=BANNED 且 `marry_success_count` 不变；approve `report_type=1` → user.status=MARRIED 且 `marry_success_count +1` ✅（最严重的数据污染 Bug 已修）
+- **Bug 1.3 隐私 auth_time**：`/admin/privacy-logs` 返回真实 `auth_time`（注意该接口 `INNER JOIN user`，测试日志须挂真实 user_id 才会出现）✅
+- **Bug 1.4 like_circle_ids**：空 `like_circle_ids` + `prefer_city=SZTEST` → 入库 `like_circle_ids` 为空，未写城市 ✅
+
+### 测试数据
+已全部清理，DB 回到种子态（users=0…circles=50 / faq=13 / marry_cnt=0）。
+
+### 环境备注
+- 本地库 = Docker 容器 `wefinally-mysql`（mysql:8.0 / 3306 / root:wefinally123），**未挂数据卷**（删容器需重导 init.sql）
+- 后端以 `node src/app.js` 后台运行（开发态）
+- 用户端微信登录仍需真实 `WX_APPID/WX_SECRET`；本次为验证 user 端接口，用同密钥现造了一个 user JWT 绕过登录
+
+### 至此 plan.md 第 1 波（R0 + R1 + R3）全部完成并运行时验收通过
+
+---
+
+## 2026-06-29 — 产出第 2 波实施计划 plan-wave2.md
+
+### 类型
+计划产出（**未修改业务代码**）
+
+### 内容
+代码根目录新增 `plan-wave2.md`，交 Cursor/Composer 执行、GPT review。范围 = 匹配集群（不含身高区间，后者独立计划）：
+- Phase 1：matchService 双向互配 + 候选放开非 VIP（对称写入、每人每批次≤1、互相满足门槛 `MIN_SIDE_SCORE`）+ 自包含 node 验收脚本
+- Phase 2：match.js 非 VIP 模糊分级（去 requireVip、handler 内按 VIP 返回完整/模糊）+ 详情字段收紧（去性别/城市/精确身高、年龄改"年龄段"）+ match-detail 前端模糊态
+
+### 关键设计决策（已在计划顶部标注，待老板/John 复核）
+- 双向互配语义 = Option C：仅双方择偶互相满足才配、对称两条、每人每批次≤1；非 VIP 被配到看模糊。
+- 互相满足判定：双向 scorePair，`min(scoreAB,scoreBA) >= 20`（可调），综合分排序。
+- 不新增表/字段；身高展示本波先不做（待身高区间计划）。
+
+### 涉及文件
+- 新增 `plan-wave2.md`
+
+---
+
+## 2026-06-29 — 第 2 波：双向互配 + 非 VIP 分级详情
+
+### 类型
+功能实现 + 运行时验收
+
+### 完成工作
+- `matchService`：候选池放开非 VIP（仍要求正常、异性、非离异、有择偶设置）；双向 `scorePair` 互评；`MIN_SIDE_SCORE=20` 门槛；按综合分排序；对称写入两条 `user_match_log`；每人每批次最多一条。
+- `match.js`：`latest/list/detail/:id` 去掉 VIP 硬拦截，改为 handler 内按当前用户 VIP 状态分级返回；非 VIP 返回 `locked:true` + 开通引导且不泄露资料；VIP 返回年龄段/学历/圈层/婚育/契合度最小字段集。
+- `match-detail`：支持非 VIP 锁定态；详情标签收紧，不展示性别/城市/精确身高。
+
+### 验收（已通过）
+- 临时 `server/test-wave2-match.js`：6 项 PASS（非 VIP 可被配到、双向对称、每人≤1、不满足不配）。
+- 临时 `server/test-wave2-api.js`：7 项 PASS（VIP/非 VIP detail/latest/list 分级正确；无 gender/city/height_range/birth_year 泄露）。
+- `node --check`：`matchService.js`、`match.js`、`match-detail.js` 均通过。
+- `ReadLints`：`match-detail` 三文件无 linter error。
+
+### 范围纪律
+- 未改 `orderService` 分润、`matchCron` 节奏、`database/init.sql`、`app.wxss`。
+- 未新增依赖；临时验收脚本运行后已删除。
+- 身高区间、外貌描述、见面安全、配置化收敛留后续计划。
+
+---
+
 ## 模板（后续变更请复制）
 
 ```markdown
