@@ -31,6 +31,21 @@
   gap: 8rpx;
 }
 
+.lock-hint {
+  color: #888;
+  font-size: 26rpx;
+  line-height: 1.6;
+}
+
+.btn-sm {
+  display: inline-block;
+  height: 64rpx;
+  line-height: 64rpx;
+  margin-top: 20rpx;
+  padding: 0 32rpx;
+  font-size: 26rpx;
+}
+
 .compat-card {
   margin-top: 0;
 }

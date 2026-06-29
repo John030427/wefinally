@@ -3,9 +3,7 @@ const { API_PATHS } = require('../../utils/constants')
 const {
   getCompatibilityColor,
   getCompatibilityLevel,
-  getCompatibilityTagClass,
-  genderText,
-  calcAge
+  getCompatibilityTagClass
 } = require('../../utils/util')
 
 Page({
@@ -47,20 +45,19 @@ Page({
         return
       }
 
-      const mu = detail.matched_user || detail
       const score = detail.view_similarity ?? detail.compatibilityScore ?? detail.compatibility_score
-      const hasScore = score !== null && score !== undefined && score > 0
+      const locked = !!detail.locked
+      const hasScore = !locked && score !== null && score !== undefined && score > 0
 
       const normalized = {
-        gender: genderText(mu.gender || detail.gender),
-        age: mu.age || detail.age || calcAge(mu.birth_year || detail.birth_year),
-        city: mu.city || detail.city || '--',
-        education: mu.education || detail.education || '--',
-        height: mu.height_range || detail.height_range || detail.height || '--',
-        babyPlan: mu.baby_plan || detail.baby_plan || '--',
-        circleName: mu.circle_name || detail.circle_name || '--',
+        locked,
+        ageBand: detail.age_band || '',
+        education: detail.education || '--',
+        babyPlan: detail.baby_plan || '--',
+        circleName: detail.circle_name || '--',
         matchType: detail.match_type || detail.matchType || '',
-        matchDate: detail.match_date || detail.matchDate || ''
+        matchDate: detail.match_date || detail.matchDate || '',
+        lockMsg: detail.message || '开通 VIP 查看完整匹配详情'
       }
 
       const numScore = hasScore ? Number(score) : 0

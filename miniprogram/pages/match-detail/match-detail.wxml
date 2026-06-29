@@ -36,14 +36,15 @@
         <text class="meta-tag" wx:if="{{detail.matchType}}">{{detail.matchType}}</text>
       </view>
       <view class="meta-date" wx:if="{{detail.matchDate}}">匹配日期：{{detail.matchDate}}</view>
-      <view class="profile-tags">
-        <text class="tag tag-pink">{{detail.gender}}</text>
-        <text class="tag tag-gray">{{detail.age}}岁</text>
-        <text class="tag tag-gray">{{detail.city}}</text>
+      <view class="profile-tags" wx:if="{{!detail.locked}}">
+        <text class="tag tag-gray">{{detail.ageBand}}</text>
         <text class="tag tag-gray">{{detail.education}}</text>
-        <text class="tag tag-gray">{{detail.height}}</text>
+        <text class="tag tag-pink">{{detail.circleName}}</text>
         <text class="tag tag-gray">{{detail.babyPlan}}</text>
-        <text class="tag tag-gray">{{detail.circleName}}</text>
+      </view>
+      <view class="lock-hint" wx:else>
+        <text>{{detail.lockMsg}}</text>
+        <navigator url="/pages/vip/vip" class="btn-primary btn-sm">开通 VIP</navigator>
       </view>
     </view>
 
