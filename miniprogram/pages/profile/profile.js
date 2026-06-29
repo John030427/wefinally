@@ -1,0 +1,92 @@
+const { get, post } = require('../../utils/request')
+const { API_PATHS } = require('../../utils/constants')
+const { genderText, calcAge } = require('../../utils/util')
+
+Page({
+  data: {
+    pageState: 'loading',
+    errorMsg: '',
+    userInfo: null,
+    isVip: false,
+    menuList: [
+      { icon: '⚙️', title: '择偶配置', url: '/pages/match-setting/match-setting' },
+      { icon: '👑', title: 'VIP 会员', url: '/pages/vip/vip' },
+      { icon: '💒', title: '领证数据公示', url: '/pages/marry-stat/marry-stat' },
+      { icon: '📋', title: '婚姻报备', url: '/pages/marry-report/marry-report' },
+      { icon: '💬', title: 'AI 智能客服', url: '/pages/chat/chat' },
+      { icon: '📜', title: '平台规则', url: '/pages/rules/rules' },
+      { icon: '❌', title: '账号注销', url: '/pages/account-cancel/account-cancel' }
+    ]
+  },
+
+  onShow() {
+    this.loadProfile()
+  },
+
+  async loadProfile() {
+    this.setData({ pageState: 'loading' })
+    const app = getApp()
+    if (!app.globalData.isLoggedIn) {
+      wx.redirectTo({ url: '/pages/welcome/welcome' })
+      return
+    }
+
+    const hasNetwork = await app.checkNetwork()
+    if (!hasNetwork) {
+      this.setData({ pageState: 'no-network', userInfo: app.globalData.userInfo })
+      return
+    }
+
+    try {
+      const profile = await get(API_PATHS.USER_PROFILE, {}, { showError: false })
+      const userInfo = profile || app.globalData.userInfo || {}
+      if (profile) {
+        app.globalData.userInfo = profile
+        wx.setStorageSync(require('../../utils/constants').STORAGE_KEYS.USER_INFO, profile)
+      }
+
+      const display = {
+        gender: genderText(userInfo.gender),
+        age: calcAge(userInfo.birth_year),
+        city: userInfo.city || '--',
+        education: userInfo.education || '--',
+        circleName: userInfo.circle_name || '--',
+        babyPlan: userInfo.baby_plan || '--'
+      }
+
+      this.setData({
+        pageState: 'success',
+        userInfo: { ...userInfo, display },
+        isVip: profile && (profile.isVip || profile.is_vip === 1)
+      })
+    } catch (err) {
+      this.setData({
+        pageState: app.globalData.userInfo ? 'success' : 'error',
+        errorMsg: (err && err.message) || '加载失败',
+        userInfo: app.globalData.userInfo
+      })
+    }
+  },
+
+  onRetry() {
+    this.loadProfile()
+  },
+
+  onMenuTap(e) {
+    wx.navigateTo({ url: e.currentTarget.dataset.url })
+  },
+
+  onLogout() {
+    wx.showModal({
+      title: '确认退出',
+      content: '确定要退出登录吗？',
+      success: (res) => {
+        if (res.confirm) {
+          getApp().clearLoginState()
+          wx.showToast({ title: '已退出', icon: 'success' })
+          setTimeout(() => wx.reLaunch({ url: '/pages/welcome/welcome' }), 800)
+        }
+      }
+    })
+  }
+})

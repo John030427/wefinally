@@ -1,0 +1,40 @@
+<view class="login-page">
+  <block wx:if="{{pageState === 'loading'}}">
+    <view class="state-wrap">
+      <view class="state-icon">⏳</view>
+      <view class="state-text">正在加载...</view>
+    </view>
+  </block>
+
+  <block wx:elif="{{pageState === 'no-network'}}">
+    <view class="state-wrap">
+      <view class="state-icon">📡</view>
+      <view class="state-text">网络不可用，请检查网络连接</view>
+      <view class="state-btn" bindtap="onRetry">重新加载</view>
+    </view>
+  </block>
+
+  <block wx:elif="{{pageState === 'error'}}">
+    <view class="state-wrap">
+      <view class="state-icon">⚠️</view>
+      <view class="state-text">{{errorMsg || '加载失败'}}</view>
+      <view class="state-btn" bindtap="onRetry">重试</view>
+    </view>
+  </block>
+
+  <block wx:else>
+    <view class="login-content">
+      <view class="logo-text">WeFinally</view>
+      <view class="login-desc">使用微信账号快速登录</view>
+      <view class="login-card card">
+        <view class="login-tip">登录即表示您同意平台相关服务条款</view>
+        <button
+          class="btn-primary login-btn"
+          bindtap="onWxLogin"
+          disabled="{{logging}}"
+          loading="{{logging}}"
+        >微信一键登录</button>
+      </view>
+    </view>
+  </block>
+</view>

@@ -1,0 +1,86 @@
+<view class="index-page container">
+  <block wx:if="{{pageState === 'loading'}}">
+    <view class="state-wrap">
+      <view class="state-icon">⏳</view>
+      <view class="state-text">正在加载...</view>
+    </view>
+  </block>
+
+  <block wx:elif="{{pageState === 'no-network'}}">
+    <view class="state-wrap">
+      <view class="state-icon">📡</view>
+      <view class="state-text">网络不可用</view>
+      <view class="state-btn" bindtap="onRetry">重新加载</view>
+    </view>
+  </block>
+
+  <block wx:elif="{{pageState === 'error'}}">
+    <view class="state-wrap">
+      <view class="state-icon">⚠️</view>
+      <view class="state-text">{{errorMsg}}</view>
+      <view class="state-btn" bindtap="onRetry">重试</view>
+    </view>
+  </block>
+
+  <block wx:else>
+    <view class="hero-card card">
+      <view class="hero-title">AI 定时精准匹配</view>
+      <view class="hero-desc">{{scheduleDesc}}</view>
+      <view class="next-match">
+        <text class="next-label">下次匹配时间</text>
+        <text class="next-value">{{nextMatchText}}</text>
+      </view>
+    </view>
+
+    <view class="vip-banner card" wx:if="{{!isVip}}">
+      <view class="vip-banner-text">开通 VIP 参与每周 2 次 AI 匹配</view>
+      <button class="btn-primary btn-sm" bindtap="goVip">188元/30天 开通</button>
+    </view>
+
+    <view class="vip-active card" wx:else>
+      <text class="vip-badge">VIP 有效</text>
+      <text class="vip-expire" wx:if="{{vipExpireText}}">到期：{{vipExpireText}}</text>
+    </view>
+
+    <view class="section-header">
+      <text class="section-title">最近匹配</text>
+      <text class="section-link" bindtap="goMatchList">全部记录 ›</text>
+    </view>
+
+    <view class="match-card card" wx:if="{{hasLatest}}" bindtap="goMatchDetail">
+      <view class="match-row">
+        <text class="match-tag">{{latestMatch.matchType || 'AI匹配'}}</text>
+        <text class="match-date">{{latestMatch.matchDate}}</text>
+      </view>
+      <view class="match-info">
+        <text>{{latestMatch.gender}} · {{latestMatch.age}}岁 · {{latestMatch.city}}</text>
+      </view>
+      <view class="match-score" wx:if="{{latestMatch.score !== null}}">
+        三观契合度 {{latestMatch.score}}%
+      </view>
+      <view class="match-link">查看详情 ›</view>
+    </view>
+
+    <view class="empty-card card" wx:else>
+      <view class="empty-icon">🎯</view>
+      <view class="empty-text">暂无匹配记录</view>
+      <view class="empty-hint">{{isVip ? '请等待下次定时匹配' : '开通 VIP 后参与 AI 定时匹配'}}</view>
+    </view>
+
+    <view class="quick-actions card">
+      <view class="action-item" bindtap="goMatchSetting">
+        <text class="action-icon">⚙️</text>
+        <text class="action-text">择偶配置</text>
+      </view>
+      <view class="action-item" bindtap="goRules">
+        <text class="action-icon">📜</text>
+        <text class="action-text">平台规则</text>
+      </view>
+    </view>
+
+    <view class="notice card">
+      <text class="notice-text">· 系统不支持手动刷新匹配</text>
+      <text class="notice-text">· 用户间无私聊，仅平台一对一奔现对接</text>
+    </view>
+  </block>
+</view>

@@ -1,0 +1,59 @@
+<view class="vip-page container">
+  <block wx:if="{{pageState === 'loading'}}">
+    <view class="state-wrap">
+      <view class="state-icon">⏳</view>
+      <view class="state-text">正在加载...</view>
+    </view>
+  </block>
+
+  <block wx:elif="{{pageState === 'no-network'}}">
+    <view class="state-wrap">
+      <view class="state-icon">📡</view>
+      <view class="state-text">网络不可用</view>
+      <view class="state-btn" bindtap="onRetry">重新加载</view>
+    </view>
+  </block>
+
+  <block wx:elif="{{pageState === 'error'}}">
+    <view class="state-wrap">
+      <view class="state-icon">⚠️</view>
+      <view class="state-text">{{errorMsg}}</view>
+      <view class="state-btn" bindtap="onRetry">重试</view>
+    </view>
+  </block>
+
+  <block wx:else>
+    <view class="vip-hero card">
+      <view class="vip-hero-title">月度 VIP 会员</view>
+      <view class="vip-price-row">
+        <text class="vip-price">¥{{vipPrice}}</text>
+        <text class="vip-period">/ {{vipDays}}天</text>
+      </view>
+      <view class="vip-note">唯一套餐 · 无自动续费 · 到期自动回收</view>
+      <view class="vip-status" wx:if="{{isVip}}">
+        <text class="vip-active-tag">已开通</text>
+        <text wx:if="{{vipExpireDate}}">有效期至 {{vipExpireDate}}</text>
+      </view>
+    </view>
+
+    <view class="card">
+      <view class="benefits-title">会员权益</view>
+      <view class="benefit-item" wx:for="{{benefits}}" wx:key="title">
+        <text class="benefit-icon">{{item.icon}}</text>
+        <view class="benefit-content">
+          <text class="benefit-name">{{item.title}}</text>
+          <text class="benefit-desc">{{item.desc}}</text>
+        </view>
+      </view>
+    </view>
+
+    <view class="safe-bottom">
+      <button
+        class="btn-primary"
+        bindtap="onPurchase"
+        disabled="{{purchasing || isVip}}"
+        loading="{{purchasing}}"
+      >{{isVip ? '已是 VIP 会员' : '立即开通 ¥' + vipPrice}}</button>
+    </view>
+  </block>
+</view>

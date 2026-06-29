@@ -1,0 +1,9 @@
+.form-label.required::after {
+  content: ' *';
+  color: #ff6b8a;
+}
+
+.picker-value.readonly {
+  background: #fafafa;
+  color: #888;
+}

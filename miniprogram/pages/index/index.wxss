@@ -1,0 +1,193 @@
+.index-page .hero-card {
+  background: linear-gradient(135deg, #ff6b8a 0%, #ff8fa3 100%);
+  color: #fff;
+}
+
+.hero-title {
+  font-size: 36rpx;
+  font-weight: 600;
+  margin-bottom: 12rpx;
+}
+
+.hero-desc {
+  font-size: 24rpx;
+  opacity: 0.9;
+  line-height: 1.6;
+  margin-bottom: 24rpx;
+}
+
+.next-match {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 12rpx;
+  padding: 20rpx 24rpx;
+}
+
+.next-label {
+  display: block;
+  font-size: 22rpx;
+  opacity: 0.85;
+  margin-bottom: 8rpx;
+}
+
+.next-value {
+  font-size: 30rpx;
+  font-weight: 600;
+}
+
+.vip-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+}
+
+.vip-banner-text {
+  flex: 1;
+  font-size: 26rpx;
+  color: #555;
+}
+
+.btn-sm {
+  line-height: 64rpx !important;
+  height: 64rpx !important;
+  font-size: 24rpx !important;
+  padding: 0 28rpx !important;
+  flex-shrink: 0;
+}
+
+.vip-active {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+}
+
+.vip-badge {
+  background: #fff0f3;
+  color: #ff6b8a;
+  padding: 8rpx 20rpx;
+  border-radius: 8rpx;
+  font-size: 24rpx;
+  font-weight: 500;
+}
+
+.vip-expire {
+  font-size: 24rpx;
+  color: #888;
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 8rpx 0 16rpx;
+  padding: 0 8rpx;
+}
+
+.section-title {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #333;
+}
+
+.section-link {
+  font-size: 24rpx;
+  color: #ff6b8a;
+}
+
+.match-card {
+  position: relative;
+}
+
+.match-row {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 12rpx;
+}
+
+.match-tag {
+  font-size: 22rpx;
+  color: #ff6b8a;
+  background: #fff0f3;
+  padding: 4rpx 12rpx;
+  border-radius: 6rpx;
+}
+
+.match-date {
+  font-size: 22rpx;
+  color: #999;
+}
+
+.match-info {
+  font-size: 28rpx;
+  color: #333;
+  margin-bottom: 8rpx;
+}
+
+.match-score {
+  font-size: 26rpx;
+  color: #2ecc71;
+  font-weight: 500;
+}
+
+.match-link {
+  position: absolute;
+  right: 32rpx;
+  bottom: 32rpx;
+  font-size: 24rpx;
+  color: #ff6b8a;
+}
+
+.empty-card {
+  text-align: center;
+  padding: 48rpx 32rpx;
+}
+
+.empty-icon {
+  font-size: 64rpx;
+  margin-bottom: 16rpx;
+}
+
+.empty-text {
+  font-size: 28rpx;
+  color: #666;
+  margin-bottom: 8rpx;
+}
+
+.empty-hint {
+  font-size: 24rpx;
+  color: #999;
+}
+
+.quick-actions {
+  display: flex;
+  gap: 24rpx;
+}
+
+.action-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 16rpx;
+}
+
+.action-icon {
+  font-size: 40rpx;
+  margin-bottom: 8rpx;
+}
+
+.action-text {
+  font-size: 24rpx;
+  color: #555;
+}
+
+.notice {
+  background: #fafafa;
+}
+
+.notice-text {
+  display: block;
+  font-size: 22rpx;
+  color: #999;
+  line-height: 1.8;
+}

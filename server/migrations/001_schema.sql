@@ -1,0 +1,6 @@
+-- DEPRECATED: use database/init.sql as the single source of schema truth.
+--
+-- Import:
+--   mysql -u root -p < database/init.sql
+--
+-- Do not apply this file directly.

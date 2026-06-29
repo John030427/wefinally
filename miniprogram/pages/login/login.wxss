@@ -1,0 +1,36 @@
+.login-page {
+  min-height: 100vh;
+  background: linear-gradient(180deg, #fff0f3 0%, #f8f4f5 50%);
+}
+
+.login-content {
+  padding: 120rpx 48rpx;
+  text-align: center;
+}
+
+.logo-text {
+  font-size: 64rpx;
+  font-weight: 700;
+  color: #ff6b8a;
+  margin-bottom: 16rpx;
+}
+
+.login-desc {
+  font-size: 28rpx;
+  color: #888888;
+  margin-bottom: 80rpx;
+}
+
+.login-card {
+  text-align: center;
+}
+
+.login-tip {
+  font-size: 24rpx;
+  color: #aaaaaa;
+  margin-bottom: 40rpx;
+}
+
+.login-btn {
+  width: 100%;
+}

@@ -1,0 +1,49 @@
+{
+  "pages": [
+    "pages/welcome/welcome",
+    "pages/login/login",
+    "pages/agreement/agreement",
+    "pages/register/register",
+    "pages/match-setting/match-setting",
+    "pages/index/index",
+    "pages/match-list/match-list",
+    "pages/match-detail/match-detail",
+    "pages/vip/vip",
+    "pages/profile/profile",
+    "pages/marry-stat/marry-stat",
+    "pages/chat/chat",
+    "pages/marry-report/marry-report",
+    "pages/account-cancel/account-cancel",
+    "pages/rules/rules"
+  ],
+  "window": {
+    "navigationBarBackgroundColor": "#FF6B8A",
+    "navigationBarTitleText": "WeFinally",
+    "navigationBarTextStyle": "white",
+    "backgroundColor": "#F8F4F5",
+    "backgroundTextStyle": "dark"
+  },
+  "tabBar": {
+    "color": "#999999",
+    "selectedColor": "#FF6B8A",
+    "backgroundColor": "#FFFFFF",
+    "borderStyle": "black",
+    "list": [
+      {
+        "pagePath": "pages/index/index",
+        "text": "匹配"
+      },
+      {
+        "pagePath": "pages/match-list/match-list",
+        "text": "记录"
+      },
+      {
+        "pagePath": "pages/profile/profile",
+        "text": "我的"
+      }
+    ]
+  },
+  "style": "v2",
+  "sitemapLocation": "sitemap.json",
+  "lazyCodeLoading": "requiredComponents"
+}

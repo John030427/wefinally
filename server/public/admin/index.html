@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WeFinally 超级管理后台</title>
+  <style>
+    :root { --primary: #e91e63; --primary-dark: #c2185b; --bg: #f0f2f5; --card: #fff; --text: #333; --muted: #888; --border: #e8e8e8; --sidebar: #001529; --success: #52c41a; --warn: #faad14; --danger: #ff4d4f; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", sans-serif; background: var(--bg); color: var(--text); }
+    .hidden { display: none !important; }
+    .login-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #1a1a2e, #16213e); padding: 1rem; }
+    .login-card { background: var(--card); border-radius: 12px; padding: 2rem; width: 100%; max-width: 420px; box-shadow: 0 12px 40px rgba(0,0,0,.25); }
+    .login-card h1 { color: var(--primary); font-size: 1.375rem; }
+    .login-card p { color: var(--muted); font-size: .875rem; margin: .35rem 0 1.5rem; }
+    .form-group { margin-bottom: 1rem; }
+    .form-group label { display: block; font-size: .8125rem; margin-bottom: .3rem; color: var(--muted); }
+    .form-group input, .form-group select, .form-group textarea { width: 100%; padding: .6rem .75rem; border: 1px solid var(--border); border-radius: 6px; font-size: .9375rem; }
+    .btn { display: inline-flex; align-items: center; justify-content: center; padding: .55rem 1rem; border: none; border-radius: 6px; font-size: .875rem; cursor: pointer; gap: .3rem; }
+    .btn:disabled { opacity: .5; cursor: not-allowed; }
+    .btn-primary { background: var(--primary); color: #fff; }
+    .btn-primary:hover:not(:disabled) { background: var(--primary-dark); }
+    .btn-outline { background: #fff; border: 1px solid var(--border); }
+    .btn-success { background: var(--success); color: #fff; }
+    .btn-danger { background: var(--danger); color: #fff; }
+    .btn-sm { padding: .3rem .65rem; font-size: .8125rem; }
+    .btn-block { width: 100%; }
+    .layout { display: flex; min-height: 100vh; }
+    .sidebar { width: 240px; background: var(--sidebar); color: rgba(255,255,255,.85); flex-shrink: 0; display: flex; flex-direction: column; }
+    .sidebar-head { padding: 1rem 1.25rem; border-bottom: 1px solid rgba(255,255,255,.08); }
+    .sidebar-head h2 { font-size: 1rem; color: #fff; }
+    .sidebar-head small { color: rgba(255,255,255,.45); font-size: .75rem; }
+    .nav { flex: 1; overflow-y: auto; padding: .5rem 0; }
+    .nav-item { display: block; width: 100%; text-align: left; padding: .65rem 1.25rem; background: none; border: none; color: rgba(255,255,255,.65); cursor: pointer; font-size: .8125rem; }
+    .nav-item:hover, .nav-item.active { color: #fff; background: var(--primary); }
+    .sidebar-foot { padding: .75rem 1rem; border-top: 1px solid rgba(255,255,255,.08); }
+    .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+    .header { background: var(--card); padding: .75rem 1.5rem; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+    .content { flex: 1; padding: 1.25rem; overflow-y: auto; }
+    .tabs { display: flex; gap: .35rem; margin-bottom: 1rem; flex-wrap: wrap; }
+    .tab { padding: .4rem .85rem; border: 1px solid var(--border); background: var(--card); border-radius: 6px; cursor: pointer; font-size: .8125rem; }
+    .tab.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+    .stats-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: .75rem; margin-bottom: 1.25rem; }
+    .stat-card { background: var(--card); border-radius: 8px; padding: .875rem; border: 1px solid var(--border); }
+    .stat-card .lbl { font-size: .75rem; color: var(--muted); }
+    .stat-card .val { font-size: 1.375rem; font-weight: 600; margin-top: .25rem; color: var(--primary); }
+    .card { background: var(--card); border-radius: 8px; border: 1px solid var(--border); margin-bottom: 1rem; }
+    .card-hd { padding: .75rem 1rem; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: .5rem; }
+    .card-bd { padding: 1rem; overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: .8125rem; min-width: 600px; }
+    th, td { padding: .55rem .65rem; text-align: left; border-bottom: 1px solid var(--border); }
+    th { background: #fafafa; color: var(--muted); font-weight: 500; white-space: nowrap; }
+    .badge { padding: .1rem .45rem; border-radius: 4px; font-size: .75rem; }
+    .b-pending { background: #fff7e6; color: #d46b08; }
+    .b-ok { background: #f6ffed; color: #389e0d; }
+    .b-ban { background: #fff1f0; color: #cf1322; }
+    .toolbar { display: flex; gap: .5rem; flex-wrap: wrap; margin-bottom: .75rem; align-items: center; }
+    .toolbar input, .toolbar select { padding: .45rem .65rem; border: 1px solid var(--border); border-radius: 6px; font-size: .8125rem; }
+    .loading, .empty { text-align: center; padding: 2rem; color: var(--muted); }
+    .error-box { background: #fff1f0; border: 1px solid #ffa39e; color: #cf1322; padding: .65rem 1rem; border-radius: 6px; margin-bottom: 1rem; font-size: .875rem; }
+    .toast { position: fixed; top: 1rem; right: 1rem; z-index: 9999; padding: .65rem 1rem; border-radius: 6px; color: #fff; font-size: .875rem; }
+    .toast-ok { background: var(--success); }
+    .toast-err { background: var(--danger); }
+    .modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 1rem; }
+    .modal { background: var(--card); border-radius: 10px; width: 100%; max-width: 520px; max-height: 90vh; overflow-y: auto; }
+    .modal-hd { padding: .875rem 1rem; border-bottom: 1px solid var(--border); font-weight: 600; }
+    .modal-bd { padding: 1rem; }
+    .modal-ft { padding: .875rem 1rem; border-top: 1px solid var(--border); text-align: right; display: flex; gap: .5rem; justify-content: flex-end; }
+    .pagination { display: flex; gap: .35rem; margin-top: .75rem; align-items: center; font-size: .8125rem; }
+    @media (max-width: 768px) { .layout { flex-direction: column; } .sidebar { width: 100%; } }
+  </style>
+</head>
+<body>
+  <div id="loginPage" class="login-wrap">
+    <div class="login-card">
+      <h1>WeFinally 超级管理后台</h1>
+      <p>系统管理员专用 · 与用户/合伙人完全隔离</p>
+      <div id="loginErr" class="error-box hidden"></div>
+      <form id="loginForm">
+        <div class="form-group"><label>管理员账号</label><input id="loginUser" required placeholder="admin" autocomplete="username" /></div>
+        <div class="form-group"><label>密码</label><input id="loginPass" type="password" required autocomplete="current-password" /></div>
+        <button type="submit" class="btn btn-primary btn-block" id="loginBtn">登录</button>
+      </form>
+    </div>
+  </div>
+
+  <div id="appPage" class="layout hidden">
+    <aside class="sidebar">
+      <div class="sidebar-head"><h2>WeFinally Admin</h2><small>超级管理后台</small></div>
+      <nav class="nav" id="nav">
+        <button class="nav-item active" data-p="dashboard">数据看板</button>
+        <button class="nav-item" data-p="users">用户管理</button>
+        <button class="nav-item" data-p="partners">合伙人管理</button>
+        <button class="nav-item" data-p="orders">订单对账</button>
+        <button class="nav-item" data-p="withdrawals">提现审核</button>
+        <button class="nav-item" data-p="marry">婚姻报备</button>
+        <button class="nav-item" data-p="cancel">注销/离异</button>
+        <button class="nav-item" data-p="stats">公示数据</button>
+        <button class="nav-item" data-p="knowledge">AI 知识库</button>
+        <button class="nav-item" data-p="chat">客服会话</button>
+        <button class="nav-item" data-p="privacy">授权日志</button>
+        <button class="nav-item" data-p="export">数据导出</button>
+        <button class="nav-item" data-p="logs">系统日志</button>
+      </nav>
+      <div class="sidebar-foot"><button class="btn btn-outline btn-sm btn-block" id="logoutBtn" style="color:#fff;border-color:rgba(255,255,255,.2)">退出</button></div>
+    </aside>
+    <div class="main">
+      <header class="header"><h3 id="pageTitle">数据看板</h3><span id="adminName" style="font-size:.8125rem;color:var(--muted)"></span></header>
+      <div class="content" id="content"></div>
+    </div>
+  </div>
+  <div id="modalRoot"></div>
+
+  <script>
+(function () {
+  const API = '/api';
+  const TK = 'wf_admin_token';
+  const TITLES = { dashboard:'数据看板', users:'用户管理', partners:'合伙人管理', orders:'订单对账', withdrawals:'提现审核', marry:'婚姻报备', cancel:'注销/离异审核', stats:'公示数据配置', knowledge:'AI 知识库', chat:'客服会话', privacy:'合规授权日志', export:'数据导出', logs:'系统日志' };
+  let page = 'dashboard', dashRange = 'today', cacheUsers = [], cacheOrders = [];
+
+  function token() { return localStorage.getItem(TK); }
+  function setToken(t) { localStorage.setItem(TK, t); }
+  function clearToken() { localStorage.removeItem(TK); }
+
+  function toast(m, ok) {
+    const e = document.createElement('div');
+    e.className = 'toast ' + (ok ? 'toast-ok' : 'toast-err');
+    e.textContent = m;
+    document.body.appendChild(e);
+    setTimeout(() => e.remove(), 2800);
+  }
+
+  function esc(s) { if (s == null) return ''; const d = document.createElement('div'); d.textContent = String(s); return d.innerHTML; }
+
+  function modal(title, body, foot) {
+    document.getElementById('modalRoot').innerHTML = '<div class="modal-bg" onclick="if(event.target===this)closeM()"><div class="modal"><div class="modal-hd">' + title + '</div><div class="modal-bd">' + body + '</div><div class="modal-ft">' + (foot || '<button class="btn btn-outline" onclick="closeM()">关闭</button>') + '</div></div></div>';
+  }
+  window.closeM = function () { document.getElementById('modalRoot').innerHTML = ''; };
+
+  async function api(path, opt) {
+    opt = opt || {};
+    const h = { 'Content-Type': 'application/json' };
+    if (token()) h['Authorization'] = 'Bearer ' + token();
+    const r = await fetch(API + path, { method: opt.method || 'GET', headers: h, body: opt.body ? JSON.stringify(opt.body) : undefined });
+    const j = await r.json().catch(() => ({ code: -1, message: '解析失败' }));
+    if (j.code === 401) { clearToken(); showLogin(); throw new Error(j.message || '未登录'); }
+    if (j.code !== 0) throw new Error(j.message || '失败');
+    return j.data;
+  }
+
+  function showLogin() { document.getElementById('loginPage').classList.remove('hidden'); document.getElementById('appPage').classList.add('hidden'); }
+  function showApp() { document.getElementById('loginPage').classList.add('hidden'); document.getElementById('appPage').classList.remove('hidden'); }
+
+  function loading() { document.getElementById('content').innerHTML = '<div class="loading">加载中...</div>'; }
+
+  function navTo(p) {
+    page = p;
+    document.getElementById('pageTitle').textContent = TITLES[p] || p;
+    document.querySelectorAll('.nav-item').forEach(el => el.classList.toggle('active', el.dataset.p === p));
+    render();
+  }
+
+  function inRange(dateStr, range) {
+    if (!dateStr) return false;
+    const d = new Date(dateStr);
+    const now = new Date();
+    const start = new Date(now);
+    start.setHours(0, 0, 0, 0);
+    if (range === 'today') return d >= start;
+    if (range === 'yesterday') { const y = new Date(start); y.setDate(y.getDate() - 1); return d >= y && d < start; }
+    if (range === '7d') { const w = new Date(start); w.setDate(w.getDate() - 7); return d >= w; }
+    if (range === '30d') { const m = new Date(start); m.setDate(m.getDate() - 30); return d >= m; }
+    return true;
+  }
+
+  async function render() {
+    loading();
+    try {
+      if (page === 'dashboard') await pgDashboard();
+      else if (page === 'users') await pgUsers();
+      else if (page === 'partners') await pgPartners();
+      else if (page === 'orders') await pgOrders();
+      else if (page === 'withdrawals') await pgWithdrawals();
+      else if (page === 'marry') await pgMarry();
+      else if (page === 'cancel') await pgCancel();
+      else if (page === 'stats') await pgStats();
+      else if (page === 'knowledge') await pgKnowledge();
+      else if (page === 'chat') await pgChat();
+      else if (page === 'privacy') await pgPrivacy();
+      else if (page === 'export') pgExport();
+      else if (page === 'logs') await pgLogs();
+    } catch (e) {
+      document.getElementById('content').innerHTML = '<div class="error-box">' + esc(e.message) + '</div>';
+    }
+  }
+
+  async function pgDashboard() {
+    const [dash, users, orders, pub] = await Promise.all([
+      api('/admin/dashboard'),
+      api('/admin/users?pageSize=500'),
+      api('/admin/orders?pageSize=500'),
+      api('/common/stats').catch(() => ({}))
+    ]);
+    cacheUsers = users.list || [];
+    cacheOrders = orders.list || [];
+    const ranges = ['today', 'yesterday', '7d', '30d', 'total'];
+    const labels = { today: '今日', yesterday: '昨日', '7d': '近7天', '30d': '近30天', total: '累计' };
+    let tabs = ranges.map(r => '<button class="tab' + (dashRange === r ? ' active' : '') + '" onclick="setDashRange(\'' + r + '\')">' + labels[r] + '</button>').join('');
+    const nu = cacheUsers.filter(u => inRange(u.created_at, dashRange)).length;
+    const po = cacheOrders.filter(o => o.status === 1 && inRange(o.paid_at || o.created_at, dashRange));
+    const rev = po.reduce((s, o) => s + Number(o.amount || 0), 0);
+    const comm = po.reduce((s, o) => s + Number(o.partner_commission || 0), 0);
+    document.getElementById('content').innerHTML =
+      '<div class="tabs">' + tabs + '</div>' +
+      '<div class="stats-grid">' +
+      sc('新增用户', nu) + sc('付费订单', po.length) + sc('营收(元)', rev.toFixed(2)) +
+      sc('合伙人分润', comm.toFixed(2)) + sc('总用户', dashRange === 'total' ? dash.users : '-') +
+      sc('VIP用户', dash.vip_users) + sc('合伙人', dash.partners) +
+      sc('待审合伙人', dash.pending_partner_approve) + sc('待审提现', dash.pending_withdrawals) +
+      sc('累计营收', dash.revenue.toFixed(2)) +
+      '</div>' +
+      '<div class="card"><div class="card-hd"><strong>平台概览</strong></div><div class="card-bd"><p style="font-size:.875rem">前台公示：注册用户 ' + (pub.user_count || '-') + ' · VIP ' + (pub.vip_count || '-') + ' · 匹配 ' + (pub.match_count || '-') + ' · 结婚报备 ' + (pub.married_count || '-') + '</p></div></div>';
+  }
+  function sc(l, v) { return '<div class="stat-card"><div class="lbl">' + l + '</div><div class="val">' + v + '</div></div>'; }
+  window.setDashRange = function (r) { dashRange = r; pgDashboard(); };
+
+  async function pgUsers() {
+    const kw = document.getElementById('uKw')?.value || '';
+    const st = document.getElementById('uSt')?.value ?? '';
+    const pg = Number(document.getElementById('uPg')?.value || 1);
+    const data = await api('/admin/users?page=' + pg + '&keyword=' + encodeURIComponent(kw) + (st !== '' ? '&status=' + st : ''));
+    let rows = data.list.length ? data.list.map(u =>
+      '<tr><td>' + u.id + '</td><td>' + esc(u.nickname || '-') + '</td><td>' + esc(u.phone || '-') + '</td><td>' + statusBadge(u.status) + '</td><td>' + (u.vip_expire_at ? esc(u.vip_expire_at) : '-') + '</td><td>' + esc(u.partner_name || '-') + '</td><td>' + esc(u.created_at) + '</td><td><button class="btn btn-sm btn-outline" onclick="editUser(' + u.id + ')">编辑</button></td></tr>'
+    ).join('') : '<tr><td colspan="8" class="empty">暂无数据</td></tr>';
+    document.getElementById('content').innerHTML =
+      '<div class="toolbar"><input id="uKw" placeholder="搜索昵称/手机" value="' + esc(kw) + '" /><select id="uSt"><option value="">全部</option><option value="0">待审核</option><option value="1">正常</option><option value="2">封号</option><option value="3">已结婚</option></select><button class="btn btn-primary btn-sm" onclick="pgUsers()">搜索</button></div>' +
+      '<div class="card"><div class="card-bd"><table><thead><tr><th>ID</th><th>昵称</th><th>手机</th><th>状态</th><th>VIP</th><th>推广合伙人</th><th>注册</th><th>操作</th></tr></thead><tbody>' + rows + '</tbody></table>' +
+      pag(data.page, data.totalPages, 'uPg') + '</div></div>';
+    if (st !== '') document.getElementById('uSt').value = st;
+  }
+  window.pgUsers = pgUsers;
+
+  function statusBadge(s) {
+    const m = { 0: ['待审核', 'b-pending'], 1: ['正常', 'b-ok'], 2: ['封号', 'b-ban'], 3: ['已结婚', 'b-ban'] };
+    const x = m[s] || ['?', 'b-pending'];
+    return '<span class="badge ' + x[1] + '">' + x[0] + '</span>';
+  }
+
+  window.editUser = async function (id) {
+    const d = await api('/admin/users/' + id);
+    modal('编辑用户 #' + id,
+      '<div class="form-group"><label>昵称</label><input id="euNick" value="' + esc(d.user.nickname || '') + '" /></div>' +
+      '<div class="form-group"><label>手机</label><input id="euPhone" value="' + esc(d.user.phone || '') + '" /></div>' +
+      '<div class="form-group"><label>状态</label><select id="euStatus"><option value="0">待审核</option><option value="1">正常</option><option value="2">封号</option><option value="3">已结婚</option></select></div>' +
+      '<div class="form-group"><label>VIP到期</label><input id="euVip" type="datetime-local" /></div>',
+      '<button class="btn btn-outline" onclick="closeM()">取消</button><button class="btn btn-primary" onclick="saveUser(' + id + ')">保存</button>');
+    document.getElementById('euStatus').value = d.user.status;
+    if (d.user.vip_expire_at) document.getElementById('euVip').value = d.user.vip_expire_at.replace(' ', 'T').slice(0, 16);
+  };
+
+  window.saveUser = async function (id) {
+    try {
+      await api('/admin/users/' + id, { method: 'PUT', body: {
+        nickname: document.getElementById('euNick').value,
+        phone: document.getElementById('euPhone').value,
+        status: Number(document.getElementById('euStatus').value),
+        vip_expire_at: document.getElementById('euVip').value ? document.getElementById('euVip').value.replace('T', ' ') + ':00' : null
+      }});
+      closeM(); toast('已保存', true); pgUsers();
+    } catch (e) { toast(e.message, false); }
+  };
+
+  async function pgPartners() {
+    const st = document.getElementById('pSt')?.value ?? '';
+    const data = await api('/admin/partners' + (st !== '' ? '?status=' + st : ''));
+    let rows = data.list.length ? data.list.map(p =>
+      '<tr><td>' + p.id + '</td><td>' + esc(p.username) + '</td><td>' + esc(p.real_name || '-') + '</td><td>' + esc(p.promote_code) + '</td><td>' + statusBadge(p.status === 0 ? 0 : p.status === 1 ? 1 : 2) + '</td><td>¥' + Number(p.balance).toFixed(2) + '</td><td>' + esc(p.created_at) + '</td><td>' +
+      (p.status === 0 ? '<button class="btn btn-sm btn-success" onclick="approveP(' + p.id + ',\'approve\')">激活</button> <button class="btn btn-sm btn-danger" onclick="approveP(' + p.id + ',\'reject\')">拒绝</button>' : '') +
+      '</td></tr>'
+    ).join('') : '<tr><td colspan="8" class="empty">暂无</td></tr>';
+    document.getElementById('content').innerHTML =
+      '<div class="toolbar"><select id="pSt" onchange="pgPartners()"><option value="">全部</option><option value="0">待授权</option><option value="1">已激活</option><option value="2">已禁用</option></select></div>' +
+      '<div class="card"><div class="card-bd"><table><thead><tr><th>ID</th><th>账号</th><th>姓名</th><th>推广码</th><th>状态</th><th>余额</th><th>注册</th><th>操作</th></tr></thead><tbody>' + rows + '</tbody></table></div></div>';
+    if (st !== '') document.getElementById('pSt').value = st;
+  }
+  window.pgPartners = pgPartners;
+  window.approveP = async function (id, action) {
+    try { await api('/admin/partners/' + id + '/approve', { method: 'POST', body: { action } }); toast(action === 'reject' ? '已拒绝' : '已激活', true); pgPartners(); } catch (e) { toast(e.message, false); }
+  };
+
+  async function pgOrders() {
+    const data = await api('/admin/orders?pageSize=50');
+    let rows = data.list.length ? data.list.map(o =>
+      '<tr><td>' + esc(o.order_no) + '</td><td>' + o.user_id + '</td><td>¥' + Number(o.amount).toFixed(2) + '</td><td>¥' + Number(o.partner_commission || 0).toFixed(2) + '</td><td>' + esc(o.partner_name || '-') + '</td><td>' + (o.status === 1 ? '已付' : '待付') + '</td><td>' + (o.settled ? '已结算' : '未结算') + '</td><td>' + esc(o.paid_at || o.created_at) + '</td></tr>'
+    ).join('') : '<tr><td colspan="8" class="empty">暂无</td></tr>';
+    const paid = data.list.filter(o => o.status === 1);
+    const totalRev = paid.reduce((s, o) => s + Number(o.amount), 0);
+    const totalComm = paid.reduce((s, o) => s + Number(o.partner_commission || 0), 0);
+    document.getElementById('content').innerHTML =
+      '<div class="stats-grid">' + sc('订单总数', data.total) + sc('已付营收', totalRev.toFixed(2)) + sc('合伙人分润', totalComm.toFixed(2)) + sc('平台收入', (totalRev - totalComm).toFixed(2)) + '</div>' +
+      '<div class="card"><div class="card-bd"><table><thead><tr><th>订单号</th><th>用户</th><th>金额</th><th>分润</th><th>合伙人</th><th>支付</th><th>结算</th><th>时间</th></tr></thead><tbody>' + rows + '</tbody></table></div></div>';
+  }
+
+  async function pgWithdrawals() {
+    const rows = await api('/admin/withdrawals');
+    let html = rows.length ? rows.map(w =>
+      '<tr><td>' + w.id + '</td><td>' + esc(w.partner_username) + '</td><td>¥' + Number(w.amount).toFixed(2) + '</td><td>' + statusBadge(w.status === 0 ? 0 : w.status === 1 ? 1 : 2) + '</td><td>' + esc(w.remark || '-') + '</td><td>' + esc(w.created_at) + '</td><td>' +
+      (w.status === 0 ? '<button class="btn btn-sm btn-success" onclick="procW(' + w.id + ',1)">通过</button> <button class="btn btn-sm btn-danger" onclick="procW(' + w.id + ',2)">驳回</button>' : '-') +
+      '</td></tr>'
+    ).join('') : '<tr><td colspan="7" class="empty">暂无</td></tr>';
+    document.getElementById('content').innerHTML = '<div class="card"><div class="card-bd"><table><thead><tr><th>ID</th><th>合伙人</th><th>金额</th><th>状态</th><th>备注</th><th>时间</th><th>操作</th></tr></thead><tbody>' + html + '</tbody></table></div></div>';
+  }
+  window.procW = async function (id, status) {
+    try { await api('/admin/withdrawals/' + id, { method: 'PUT', body: { status, remark: status === 2 ? '管理员驳回' : '已通过' } }); toast('已处理', true); pgWithdrawals(); } catch (e) { toast(e.message, false); }
+  };
+
+  async function pgMarry() {
+    const rows = await api('/admin/marry-reports');
+    const list = Array.isArray(rows) ? rows : (rows.list || []);
+    let html = list.length ? list.map(r => {
+      const st = r.audit_status === 0 ? '<span class="badge badge-pending">待审</span>' : r.audit_status === 1 ? '<span class="badge badge-ok">已通过</span>' : '<span class="badge badge-ban">已驳回</span>';
+      const type = r.report_type === 1 ? '结婚/注销' : '离异复入';
+      const btns = r.audit_status === 0
+        ? '<button class="btn btn-sm btn-success" onclick="auditMarry(' + r.id + ',1)">通过</button> <button class="btn btn-sm btn-danger" onclick="auditMarry(' + r.id + ',0)">驳回</button>'
+        : '-';
+      return '<tr><td>' + r.id + '</td><td>' + r.user_id + '</td><td>' + type + '</td><td>' + esc(r.proof_img || '-') + '</td><td>' + st + '</td><td>' + esc(r.create_time) + '</td><td>' + btns + '</td></tr>';
+    }).join('') : '<tr><td colspan="7" class="empty">暂无报备</td></tr>';
+    document.getElementById('content').innerHTML = '<div class="card"><div class="card-hd"><strong>婚姻报备审核</strong></div><div class="card-bd"><table><thead><tr><th>ID</th><th>用户ID</th><th>类型</th><th>备注</th><th>状态</th><th>时间</th><th>操作</th></tr></thead><tbody>' + html + '</tbody></table></div></div>';
+  }
+
+  async function auditMarry(id, approve) {
+    let reject_reason = '';
+    if (!approve) {
+      reject_reason = prompt('驳回原因（留痕）') || '不符合审核条件';
+    }
+    try {
+      await api('/admin/marry-reports/' + id + '/approve', { method: 'POST', body: { approve: !!approve, reject_reason } });
+      toast(approve ? '已通过' : '已驳回', 'success');
+      pgMarry();
+    } catch (e) { toast(e.message, 'error'); }
+  }
+
+  async function pgCancel() {
+    const data = await api('/admin/users?status=3&pageSize=50');
+    const div = await api('/admin/users?pageSize=100').then(d => ({ list: d.list.filter(u => u.is_divorced === 1) }));
+    let rows1 = data.list.map(u => '<tr><td>' + u.id + '</td><td>' + esc(u.nickname) + '</td><td>结婚注销</td><td>' + esc(u.created_at) + '</td></tr>').join('') || '<tr><td colspan="4" class="empty">无</td></tr>';
+    let rows2 = div.list.map(u => '<tr><td>' + u.id + '</td><td>' + esc(u.nickname) + '</td><td>离异</td><td><button class="btn btn-sm btn-success" onclick="restoreUser(' + u.id + ')">恢复权限</button></td></tr>').join('') || '<tr><td colspan="4" class="empty">无</td></tr>';
+    document.getElementById('content').innerHTML =
+      '<div class="card"><div class="card-hd"><strong>已结婚/注销用户</strong></div><div class="card-bd"><table><thead><tr><th>ID</th><th>昵称</th><th>类型</th><th>时间</th></tr></thead><tbody>' + rows1 + '</tbody></table></div></div>' +
+      '<div class="card"><div class="card-hd"><strong>离异用户（需人工恢复）</strong></div><div class="card-bd"><table><thead><tr><th>ID</th><th>昵称</th><th>类型</th><th>操作</th></tr></thead><tbody>' + rows2 + '</tbody></table></div></div>';
+  }
+  window.restoreUser = async function (id) {
+    if (!confirm('确认恢复用户 #' + id + ' 的匹配权限？')) return;
+    try { await api('/report/divorce/' + id, { method: 'POST', body: { restore: true } }); toast('已恢复', true); pgCancel(); } catch (e) { toast(e.message, false); }
+  };
+
+  async function pgStats() {
+    const pub = await api('/common/stats');
+    const marryCount = pub.custom?.marry_success_count || pub.married_count || 0;
+    document.getElementById('content').innerHTML =
+      '<div class="card"><div class="card-hd"><strong>前台公示数据</strong></div><div class="card-bd">' +
+      '<div class="form-group"><label>累计领证对数 (marry_success_count)</label><input id="marryCount" type="number" value="' + marryCount + '" /></div>' +
+      '<button class="btn btn-primary" onclick="saveStats()">保存配置</button>' +
+      '<p style="margin-top:1rem;font-size:.8125rem;color:var(--muted)">该数据展示于小程序「平台领证数据公示」页面。</p></div></div>';
+  }
+  window.saveStats = async function () {
+    try {
+      await api('/admin/stats', { method: 'PUT', body: { stats: { marry_success_count: document.getElementById('marryCount').value } } });
+      toast('已保存', true);
+    } catch (e) { toast(e.message, false); }
+  };
+
+  async function pgKnowledge() {
+    const rows = await api('/admin/knowledge');
+    let html = rows.length ? rows.map(k =>
+      '<tr><td>' + k.id + '</td><td>' + esc(k.question) + '</td><td style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(k.answer) + '</td><td>' + (k.status ? '启用' : '禁用') + '</td><td><button class="btn btn-sm btn-outline" onclick="editK(' + k.id + ')">编辑</button> <button class="btn btn-sm btn-danger" onclick="delK(' + k.id + ')">删</button></td></tr>'
+    ).join('') : '<tr><td colspan="5" class="empty">暂无</td></tr>';
+    document.getElementById('content').innerHTML =
+      '<div class="toolbar"><button class="btn btn-primary btn-sm" onclick="addK()">新增 FAQ</button></div>' +
+      '<div class="card"><div class="card-bd"><table><thead><tr><th>ID</th><th>问题</th><th>回答</th><th>状态</th><th>操作</th></tr></thead><tbody>' + html + '</tbody></table></div></div>';
+  }
+
+  window.addK = function () {
+    modal('新增知识库',
+      '<div class="form-group"><label>问题</label><input id="kq" /></div><div class="form-group"><label>回答</label><textarea id="ka" rows="4"></textarea></div><div class="form-group"><label>关键词</label><input id="kkw" placeholder="逗号分隔" /></div>',
+      '<button class="btn btn-outline" onclick="closeM()">取消</button><button class="btn btn-primary" onclick="saveK()">保存</button>');
+  };
+
+  window.editK = async function (id) {
+    const rows = await api('/admin/knowledge');
+    const k = rows.find(x => x.id === id);
+    if (!k) return;
+    modal('编辑 #' + id,
+      '<div class="form-group"><label>问题</label><input id="kq" value="' + esc(k.question) + '" /></div><div class="form-group"><label>回答</label><textarea id="ka" rows="4">' + esc(k.answer) + '</textarea></div><div class="form-group"><label>关键词</label><input id="kkw" value="' + esc(k.keywords || '') + '" /></div><div class="form-group"><label>状态</label><select id="kst"><option value="1">启用</option><option value="0">禁用</option></select></div>',
+      '<button class="btn btn-outline" onclick="closeM()">取消</button><button class="btn btn-primary" onclick="saveK(' + id + ')">保存</button>');
+    document.getElementById('kst').value = k.status;
+  };
+
+  window.saveK = async function (id) {
+    const body = { question: document.getElementById('kq').value, answer: document.getElementById('ka').value, keywords: document.getElementById('kkw')?.value, status: document.getElementById('kst') ? Number(document.getElementById('kst').value) : 1 };
+    try {
+      if (id) await api('/admin/knowledge/' + id, { method: 'PUT', body });
+      else await api('/admin/knowledge', { method: 'POST', body });
+      closeM(); toast('已保存', true); pgKnowledge();
+    } catch (e) { toast(e.message, false); }
+  };
+
+  window.delK = async function (id) {
+    if (!confirm('确认删除？')) return;
+    try { await api('/admin/knowledge/' + id, { method: 'DELETE' }); toast('已删除', true); pgKnowledge(); } catch (e) { toast(e.message, false); }
+  };
+
+  async function pgChat() {
+    const sessions = await api('/admin/chat/sessions');
+    let html = sessions.length ? sessions.map(s =>
+      '<tr><td>' + s.id + '</td><td>' + esc(s.nickname) + '</td><td>' + esc(s.phone || '-') + '</td><td>人工</td><td>' + esc(s.updated_at) + '</td><td><button class="btn btn-sm btn-outline" onclick="replyChat(' + s.id + ')">回复</button></td></tr>'
+    ).join('') : '<tr><td colspan="6" class="empty">暂无人工会话</td></tr>';
+    document.getElementById('content').innerHTML =
+      '<div class="card"><div class="card-hd"><strong>人工客服会话</strong></div><div class="card-bd"><table><thead><tr><th>会话ID</th><th>用户</th><th>手机</th><th>模式</th><th>更新时间</th><th>操作</th></tr></thead><tbody>' + html + '</tbody></table></div></div>' +
+      '<p style="font-size:.8125rem;color:var(--muted)">完整 AI 对话日志存储于 ai_chat_log / chat_messages 表，可通过数据库导出。</p>';
+  }
+
+  window.replyChat = function (sid) {
+    modal('回复会话 #' + sid,
+      '<div class="form-group"><textarea id="replyContent" rows="4" placeholder="输入回复内容"></textarea></div>',
+      '<button class="btn btn-outline" onclick="closeM()">取消</button><button class="btn btn-primary" onclick="sendReply(' + sid + ')">发送</button>');
+  };
+  window.sendReply = async function (sid) {
+    try {
+      await api('/admin/chat/reply', { method: 'POST', body: { session_id: sid, content: document.getElementById('replyContent').value } });
+      closeM(); toast('已回复', true);
+    } catch (e) { toast(e.message, false); }
+  };
+
+  async function pgPrivacy() {
+    const data = await api('/admin/users?pageSize=20');
+    let rows = '';
+    for (const u of data.list.slice(0, 10)) {
+      try {
+        const d = await api('/admin/users/' + u.id);
+        const ag = (d.agreements || []).map(a => a.agreement_type).join(', ') || '无记录';
+        rows += '<tr><td>' + u.id + '</td><td>' + esc(u.nickname) + '</td><td>' + esc(ag) + '</td><td>' + esc(u.created_at) + '</td></tr>';
+      } catch (e) {}
+    }
+    if (!rows) rows = '<tr><td colspan="4" class="empty">暂无</td></tr>';
+    document.getElementById('content').innerHTML =
+      '<div class="card"><div class="card-hd"><strong>用户协议授权记录（抽样）</strong></div><div class="card-bd"><table><thead><tr><th>用户ID</th><th>昵称</th><th>已授权协议</th><th>注册时间</th></tr></thead><tbody>' + rows + '</tbody></table></div></div>' +
+      '<p style="font-size:.8125rem;color:var(--muted)">完整合规日志见 user_agreements / user_privacy_auth_log 表。</p>';
+  }
+
+  function pgExport() {
+    document.getElementById('content').innerHTML =
+      '<div class="card"><div class="card-hd"><strong>数据导出 (CSV)</strong></div><div class="card-bd" style="display:flex;gap:.75rem;flex-wrap:wrap">' +
+      '<a class="btn btn-primary" href="' + API + '/admin/export/users" target="_blank" onclick="return dl(event,\'users\')">导出用户</a>' +
+      '<a class="btn btn-primary" href="' + API + '/admin/export/orders" target="_blank" onclick="return dl(event,\'orders\')">导出订单</a>' +
+      '<a class="btn btn-primary" href="' + API + '/admin/export/partners" target="_blank" onclick="return dl(event,\'partners\')">导出合伙人</a>' +
+      '</div></div>';
+  }
+  window.dl = function (e, type) {
+    e.preventDefault();
+    fetch(API + '/admin/export/' + type, { headers: { Authorization: 'Bearer ' + token() } })
+      .then(r => r.blob()).then(b => {
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(b);
+        a.download = type + '.csv';
+        a.click();
+        toast('导出成功', true);
+      }).catch(() => toast('导出失败', false));
+    return false;
+  };
+
+  async function pgLogs() {
+    const health = await api('/common/health');
+    document.getElementById('content').innerHTML =
+      '<div class="card"><div class="card-hd"><strong>系统状态</strong><button class="btn btn-sm btn-outline" onclick="pgLogs()">刷新</button></div><div class="card-bd">' +
+      '<p>服务状态：<span class="badge b-ok">' + esc(health.status) + '</span></p>' +
+      '<p style="margin-top:.5rem">服务器时间：' + esc(health.time) + '</p>' +
+      '<p style="margin-top:.5rem;font-size:.8125rem;color:var(--muted)">详细运行日志请查看服务器 PM2 / 宝塔面板日志文件。</p></div></div>';
+  }
+
+  function pag(cur, total, id) {
+    return '<div class="pagination">第 ' + cur + ' / ' + total + ' 页 <button class="btn btn-sm btn-outline" onclick="goPg(\'' + id + '\',' + (cur - 1) + ')">上一页</button><button class="btn btn-sm btn-outline" onclick="goPg(\'' + id + '\',' + (cur + 1) + ')">下一页</button><input type="hidden" id="' + id + '" value="' + cur + '" /></div>';
+  }
+  window.goPg = function (id, p) { if (p < 1) return; document.getElementById(id).value = p; if (page === 'users') pgUsers(); };
+
+  document.getElementById('loginForm').addEventListener('submit', async function (e) {
+    e.preventDefault();
+    const btn = document.getElementById('loginBtn');
+    const err = document.getElementById('loginErr');
+    err.classList.add('hidden');
+    btn.disabled = true;
+    try {
+      const d = await api('/auth/admin-login', { method: 'POST', body: { username: document.getElementById('loginUser').value.trim(), password: document.getElementById('loginPass').value } });
+      setToken(d.token);
+      document.getElementById('adminName').textContent = d.admin.username;
+      showApp(); navTo('dashboard'); toast('登录成功', true);
+    } catch (ex) { err.textContent = ex.message; err.classList.remove('hidden'); }
+    finally { btn.disabled = false; }
+  });
+
+  document.getElementById('logoutBtn').addEventListener('click', function () { clearToken(); showLogin(); });
+  document.getElementById('nav').addEventListener('click', function (e) { const b = e.target.closest('.nav-item'); if (b) navTo(b.dataset.p); });
+
+  if (token()) { showApp(); navTo('dashboard'); } else showLogin();
+})();
+  </script>
+</body>
+</html>

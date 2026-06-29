@@ -1,0 +1,55 @@
+.welcome-page {
+  min-height: 100vh;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.welcome-bg {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(160deg, #fff0f3 0%, #f8f4f5 50%, #ffe8ee 100%);
+}
+
+.welcome-content {
+  position: relative;
+  z-index: 1;
+  text-align: center;
+  padding: 64rpx 48rpx;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.brand-name {
+  font-size: 72rpx;
+  font-weight: 700;
+  color: #ff6b8a;
+  margin-bottom: 16rpx;
+  letter-spacing: 2rpx;
+}
+
+.brand-slogan {
+  font-size: 32rpx;
+  color: #555;
+  margin-bottom: 48rpx;
+}
+
+.brand-features {
+  display: flex;
+  flex-direction: column;
+  gap: 12rpx;
+  font-size: 26rpx;
+  color: #888;
+  margin-bottom: 80rpx;
+}
+
+.welcome-btn {
+  width: 80% !important;
+  margin: 0 auto 32rpx;
+}
+
+.rules-link {
+  font-size: 26rpx;
+  color: #ff6b8a;
+}

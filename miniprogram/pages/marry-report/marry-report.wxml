@@ -1,0 +1,29 @@
+<view class="marry-report-page container">
+  <view class="page-title">婚姻报备</view>
+  <view class="page-subtitle">已结婚用户可自主报备，审核通过后永久注销账号</view>
+
+  <view class="card notice-card">
+    <view class="notice-title">报备说明</view>
+    <text class="notice-item">· 仅限已结婚用户提交结婚注销报备</text>
+    <text class="notice-item">· 审核通过后账号永久注销，退出匹配池</text>
+    <text class="notice-item">· 离异用户无自主恢复入口，需联系平台</text>
+    <text class="notice-item">· 不支持上传图片，如需证明请联系 AI 客服</text>
+  </view>
+
+  <view class="card">
+    <view class="form-label">备注说明（选填）</view>
+    <textarea
+      class="textarea-input"
+      placeholder="可简要说明报备情况..."
+      maxlength="200"
+      value="{{remark}}"
+      bindinput="onRemarkInput"
+    />
+  </view>
+
+  <view class="safe-bottom">
+    <button class="btn-primary" bindtap="onSubmit" loading="{{submitting}}" disabled="{{submitting}}">
+      提交结婚报备
+    </button>
+  </view>
+</view>

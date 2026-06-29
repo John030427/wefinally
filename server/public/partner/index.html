@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WeFinally 合伙人后台</title>
+  <style>
+    :root { --primary: #e91e63; --primary-dark: #c2185b; --bg: #f5f5f7; --card: #fff; --text: #333; --muted: #888; --border: #e8e8e8; --success: #4caf50; --warn: #ff9800; --danger: #f44336; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+    .hidden { display: none !important; }
+    .login-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #fce4ec, #f3e5f5); padding: 1rem; }
+    .login-card { background: var(--card); border-radius: 12px; padding: 2rem; width: 100%; max-width: 400px; box-shadow: 0 8px 32px rgba(0,0,0,.08); }
+    .login-card h1 { color: var(--primary); font-size: 1.5rem; margin-bottom: .25rem; }
+    .login-card p { color: var(--muted); font-size: .875rem; margin-bottom: 1.5rem; }
+    .form-group { margin-bottom: 1rem; }
+    .form-group label { display: block; font-size: .875rem; margin-bottom: .35rem; color: var(--muted); }
+    .form-group input, .form-group select, .form-group textarea { width: 100%; padding: .65rem .75rem; border: 1px solid var(--border); border-radius: 8px; font-size: .9375rem; }
+    .form-group input:focus, .form-group textarea:focus { outline: none; border-color: var(--primary); }
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: .35rem; padding: .6rem 1.2rem; border: none; border-radius: 8px; font-size: .9375rem; cursor: pointer; transition: .2s; }
+    .btn:disabled { opacity: .55; cursor: not-allowed; }
+    .btn-primary { background: var(--primary); color: #fff; }
+    .btn-primary:hover:not(:disabled) { background: var(--primary-dark); }
+    .btn-outline { background: #fff; border: 1px solid var(--border); color: var(--text); }
+    .btn-sm { padding: .35rem .75rem; font-size: .8125rem; }
+    .btn-success { background: var(--success); color: #fff; }
+    .btn-danger { background: var(--danger); color: #fff; }
+    .btn-block { width: 100%; }
+    .app { display: flex; min-height: 100vh; }
+    .sidebar { width: 220px; background: #1a1a2e; color: #fff; flex-shrink: 0; display: flex; flex-direction: column; }
+    .sidebar-brand { padding: 1.25rem; border-bottom: 1px solid rgba(255,255,255,.1); }
+    .sidebar-brand h2 { font-size: 1rem; color: var(--primary); }
+    .sidebar-brand small { color: rgba(255,255,255,.5); font-size: .75rem; }
+    .nav { flex: 1; padding: .75rem 0; overflow-y: auto; }
+    .nav-item { display: block; width: 100%; text-align: left; padding: .7rem 1.25rem; background: none; border: none; color: rgba(255,255,255,.75); cursor: pointer; font-size: .875rem; transition: .2s; }
+    .nav-item:hover, .nav-item.active { background: rgba(233,30,99,.2); color: #fff; }
+    .sidebar-footer { padding: 1rem 1.25rem; border-top: 1px solid rgba(255,255,255,.1); }
+    .main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+    .topbar { background: var(--card); padding: .875rem 1.5rem; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+    .topbar h3 { font-size: 1.125rem; }
+    .content { flex: 1; padding: 1.5rem; overflow-y: auto; }
+    .stats-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+    .stat-card { background: var(--card); border-radius: 10px; padding: 1rem; border: 1px solid var(--border); }
+    .stat-card .label { font-size: .8125rem; color: var(--muted); margin-bottom: .35rem; }
+    .stat-card .value { font-size: 1.5rem; font-weight: 600; color: var(--primary); }
+    .card { background: var(--card); border-radius: 10px; border: 1px solid var(--border); margin-bottom: 1rem; }
+    .card-header { padding: .875rem 1rem; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .5rem; }
+    .card-header h4 { font-size: .9375rem; }
+    .card-body { padding: 1rem; }
+    table { width: 100%; border-collapse: collapse; font-size: .875rem; }
+    th, td { padding: .6rem .75rem; text-align: left; border-bottom: 1px solid var(--border); }
+    th { background: #fafafa; color: var(--muted); font-weight: 500; }
+    .badge { display: inline-block; padding: .15rem .5rem; border-radius: 999px; font-size: .75rem; }
+    .badge-pending { background: #fff3e0; color: #e65100; }
+    .badge-ok { background: #e8f5e9; color: #2e7d32; }
+    .badge-ban { background: #ffebee; color: #c62828; }
+    .badge-warn { background: #e3f2fd; color: #1565c0; }
+    .toolbar { display: flex; gap: .5rem; flex-wrap: wrap; margin-bottom: 1rem; }
+    .toolbar input, .toolbar select { padding: .5rem .75rem; border: 1px solid var(--border); border-radius: 8px; font-size: .875rem; }
+    .loading { text-align: center; padding: 2rem; color: var(--muted); }
+    .empty { text-align: center; padding: 2rem; color: var(--muted); }
+    .error-box { background: #ffebee; color: #c62828; padding: .75rem 1rem; border-radius: 8px; margin-bottom: 1rem; font-size: .875rem; }
+    .toast { position: fixed; top: 1rem; right: 1rem; z-index: 9999; padding: .75rem 1.25rem; border-radius: 8px; color: #fff; font-size: .875rem; animation: fadeIn .3s; max-width: 360px; }
+    .toast-success { background: var(--success); }
+    .toast-error { background: var(--danger); }
+    .toast-info { background: #2196f3; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
+    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 1rem; }
+    .modal { background: var(--card); border-radius: 12px; width: 100%; max-width: 480px; max-height: 90vh; overflow-y: auto; }
+    .modal-header { padding: 1rem; border-bottom: 1px solid var(--border); font-weight: 600; }
+    .modal-body { padding: 1rem; }
+    .modal-footer { padding: 1rem; border-top: 1px solid var(--border); display: flex; gap: .5rem; justify-content: flex-end; }
+    .copy-box { background: #fafafa; border: 1px dashed var(--border); border-radius: 8px; padding: .75rem; font-family: monospace; font-size: .8125rem; word-break: break-all; margin: .5rem 0; }
+    .status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: .35rem; }
+    .status-active { background: var(--success); }
+    .status-frozen { background: var(--warn); }
+    .status-disabled { background: var(--danger); }
+    @media (max-width: 768px) {
+      .app { flex-direction: column; }
+      .sidebar { width: 100%; }
+      .nav { display: flex; flex-wrap: wrap; padding: .5rem; }
+      .nav-item { padding: .5rem .75rem; }
+    }
+  </style>
+</head>
+<body>
+  <!-- 登录页 -->
+  <div id="loginPage" class="login-wrap">
+    <div class="login-card">
+      <h1>WeFinally 合伙人后台</h1>
+      <p>独立登录入口 · 与用户小程序完全隔离</p>
+      <p style="margin-bottom:1rem"><a href="register.html" style="color:var(--primary);font-size:.875rem">合伙人注册（待管理员激活）→</a></p>
+      <div id="loginError" class="error-box hidden"></div>
+      <form id="loginForm">
+        <div class="form-group">
+          <label>手机号</label>
+          <input type="tel" id="loginPhone" placeholder="注册手机号" required autocomplete="username" />
+        </div>
+        <div class="form-group">
+          <label>密码</label>
+          <input type="password" id="loginPass" placeholder="登录密码" required autocomplete="current-password" />
+        </div>
+        <button type="submit" class="btn btn-primary btn-block" id="loginBtn">登录</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- 主应用 -->
+  <div id="appPage" class="app hidden">
+    <aside class="sidebar">
+      <div class="sidebar-brand">
+        <h2>WeFinally</h2>
+        <small>合伙人专属后台</small>
+      </div>
+      <nav class="nav" id="navMenu">
+        <button class="nav-item active" data-page="dashboard">数据看板</button>
+        <button class="nav-item" data-page="audit">用户审核</button>
+        <button class="nav-item" data-page="users">推广用户</button>
+        <button class="nav-item" data-page="orders">分润订单</button>
+        <button class="nav-item" data-page="promote">推广工具</button>
+        <button class="nav-item" data-page="withdraw">资金提现</button>
+        <button class="nav-item" data-page="profile">账号设置</button>
+      </nav>
+      <div class="sidebar-footer">
+        <button class="btn btn-outline btn-sm btn-block" id="logoutBtn" style="color:#fff;border-color:rgba(255,255,255,.3)">退出登录</button>
+      </div>
+    </aside>
+    <div class="main">
+      <header class="topbar">
+        <h3 id="pageTitle">数据看板</h3>
+        <span id="partnerInfo" style="font-size:.875rem;color:var(--muted)"></span>
+      </header>
+      <div class="content" id="pageContent"></div>
+    </div>
+  </div>
+
+  <div id="modalRoot"></div>
+
+  <script>
+(function () {
+  const API = '/api';
+  const TOKEN_KEY = 'wf_partner_token';
+  const TITLES = { dashboard:'数据看板', audit:'用户审核', users:'推广用户', orders:'分润订单', promote:'推广工具', withdraw:'资金提现', profile:'账号设置' };
+  const USER_STATUS = { 0:'待审核', 1:'正常', 2:'封号', 3:'已结婚' };
+  const PARTNER_STATUS = { 0:'待授权', 1:'已激活', 2:'已禁用' };
+  const WITHDRAW_STATUS = { 0:'待处理', 1:'已通过', 2:'已驳回', 3:'已打款' };
+
+  let state = { page: 'dashboard', loading: false, partner: null };
+
+  function getToken() { return localStorage.getItem(TOKEN_KEY); }
+  function setToken(t) { localStorage.setItem(TOKEN_KEY, t); }
+  function clearToken() { localStorage.removeItem(TOKEN_KEY); }
+
+  function toast(msg, type) {
+    const el = document.createElement('div');
+    el.className = 'toast toast-' + (type || 'info');
+    el.textContent = msg;
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), 3000);
+  }
+
+  function showModal(title, bodyHtml, footerHtml) {
+    const root = document.getElementById('modalRoot');
+    root.innerHTML = '<div class="modal-overlay" id="modalOverlay"><div class="modal"><div class="modal-header">' + title + '</div><div class="modal-body">' + bodyHtml + '</div><div class="modal-footer">' + (footerHtml || '<button class="btn btn-outline" onclick="closeModal()">关闭</button>') + '</div></div></div>';
+    document.getElementById('modalOverlay').addEventListener('click', function (e) { if (e.target === this) closeModal(); });
+  }
+  window.closeModal = function () { document.getElementById('modalRoot').innerHTML = ''; };
+
+  async function api(path, opts) {
+    opts = opts || {};
+    const headers = { 'Content-Type': 'application/json' };
+    const token = getToken();
+    if (token) headers['Authorization'] = 'Bearer ' + token;
+    const res = await fetch(API + path, { method: opts.method || 'GET', headers, body: opts.body ? JSON.stringify(opts.body) : undefined });
+    const json = await res.json().catch(() => ({ code: -1, message: '响应解析失败' }));
+    if (json.code === 401) { clearToken(); showLogin(); throw new Error(json.message || '登录已过期'); }
+    if (json.code !== 0) throw new Error(json.message || '请求失败');
+    return json.data;
+  }
+
+  function badge(status, map) {
+    const cls = status === 0 ? 'badge-pending' : status === 1 ? 'badge-ok' : status === 2 ? 'badge-ban' : 'badge-warn';
+    return '<span class="badge ' + cls + '">' + (map[status] || status) + '</span>';
+  }
+
+  function setLoading(html) {
+    document.getElementById('pageContent').innerHTML = '<div class="loading">' + (html || '加载中...') + '</div>';
+  }
+
+  function showLogin() {
+    document.getElementById('loginPage').classList.remove('hidden');
+    document.getElementById('appPage').classList.add('hidden');
+  }
+
+  function showApp() {
+    document.getElementById('loginPage').classList.add('hidden');
+    document.getElementById('appPage').classList.remove('hidden');
+  }
+
+  function navigate(page) {
+    state.page = page;
+    document.getElementById('pageTitle').textContent = TITLES[page] || page;
+    document.querySelectorAll('.nav-item').forEach(function (el) {
+      el.classList.toggle('active', el.dataset.page === page);
+    });
+    renderPage();
+  }
+
+  async function renderPage() {
+    setLoading();
+    try {
+      switch (state.page) {
+        case 'dashboard': await renderDashboard(); break;
+        case 'audit': await renderAudit(); break;
+        case 'users': await renderUsers(); break;
+        case 'orders': await renderOrders(); break;
+        case 'promote': await renderPromote(); break;
+        case 'withdraw': await renderWithdraw(); break;
+        case 'profile': await renderProfile(); break;
+      }
+    } catch (err) {
+      document.getElementById('pageContent').innerHTML = '<div class="error-box">' + esc(err.message) + ' <button class="btn btn-sm btn-outline" onclick="location.reload()">重试</button></div>';
+    }
+  }
+
+  function esc(s) { if (s == null) return ''; const d = document.createElement('div'); d.textContent = String(s); return d.innerHTML; }
+
+  async function renderDashboard() {
+    const data = await api('/partner/dashboard');
+    state.partner = data.partner;
+    document.getElementById('partnerInfo').textContent = data.partner.username + ' · ' + data.partner.promote_code;
+    const s = data.stats;
+    document.getElementById('pageContent').innerHTML =
+      '<div class="stats-grid">' +
+      statCard('推广注册用户', s.promoted_users) +
+      statCard('有效 VIP 会员', s.vip_users) +
+      statCard('待审核用户', '<span id="pendingAudit">-</span>') +
+      statCard('付费订单数', s.paid_orders) +
+      statCard('累计分润(元)', s.total_commission.toFixed(2)) +
+      statCard('可提现余额(元)', Number(data.partner.balance).toFixed(2)) +
+      statCard('待处理提现', s.pending_withdrawals) +
+      '</div>' +
+      '<div class="card"><div class="card-header"><h4>账号状态</h4></div><div class="card-body">' +
+      statusLine(data.partner.status) +
+      '<p style="margin-top:.75rem;font-size:.875rem;color:var(--muted)">推广码：<strong>' + esc(data.partner.promote_code) + '</strong></p></div></div>';
+    try {
+      const pending = await api('/partner/users?status=0&pageSize=1');
+      document.getElementById('pendingAudit').textContent = pending.total;
+    } catch (e) {}
+  }
+
+  function statCard(label, value) {
+    return '<div class="stat-card"><div class="label">' + label + '</div><div class="value">' + value + '</div></div>';
+  }
+
+  function statusLine(st) {
+    const dot = st === 1 ? 'status-active' : st === 0 ? 'status-frozen' : 'status-disabled';
+    return '<p><span class="status-dot ' + dot + '"></span>' + esc(PARTNER_STATUS[st] || st) + '</p>';
+  }
+
+  async function renderAudit() {
+    const data = await api('/partner/users?status=0&pageSize=50');
+    let rows = '';
+    if (!data.list.length) {
+      rows = '<tr><td colspan="6" class="empty">暂无待审核用户</td></tr>';
+    } else {
+      data.list.forEach(function (u) {
+        rows += '<tr><td>' + u.id + '</td><td>' + esc(u.nickname || '-') + '</td><td>' + (u.gender === 1 ? '男' : u.gender === 2 ? '女' : '-') + '</td><td>' + esc(u.phone || '-') + '</td><td>' + esc(u.created_at) + '</td><td><button class="btn btn-sm btn-outline" onclick="auditUser(' + u.id + ')">审核</button></td></tr>';
+      });
+    }
+    document.getElementById('pageContent').innerHTML =
+      '<div class="card"><div class="card-header"><h4>待审核用户 (' + data.total + ')</h4></div><div class="card-body"><table><thead><tr><th>ID</th><th>昵称</th><th>性别</th><th>手机</th><th>注册时间</th><th>操作</th></tr></thead><tbody>' + rows + '</tbody></table></div></div>';
+  }
+
+  window.auditUser = async function (id) {
+    try {
+      const data = await api('/partner/users/' + id + '/audit', { method: 'PUT', body: { action: 'view' } });
+      showModal('用户审核 #' + id,
+        '<p>用户：<strong>' + esc(data.user.nickname || data.user.id) + '</strong></p>' +
+        '<p style="margin:.5rem 0;font-size:.875rem;color:var(--muted)">' + esc(data.note) + '</p>' +
+        '<div class="form-group"><label>审核备注</label><textarea id="auditReason" rows="3" placeholder="填写通过/驳回原因（留痕）"></textarea></div>',
+        '<button class="btn btn-outline" onclick="closeModal()">取消</button>' +
+        '<button class="btn btn-success" onclick="submitAudit(' + id + ',\'approve\')">通过</button>' +
+        '<button class="btn btn-danger" onclick="submitAudit(' + id + ',\'reject\')">驳回</button>');
+    } catch (err) { toast(err.message, 'error'); }
+  };
+
+  window.submitAudit = async function (id, action) {
+    const reason = document.getElementById('auditReason')?.value || '';
+    closeModal();
+    try {
+      await api('/partner/users/' + id + '/audit', { method: 'PUT', body: { action: action, reason: reason } });
+      toast('审核完成', 'success');
+      if (state.page === 'audit') renderAudit();
+      else renderUsers();
+    } catch (err) { toast(err.message, 'error'); }
+  };
+
+  async function renderUsers() {
+    const status = document.getElementById('userStatusFilter')?.value || '';
+    const data = await api('/partner/users?pageSize=50' + (status !== '' ? '&status=' + status : ''));
+    let rows = '';
+    if (!data.list.length) {
+      rows = '<tr><td colspan="6" class="empty">暂无推广用户</td></tr>';
+    } else {
+      data.list.forEach(function (u) {
+        rows += '<tr><td>' + u.id + '</td><td>' + esc(u.nickname || '-') + '</td><td>' + badge(u.status, USER_STATUS) + '</td><td>' + (u.vip_expire_at ? esc(u.vip_expire_at) : '非VIP') + '</td><td>' + esc(u.phone || '-') + '</td><td>' + esc(u.created_at) + '</td></tr>';
+      });
+    }
+    document.getElementById('pageContent').innerHTML =
+      '<div class="toolbar"><select id="userStatusFilter" onchange="filterUsers()"><option value="">全部状态</option><option value="0">待审核</option><option value="1">正常</option><option value="2">封号</option><option value="3">已结婚</option></select><button class="btn btn-outline btn-sm" onclick="filterUsers()">筛选</button></div>' +
+      '<div class="card"><div class="card-header"><h4>推广用户列表 (' + data.total + ')</h4></div><div class="card-body"><table><thead><tr><th>ID</th><th>昵称</th><th>状态</th><th>VIP到期</th><th>手机</th><th>注册时间</th></tr></thead><tbody>' + rows + '</tbody></table></div></div>';
+    if (status) document.getElementById('userStatusFilter').value = status;
+  }
+  window.filterUsers = function () { renderUsers(); };
+
+  async function renderOrders() {
+    const rows = await api('/partner/orders');
+    let html = '';
+    if (!rows.length) {
+      html = '<tr><td colspan="6" class="empty">暂无订单</td></tr>';
+    } else {
+      rows.forEach(function (o) {
+        html += '<tr><td>' + esc(o.order_no) + '</td><td>¥' + Number(o.amount).toFixed(2) + '</td><td>¥' + Number(o.partner_commission || 0).toFixed(2) + '</td><td>' + (o.status === 1 ? badge(1, {1:'已支付'}) : badge(0, {0:'待支付'})) + '</td><td>' + (o.settled ? badge(1,{1:'已结算'}) : badge(0,{0:'未结算'})) + '</td><td>' + esc(o.paid_at || o.created_at) + '</td></tr>';
+      });
+    }
+    document.getElementById('pageContent').innerHTML =
+      '<div class="card"><div class="card-header"><h4>分润订单明细</h4></div><div class="card-body"><table><thead><tr><th>订单号</th><th>金额</th><th>分润</th><th>支付</th><th>结算</th><th>时间</th></tr></thead><tbody>' + html + '</tbody></table></div></div>';
+  }
+
+  async function renderPromote() {
+    const data = await api('/partner/promote-tools');
+    const link = window.location.origin + data.mini_program_path;
+    document.getElementById('pageContent').innerHTML =
+      '<div class="card"><div class="card-header"><h4>专属推广码</h4><button class="btn btn-sm btn-primary" onclick="copyText(\'' + esc(data.promote_code) + '\')">复制推广码</button></div><div class="card-body"><div class="copy-box">' + esc(data.promote_code) + '</div></div></div>' +
+      '<div class="card"><div class="card-header"><h4>推广链接</h4><button class="btn btn-sm btn-primary" onclick="copyText(\'' + esc(link) + '\')">复制链接</button></div><div class="card-body"><div class="copy-box">' + esc(link) + '</div><p style="font-size:.8125rem;color:var(--muted);margin-top:.5rem">' + esc(data.qrcode_tip) + '</p></div></div>' +
+      '<div class="card"><div class="card-body"><p><strong>' + esc(data.share_title) + '</strong></p><p style="color:var(--muted);font-size:.875rem;margin-top:.35rem">' + esc(data.share_desc) + '</p></div></div>';
+  }
+
+  window.copyText = function (text) {
+    navigator.clipboard.writeText(text).then(function () { toast('已复制到剪贴板', 'success'); }).catch(function () { toast('复制失败，请手动复制', 'error'); });
+  };
+
+  async function renderWithdraw() {
+    const [dash, list] = await Promise.all([api('/partner/dashboard'), api('/partner/withdrawals')]);
+    let rows = '';
+    if (!list.length) {
+      rows = '<tr><td colspan="4" class="empty">暂无提现记录</td></tr>';
+    } else {
+      list.forEach(function (w) {
+        rows += '<tr><td>' + w.id + '</td><td>¥' + Number(w.amount).toFixed(2) + '</td><td>' + badge(w.status, WITHDRAW_STATUS) + '</td><td>' + esc(w.created_at) + '</td></tr>';
+      });
+    }
+    document.getElementById('pageContent').innerHTML =
+      '<div class="stats-grid"><div class="stat-card"><div class="label">可提现余额</div><div class="value">¥' + Number(dash.partner.balance).toFixed(2) + '</div></div><div class="stat-card"><div class="label">冻结金额</div><div class="value">¥' + Number(dash.partner.frozen_balance || 0).toFixed(2) + '</div></div></div>' +
+      '<div class="card"><div class="card-header"><h4>申请提现</h4></div><div class="card-body"><div class="toolbar"><input type="number" id="withdrawAmount" placeholder="提现金额" min="1" step="0.01" style="width:160px" /><input type="text" id="withdrawRemark" placeholder="备注（选填）" style="flex:1;min-width:120px" /><button class="btn btn-primary" id="withdrawBtn" onclick="submitWithdraw()">提交申请</button></div></div></div>' +
+      '<div class="card"><div class="card-header"><h4>提现记录</h4></div><div class="card-body"><table><thead><tr><th>ID</th><th>金额</th><th>状态</th><th>申请时间</th></tr></thead><tbody>' + rows + '</tbody></table></div></div>';
+  }
+
+  window.submitWithdraw = async function () {
+    const amount = document.getElementById('withdrawAmount').value;
+    const remark = document.getElementById('withdrawRemark').value;
+    const btn = document.getElementById('withdrawBtn');
+    if (!amount || Number(amount) <= 0) { toast('请输入有效金额', 'error'); return; }
+    btn.disabled = true;
+    try {
+      await api('/partner/withdraw', { method: 'POST', body: { amount: Number(amount), remark } });
+      toast('提现申请已提交', 'success');
+      renderWithdraw();
+    } catch (err) { toast(err.message, 'error'); }
+    finally { btn.disabled = false; }
+  };
+
+  async function renderProfile() {
+    const data = await api('/partner/dashboard');
+    document.getElementById('pageContent').innerHTML =
+      '<div class="card"><div class="card-header"><h4>账号信息</h4></div><div class="card-body"><p>姓名：<strong>' + esc(data.partner.name || '--') + '</strong></p><p style="margin-top:.5rem">手机：<strong>' + esc(data.partner.phone || '--') + '</strong></p><p style="margin-top:.5rem">授权状态：' + statusLine(data.partner.status) + '</p><p style="margin-top:.5rem">推广码：<strong>' + esc(data.partner.promote_code) + '</strong></p></div></div>' +
+      '<div class="card"><div class="card-header"><h4>修改密码</h4></div><div class="card-body"><p style="font-size:.875rem;color:var(--muted);margin-bottom:1rem">密码修改请联系超级管理员处理，或通过重新注册流程（需管理员重新激活）。</p><div class="form-group"><label>当前密码</label><input type="password" id="oldPass" disabled placeholder="暂不支持在线修改" /></div></div></div>';
+  }
+
+  document.getElementById('loginForm').addEventListener('submit', async function (e) {
+    e.preventDefault();
+    const btn = document.getElementById('loginBtn');
+    const errEl = document.getElementById('loginError');
+    errEl.classList.add('hidden');
+    btn.disabled = true;
+    btn.textContent = '登录中...';
+    try {
+      const data = await api('/auth/partner-login', {
+        method: 'POST',
+        body: { phone: document.getElementById('loginPhone').value.trim(), password: document.getElementById('loginPass').value }
+      });
+      setToken(data.token);
+      showApp();
+      navigate('dashboard');
+      toast('登录成功', 'success');
+    } catch (err) {
+      errEl.textContent = err.message;
+      errEl.classList.remove('hidden');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '登录';
+    }
+  });
+
+  document.getElementById('logoutBtn').addEventListener('click', function () {
+    clearToken();
+    showLogin();
+    toast('已退出登录', 'info');
+  });
+
+  document.getElementById('navMenu').addEventListener('click', function (e) {
+    const btn = e.target.closest('.nav-item');
+    if (btn) navigate(btn.dataset.page);
+  });
+
+  if (getToken()) { showApp(); navigate('dashboard'); }
+  else { showLogin(); }
+})();
+  </script>
+</body>
+</html>

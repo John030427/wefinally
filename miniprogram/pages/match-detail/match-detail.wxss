@@ -1,0 +1,124 @@
+.meta-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12rpx;
+}
+
+.meta-title {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: #333;
+}
+
+.meta-tag {
+  font-size: 22rpx;
+  color: #ff6b8a;
+  background: #fff0f3;
+  padding: 4rpx 16rpx;
+  border-radius: 8rpx;
+}
+
+.meta-date {
+  font-size: 24rpx;
+  color: #999;
+  margin-bottom: 20rpx;
+}
+
+.profile-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8rpx;
+}
+
+.compat-card {
+  margin-top: 0;
+}
+
+.compat-title {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 24rpx;
+}
+
+.compat-score-row {
+  display: flex;
+  align-items: baseline;
+  margin-bottom: 16rpx;
+}
+
+.compat-score-num {
+  font-size: 72rpx;
+  font-weight: 700;
+  color: #333;
+  line-height: 1;
+}
+
+.compat-score-unit {
+  font-size: 32rpx;
+  color: #666;
+  margin-left: 4rpx;
+  margin-right: 16rpx;
+}
+
+.compat-level {
+  margin-left: auto;
+}
+
+.progress-lg {
+  height: 24rpx;
+  border-radius: 12rpx;
+}
+
+.compat-hint {
+  font-size: 22rpx;
+  color: #999;
+  margin-top: 16rpx;
+  line-height: 1.5;
+}
+
+.compat-empty {
+  text-align: center;
+  padding: 32rpx 16rpx;
+}
+
+.compat-empty-icon {
+  font-size: 56rpx;
+  margin-bottom: 16rpx;
+}
+
+.compat-empty-text {
+  font-size: 26rpx;
+  color: #888;
+  line-height: 1.6;
+}
+
+.meet-card {
+  background: #fafafa;
+}
+
+.meet-title {
+  font-size: 28rpx;
+  font-weight: 600;
+  margin-bottom: 12rpx;
+}
+
+.meet-desc {
+  font-size: 24rpx;
+  color: #666;
+  line-height: 1.7;
+  margin-bottom: 16rpx;
+}
+
+.meet-link {
+  font-size: 26rpx;
+  color: #ff6b8a;
+}
+
+.privacy-note {
+  text-align: center;
+  font-size: 22rpx;
+  color: #bbb;
+  padding: 24rpx 0 48rpx;
+}

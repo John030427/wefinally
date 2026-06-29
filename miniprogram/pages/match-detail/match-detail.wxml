@@ -1,0 +1,83 @@
+<view class="match-detail-page container">
+  <block wx:if="{{pageState === 'loading'}}">
+    <view class="state-wrap">
+      <view class="state-icon">⏳</view>
+      <view class="state-text">正在加载...</view>
+    </view>
+  </block>
+
+  <block wx:elif="{{pageState === 'no-network'}}">
+    <view class="state-wrap">
+      <view class="state-icon">📡</view>
+      <view class="state-text">网络不可用</view>
+      <view class="state-btn" bindtap="onRetry">重新加载</view>
+    </view>
+  </block>
+
+  <block wx:elif="{{pageState === 'error'}}">
+    <view class="state-wrap">
+      <view class="state-icon">⚠️</view>
+      <view class="state-text">{{errorMsg}}</view>
+      <view class="state-btn" bindtap="onRetry">重试</view>
+    </view>
+  </block>
+
+  <block wx:elif="{{pageState === 'empty'}}">
+    <view class="state-wrap">
+      <view class="state-icon">📋</view>
+      <view class="state-text">未找到匹配记录</view>
+    </view>
+  </block>
+
+  <block wx:else>
+    <view class="meta-card card">
+      <view class="meta-header">
+        <text class="meta-title">匹配对象</text>
+        <text class="meta-tag" wx:if="{{detail.matchType}}">{{detail.matchType}}</text>
+      </view>
+      <view class="meta-date" wx:if="{{detail.matchDate}}">匹配日期：{{detail.matchDate}}</view>
+      <view class="profile-tags">
+        <text class="tag tag-pink">{{detail.gender}}</text>
+        <text class="tag tag-gray">{{detail.age}}岁</text>
+        <text class="tag tag-gray">{{detail.city}}</text>
+        <text class="tag tag-gray">{{detail.education}}</text>
+        <text class="tag tag-gray">{{detail.height}}</text>
+        <text class="tag tag-gray">{{detail.babyPlan}}</text>
+        <text class="tag tag-gray">{{detail.circleName}}</text>
+      </view>
+    </view>
+
+    <view class="compat-card card">
+      <view class="compat-title">三观契合度</view>
+
+      <block wx:if="{{hasScore}}">
+        <view class="compat-score-row">
+          <text class="compat-score-num">{{compatibilityScore}}</text>
+          <text class="compat-score-unit">%</text>
+          <text class="compat-level tag {{tagClass}}">{{compatibilityLevel}}</text>
+        </view>
+        <view class="progress-bar progress-lg">
+          <view class="progress-fill {{progressColor}}" style="width: {{compatibilityScore}}%"></view>
+        </view>
+        <view class="compat-hint">基于双方三观文本语义分析，前台仅展示契合度百分比</view>
+      </block>
+
+      <block wx:else>
+        <view class="compat-empty">
+          <view class="compat-empty-icon">💭</view>
+          <view class="compat-empty-text">对方暂未完善三观理念，暂无契合度评估</view>
+        </view>
+      </block>
+    </view>
+
+    <view class="meet-card card">
+      <view class="meet-title">奔现对接</view>
+      <view class="meet-desc">匹配成功后，平台提供官方一对一私密奔现对接服务。如需协助，请通过 AI 客服联系平台工作人员。</view>
+      <navigator url="/pages/chat/chat" class="meet-link">联系 AI 客服 ›</navigator>
+    </view>
+
+    <view class="privacy-note">
+      为保护隐私，不展示双方完整三观原文
+    </view>
+  </block>
+</view>

@@ -1,0 +1,115 @@
+const { get, post } = require('../../utils/request')
+const { API_PATHS, VIP_PRICE, VIP_DAYS } = require('../../utils/constants')
+const { formatDate } = require('../../utils/util')
+
+Page({
+  data: {
+    pageState: 'loading',
+    errorMsg: '',
+    vipPrice: VIP_PRICE,
+    vipDays: VIP_DAYS,
+    isVip: false,
+    vipExpireDate: '',
+    purchasing: false,
+    benefits: [
+      { icon: '🎯', title: 'AI 定时匹配', desc: '每周三、周五 0:00 各空投 1 位对象' },
+      { icon: '💭', title: '三观契合度', desc: '查看匹配对象三观契合度分析' },
+      { icon: '💒', title: '私密奔现对接', desc: '平台官方一对一奔现服务' },
+      { icon: '🔒', title: '无自动续费', desc: '到期自动回收，按需再次购买' }
+    ]
+  },
+
+  onLoad() {
+    this.loadVipInfo()
+  },
+
+  async loadVipInfo() {
+    this.setData({ pageState: 'loading' })
+    const app = getApp()
+    const hasNetwork = await app.checkNetwork()
+    if (!hasNetwork) {
+      this.setData({ pageState: 'no-network' })
+      return
+    }
+
+    try {
+      const data = await get(API_PATHS.VIP_INFO, {}, { showError: false })
+      const isVip = data && (data.isVip || data.is_vip === 1)
+      this.setData({
+        pageState: 'success',
+        isVip,
+        vipExpireDate: data && (data.expireDate || data.vip_expire_time)
+          ? formatDate(data.expireDate || data.vip_expire_time, 'YYYY-MM-DD')
+          : ''
+      })
+    } catch (err) {
+      this.setData({
+        pageState: 'error',
+        errorMsg: (err && err.message) || '加载失败'
+      })
+    }
+  },
+
+  onRetry() {
+    this.loadVipInfo()
+  },
+
+  async onPurchase() {
+    if (this.data.purchasing) return
+    if (this.data.isVip) {
+      wx.showToast({ title: '您已是 VIP 会员', icon: 'none' })
+      return
+    }
+
+    const app = getApp()
+    const hasNetwork = await app.checkNetwork()
+    if (!hasNetwork) {
+      wx.showToast({ title: '网络不可用', icon: 'none' })
+      return
+    }
+
+    wx.showModal({
+      title: '确认开通',
+      content: `支付 ${this.data.vipPrice} 元开通 ${this.data.vipDays} 天 VIP，不自动续费`,
+      success: async (res) => {
+        if (!res.confirm) return
+        this.setData({ purchasing: true })
+        try {
+          const result = await post(API_PATHS.VIP_PURCHASE, {}, {
+            showLoading: true,
+            loadingText: '创建订单...'
+          })
+
+          if (result && result.payment) {
+            await new Promise((resolve, reject) => {
+              wx.requestPayment({
+                timeStamp: result.payment.timeStamp,
+                nonceStr: result.payment.nonceStr,
+                package: result.payment.package,
+                signType: result.payment.signType || 'RSA',
+                paySign: result.payment.paySign,
+                success: resolve,
+                fail: reject
+              })
+            })
+          }
+
+          wx.showToast({ title: '开通成功', icon: 'success' })
+          this.loadVipInfo()
+        } catch (err) {
+          if (err && err.errMsg && err.errMsg.includes('cancel')) {
+            wx.showToast({ title: '已取消支付', icon: 'none' })
+          } else {
+            wx.showModal({
+              title: '开通失败',
+              content: (err && err.message) || '请稍后重试',
+              showCancel: false
+            })
+          }
+        } finally {
+          this.setData({ purchasing: false })
+        }
+      }
+    })
+  }
+})

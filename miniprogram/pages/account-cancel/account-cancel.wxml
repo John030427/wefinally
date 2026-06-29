@@ -1,0 +1,24 @@
+<view class="account-cancel-page container">
+  <view class="page-title">账号注销</view>
+  <view class="page-subtitle">请仔细阅读以下须知</view>
+
+  <view class="card warn-card">
+    <text class="warn-item">· 注销后账号永久不可恢复</text>
+    <text class="warn-item">· 将退出匹配池，清除所有匹配权限</text>
+    <text class="warn-item">· 已结婚用户建议通过「婚姻报备」提交</text>
+    <text class="warn-item">· 违规封号用户不可通过此途径注销</text>
+  </view>
+
+  <view class="confirm-row" bindtap="onCheckChange">
+    <view class="checkbox {{confirmed ? 'checked' : ''}}">
+      <text wx:if="{{confirmed}}">✓</text>
+    </view>
+    <text class="confirm-label">我已了解注销后果，确认申请注销</text>
+  </view>
+
+  <view class="safe-bottom">
+    <button class="btn-primary" bindtap="onSubmit" disabled="{{!confirmed || submitting}}" loading="{{submitting}}">
+      提交注销申请
+    </button>
+  </view>
+</view>
