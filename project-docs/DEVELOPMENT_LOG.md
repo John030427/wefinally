@@ -167,6 +167,56 @@ John 以"产品经理/架构师协作"模式逐条拍板：锁定 188 PRD 方向
 
 ---
 
+## 2026-06-29 — 第 1 波实施：R0 环境检查 + R1 Bug 修复 + R3 安全加固
+
+### 类型
+工程地基 + Bug 修复 + 安全加固
+
+### 修改目的
+按 `plan.md` 第 1 波执行：建立 git baseline，修复 4 个确定性后端 Bug，完成 4 项安全加固，并记录本地运行阻塞。
+
+### R0 结果
+- 已初始化 git 仓库并提交 baseline：`0efeb8d chore: initial commit (baseline before fixes)`
+- 已创建 `.gitignore`，`server/.env` 与 `server/node_modules/` 被正确忽略
+- 已创建本地 `server/.env`（不提交）
+- 数据库导入阻塞：本机没有 `mysql` CLI、没有 MySQL/MariaDB Windows 服务、没有 Docker；`mysql2` 直连 `127.0.0.1:3306` 返回 `ECONNREFUSED`
+- 因 DB 服务缺失，无法完成 `SHOW TABLES`、后续 DB 依赖 API 手动验收
+- 后端开发服务已启动成功，`GET /api/common/health` 返回 `status: ok`
+
+### 已修改文件
+- `server/src/config/constants.js`
+- `server/src/routes/user.js`
+- `server/src/routes/admin.js`
+- `server/src/routes/wxpay.js`
+- `server/src/app.js`
+- `project-docs/TODO.md`
+- `project-docs/DEVELOPMENT_LOG.md`
+
+### 实际修改
+1. 新增 `MARRY_REPORT_TYPE` 枚举，区分结婚报备、离异复入、账号注销
+2. `/api/user/cancel` 改写 `report_type=3`，避免被当成结婚报备
+3. 管理员审核 `report_type=3` 时将用户置为 `BANNED`，不增加 `marry_success_count`
+4. 提现驳回写 `partner_withdraw.status=2`，不再误标为 `1`
+5. `/api/admin/privacy-logs` 返回 `row.auth_time`
+6. 择偶保存不再把 `prefer_city` 写入 `like_circle_ids`
+7. 生产环境缺少强 `JWT_SECRET` 时启动失败
+8. 生产环境缺少 `CORS_ORIGIN` 时启动失败
+9. `/api/wxpay/unified` 增加 `userAuth` 与订单归属校验
+10. 生产环境 `WXPAY_API_KEY` 缺失时拒绝处理支付回调
+11. TODO 补充上线后立即修改默认管理员密码提醒
+
+### 验收
+- [x] 语法级检查：`node --check` 覆盖修改过的后端 JS 文件
+- [ ] DB 导入：阻塞（本机无 MySQL 服务）
+- [ ] DB 手动验收：阻塞（本机无 MySQL 服务）
+- [x] 后端启动 + health：通过
+- [ ] DB 依赖链路：阻塞（本机无 MySQL 服务；待安装/启动 MySQL 后执行）
+
+### 备注
+未修改 `miniprogram/` 页面 UI、`matchService.js`、`orderService.js`、`database/init.sql`。未新增依赖。
+
+---
+
 ## 模板（后续变更请复制）
 
 ```markdown

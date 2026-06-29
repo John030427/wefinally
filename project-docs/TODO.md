@@ -99,6 +99,7 @@
 
 - [ ] 微信支付真环境密钥与回调
 - [ ] 微信合法域名与 AppID
+- [ ] 上线后**立即修改默认管理员密码**（init.sql 默认 admin/admin123456）：用 bcrypt 生成新哈希后 `UPDATE admin SET password='<bcrypt哈希>' WHERE username='admin';`（可用 `node -e "console.log(require('bcryptjs').hashSync('新密码',10))"`，依赖名以 server/package.json 实际为准）
 - [ ] admin 授权日志接 `/admin/privacy-logs`
 - [ ] partner_withdraw status/remark schema 对齐
 - [ ] ai_knowledge keywords 列或删 UI 字段

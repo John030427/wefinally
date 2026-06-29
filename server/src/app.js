@@ -1,5 +1,11 @@
 require('dotenv').config();
 
+if (process.env.NODE_ENV === 'production') {
+  if (!process.env.JWT_SECRET || process.env.JWT_SECRET === 'dev_secret') {
+    throw new Error('FATAL: 生产环境必须设置强随机 JWT_SECRET（不能为空或 dev_secret）');
+  }
+}
+
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
@@ -24,7 +30,14 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // ─── Middleware ──────────────────────────────────────────────
-app.use(cors({ origin: process.env.CORS_ORIGIN || '*' }));
+const corsOrigins = (process.env.CORS_ORIGIN || '')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
+if (process.env.NODE_ENV === 'production' && corsOrigins.length === 0) {
+  throw new Error('FATAL: 生产环境必须设置 CORS_ORIGIN（逗号分隔的允许来源）');
+}
+app.use(cors({ origin: corsOrigins.length > 0 ? corsOrigins : '*' }));
 
 app.use('/api/wxpay/notify', express.raw({ type: '*/*' }));
 

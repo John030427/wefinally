@@ -2,6 +2,7 @@ const express = require('express');
 const crypto = require('crypto');
 const axios = require('axios');
 const pool = require('../config/db');
+const { userAuth } = require('../middleware/auth');
 const { markOrderPaid } = require('../services/orderService');
 const { md5, randomNonce } = require('../utils/crypto');
 const { VIP_PRICE } = require('../config/constants');
@@ -38,7 +39,7 @@ function buildXml(obj) {
 }
 
 /** POST /api/wxpay/unified */
-router.post('/unified', async (req, res, next) => {
+router.post('/unified', userAuth, async (req, res, next) => {
   try {
     const { order_no, openid } = req.body;
     if (!order_no || !openid) {
@@ -53,6 +54,9 @@ router.post('/unified', async (req, res, next) => {
       return res.status(404).json({ code: 1, message: '订单不存在' });
     }
     const order = orders[0];
+    if (order.user_id !== req.auth.id) {
+      return res.status(403).json({ code: 403, message: '无权操作此订单' });
+    }
     if (Number(order.price) !== VIP_PRICE) {
       return res.status(400).json({ code: 1, message: '订单金额异常' });
     }
@@ -130,6 +134,10 @@ router.post('/notify', async (req, res) => {
     }
 
     const apiKey = process.env.WXPAY_API_KEY;
+    if (process.env.NODE_ENV === 'production' && !apiKey) {
+      console.error('[wxpay notify] 生产环境缺少 WXPAY_API_KEY，拒绝处理回调');
+      return res.send(buildXml({ return_code: 'FAIL', return_msg: '支付未正确配置' }));
+    }
     if (apiKey) {
       const sign = data.sign;
       const computed = buildSign(data, apiKey);
