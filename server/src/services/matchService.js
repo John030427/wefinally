@@ -1,9 +1,13 @@
 const pool = require('../config/db');
 const { computeViewSimilarity } = require('../utils/viewSimilarity');
 const { USER_STATUS } = require('../config/constants');
+const cfg = require('../config/matchConfig');
 
-const MIN_SIDE_SCORE = 20;
 const COMBINE = (ab, ba) => (ab + ba) / 2;
+
+function eduRank(edu) {
+  return cfg.educationRank[edu] ?? 0; // ponytail: 未知学历按最低算
+}
 
 function settingsOf(row) {
   return {
@@ -25,22 +29,31 @@ function calcAge(birthYear) {
   return new Date().getFullYear() - Number(birthYear);
 }
 
-/**
- * 硬性条件：设了年龄区间，对方年龄必须落在区间内（双向各校验一次）。
- * 用于真正落实「双向互配」——硬条件不满足直接排除，不靠软分门槛。
- */
-function hardOk(settings, candidate) {
-  const age = calcAge(candidate.birth_year);
-  if (settings.age_min != null && settings.age_max != null && age != null) {
-    if (age < settings.age_min || age > settings.age_max) return false;
-  }
-  return true;
-}
-
+// 区间或精确身高 → 数值（区间取中位数，避免区间化后匹配分漂移）。"190cm以上" → 190。
 function parseHeightCm(heightRange) {
   if (!heightRange) return null;
-  const m = String(heightRange).match(/(\d+)/);
-  return m ? Number(m[1]) : null;
+  const nums = String(heightRange).match(/\d+/g);
+  if (!nums) return null;
+  return nums.length >= 2 ? (Number(nums[0]) + Number(nums[1])) / 2 : Number(nums[0]);
+}
+
+/**
+ * 硬性条件：开启的项不满足直接一票否决（仅当设了对应偏好才校验）。双向各调用一次。
+ */
+function hardOk(settings, candidate) {
+  const H = cfg.hard;
+  if (H.age && settings.age_min != null && settings.age_max != null) {
+    const age = calcAge(candidate.birth_year);
+    if (age != null && (age < settings.age_min || age > settings.age_max)) return false;
+  }
+  if (H.height && settings.height_min != null && settings.height_max != null) {
+    const h = parseHeightCm(candidate.height_range);
+    if (h != null && (h < settings.height_min || h > settings.height_max)) return false;
+  }
+  if (H.minEducation && settings.min_education) {
+    if (eduRank(candidate.education) < eduRank(settings.min_education)) return false;
+  }
+  return true;
 }
 
 function circleMatches(likeCircleIds, circleId) {
@@ -52,22 +65,24 @@ function circleMatches(likeCircleIds, circleId) {
 
 /**
  * Score weights: baby_plan > view_similarity > age/height > education > circle > city
+ * 满分权重读 matchConfig.weights；else 分支的基础分为兜底，保持原值（ponytail: 主权重可调即可）。
  */
 function scorePair(user, settings, candidate, viewSim) {
+  const W = cfg.weights;
   let score = 0;
 
   const likeBaby = settings.like_baby_plan;
-  if (likeBaby && candidate.baby_plan === likeBaby) score += 30;
+  if (likeBaby && candidate.baby_plan === likeBaby) score += W.baby;
   else if (!likeBaby) score += 10;
 
-  score += (viewSim / 100) * 25;
+  score += (viewSim / 100) * W.view;
 
   const cAge = calcAge(candidate.birth_year);
   if (cAge != null && settings.age_min != null && settings.age_max != null) {
-    if (cAge >= settings.age_min && cAge <= settings.age_max) score += 15;
+    if (cAge >= settings.age_min && cAge <= settings.age_max) score += W.age;
     else {
       const dist = Math.min(Math.abs(cAge - settings.age_min), Math.abs(cAge - settings.age_max));
-      score += Math.max(0, 15 - dist * 2);
+      score += Math.max(0, W.age - dist * 2);
     }
   } else {
     score += 5;
@@ -75,25 +90,29 @@ function scorePair(user, settings, candidate, viewSim) {
 
   const cHeight = parseHeightCm(candidate.height_range);
   if (cHeight && settings.height_min && settings.height_max) {
-    if (cHeight >= settings.height_min && cHeight <= settings.height_max) score += 12;
+    if (cHeight >= settings.height_min && cHeight <= settings.height_max) score += W.height;
     else {
       const dist = Math.min(
         Math.abs(cHeight - settings.height_min),
         Math.abs(cHeight - settings.height_max)
       );
-      score += Math.max(0, 12 - dist);
+      score += Math.max(0, W.height - dist);
     }
   } else {
     score += 3;
   }
 
-  if (settings.min_education && candidate.education === settings.min_education) score += 8;
-  else if (!settings.min_education) score += 2;
+  // 学历：层级比较——达到或高于要求给满分（不再要求完全相等）
+  if (settings.min_education) {
+    score += eduRank(candidate.education) >= eduRank(settings.min_education) ? W.education : 0;
+  } else {
+    score += 2;
+  }
 
-  if (circleMatches(settings.like_circle_ids, candidate.circle_id)) score += 6;
+  if (circleMatches(settings.like_circle_ids, candidate.circle_id)) score += W.circle;
   else score += 2;
 
-  if (user.city && candidate.city === user.city) score += 4;
+  if (user.city && candidate.city === user.city) score += W.city;
   else score += 1;
 
   return Math.round(score * 100) / 100;
@@ -175,7 +194,7 @@ async function runBatchMatch(batchDate, matchType) {
         );
         if (cHas.length > 0) continue;
 
-        // 硬性条件：双向年龄区间必须互相满足（设了才校验），否则直接排除
+        // 硬性条件：双向必须互相满足（设了才校验），否则直接排除
         if (!hardOk(settingsA, c) || !hardOk(settingsOf(c), user)) continue;
 
         const viewSim = computeViewSimilarity(
@@ -186,7 +205,7 @@ async function runBatchMatch(batchDate, matchType) {
         );
         const scoreAB = scorePair(user, settingsA, c, viewSim);
         const scoreBA = scorePair(c, settingsOf(c), user, viewSim);
-        if (Math.min(scoreAB, scoreBA) < MIN_SIDE_SCORE) continue;
+        if (Math.min(scoreAB, scoreBA) < cfg.minSideScore) continue;
 
         scored.push({ candidate: c, viewSim, combined: COMBINE(scoreAB, scoreBA) });
       }
@@ -223,5 +242,8 @@ module.exports = {
   runBatchMatch,
   scorePair,
   calcAge,
+  parseHeightCm,
+  hardOk,
+  eduRank,
   computeViewSimilarity,
 };

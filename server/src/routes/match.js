@@ -95,6 +95,7 @@ function formatMatchItem(row, vip) {
     compatibilityScore: row.view_similarity,
     matched_user_id: row.match_user_id,
     age_band: ageBand(row.birth_year),
+    height_range: row.height_range,
     education: row.education,
     baby_plan: row.baby_plan,
     circle_name: row.circle_name,
@@ -310,7 +311,7 @@ router.get('/detail', async (req, res, next) => {
 async function loadMatchDetail(req, res, next, matchId) {
   try {
     const [rows] = await pool.query(
-      `SELECT ml.*, u.birth_year, u.education,
+      `SELECT ml.*, u.birth_year, u.height_range, u.education,
               u.circle_id, u.baby_plan, oc.circle_name
        FROM user_match_log ml
        JOIN \`user\` u ON u.id = ml.match_user_id
@@ -346,6 +347,7 @@ async function loadMatchDetail(req, res, next, matchId) {
       view_similarity: match.view_similarity,
       compatibilityScore: match.view_similarity,
       age_band: ageBand(match.birth_year),
+      height_range: match.height_range,
       education: match.education,
       circle_name: match.circle_name,
       baby_plan: match.baby_plan,

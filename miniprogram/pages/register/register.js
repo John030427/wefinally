@@ -8,7 +8,8 @@ const {
   MARRIAGE_OPTIONS,
   BABY_PLAN_OPTIONS,
   HOUSE_CAR_OPTIONS,
-  CITY_OPTIONS
+  CITY_OPTIONS,
+  HEIGHT_RANGE_OPTIONS
 } = require('../../utils/constants')
 const { parsePromoteCode } = require('../../utils/util')
 
@@ -76,11 +77,7 @@ Page({
   },
 
   initHeights() {
-    const heights = []
-    for (let h = 150; h <= 200; h++) {
-      heights.push(`${h}cm`)
-    }
-    this.setData({ heightOptions: heights })
+    this.setData({ heightOptions: HEIGHT_RANGE_OPTIONS })
   },
 
   parsePromoteCode(options) {

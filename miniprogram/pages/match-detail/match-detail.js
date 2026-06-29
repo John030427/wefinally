@@ -52,6 +52,7 @@ Page({
       const normalized = {
         locked,
         ageBand: detail.age_band || '',
+        height: detail.height_range || '',
         education: detail.education || '--',
         babyPlan: detail.baby_plan || '--',
         circleName: detail.circle_name || '--',

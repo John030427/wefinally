@@ -38,6 +38,7 @@
       <view class="meta-date" wx:if="{{detail.matchDate}}">匹配日期：{{detail.matchDate}}</view>
       <view class="profile-tags" wx:if="{{!detail.locked}}">
         <text class="tag tag-gray">{{detail.ageBand}}</text>
+        <text class="tag tag-gray" wx:if="{{detail.height}}">{{detail.height}}</text>
         <text class="tag tag-gray">{{detail.education}}</text>
         <text class="tag tag-pink">{{detail.circleName}}</text>
         <text class="tag tag-gray">{{detail.babyPlan}}</text>
