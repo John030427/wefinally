@@ -390,6 +390,71 @@ matchConfig.js(新)、matchService.js、routes/match.js、register.js、match-de
 
 ---
 
+## 2026-06-29 — 模块13 批量导入 + 公益免费白名单
+
+### 类型
+新功能（按 `plan-module13-free-whitelist.md` 执行）
+
+### 修改目的
+为公职/教师/医护三类单位批量白名单预留接口；用户登录后用单位登记手机号领取终身公益免费会员，豁免 188 付费。
+
+### 涉及文件
+- `database/patch-004-free-whitelist.sql`
+- `server/src/middleware/guard.js`
+- `server/src/routes/admin.js`
+- `server/src/routes/user.js`
+- `miniprogram/pages/profile/profile.js`
+- `miniprogram/pages/profile/profile.wxml`
+
+### 测试
+- [x] DB patch 导入：看到 `free_member/free_source` 和 `free_whitelist`
+- [x] `node --check`：`guard.js`、`admin.js`、`user.js`、`profile.js`
+- [x] 端到端：管理员导入 `imported=1`；用户领取后 `free_member/free_source = 1 public`
+- [x] 未命中：返回「该手机号不在公益免费名单内」，用户 `free_member` 保持 0
+- [x] 免费会员 VIP 守卫：`/api/match/latest` 未返回 403
+
+### 提交
+`d4c6ee2`、`2aa89b0`、`12fc257`、`b7cdec7`、`0d97e5e`
+
+### 备注
+v1 只做 JSON 批量导入接口和用户自报手机号领取；单位自助门户、CSV UI、个人证件人工审核留到真实对接后再加。
+
+---
+
+## 2026-06-29 — 模块11 见面安全 110 方案一
+
+### 类型
+新功能（按 `plan-module11-meet-safety.md` 执行）
+
+### 修改目的
+实现线下见面安全确认：报备、LBS 主动定位、紧急联系人、安全卡、历史记录、SOS 证据记录和拨 110 前端入口。
+
+### 涉及文件
+- `database/patch-005-meet-report.sql`
+- `server/src/config/safetyConfig.js`
+- `server/src/routes/meet.js`
+- `server/src/app.js`
+- `miniprogram/app.json`
+- `miniprogram/pages/meet-safety/*`
+- `miniprogram/pages/meet-safety-list/*`
+- `miniprogram/pages/match-detail/*`
+- `miniprogram/pages/profile/profile.js`
+
+### 测试
+- [x] DB patch 导入：看到 `meet_report` 和 `sos_log`
+- [x] `node --check`：`safetyConfig.js`、`meet.js`、`app.js`、新增/改动小程序 JS
+- [x] `app.json` 可 JSON 解析
+- [x] 后端验收：缺安全勾选失败；正常创建返回 `id/card_no`；SOS 返回 `sosPhone=110` 和紧急联系人；`sos_log` 写入 1 条；list 返回 1 条
+- [ ] 微信开发者工具手动验收：`getLocation` 授权、`makePhoneCall`、`open-type=share`
+
+### 提交
+`306dcb6`、`f304b74`、`f3ed55b`、`b3e1cb5`
+
+### 备注
+未宣称直连 110；广东 110 小程序跳转默认关闭，仅在 `safetyConfig.guangdong110` 留位。暂无短信商/24h 客服，SOS v1 只落证据并回传紧急联系人给前端引导用户自联。
+
+---
+
 ## 模板（后续变更请复制）
 
 ```markdown
