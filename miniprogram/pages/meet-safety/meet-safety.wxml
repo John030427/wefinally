@@ -29,13 +29,11 @@
   </view>
 
   <view class="card safety-card" wx:else>
-    <view class="card-title">见面安全卡</view>
-    <view class="card-no">{{created.card_no}}</view>
+    <view class="card-title">已提交见面安全确认</view>
     <view class="info-row"><text>预计时间</text><text>{{form.meet_time || '未填写'}}</text></view>
     <view class="info-row"><text>预计地点</text><text>{{form.meet_place || '未填写'}}</text></view>
     <view class="info-row" wx:if="{{form.lat && form.lng}}"><text>定位</text><text>{{form.lat}}，{{form.lng}}</text></view>
     <view class="note">{{form.meet_note || safetyTips}}</view>
-    <button class="btn-secondary share-btn" open-type="share">转发给信任的人</button>
     <button class="sos-btn" bindtap="sos">一键呼救 110</button>
   </view>
 </view>

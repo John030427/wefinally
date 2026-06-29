@@ -31,7 +31,6 @@
       <view class="item-body">{{item.meet_place || '未填写地点'}}</view>
       <view class="item-score">
         <text class="tag tag-gray">{{item.meet_time || '未填写时间'}}</text>
-        <text class="tag tag-pink">{{item.card_no}}</text>
       </view>
       <view class="item-arrow">›</view>
     </view>

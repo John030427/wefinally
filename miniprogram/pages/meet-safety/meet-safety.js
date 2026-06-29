@@ -89,10 +89,5 @@ Page({
     if (r && r.emergency_contact) {
       wx.showModal({ title: '同时联系紧急联系人', content: r.emergency_contact, showCancel: false })
     }
-  },
-
-  onShareAppMessage() {
-    const c = this.data.created || {}
-    return { title: `我已报备线下见面(安全卡 ${c.card_no || ''})`, path: '/pages/welcome/welcome' }
   }
 })
