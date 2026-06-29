@@ -27,6 +27,12 @@ module.exports = {
     CLOSED: 3,
   },
 
+  MARRY_REPORT_TYPE: {
+    MARRY: 1,
+    DIVORCE: 2,
+    CANCEL: 3,
+  },
+
   AGREEMENT_TYPES: ['user_service', 'privacy', 'data_auth'],
 
   VIEW_TEXT_MIN: 20,

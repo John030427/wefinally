@@ -7,6 +7,7 @@ const {
   USER_STATUS,
   PARTNER_STATUS,
   VIP_PRICE,
+  MARRY_REPORT_TYPE,
 } = require('../config/constants');
 const {
   formatUserForAdmin,
@@ -281,7 +282,7 @@ router.put('/withdrawals/:id', async (req, res, next) => {
         [withdraw.amount, withdraw.partner_id]
       );
       await conn.query(
-        'UPDATE partner_withdraw SET status = 1 WHERE id = ?',
+        'UPDATE partner_withdraw SET status = 2 WHERE id = ?',
         [req.params.id]
       );
     }
@@ -500,7 +501,7 @@ router.get('/privacy-logs', async (req, res, next) => {
         create_time: row.user_create_time,
       }),
       agreements: privacyAuthToAgreements(row),
-      auth_time: row.create_time,
+      auth_time: row.auth_time,
     }));
     return success(res, paginate(list, count[0].total, page, pageSize));
   } catch (err) {
@@ -553,17 +554,30 @@ router.post('/marry-reports/:id/approve', async (req, res, next) => {
         'UPDATE marry_report SET audit_status = 1 WHERE id = ?',
         [reportId]
       );
-      await conn.query(
-        'UPDATE `user` SET status = ?, is_vip = 0, vip_expire_time = NULL WHERE id = ?',
-        [USER_STATUS.MARRIED, report.user_id]
-      );
-      if (report.report_type === 1) {
+
+      if (report.report_type === MARRY_REPORT_TYPE.CANCEL) {
+        await conn.query(
+          'UPDATE `user` SET status = ?, is_vip = 0, vip_expire_time = NULL WHERE id = ?',
+          [USER_STATUS.BANNED, report.user_id]
+        );
+        await conn.commit();
+        return success(res, null, '审核通过，账号已注销');
+      }
+
+      if (report.report_type === MARRY_REPORT_TYPE.MARRY) {
+        await conn.query(
+          'UPDATE `user` SET status = ?, is_vip = 0, vip_expire_time = NULL WHERE id = ?',
+          [USER_STATUS.MARRIED, report.user_id]
+        );
         await conn.query(
           'UPDATE system_stat SET marry_success_count = marry_success_count + 1 WHERE id = 1'
         );
+        await conn.commit();
+        return success(res, null, '结婚审核通过，账号已注销');
       }
+
       await conn.commit();
-      return success(res, null, '审核通过，账号已注销');
+      return success(res, null, '审核通过');
     }
 
     await conn.query(

@@ -20,6 +20,7 @@ const {
   USER_STATUS,
   PARTNER_STATUS,
   ROLES,
+  MARRY_REPORT_TYPE,
 } = require('../config/constants');
 
 const router = express.Router();
@@ -368,7 +369,7 @@ router.put(
         height_min: height_min ?? heightRange.height_min,
         height_max: height_max ?? heightRange.height_max,
         min_education: min_education || prefer_education || null,
-        like_circle_ids: like_circle_ids || prefer_city || '',
+        like_circle_ids: like_circle_ids || '',
         like_marry_status: like_marry_status || null,
         like_baby_plan: like_baby_plan || null,
         like_income: like_income || null,
@@ -439,8 +440,8 @@ router.post(
     try {
       const { remark } = req.body;
       const [pending] = await pool.query(
-        'SELECT id FROM marry_report WHERE user_id = ? AND report_type = 1 AND audit_status = 0',
-        [req.auth.id]
+        'SELECT id FROM marry_report WHERE user_id = ? AND report_type = ? AND audit_status = 0',
+        [req.auth.id, MARRY_REPORT_TYPE.MARRY]
       );
       if (pending.length > 0) {
         return fail(res, '已有待审核的结婚报备，请勿重复提交');
@@ -465,8 +466,8 @@ router.post(
   async (req, res, next) => {
     try {
       const [pending] = await pool.query(
-        'SELECT id FROM marry_report WHERE user_id = ? AND report_type = 1 AND audit_status = 0',
-        [req.auth.id]
+        'SELECT id FROM marry_report WHERE user_id = ? AND report_type = ? AND audit_status = 0',
+        [req.auth.id, MARRY_REPORT_TYPE.CANCEL]
       );
       if (pending.length > 0) {
         return fail(res, '已有待审核申请，请等待处理');
@@ -474,8 +475,8 @@ router.post(
 
       await pool.query(
         `INSERT INTO marry_report (user_id, report_type, proof_img, audit_status)
-         VALUES (?, 1, ?, 0)`,
-        [req.auth.id, '用户申请账号注销']
+         VALUES (?, ?, ?, 0)`,
+        [req.auth.id, MARRY_REPORT_TYPE.CANCEL, '用户申请账号注销']
       );
       return success(res, null, '注销申请已提交，请等待平台审核');
     } catch (err) {
