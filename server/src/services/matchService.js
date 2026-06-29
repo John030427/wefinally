@@ -134,62 +134,63 @@ async function runBatchMatch(batchDate, matchType) {
   try {
     await conn.beginTransaction();
     const vipUsers = await getActiveVipUsers(conn);
+    const usedThisBatch = new Set();
 
     for (const user of vipUsers) {
+      if (usedThisBatch.has(user.id)) continue;
+
       const [already] = await conn.query(
         'SELECT id FROM user_match_log WHERE user_id = ? AND match_date = ? LIMIT 1',
         [user.id, batchDate]
       );
-      if (already.length > 0) continue;
+      if (already.length > 0) {
+        usedThisBatch.add(user.id);
+        continue;
+      }
 
-      const settings = {
-        age_min: user.age_min,
-        age_max: user.age_max,
-        height_min: user.height_min,
-        height_max: user.height_max,
-        min_education: user.min_education,
-        like_circle_ids: user.like_circle_ids,
-        like_marry_status: user.like_marry_status,
-        like_baby_plan: user.like_baby_plan,
-        like_income: user.like_income,
-        like_house_car: user.like_house_car,
-      };
-
+      const settingsA = settingsOf(user);
       const candidates = await getCandidates(conn, user);
       if (candidates.length === 0) continue;
 
       users += 1;
-      const scored = candidates.map((c) => {
+      const scored = [];
+      for (const c of candidates) {
+        if (usedThisBatch.has(c.id)) continue;
+
+        const [cHas] = await conn.query(
+          'SELECT id FROM user_match_log WHERE user_id = ? AND match_date = ? LIMIT 1',
+          [c.id, batchDate]
+        );
+        if (cHas.length > 0) continue;
+
         const viewSim = computeViewSimilarity(
           user.self_view_text,
           user.target_view_text,
           c.self_view_text,
           c.target_view_text
         );
-        return {
-          candidate: c,
-          viewSim,
-          score: scorePair(user, settings, c, viewSim),
-        };
-      });
+        const scoreAB = scorePair(user, settingsA, c, viewSim);
+        const scoreBA = scorePair(c, settingsOf(c), user, viewSim);
+        if (Math.min(scoreAB, scoreBA) < MIN_SIDE_SCORE) continue;
 
-      scored.sort((a, b) => b.score - a.score || b.viewSim - a.viewSim);
+        scored.push({ candidate: c, viewSim, combined: COMBINE(scoreAB, scoreBA) });
+      }
+
+      scored.sort((a, b) => b.combined - a.combined || b.viewSim - a.viewSim);
       const best = scored[0];
       if (!best) continue;
-
-      const [dup] = await conn.query(
-        `SELECT id FROM user_match_log
-         WHERE match_date = ? AND user_id = ? AND match_user_id = ?`,
-        [batchDate, user.id, best.candidate.id]
-      );
-      if (dup.length > 0) continue;
 
       await conn.query(
         `INSERT INTO user_match_log
          (user_id, match_user_id, view_similarity, match_date, match_type)
-         VALUES (?, ?, ?, ?, ?)`,
-        [user.id, best.candidate.id, best.viewSim, batchDate, matchType]
+         VALUES (?, ?, ?, ?, ?), (?, ?, ?, ?, ?)`,
+        [
+          user.id, best.candidate.id, best.viewSim, batchDate, matchType,
+          best.candidate.id, user.id, best.viewSim, batchDate, matchType,
+        ]
       );
+      usedThisBatch.add(user.id);
+      usedThisBatch.add(best.candidate.id);
       matched += 1;
     }
 
