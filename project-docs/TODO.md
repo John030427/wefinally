@@ -67,7 +67,7 @@
 
 ## P2 — 新功能 MVP
 
-### 用户资料：外貌描述（v1 = 纯文本选填，不展示给对方、不打分）
+### 用户资料：外貌描述（⚠️ **待老板确认再开建** —— 纯 John 新增，老板从未提，见 BOSS_IDEAS_CHECKLIST C 组来源复核）
 
 - [ ] DB：`user.appearance_description` migration
 - [ ] 后端：profile GET/PUT 支持字段（仅本人）+ 长度校验
