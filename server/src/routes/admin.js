@@ -686,4 +686,27 @@ router.post('/admins', async (req, res, next) => {
   }
 });
 
+/** POST /api/admin/whitelist/import — 批量导入脱敏白名单（幂等，按 phone 去重） */
+router.post('/whitelist/import', async (req, res, next) => {
+  try {
+    const list = Array.isArray(req.body.list) ? req.body.list : [];
+    const ok = ['public', 'edu', 'med'];
+    let inserted = 0;
+    for (const r of list) {
+      const phone = String(r.phone || '').trim();
+      const source = ok.includes(r.source) ? r.source : 'public';
+      if (!/^\d{11}$/.test(phone)) continue; // ponytail: 只收 11 位手机号，脏数据跳过
+      await pool.query(
+        `INSERT INTO free_whitelist (phone, name, unit, source) VALUES (?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE name=VALUES(name), unit=VALUES(unit), source=VALUES(source)`,
+        [phone, String(r.name || '').slice(0, 50), String(r.unit || '').slice(0, 100), source]
+      );
+      inserted += 1;
+    }
+    return success(res, { received: list.length, imported: inserted });
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;
