@@ -1,7 +1,7 @@
 # 模块13 实施计划 · 批量导入 + 公职/教师/医护免费白名单（v1 = 先留好接口）
 
-> 执行：Cursor(GPT-5.5) + Composer 实现 → GPT 对照文末检查表 review。
-> 前置：本地 MySQL(Docker `wefinally-mysql`) 在跑、后端能启动（见 plan.md 第1波）。
+> 执行：**Codex**（先读仓库根 `AGENTS.md` 了解项目背景与规矩）逐 Task 实现 → 对照文末检查表自检。
+> 前置：本地 MySQL(Docker `wefinally-mysql`) 在跑、后端能启动（见 `AGENTS.md` 本地环境）。
 > 来源：老板 A8「让三大人群批量导入，免费，先留好接口」。详见 `project-docs/MODULES/13-批量导入与公职白名单.md`。
 
 **Goal**：单位脱敏名单**批量导入** → 命中者**终身免费会员**(豁免188) + 圈层来源标记。v1 只做"接口 + 数据 + 领取 + 免费生效"，单位自助门户/审核UI 等有真实对接再做。
