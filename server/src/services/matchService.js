@@ -89,15 +89,16 @@ async function getActiveVipUsers(conn) {
 async function getCandidates(conn, user) {
   const targetGender = user.gender === 1 ? 2 : 1;
   const [rows] = await conn.query(
-    `SELECT u.*, ms.self_view_text, ms.target_view_text
+    `SELECT u.*, ms.age_min, ms.age_max, ms.height_min, ms.height_max,
+            ms.min_education, ms.like_circle_ids, ms.like_marry_status,
+            ms.like_baby_plan, ms.like_income, ms.like_house_car,
+            ms.self_view_text, ms.target_view_text
      FROM \`user\` u
      INNER JOIN user_match_setting ms ON ms.user_id = u.id
      WHERE u.id != ?
        AND u.status = ?
        AND u.gender = ?
-       AND u.marry_status != '离异'
-       AND u.is_vip = 1
-       AND u.vip_expire_time > NOW()`,
+       AND u.marry_status != '离异'`,
     [user.id, USER_STATUS.NORMAL, targetGender]
   );
   return rows;
