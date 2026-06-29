@@ -14,9 +14,12 @@
 - `project-docs/DEVELOPMENT_LOG.md` — 变更流水（每次改完追加一条）
 
 ## 当前要做的任务
-按这两份计划执行（先 13 后 11），**按 Task 顺序、每个 Task 一个 commit、跑计划里的验收**：
+按这两份计划执行（**先 13 后 11，同一个 agent 顺序做，不要并行**），**按 Task 顺序、每个 Task 一个 commit、跑计划里的验收**：
 - `plan-module13-free-whitelist.md` — 批量导入 + 公职/教师/医护免费白名单
 - `plan-module11-meet-safety.md` — 见面安全 110 方案一
+
+> 两份计划唯一的共享文件是 `miniprogram/pages/profile/`（各加一个菜单项：13 加「公益免费认证」、11 加「见面安全记录」）——顺序做、两个菜单项都保留、不要互相覆盖。其余文件不重叠。
+> 跑完两份后，把结果各追加一条到 `project-docs/DEVELOPMENT_LOG.md`，等人工 review。
 
 ## 硬约束（违反即返工）
 - **不改**：`orderService` 分润、支付流程、`matchCron` 周三/五节奏、`database/init.sql` 已上线结构（要改表写新 `database/patch-*.sql`）、`app.wxss` 设计系统。
