@@ -81,6 +81,8 @@ function buildProfilePayload(user, settings) {
     ...user,
     is_vip: vip ? 1 : 0,
     isVip: vip,
+    free_member: user.free_member || 0,
+    free_source: user.free_source || '',
     vip_expire_time: user.vip_expire_time,
     circle_name: user.circle_name || null,
     match_settings: settings || null,
@@ -479,6 +481,32 @@ router.post(
         [req.auth.id, MARRY_REPORT_TYPE.CANCEL, '用户申请账号注销']
       );
       return success(res, null, '注销申请已提交，请等待平台审核');
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+/** POST /api/user/claim-free — 登录用户自报手机号，命中白名单则开通终身免费会员 */
+router.post(
+  '/claim-free',
+  debounceMiddleware((req) => `claim-free:${req.auth.id}`),
+  async (req, res, next) => {
+    try {
+      const phone = String(req.body.phone || '').trim();
+      if (!/^\d{11}$/.test(phone)) return fail(res, '请输入正确的手机号');
+      const [rows] = await pool.query(
+        'SELECT * FROM free_whitelist WHERE phone = ? LIMIT 1',
+        [phone]
+      );
+      if (rows.length === 0) return fail(res, '该手机号不在公益免费名单内');
+      const wl = rows[0];
+      await pool.query(
+        'UPDATE `user` SET free_member = 1, free_source = ? WHERE id = ?',
+        [wl.source, req.auth.id]
+      );
+      await pool.query('UPDATE free_whitelist SET used = 1 WHERE id = ?', [wl.id]);
+      return success(res, { free_source: wl.source }, '已开通公益免费会员');
     } catch (err) {
       next(err);
     }
