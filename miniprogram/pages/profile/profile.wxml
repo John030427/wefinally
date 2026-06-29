@@ -31,6 +31,7 @@
             <text class="tag tag-pink">{{userInfo.display.gender}}</text>
             <text class="tag tag-gray">{{userInfo.display.age}}岁</text>
             <text class="tag tag-vip" wx:if="{{isVip}}">VIP</text>
+            <text class="tag tag-vip" wx:if="{{userInfo.free_member}}">公益免费</text>
           </view>
           <view class="user-meta">{{userInfo.display.city}} · {{userInfo.display.education}}</view>
           <view class="user-meta">{{userInfo.display.circleName}} · {{userInfo.display.babyPlan}}</view>
@@ -45,6 +46,7 @@
         wx:key="title"
         bindtap="onMenuTap"
         data-url="{{item.url}}"
+        data-action="{{item.action}}"
       >
         <text class="menu-icon">{{item.icon}}</text>
         <text class="menu-title">{{item.title}}</text>

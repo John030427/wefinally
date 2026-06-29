@@ -11,6 +11,7 @@ Page({
     menuList: [
       { icon: '⚙️', title: '择偶配置', url: '/pages/match-setting/match-setting' },
       { icon: '👑', title: 'VIP 会员', url: '/pages/vip/vip' },
+      { icon: '🎖️', title: '公益免费认证', action: 'claimFree' },
       { icon: '💒', title: '领证数据公示', url: '/pages/marry-stat/marry-stat' },
       { icon: '📋', title: '婚姻报备', url: '/pages/marry-report/marry-report' },
       { icon: '💬', title: 'AI 智能客服', url: '/pages/chat/chat' },
@@ -73,7 +74,27 @@ Page({
   },
 
   onMenuTap(e) {
-    wx.navigateTo({ url: e.currentTarget.dataset.url })
+    const { url, action } = e.currentTarget.dataset
+    if (action === 'claimFree') return this.onClaimFree()
+    wx.navigateTo({ url })
+  },
+
+  onClaimFree() {
+    wx.showModal({
+      title: '公益免费认证',
+      editable: true,
+      placeholderText: '输入单位登记的手机号',
+      success: async (r) => {
+        if (!r.confirm) return
+        try {
+          await post('/api/user/claim-free', { phone: (r.content || '').trim() }, { showLoading: true })
+          wx.showToast({ title: '已开通免费会员', icon: 'success' })
+          this.loadProfile()
+        } catch (e) {
+          wx.showModal({ title: '认证失败', content: (e && e.message) || '手机号不在名单内', showCancel: false })
+        }
+      }
+    })
   },
 
   onLogout() {
