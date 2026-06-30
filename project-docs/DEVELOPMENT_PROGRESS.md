@@ -32,12 +32,13 @@
 - [x] BOSS_IDEAS_CHECKLIST 区分 A/B/C/D 四组来源
 - [x] 模块13：批量导入 + 公职/教师/医护公益免费白名单
 - [x] 模块11：见面安全 110 方案一（后端验收通过，前端需微信开发者工具手测）
+- [x] 外貌 LLM 匹配方案丙分支实现（默认关，回退验收通过）
 
 ---
 
 ## 正在进行
 
-- 模块 13 / 模块 11 已按专项计划完成实现与后端验收，等待人工 review 与微信开发者工具前端手测。
+- `feature/appearance-llm-match` 已按计划完成实现与回退验收，等待人工 review；启用 LLM 前仍需授权/内容安全/预算确认。
 
 ---
 
@@ -87,6 +88,11 @@
 - 模块13：新增白名单 DB patch、管理员导入 API、用户领取公益免费身份、VIP 豁免、profile 入口。
 - 模块11：新增见面报备/SOS DB patch、safetyConfig、`/api/meet`、小程序安全确认页/历史页、match-detail/profile 入口。
 - 后端验收已通过；`getLocation`、`makePhoneCall`、分享需在微信开发者工具手动验证。
+
+**2026-06-30 外貌 LLM 匹配分支**
+
+- 新增外貌描述/期待外貌字段、LLM 标签抽取 hook、标签重合匹配分、外貌编辑页。
+- `llmConfig.enabled=false`、`useAppearanceInMatch=false` 默认关；PUT/GET 和匹配回退验收通过。
 
 ---
 

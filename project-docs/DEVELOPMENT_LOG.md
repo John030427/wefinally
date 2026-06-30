@@ -528,6 +528,41 @@ v1 只做 JSON 批量导入接口和用户自报手机号领取；单位自助�
 
 ---
 
+## 2026-06-30 — 外貌 LLM 匹配方案丙实现（默认关）
+
+### 类型
+新功能预留（按 `plan-appearance-llm.md` 执行，分支 `feature/appearance-llm-match`）
+
+### 修改目的
+用户填写「外貌描述」和「期待对方外貌」；LLM 启用后可在保存资料时抽结构化标签，匹配时仅用标签重合计外貌分，匹配过程不调用 LLM。当前 `llmConfig.enabled=false`、`useAppearanceInMatch=false`，默认回退现状。
+
+### 涉及文件
+- `database/patch-006-appearance-llm.sql`
+- `server/src/config/llmConfig.js`
+- `server/src/config/matchConfig.js`
+- `server/src/services/llmService.js`
+- `server/src/routes/user.js`
+- `server/src/services/matchService.js`
+- `miniprogram/app.json`
+- `miniprogram/pages/profile/profile.js`
+- `miniprogram/pages/appearance/*`
+
+### 测试
+- [x] DB patch 导入：看到 `appearance_description`、`appearance_want`、`appearance_tags`、`appearance_want_tags`
+- [x] `node --check`：后端配置/服务/路由/匹配服务 + 小程序 appearance/profile JS
+- [x] 默认关检查：`llmConfig.enabled=false`、`useAppearanceInMatch=false`；`extractAppearanceTags()` 返回 `null`
+- [x] grep 确认：`matchService` 不 import / 调用 `llmService`
+- [x] HTTP 回退验收：`PUT /api/user/profile` 外貌文本返回「更新成功」；`GET /profile` 可读回；DB 标签保持 `NULL NULL`
+- [x] 匹配回退验收：真实 `runBatchMatch` 冒烟输出 `PASS match fallback smoke`
+
+### 提交
+`a880d94`、`4bf116d`、`d637d8a`、`ca49998`、`cf74302`、`92df5f3`
+
+### 备注
+本地 `server/.env` 已按用户要求从 `D:\cjz vscode coode\tradingagents-astock\.env` 读取 DeepSeek key，并设置 `LLM_BASE_URL=https://api.deepseek.com`、`LLM_MODEL=deepseek-chat`；`.env` 被 gitignore，不提交密钥。启用前仍需霞姐知情同意、个保法授权、内容安全和预算确认。
+
+---
+
 ## 2026-06-29 — 外貌升级方案丙(LLM 匹配) + 开分支
 
 ### 类型
