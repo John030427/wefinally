@@ -475,6 +475,59 @@ v1 只做 JSON 批量导入接口和用户自报手机号领取；单位自助�
 
 ---
 
+## 2026-06-30 — 匹配增强：跨批次去重 + 小池兜底开关
+
+### 类型
+新功能（按 `plan-match-enhance.md` 执行）
+
+### 修改目的
+避免同一对用户跨批次重复匹配；用户池小时预留运营可开的软分兜底，硬条件仍一票否决。
+
+### 涉及文件
+- `server/src/config/matchConfig.js`
+- `server/src/services/matchService.js`
+
+### 测试
+- [x] `node --check server/src/config/matchConfig.js server/src/services/matchService.js`
+- [x] 临时 `_rv_enh.js` 验收：跨批次同一对不再重复；`smallPoolFallback=false` 不放宽软分；`smallPoolFallback=true` 可兜底；年龄硬条件始终不破。脚本已删除。
+- [x] 最终内联脚本复验：`PASS final match enhance + notify no-op`
+
+### 提交
+`f6d3f1f`、`d277788`、`c8a6acd`
+
+### 备注
+默认值：`avoidRematch=true`，`smallPoolFallback=false`。未改 UI、分润、支付、`matchCron` 周三/五节奏。
+
+---
+
+## 2026-06-30 — 匹配成功微信订阅消息预留 hook
+
+### 类型
+新功能预留（按 `plan-match-notify.md` 执行，默认关）
+
+### 修改目的
+为周三/五匹配成功后发送微信订阅消息预留完整链路；当前没有真 AppID/Secret、模板 ID、用户授权，所以默认 no-op。
+
+### 涉及文件
+- `server/src/config/notifyConfig.js`
+- `server/src/services/wxNotify.js`
+- `server/src/services/matchService.js`
+- `miniprogram/utils/constants.js`
+- `miniprogram/pages/match-setting/match-setting.js`
+
+### 测试
+- [x] `node --check`：`notifyConfig.js`、`wxNotify.js`、`matchService.js`、`constants.js`、`match-setting.js`
+- [x] 默认值检查：`notifyConfig.enabled=false`、`matchTemplateId=''`、`SUBSCRIBE_TMPL_IDS=[]`
+- [x] `sendMatchNotice` 在默认关时直接返回；最终匹配验收仍通过，不影响主流程。
+
+### 提交
+`591746e`、`50d50bf`、`5ddf6f2`、`792969b`
+
+### 备注
+启用时需填真 `WX_APPID/WX_SECRET`、订阅消息模板 ID、前端模板 ID，并按实际模板字段调整 `wxNotify` 的 `data` 字段；启用前不弹授权、不请求微信通知接口。
+
+---
+
 ## 模板（后续变更请复制）
 
 ```markdown
