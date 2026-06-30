@@ -64,6 +64,15 @@ function circleMatches(likeCircleIds, circleId) {
   return ids.includes(String(circleId));
 }
 
+function parseTags(s) {
+  try {
+    const a = JSON.parse(s || '[]');
+    return Array.isArray(a) ? a : [];
+  } catch (e) {
+    return [];
+  }
+}
+
 /**
  * Score weights: baby_plan > view_similarity > age/height > education > circle > city
  * 满分权重读 matchConfig.weights；else 分支的基础分为兜底，保持原值（ponytail: 主权重可调即可）。
@@ -115,6 +124,15 @@ function scorePair(user, settings, candidate, viewSim) {
 
   if (user.city && candidate.city === user.city) score += W.city;
   else score += 1;
+
+  if (cfg.useAppearanceInMatch) {
+    const want = parseTags(user.appearance_want_tags);
+    const have = parseTags(candidate.appearance_tags);
+    if (want.length && have.length) {
+      const overlap = want.filter((t) => have.includes(t)).length / want.length;
+      score += (W.appearance || 0) * overlap;
+    }
+  }
 
   return Math.round(score * 100) / 100;
 }
@@ -267,4 +285,5 @@ module.exports = {
   hardOk,
   eduRank,
   computeViewSimilarity,
+  parseTags,
 };
