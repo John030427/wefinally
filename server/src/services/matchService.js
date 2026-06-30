@@ -2,6 +2,7 @@ const pool = require('../config/db');
 const { computeViewSimilarity } = require('../utils/viewSimilarity');
 const { USER_STATUS } = require('../config/constants');
 const cfg = require('../config/matchConfig');
+const { sendMatchNotice } = require('./wxNotify');
 
 const COMBINE = (ab, ba) => (ab + ba) / 2;
 
@@ -166,6 +167,7 @@ async function runBatchMatch(batchDate, matchType) {
     await conn.beginTransaction();
     const vipUsers = await getActiveVipUsers(conn);
     const usedThisBatch = new Set();
+    const notices = [];
 
     for (const user of vipUsers) {
       if (usedThisBatch.has(user.id)) continue;
@@ -239,10 +241,15 @@ async function runBatchMatch(batchDate, matchType) {
       );
       usedThisBatch.add(user.id);
       usedThisBatch.add(best.candidate.id);
+      notices.push({ openid: user.openid, date: batchDate, type: matchType });
+      notices.push({ openid: best.candidate.openid, date: batchDate, type: matchType });
       matched += 1;
     }
 
     await conn.commit();
+    for (const n of notices) {
+      await sendMatchNotice(n.openid, { date: n.date, type: n.type });
+    }
     return { matched, users };
   } catch (err) {
     await conn.rollback();
