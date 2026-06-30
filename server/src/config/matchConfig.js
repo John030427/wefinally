@@ -1,5 +1,7 @@
 // 匹配可调参数：软分权重 / 软分门槛 / 硬条件开关。按用户池大小在这里调，不要写死在 service 里。
 module.exports = {
+  avoidRematch: true,       // 跨批次去重：同一对已匹配过则不再配
+  smallPoolFallback: false, // 小池兜底：无人过软分门槛时，放宽软分(硬条件仍守)，默认关，早期由运营开
   // 各维度满分（软分，命中给满分）
   weights: {
     baby: 30,      // 婚育节奏一致
