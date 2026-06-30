@@ -196,6 +196,15 @@ async function runBatchMatch(batchDate, matchType) {
 
         // 硬性条件：双向必须互相满足（设了才校验），否则直接排除
         if (!hardOk(settingsA, c) || !hardOk(settingsOf(c), user)) continue;
+        if (cfg.avoidRematch) {
+          const [seen] = await conn.query(
+            `SELECT 1 FROM user_match_log
+             WHERE (user_id = ? AND match_user_id = ?) OR (user_id = ? AND match_user_id = ?)
+             LIMIT 1`,
+            [user.id, c.id, c.id, user.id]
+          );
+          if (seen.length) continue;
+        }
 
         const viewSim = computeViewSimilarity(
           user.self_view_text,
@@ -205,13 +214,18 @@ async function runBatchMatch(batchDate, matchType) {
         );
         const scoreAB = scorePair(user, settingsA, c, viewSim);
         const scoreBA = scorePair(c, settingsOf(c), user, viewSim);
-        if (Math.min(scoreAB, scoreBA) < cfg.minSideScore) continue;
-
-        scored.push({ candidate: c, viewSim, combined: COMBINE(scoreAB, scoreBA) });
+        scored.push({
+          candidate: c,
+          viewSim,
+          combined: COMBINE(scoreAB, scoreBA),
+          meetsFloor: Math.min(scoreAB, scoreBA) >= cfg.minSideScore,
+        });
       }
 
-      scored.sort((a, b) => b.combined - a.combined || b.viewSim - a.viewSim);
-      const best = scored[0];
+      let eligible = scored.filter((s) => s.meetsFloor);
+      if (eligible.length === 0 && cfg.smallPoolFallback) eligible = scored;
+      eligible.sort((a, b) => b.combined - a.combined || b.viewSim - a.viewSim);
+      const best = eligible[0];
       if (!best) continue;
 
       await conn.query(
