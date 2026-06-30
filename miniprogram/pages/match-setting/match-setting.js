@@ -9,7 +9,8 @@ const {
   LIKE_MARRY_OPTIONS,
   LIKE_BABY_PLAN_OPTIONS,
   TEXT_MIN_LEN,
-  TEXT_MAX_LEN
+  TEXT_MAX_LEN,
+  SUBSCRIBE_TMPL_IDS
 } = require('../../utils/constants')
 const { getCooldownRemain, setCooldownEnd, validateTextLength } = require('../../utils/util')
 
@@ -224,6 +225,9 @@ Page({
       const cooldownEnd = setCooldownEnd()
       wx.setStorageSync(STORAGE_KEYS.MATCH_SETTING_COOLDOWN, cooldownEnd)
       this.startCooldownTimer(cooldownEnd)
+      if (SUBSCRIBE_TMPL_IDS.length) {
+        wx.requestSubscribeMessage({ tmplIds: SUBSCRIBE_TMPL_IDS, complete: () => {} })
+      }
 
       wx.showToast({ title: '保存成功', icon: 'success' })
       setTimeout(() => wx.switchTab({ url: '/pages/index/index' }), 1000)

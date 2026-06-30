@@ -49,6 +49,7 @@ const VIP_PRICE = 188
 const VIP_DAYS = 30
 const TEXT_MIN_LEN = 20
 const TEXT_MAX_LEN = 300
+const SUBSCRIBE_TMPL_IDS = []
 
 const AGREEMENT_ITEMS = [
   { key: 'userAgreement', label: '我已阅读并同意《用户服务协议》', type: 'user_service' },
@@ -81,6 +82,7 @@ module.exports = {
   VIP_DAYS,
   TEXT_MIN_LEN,
   TEXT_MAX_LEN,
+  SUBSCRIBE_TMPL_IDS,
   AGREEMENT_ITEMS,
   MATCH_SCHEDULE
 }
