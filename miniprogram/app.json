@@ -8,6 +8,7 @@
     "pages/index/index",
     "pages/match-list/match-list",
     "pages/match-detail/match-detail",
+    "pages/appearance/appearance",
     "pages/meet-safety/meet-safety",
     "pages/meet-safety-list/meet-safety-list",
     "pages/vip/vip",

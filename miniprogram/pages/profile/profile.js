@@ -10,6 +10,7 @@ Page({
     isVip: false,
     menuList: [
       { icon: '⚙️', title: '择偶配置', url: '/pages/match-setting/match-setting' },
+      { icon: '📝', title: '外貌描述', url: '/pages/appearance/appearance' },
       { icon: '👑', title: 'VIP 会员', url: '/pages/vip/vip' },
       { icon: '🎖️', title: '公益免费认证', action: 'claimFree' },
       { icon: '🛡️', title: '见面安全记录', url: '/pages/meet-safety-list/meet-safety-list' },
