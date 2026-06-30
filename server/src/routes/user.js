@@ -12,6 +12,7 @@ const {
   daysSince,
 } = require('../middleware/guard');
 const { success, fail } = require('../utils/response');
+const { extractAppearanceTags } = require('../services/llmService');
 const {
   AGREEMENT_TYPES,
   MATCH_COOLDOWN_DAYS,
@@ -258,6 +259,7 @@ router.put(
       const {
         gender, birth_year, height_range, education, city, circle_id,
         marry_status, baby_plan, income_range, house_car,
+        appearance_description, appearance_want,
       } = req.body;
 
       if (marry_status === '离异') {
@@ -276,7 +278,9 @@ router.put(
           circle_id = COALESCE(?, circle_id),
           baby_plan = COALESCE(?, baby_plan),
           income_range = COALESCE(?, income_range),
-          house_car = COALESCE(?, house_car)
+          house_car = COALESCE(?, house_car),
+          appearance_description = COALESCE(?, appearance_description),
+          appearance_want = COALESCE(?, appearance_want)
          WHERE id = ?`,
         [
           parsedGender,
@@ -288,9 +292,24 @@ router.put(
           baby_plan,
           income_range,
           house_car,
+          appearance_description != null ? String(appearance_description).slice(0, 500) : null,
+          appearance_want != null ? String(appearance_want).slice(0, 500) : null,
           req.auth.id,
         ]
       );
+
+      if (appearance_description != null) {
+        const tags = await extractAppearanceTags(appearance_description);
+        if (tags) {
+          await pool.query('UPDATE `user` SET appearance_tags = ? WHERE id = ?', [JSON.stringify(tags), req.auth.id]);
+        }
+      }
+      if (appearance_want != null) {
+        const wt = await extractAppearanceTags(appearance_want);
+        if (wt) {
+          await pool.query('UPDATE `user` SET appearance_want_tags = ? WHERE id = ?', [JSON.stringify(wt), req.auth.id]);
+        }
+      }
 
       const [rows] = await pool.query(
         `SELECT u.*, oc.circle_name
