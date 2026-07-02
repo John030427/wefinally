@@ -4,7 +4,7 @@ const { scorePsychProfile } = require('../utils/psychMatch');
 const { USER_STATUS } = require('../config/constants');
 const cfg = require('../config/matchConfig');
 const { sendMatchNotice } = require('./wxNotify');
-const { generateMatchReport } = require('./llmService');
+const { generateMutualMatchReports } = require('./llmService');
 
 const COMBINE = (ab, ba) => (ab + ba) / 2;
 
@@ -305,35 +305,38 @@ async function runBatchMatch(batchDate, matchType) {
       notices.push({ openid: user.openid, date: batchDate, type: matchType });
       notices.push({ openid: best.candidate.openid, date: batchDate, type: matchType });
       reports.push({
-        logId: inserted.insertId,
-        viewer: user,
-        partner: best.candidate,
-        scoreDetail: scoreDetailA,
-      });
-      reports.push({
-        logId: inserted.insertId + 1,
-        viewer: best.candidate,
-        partner: user,
-        scoreDetail: scoreDetailB,
+        logAId: inserted.insertId,
+        logBId: inserted.insertId + 1,
+        userA: user,
+        userB: best.candidate,
+        scoreDetailA,
+        scoreDetailB,
       });
       matched += 1;
     }
 
     await conn.commit();
     for (const r of reports) {
-      const report = await generateMatchReport(r.viewer, r.partner, r.scoreDetail);
-      await pool.query(
-        `UPDATE user_match_log
-         SET ai_report_text = ?, ai_report_status = ?, ai_report_error = ?, ai_report_time = ?
-         WHERE id = ?`,
-        [
-          report.text || null,
-          report.status,
-          String(report.error || '').slice(0, 255),
-          report.status === 1 ? new Date() : null,
-          r.logId,
-        ]
-      ).catch((e) => console.error('[match report] update fail:', e.message));
+      const report = await generateMutualMatchReports(r.userA, r.userB, r.scoreDetailA, r.scoreDetailB);
+      const now = report.status === 1 ? new Date() : null;
+      const updates = [
+        [r.logAId, report.a],
+        [r.logBId, report.b],
+      ];
+      for (const [logId, item] of updates) {
+        await pool.query(
+          `UPDATE user_match_log
+           SET ai_report_text = ?, ai_report_status = ?, ai_report_error = ?, ai_report_time = ?
+           WHERE id = ?`,
+          [
+            item.text || null,
+            report.status,
+            String(item.error || '').slice(0, 255),
+            now,
+            logId,
+          ]
+        ).catch((e) => console.error('[match report] update fail:', e.message));
+      }
     }
     for (const n of notices) {
       await sendMatchNotice(n.openid, { date: n.date, type: n.type });

@@ -67,4 +67,65 @@ async function generateMatchReport(viewer, partner, scoreDetail) {
   }
 }
 
-module.exports = { extractAppearanceTags, generateMatchReport };
+async function generateMutualMatchReports(userA, userB, scoreDetailA, scoreDetailB) {
+  try {
+    if (!cfg.matchReportEnabled) {
+      return {
+        status: 3,
+        a: { text: null, error: 'disabled' },
+        b: { text: null, error: 'disabled' },
+        usage: null,
+      };
+    }
+    if (!cfg.apiKey || !cfg.baseURL || !cfg.model) {
+      return {
+        status: 2,
+        a: { text: null, error: 'missing llm config' },
+        b: { text: null, error: 'missing llm config' },
+        usage: null,
+      };
+    }
+
+    const payload = {
+      userA: compactUserForReport(userA),
+      userB: compactUserForReport(userB),
+      scoreA: scoreDetailA,
+      scoreB: scoreDetailB,
+    };
+    const prompt = [
+      '你是严肃婚恋平台的匹配报告助手。基于脱敏资料和算法分数，分别给A、B写面向本人的中文匹配报告。',
+      '要求：不做心理诊断，不承诺成功率，不泄露双方三观原文，不编造姓名/头像/收入。',
+      '每份120-180字，结构包含：匹配亮点、需要磨合、首次沟通建议。',
+      '只输出JSON对象，格式：{"a":"给A看的报告","b":"给B看的报告"}',
+      `资料JSON：${JSON.stringify(payload).slice(0, 5000)}`,
+    ].join('\n');
+
+    const { data } = await axios.post(
+      `${cfg.baseURL}/chat/completions`,
+      { model: cfg.model, messages: [{ role: 'user', content: prompt }], temperature: 0.2 },
+      { headers: { Authorization: `Bearer ${cfg.apiKey}` }, timeout: cfg.timeoutMs }
+    );
+    const out = String(data?.choices?.[0]?.message?.content || '');
+    const m = out.match(/\{[\s\S]*\}/);
+    if (!m) {
+      return { status: 2, a: { text: null, error: 'missing json object' }, b: { text: null, error: 'missing json object' }, usage: data?.usage || null };
+    }
+    const parsed = JSON.parse(m[0]);
+    const a = String(parsed.a || '').trim();
+    const b = String(parsed.b || '').trim();
+    if (!a || !b) {
+      return { status: 2, a: { text: null, error: 'empty report' }, b: { text: null, error: 'empty report' }, usage: data?.usage || null };
+    }
+    return {
+      status: 1,
+      a: { text: a.slice(0, 1000), error: '' },
+      b: { text: b.slice(0, 1000), error: '' },
+      usage: data?.usage || null,
+    };
+  } catch (e) {
+    console.error('[llm] generateMutualMatchReports fail:', e.message);
+    return { status: 2, a: { text: null, error: e.message }, b: { text: null, error: e.message }, usage: null };
+  }
+}
+
+module.exports = { extractAppearanceTags, generateMatchReport, generateMutualMatchReports };
