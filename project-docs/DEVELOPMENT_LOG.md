@@ -730,6 +730,29 @@ Bug修复 / 支付联调 / 自检
 
 ---
 
+## 2026-07-03 — Branch A：报告调用粒度对齐
+
+### 类型
+成本优化 / 自检 / 文档
+
+### 修改目的
+将 AI 报告生成从“每个用户一调”调整为“每对匹配一调，返回双方报告”，与成本展示口径一致。
+
+### 涉及文件
+- `server/src/services/llmService.js`
+- `server/src/services/matchService.js`
+- `server/selfcheck/llm-default-off.js`
+- `project-docs/MATCH_EXPERIMENT_COMPARE.md`
+
+### 测试
+- [x] `node --check src/services/matchService.js src/services/llmService.js selfcheck/llm-default-off.js`
+- [x] `npm run selfcheck`
+
+### 备注
+默认关闭时仍写入 `ai_report_status=3`，匹配结果不受报告生成影响。
+
+---
+
 ## 2026-07-03 — Branch B：AI加权 Top K 重排实验
 
 ### 类型
