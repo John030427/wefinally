@@ -58,15 +58,24 @@ function getCompatibilityTagClass(score) {
   return 'tag-orange'
 }
 
+function parseScenePromoteCode(scene) {
+  if (!scene) return ''
+  const decoded = decodeURIComponent(String(scene))
+  const match = decoded.match(/promote[_=]?(\w+)/i)
+  if (match) return match[1]
+  if (/^[A-Za-z0-9_]{4,50}$/.test(decoded) && !/^\d+$/.test(decoded)) return decoded
+  return ''
+}
+
 function parsePromoteCode(scene, query) {
   if (query && query.promote_code) return query.promote_code
   if (query && query.promoteCode) return query.promoteCode
-  if (scene) {
-    const decoded = decodeURIComponent(String(scene))
-    const match = decoded.match(/promote[_=]?(\w+)/i)
-    if (match) return match[1]
-    if (/^\w+$/.test(decoded)) return decoded
+  if (query && query.scene) {
+    const querySceneCode = parseScenePromoteCode(query.scene)
+    if (querySceneCode) return querySceneCode
   }
+  const sceneCode = parseScenePromoteCode(scene)
+  if (sceneCode) return sceneCode
   return ''
 }
 

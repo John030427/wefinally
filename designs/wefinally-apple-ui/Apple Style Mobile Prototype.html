@@ -1,0 +1,1207 @@
+<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WeFinally Apple Style Mobile Prototype</title>
+  <style>
+    :root {
+      --bg: #f4f5f7;
+      --ink: #141416;
+      --muted: #70727a;
+      --soft: rgba(255, 255, 255, 0.74);
+      --line: rgba(20, 20, 22, 0.09);
+      --accent: #ff6b8a;
+      --accent-2: #0a84ff;
+      --green: #34c759;
+      --amber: #ff9f0a;
+      --shadow: 0 24px 60px rgba(21, 24, 30, 0.14);
+      --small-shadow: 0 10px 30px rgba(24, 28, 36, 0.10);
+      --phone-w: 390px;
+      --phone-h: 844px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      min-height: 100%;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Noto Sans SC", sans-serif;
+      color: var(--ink);
+      background:
+        linear-gradient(145deg, rgba(255, 235, 241, 0.86), rgba(244, 247, 255, 0.9) 38%, rgba(246, 246, 247, 0.96) 72%),
+        var(--bg);
+    }
+
+    body {
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 28px;
+      overflow-x: hidden;
+    }
+
+    button {
+      font: inherit;
+    }
+
+    .workspace {
+      width: min(1180px, 100%);
+      display: grid;
+      grid-template-columns: minmax(280px, 360px) minmax(390px, 1fr);
+      gap: 36px;
+      align-items: center;
+    }
+
+    .brief {
+      display: grid;
+      gap: 18px;
+      align-content: center;
+    }
+
+    .eyebrow {
+      width: fit-content;
+      padding: 7px 10px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.55);
+      color: #52545b;
+      font-size: 12px;
+      backdrop-filter: blur(18px);
+    }
+
+    .brief h1 {
+      margin: 0;
+      font-size: clamp(38px, 5vw, 66px);
+      line-height: 0.96;
+      font-weight: 760;
+      letter-spacing: 0;
+      text-wrap: balance;
+    }
+
+    .brief p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 16px;
+      line-height: 1.8;
+      max-width: 34em;
+      text-wrap: pretty;
+    }
+
+    .principles {
+      display: grid;
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    .principle {
+      display: grid;
+      grid-template-columns: 10px 1fr;
+      gap: 12px;
+      align-items: center;
+      color: #3b3d45;
+      font-size: 14px;
+    }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 0 5px rgba(255, 107, 138, 0.12);
+    }
+
+    .dot.blue {
+      background: var(--accent-2);
+      box-shadow: 0 0 0 5px rgba(10, 132, 255, 0.12);
+    }
+
+    .dot.green {
+      background: var(--green);
+      box-shadow: 0 0 0 5px rgba(52, 199, 89, 0.12);
+    }
+
+    .controls {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 12px;
+    }
+
+    .tone-controls {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: -4px;
+    }
+
+    .control,
+    .tone-control {
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.62);
+      color: #2c2d32;
+      border-radius: 999px;
+      padding: 9px 13px;
+      cursor: pointer;
+      transition: 160ms ease;
+      backdrop-filter: blur(16px);
+    }
+
+    .tone-control {
+      font-size: 13px;
+      padding: 8px 11px;
+    }
+
+    .control:hover,
+    .tone-control:hover {
+      transform: translateY(-1px);
+      background: rgba(255, 255, 255, 0.84);
+    }
+
+    .control.active,
+    .tone-control.active {
+      border-color: rgba(20, 20, 22, 0.18);
+      background: #141416;
+      color: #fff;
+    }
+
+    .stage {
+      display: grid;
+      place-items: center;
+      min-height: calc(var(--phone-h) + 24px);
+    }
+
+    .phone {
+      width: var(--phone-w);
+      height: var(--phone-h);
+      border-radius: 46px;
+      background: #050506;
+      padding: 12px;
+      box-shadow: var(--shadow);
+      position: relative;
+    }
+
+    .phone::before {
+      content: "";
+      position: absolute;
+      top: 12px;
+      left: 50%;
+      width: 126px;
+      height: 34px;
+      transform: translateX(-50%);
+      border-radius: 0 0 20px 20px;
+      background: #050506;
+      z-index: 5;
+    }
+
+    .screen {
+      height: 100%;
+      border-radius: 36px;
+      overflow: hidden;
+      position: relative;
+      background:
+        linear-gradient(150deg, rgba(255, 238, 243, 0.98), rgba(246, 249, 255, 0.96) 42%, rgba(255, 255, 255, 0.98) 100%);
+    }
+
+    .screen[data-tone="fusion"] {
+      background:
+        linear-gradient(160deg, rgba(255, 238, 244, 0.96), rgba(250, 251, 255, 0.96) 38%, rgba(255, 255, 255, 0.98) 100%);
+    }
+
+    .screen[data-tone="marble"] {
+      background: #fbfbfd;
+    }
+
+    .screen[data-tone="glass"] {
+      background:
+        linear-gradient(145deg, rgba(255, 213, 224, 0.94), rgba(255, 244, 248, 0.72) 36%, rgba(218, 225, 255, 0.72) 100%);
+    }
+
+    .screen[data-tone="obsidian"] {
+      background:
+        linear-gradient(180deg, rgba(255, 107, 138, 0.18), transparent 34%),
+        #000;
+    }
+
+    .screen[data-current="login"] .tabbar {
+      display: none;
+    }
+
+    .silk {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      opacity: 0.9;
+      background:
+        radial-gradient(ellipse at 18% 4%, rgba(255, 255, 255, 0.94), transparent 31%),
+        linear-gradient(130deg, rgba(255, 160, 190, 0.26), transparent 35%),
+        linear-gradient(22deg, transparent 52%, rgba(123, 92, 255, 0.18) 58%, transparent 76%),
+        linear-gradient(156deg, transparent 48%, rgba(10, 132, 255, 0.12) 57%, transparent 75%);
+      filter: saturate(1.05);
+    }
+
+    .screen[data-tone="marble"] .silk {
+      opacity: 0.16;
+      background:
+        linear-gradient(180deg, rgba(255, 107, 138, 0.12), transparent 36%),
+        linear-gradient(120deg, transparent 62%, rgba(10, 132, 255, 0.08));
+    }
+
+    .screen[data-tone="glass"] .silk {
+      opacity: 0.72;
+      background:
+        linear-gradient(135deg, rgba(255, 107, 138, 0.22), transparent 46%),
+        linear-gradient(28deg, rgba(181, 123, 216, 0.22), transparent 70%),
+        linear-gradient(180deg, rgba(255, 255, 255, 0.38), transparent 30%);
+    }
+
+    .screen[data-tone="obsidian"] .silk {
+      opacity: 0.68;
+      background:
+        linear-gradient(150deg, rgba(255, 107, 138, 0.32), transparent 42%),
+        linear-gradient(18deg, transparent 52%, rgba(181, 123, 216, 0.20) 70%, transparent 100%);
+    }
+
+    .screen-inner {
+      position: relative;
+      z-index: 1;
+      min-height: 100%;
+      display: flex;
+      flex-direction: column;
+      padding: 54px 18px 16px;
+    }
+
+    .status {
+      position: absolute;
+      top: 16px;
+      left: 24px;
+      right: 24px;
+      z-index: 6;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      color: #111;
+      font-size: 14px;
+      font-weight: 650;
+    }
+
+    .status-icons {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .bars {
+      display: grid;
+      grid-template-columns: repeat(4, 3px);
+      align-items: end;
+      gap: 2px;
+      height: 13px;
+    }
+
+    .bars span {
+      width: 3px;
+      border-radius: 3px;
+      background: #111;
+    }
+
+    .bars span:nth-child(1) { height: 5px; }
+    .bars span:nth-child(2) { height: 8px; }
+    .bars span:nth-child(3) { height: 11px; }
+    .bars span:nth-child(4) { height: 13px; }
+
+    .battery {
+      min-width: 30px;
+      border: 1.6px solid #111;
+      border-radius: 6px;
+      padding: 1px;
+      height: 15px;
+    }
+
+    .battery span {
+      display: block;
+      width: 80%;
+      height: 100%;
+      border-radius: 4px;
+      background: #34c759;
+    }
+
+    .screen-view {
+      display: none;
+      min-height: 100%;
+      flex: 1;
+      animation: rise 240ms ease both;
+    }
+
+    .screen-view.active {
+      display: flex;
+      flex-direction: column;
+    }
+
+    @keyframes rise {
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .brand {
+      margin-top: auto;
+      margin-bottom: auto;
+      display: grid;
+      justify-items: center;
+      gap: 18px;
+      text-align: center;
+    }
+
+    .logo-mark {
+      width: 96px;
+      height: 96px;
+      border-radius: 24px;
+      display: grid;
+      place-items: center;
+      background:
+        linear-gradient(145deg, rgba(255, 255, 255, 0.94), rgba(255, 255, 255, 0.45)),
+        linear-gradient(135deg, rgba(255, 107, 138, 0.30), rgba(10, 132, 255, 0.25));
+      border: 1px solid rgba(255, 255, 255, 0.72);
+      box-shadow: var(--small-shadow);
+      backdrop-filter: blur(20px);
+    }
+
+    .logo-mark span {
+      font-size: 34px;
+      font-weight: 800;
+      color: #17181c;
+    }
+
+    .wordmark {
+      font-size: 38px;
+      line-height: 1;
+      font-weight: 780;
+      letter-spacing: 0;
+    }
+
+    .tagline {
+      color: #666a73;
+      font-size: 15px;
+      line-height: 1.7;
+      width: 270px;
+    }
+
+    .primary-button,
+    .secondary-button {
+      height: 50px;
+      border: 0;
+      border-radius: 999px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      font-weight: 680;
+      cursor: pointer;
+      transition: 160ms ease;
+    }
+
+    .primary-button {
+      background: #141416;
+      color: #fff;
+      box-shadow: 0 12px 26px rgba(20, 20, 22, 0.18);
+    }
+
+    .secondary-button {
+      background: rgba(255, 255, 255, 0.66);
+      color: #1e1f24;
+      border: 1px solid var(--line);
+      backdrop-filter: blur(18px);
+    }
+
+    .primary-button:active,
+    .secondary-button:active {
+      transform: scale(0.985);
+    }
+
+    .login-actions {
+      display: grid;
+      gap: 10px;
+      margin-top: 24px;
+      width: 100%;
+    }
+
+    .fineprint {
+      color: #7b7f89;
+      font-size: 11px;
+      line-height: 1.7;
+      width: 275px;
+      margin-top: 2px;
+    }
+
+    .reference-view {
+      position: absolute;
+      inset: 0;
+      min-height: auto;
+      overflow: hidden;
+      padding: 0;
+    }
+
+    .reference-main-screen {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.1)),
+        #f8d8ee;
+    }
+
+    .reference-main-screen::before {
+      content: "";
+      position: absolute;
+      inset: -18px;
+      background: url("wefinally-main-cropped.jpg") center / cover no-repeat;
+      filter: blur(18px) saturate(1.12);
+      transform: scale(1.08);
+      opacity: 0.82;
+    }
+
+    .reference-main-screen img {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: 100%;
+      max-width: none;
+      height: auto;
+      transform: translate(-50%, -50%);
+      filter: saturate(1.02) contrast(1.01);
+      z-index: 1;
+    }
+
+    .reference-main-screen::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.18), transparent 26%),
+        linear-gradient(180deg, transparent 55%, rgba(248, 216, 238, 0.18) 72%, rgba(255, 255, 255, 0.64));
+      pointer-events: none;
+    }
+
+    .reference-login-panel {
+      position: absolute;
+      left: 18px;
+      right: 18px;
+      bottom: 28px;
+      z-index: 4;
+      display: grid;
+      gap: 10px;
+    }
+
+    .reference-caption {
+      padding: 10px 12px;
+      color: rgba(20, 20, 22, 0.68);
+      font-size: 12px;
+      line-height: 1.55;
+      text-align: center;
+      background: rgba(255, 255, 255, 0.52);
+      border: 1px solid rgba(255, 255, 255, 0.72);
+      border-radius: 8px;
+      backdrop-filter: blur(18px);
+    }
+
+    .nav-title {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+
+    .nav-title h2 {
+      margin: 0;
+      font-size: 28px;
+      line-height: 1.12;
+      font-weight: 770;
+      letter-spacing: 0;
+    }
+
+    .nav-title p {
+      margin: 8px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .round-action {
+      width: 42px;
+      height: 42px;
+      border: 1px solid var(--line);
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.72);
+      display: grid;
+      place-items: center;
+      color: #17181c;
+      font-size: 18px;
+      backdrop-filter: blur(16px);
+      flex: 0 0 auto;
+    }
+
+    .material {
+      background: var(--soft);
+      border: 1px solid rgba(255, 255, 255, 0.70);
+      border-radius: 8px;
+      box-shadow: var(--small-shadow);
+      backdrop-filter: blur(20px);
+    }
+
+    .screen[data-tone="marble"] .material {
+      background: #fff;
+      border-color: rgba(20, 20, 22, 0.06);
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05), 0 16px 34px -22px rgba(0, 0, 0, 0.28);
+    }
+
+    .screen[data-tone="glass"] .material,
+    .screen[data-tone="fusion"] .material {
+      background: rgba(255, 255, 255, 0.56);
+      border-color: rgba(255, 255, 255, 0.78);
+      box-shadow: 0 16px 40px rgba(80, 40, 90, 0.14);
+      backdrop-filter: blur(28px) saturate(170%);
+    }
+
+    .screen[data-tone="obsidian"] .material {
+      background: rgba(28, 28, 30, 0.94);
+      border-color: #2a2a2c;
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.42);
+      backdrop-filter: blur(18px);
+    }
+
+    .screen[data-tone="obsidian"] .status,
+    .screen[data-tone="obsidian"] .nav-title h2,
+    .screen[data-tone="obsidian"] .big-date strong,
+    .screen[data-tone="obsidian"] .row-copy strong,
+    .screen[data-tone="obsidian"] .score-line strong,
+    .screen[data-tone="obsidian"] .profile-stat strong {
+      color: #f5f5f7;
+    }
+
+    .screen[data-tone="obsidian"] .status .bars span {
+      background: #f5f5f7;
+    }
+
+    .screen[data-tone="obsidian"] .battery {
+      border-color: #f5f5f7;
+    }
+
+    .screen[data-tone="obsidian"] .nav-title p,
+    .screen[data-tone="obsidian"] .big-date span,
+    .screen[data-tone="obsidian"] .row-copy span,
+    .screen[data-tone="obsidian"] .score-line span,
+    .screen[data-tone="obsidian"] .profile-stat span,
+    .screen[data-tone="obsidian"] .metric {
+      color: #9b9ba1;
+    }
+
+    .screen[data-tone="obsidian"] .round-action,
+    .screen[data-tone="obsidian"] .pill,
+    .screen[data-tone="obsidian"] .tabbar {
+      background: rgba(28, 28, 30, 0.88);
+      border-color: #2a2a2c;
+      color: #f5f5f7;
+    }
+
+    .screen[data-tone="obsidian"] .primary-button {
+      background: linear-gradient(135deg, #ff6b8a, #ff8fa3);
+      box-shadow: 0 10px 26px rgba(255, 107, 138, 0.28);
+    }
+
+    .screen[data-tone="obsidian"] .secondary-button {
+      background: rgba(28, 28, 30, 0.86);
+      border-color: #2a2a2c;
+      color: #f5f5f7;
+    }
+
+    .match-orbit {
+      padding: 18px;
+      display: grid;
+      gap: 14px;
+      margin-bottom: 14px;
+    }
+
+    .orbit-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .pill {
+      border-radius: 999px;
+      padding: 6px 9px;
+      background: rgba(255, 255, 255, 0.72);
+      border: 1px solid var(--line);
+      color: #4d4f57;
+      font-size: 12px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    .big-date {
+      display: grid;
+      gap: 5px;
+    }
+
+    .big-date strong {
+      font-size: 30px;
+      line-height: 1;
+    }
+
+    .big-date span {
+      color: #656974;
+      font-size: 13px;
+    }
+
+    .rings {
+      height: 126px;
+      display: grid;
+      place-items: center;
+      position: relative;
+    }
+
+    .ring {
+      position: absolute;
+      border-radius: 50%;
+      border: 1px solid rgba(20, 20, 22, 0.12);
+    }
+
+    .ring.one {
+      width: 116px;
+      height: 116px;
+      background: rgba(255, 255, 255, 0.35);
+    }
+
+    .ring.two {
+      width: 82px;
+      height: 82px;
+      background: rgba(255, 107, 138, 0.13);
+    }
+
+    .ring-score {
+      width: 58px;
+      height: 58px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      background: #141416;
+      color: #fff;
+      font-weight: 740;
+      z-index: 1;
+    }
+
+    .stack {
+      display: grid;
+      gap: 10px;
+    }
+
+    .row-card {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px;
+      min-height: 64px;
+    }
+
+    .mini-icon {
+      width: 38px;
+      height: 38px;
+      border-radius: 10px;
+      display: grid;
+      place-items: center;
+      color: #fff;
+      font-size: 13px;
+      font-weight: 760;
+      background: #141416;
+      flex: 0 0 auto;
+    }
+
+    .mini-icon.blue {
+      background: #0a84ff;
+    }
+
+    .mini-icon.green {
+      background: #34c759;
+    }
+
+    .mini-icon.pink {
+      background: #ff6b8a;
+    }
+
+    .row-copy {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .row-copy strong {
+      display: block;
+      font-size: 15px;
+      line-height: 1.35;
+    }
+
+    .row-copy span {
+      display: block;
+      color: #777b85;
+      font-size: 12px;
+      margin-top: 3px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .chevron {
+      color: #a1a4ac;
+      font-size: 22px;
+    }
+
+    .tabbar {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 6px;
+      padding: 8px;
+      margin-top: auto;
+      background: rgba(255, 255, 255, 0.72);
+      border: 1px solid rgba(255, 255, 255, 0.74);
+      border-radius: 8px;
+      backdrop-filter: blur(24px);
+      box-shadow: 0 10px 28px rgba(18, 20, 26, 0.10);
+    }
+
+    .tab {
+      height: 48px;
+      border: 0;
+      border-radius: 8px;
+      background: transparent;
+      color: #6c7079;
+      display: grid;
+      place-items: center;
+      gap: 2px;
+      cursor: pointer;
+      font-size: 11px;
+    }
+
+    .tab span {
+      width: 18px;
+      height: 18px;
+      border-radius: 6px;
+      border: 1.8px solid currentColor;
+      display: block;
+    }
+
+    .tab.active {
+      background: #141416;
+      color: #fff;
+    }
+
+    .detail-hero {
+      padding: 18px;
+      display: grid;
+      gap: 14px;
+      margin-bottom: 12px;
+    }
+
+    .score-line {
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .score-line strong {
+      font-size: 54px;
+      line-height: 0.9;
+      letter-spacing: 0;
+    }
+
+    .score-line span {
+      color: #686c76;
+      font-size: 13px;
+      line-height: 1.45;
+      text-align: right;
+    }
+
+    .bars-card {
+      display: grid;
+      gap: 10px;
+    }
+
+    .metric {
+      display: grid;
+      grid-template-columns: 72px 1fr 38px;
+      gap: 10px;
+      align-items: center;
+      font-size: 12px;
+      color: #5d6068;
+    }
+
+    .metric-track {
+      height: 8px;
+      border-radius: 999px;
+      background: rgba(20, 20, 22, 0.08);
+      overflow: hidden;
+    }
+
+    .metric-track i {
+      display: block;
+      height: 100%;
+      border-radius: inherit;
+      background: #34c759;
+    }
+
+    .metric:nth-child(2) .metric-track i {
+      background: #0a84ff;
+    }
+
+    .metric:nth-child(3) .metric-track i {
+      background: #ff9f0a;
+    }
+
+    .profile-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+
+    .profile-stat {
+      padding: 14px;
+      min-height: 88px;
+      display: grid;
+      align-content: space-between;
+    }
+
+    .profile-stat strong {
+      font-size: 22px;
+      line-height: 1;
+    }
+
+    .profile-stat span {
+      color: #737780;
+      font-size: 12px;
+    }
+
+    .profile-head {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 14px;
+      margin-bottom: 12px;
+    }
+
+    .avatar {
+      width: 58px;
+      height: 58px;
+      border-radius: 18px;
+      background:
+        linear-gradient(145deg, rgba(255, 255, 255, 0.86), rgba(255, 255, 255, 0.35)),
+        linear-gradient(135deg, rgba(255, 107, 138, 0.36), rgba(10, 132, 255, 0.20));
+      display: grid;
+      place-items: center;
+      font-size: 22px;
+      font-weight: 790;
+      color: #17181c;
+      border: 1px solid rgba(255, 255, 255, 0.75);
+    }
+
+    .home-indicator {
+      height: 5px;
+      width: 134px;
+      border-radius: 999px;
+      background: #070709;
+      opacity: 0.86;
+      position: absolute;
+      bottom: 8px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 10;
+    }
+
+    @media (max-width: 900px) {
+      body {
+        padding: 18px;
+      }
+
+      .workspace {
+        grid-template-columns: 1fr;
+        justify-items: center;
+      }
+
+      .brief {
+        width: min(520px, 100%);
+      }
+
+      .stage {
+        min-height: auto;
+      }
+    }
+
+    @media (max-width: 460px) {
+      :root {
+        --phone-w: min(390px, calc(100vw - 24px));
+        --phone-h: calc(var(--phone-w) * 2.164);
+      }
+
+      .phone {
+        border-radius: 36px;
+        padding: 9px;
+      }
+
+      .screen {
+        border-radius: 28px;
+      }
+
+      .brief h1 {
+        font-size: 36px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="workspace">
+    <section class="brief" aria-label="Design direction">
+      <div class="eyebrow">WeFinally · main screen from your image</div>
+      <h1>主界面沿用你给的品牌图</h1>
+      <p>首屏直接使用你发来的粉紫 WeFinally 主视觉。业务页融合 Claude Design 记录里的三板 Apple 质感：云石白的留白字阶、毛玻璃的 iOS 材质、曜石黑的 OLED 高级灰阶。</p>
+      <div class="principles">
+        <div class="principle"><span class="dot"></span><span>首屏保留粉紫梦幻主视觉，作为品牌识别和情绪入口。</span></div>
+        <div class="principle"><span class="dot blue"></span><span>业务页默认综合：毛玻璃通透感 + 云石白信息秩序。</span></div>
+        <div class="principle"><span class="dot green"></span><span>保留曜石黑作为高质感备选，用于后续夜间/会员感场景。</span></div>
+      </div>
+      <div class="controls" aria-label="screen switcher">
+        <button class="control active" data-target="login">主界面</button>
+        <button class="control" data-target="home">匹配首页</button>
+        <button class="control" data-target="detail">匹配详情</button>
+        <button class="control" data-target="profile">个人中心</button>
+      </div>
+      <div class="tone-controls" aria-label="tone switcher">
+        <button class="tone-control active" data-tone-target="fusion">综合</button>
+        <button class="tone-control" data-tone-target="marble">云石白</button>
+        <button class="tone-control" data-tone-target="glass">毛玻璃</button>
+        <button class="tone-control" data-tone-target="obsidian">曜石黑</button>
+      </div>
+    </section>
+
+    <section class="stage" aria-label="mobile prototype">
+      <div class="phone">
+        <div class="screen" data-current="login" data-tone="fusion">
+          <div class="silk"></div>
+          <div class="status">
+            <span>01:04</span>
+            <div class="status-icons">
+              <div class="bars" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
+              <span>Wi-Fi</span>
+              <div class="battery" aria-hidden="true"><span></span></div>
+            </div>
+          </div>
+
+          <div class="screen-inner">
+            <section class="screen-view reference-view active" data-screen="login" data-screen-label="主界面">
+              <div class="reference-main-screen">
+                <img src="wefinally-main-cropped.jpg" alt="WeFinally 主界面品牌图">
+                <div class="reference-login-panel">
+                  <button class="primary-button" data-target="home">微信一键登录</button>
+                  <button class="secondary-button" data-target="detail">先看匹配样例</button>
+                  <div class="reference-caption">登录即表示同意服务协议、隐私授权与婚恋真实性承诺。</div>
+                </div>
+              </div>
+            </section>
+
+            <section class="screen-view" data-screen="home" data-screen-label="匹配首页">
+              <div class="nav-title">
+                <div>
+                  <h2>你好，今天有新的可能。</h2>
+                  <p>每周三、周五 00:00，系统为你精准空投一位对象。</p>
+                </div>
+                <div class="round-action">⋯</div>
+              </div>
+
+              <div class="match-orbit material">
+                <div class="orbit-head">
+                  <div class="big-date">
+                    <strong>07/03 周五</strong>
+                    <span>00:00 自动匹配 · 不支持手动刷新</span>
+                  </div>
+                  <div class="pill">VIP 有效</div>
+                </div>
+                <div class="rings">
+                  <div class="ring one"></div>
+                  <div class="ring two"></div>
+                  <div class="ring-score">86</div>
+                </div>
+              </div>
+
+              <div class="stack">
+                <div class="row-card material">
+                  <div class="mini-icon pink">AI</div>
+                  <div class="row-copy">
+                    <strong>最近匹配已生成 · 86%</strong>
+                    <span>深圳 · 29岁 · 本科 · 三观契合度 86%</span>
+                  </div>
+                  <div class="chevron">›</div>
+                </div>
+                <div class="row-card material">
+                  <div class="mini-icon blue">偏好</div>
+                  <div class="row-copy">
+                    <strong>择偶配置完整</strong>
+                    <span>年龄、学历、身高、三观文本均已填写</span>
+                  </div>
+                  <div class="chevron">›</div>
+                </div>
+                <div class="row-card material">
+                  <div class="mini-icon green">安全</div>
+                  <div class="row-copy">
+                    <strong>见面由平台对接</strong>
+                    <span>紧急联系人和安全确认已开启</span>
+                  </div>
+                  <div class="chevron">›</div>
+                </div>
+              </div>
+            </section>
+
+            <section class="screen-view" data-screen="detail" data-screen-label="匹配详情">
+              <div class="nav-title">
+                <div>
+                  <h2>匹配详情</h2>
+                  <p>展示必要信息，不展示三观原文和隐私内容。</p>
+                </div>
+                <div class="round-action">‹</div>
+              </div>
+
+              <div class="detail-hero material">
+                <div class="score-line">
+                  <strong>86%</strong>
+                  <span>三观契合度<br>本轮较高匹配</span>
+                </div>
+                <div class="bars-card">
+                  <div class="metric"><span>硬条件</span><div class="metric-track"><i style="width: 92%"></i></div><span>92</span></div>
+                  <div class="metric"><span>生活节奏</span><div class="metric-track"><i style="width: 84%"></i></div><span>84</span></div>
+                  <div class="metric"><span>育儿计划</span><div class="metric-track"><i style="width: 76%"></i></div><span>76</span></div>
+                </div>
+              </div>
+
+              <div class="stack">
+                <div class="row-card material">
+                  <div class="mini-icon">资料</div>
+                  <div class="row-copy">
+                    <strong>29岁 · 深圳 · 本科</strong>
+                    <span>身高 170-180cm · 未婚 · 3-5年内育儿</span>
+                  </div>
+                </div>
+                <div class="row-card material">
+                  <div class="mini-icon blue">边界</div>
+                  <div class="row-copy">
+                    <strong>无私聊入口</strong>
+                    <span>确认意向后由平台客服安排下一步</span>
+                  </div>
+                </div>
+                <button class="primary-button" style="margin-top: 4px;">申请平台对接</button>
+                <button class="secondary-button">暂不合适</button>
+              </div>
+            </section>
+
+            <section class="screen-view" data-screen="profile" data-screen-label="个人中心">
+              <div class="nav-title">
+                <div>
+                  <h2>个人中心</h2>
+                  <p>会员、隐私、安全状态集中管理。</p>
+                </div>
+                <div class="round-action">设</div>
+              </div>
+
+              <div class="profile-head material">
+                <div class="avatar">W</div>
+                <div class="row-copy">
+                  <strong>深圳 · 1995 · 本科</strong>
+                  <span>VIP 至 2026-08-01 · 资料完整度 94%</span>
+                </div>
+              </div>
+
+              <div class="profile-grid">
+                <div class="profile-stat material"><strong>12</strong><span>历史匹配</span></div>
+                <div class="profile-stat material"><strong>2</strong><span>本月对接</span></div>
+                <div class="profile-stat material"><strong>94%</strong><span>资料完整度</span></div>
+                <div class="profile-stat material"><strong>已开</strong><span>安全提醒</span></div>
+              </div>
+
+              <div class="stack">
+                <div class="row-card material">
+                  <div class="mini-icon pink">VIP</div>
+                  <div class="row-copy">
+                    <strong>会员权益</strong>
+                    <span>每周两次 AI 定时匹配</span>
+                  </div>
+                  <div class="chevron">›</div>
+                </div>
+                <div class="row-card material">
+                  <div class="mini-icon green">隐私</div>
+                  <div class="row-copy">
+                    <strong>隐私授权记录</strong>
+                    <span>查看服务、数据和协议授权</span>
+                  </div>
+                  <div class="chevron">›</div>
+                </div>
+              </div>
+            </section>
+
+            <nav class="tabbar" aria-label="bottom navigation">
+              <button class="tab active" data-target="home"><span></span>匹配</button>
+              <button class="tab" data-target="detail"><span></span>详情</button>
+              <button class="tab" data-target="profile"><span></span>我的</button>
+              <button class="tab" data-target="login"><span></span>主界面</button>
+            </nav>
+          </div>
+          <div class="home-indicator"></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const controls = Array.from(document.querySelectorAll("[data-target]"));
+    const toneControls = Array.from(document.querySelectorAll("[data-tone-target]"));
+    const views = Array.from(document.querySelectorAll(".screen-view"));
+    const sideControls = Array.from(document.querySelectorAll(".control"));
+    const tabs = Array.from(document.querySelectorAll(".tab"));
+    const phoneScreen = document.querySelector(".screen");
+
+    function setScreen(name) {
+      phoneScreen.dataset.current = name;
+      views.forEach((view) => {
+        view.classList.toggle("active", view.dataset.screen === name);
+      });
+      sideControls.forEach((button) => {
+        button.classList.toggle("active", button.dataset.target === name);
+      });
+      tabs.forEach((button) => {
+        button.classList.toggle("active", button.dataset.target === name);
+      });
+    }
+
+    function setTone(name) {
+      phoneScreen.dataset.tone = name;
+      toneControls.forEach((button) => {
+        button.classList.toggle("active", button.dataset.toneTarget === name);
+      });
+    }
+
+    controls.forEach((button) => {
+      button.addEventListener("click", () => setScreen(button.dataset.target));
+    });
+
+    toneControls.forEach((button) => {
+      button.addEventListener("click", () => setTone(button.dataset.toneTarget));
+    });
+  </script>
+</body>
+</html>

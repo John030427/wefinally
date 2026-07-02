@@ -26,6 +26,10 @@ Page({
     cityOptions: CITY_OPTIONS,
     circleOptions: [],
     circleNames: [],
+    circleGroups: [],
+    circlePlates: [],
+    circleMatrix: [[], []],
+    circleMultiIndex: [0, 0],
     form: {
       gender: '',
       genderIndex: -1,
@@ -52,6 +56,9 @@ Page({
     },
     birthYearOptions: [],
     heightOptions: [],
+    promoStatus: '',
+    promoMessage: '',
+    checkingPromo: false,
     submitting: false
   },
 
@@ -90,8 +97,13 @@ Page({
       code = wx.getStorageSync(STORAGE_KEYS.PROMOTE_CODE) || ''
     }
     if (code) {
-      wx.setStorageSync(STORAGE_KEYS.PROMOTE_CODE, code)
-      this.setData({ 'form.promote_code': code })
+      const normalized = String(code).trim().toUpperCase()
+      wx.setStorageSync(STORAGE_KEYS.PROMOTE_CODE, normalized)
+      this.setData({
+        'form.promote_code': normalized,
+        promoStatus: 'pending',
+        promoMessage: '已带入推广码，提交前会自动校验'
+      })
     }
   },
 
@@ -107,9 +119,13 @@ Page({
     try {
       const circles = await get(API_PATHS.CIRCLES, {}, { showError: false })
       const list = Array.isArray(circles) ? circles : []
+      const circlePicker = this.buildCirclePicker(list)
       this.setData({
         circleOptions: list,
         circleNames: list.map((c) => c.name || c.circle_name),
+        circleGroups: circlePicker.groups,
+        circlePlates: circlePicker.plates,
+        circleMatrix: circlePicker.matrix,
         pageState: 'success'
       })
     } catch (err) {
@@ -118,6 +134,62 @@ Page({
         errorMsg: (err && err.message) || '加载圈层失败'
       })
     }
+  },
+
+  buildCirclePicker(list) {
+    const groupMap = {}
+    list.forEach((circle) => {
+      const plate = circle.plate_name || '其他'
+      if (!groupMap[plate]) groupMap[plate] = []
+      groupMap[plate].push(circle)
+    })
+    const plates = Object.keys(groupMap)
+    const groups = plates.map((plate) => ({
+      plate,
+      circles: groupMap[plate]
+    }))
+    const firstCircles = groups[0] ? groups[0].circles : []
+    return {
+      groups,
+      plates,
+      matrix: [plates, firstCircles.map((c) => c.name || c.circle_name)]
+    }
+  },
+
+  onCircleColumnChange(e) {
+    const column = Number(e.detail.column)
+    const value = Number(e.detail.value)
+    const nextIndex = this.data.circleMultiIndex.slice()
+    nextIndex[column] = value
+    if (column === 0) {
+      nextIndex[1] = 0
+      const group = this.data.circleGroups[value]
+      this.setData({
+        circleMultiIndex: nextIndex,
+        circleMatrix: [
+          this.data.circlePlates,
+          group ? group.circles.map((c) => c.name || c.circle_name) : []
+        ]
+      })
+      return
+    }
+    this.setData({ circleMultiIndex: nextIndex })
+  },
+
+  onCircleChange(e) {
+    const value = e.detail.value || [0, 0]
+    const plateIndex = Number(value[0]) || 0
+    const circleIndex = Number(value[1]) || 0
+    const group = this.data.circleGroups[plateIndex]
+    const circle = group && group.circles[circleIndex]
+    if (!circle) return
+    const name = circle.name || circle.circle_name
+    this.setData({
+      circleMultiIndex: [plateIndex, circleIndex],
+      'form.circleId': circle.id,
+      'form.circleName': name,
+      'form.circleIndex': this.data.circleOptions.findIndex((item) => item.id === circle.id)
+    })
   },
 
   onRetry() {
@@ -140,6 +212,7 @@ Page({
       circle: { options: 'circleNames', key: 'circleName' }
     }
     const config = map[field]
+    if (!config) return
     const value = this.data[config.options][index]
     const update = {
       [`form.${config.key}`]: value,
@@ -150,6 +223,94 @@ Page({
       update['form.circleId'] = circle ? circle.id : 0
     }
     this.setData(update)
+
+    if (field === 'marriage' && value === '离异') {
+      wx.showModal({
+        title: '离异复入申请',
+        content: '离异用户需先由平台人工审核复入资格。用户端不上传证明材料，请提交联系方式后等待客服处理。',
+        confirmText: '去申请',
+        cancelText: '返回',
+        success: (modal) => {
+          if (modal.confirm) {
+            wx.navigateTo({ url: '/pages/divorce-review/divorce-review' })
+            return
+          }
+          this.setData({
+            'form.marriage': '',
+            'form.marriageIndex': -1
+          })
+        }
+      })
+    }
+  },
+
+  goDivorceReview() {
+    wx.navigateTo({ url: '/pages/divorce-review/divorce-review' })
+  },
+
+  onPromoteInput(e) {
+    const code = String(e.detail.value || '').replace(/\s/g, '').toUpperCase()
+    const update = {
+      'form.promote_code': code,
+      promoStatus: code ? 'pending' : '',
+      promoMessage: code ? '提交前会自动校验推广码' : ''
+    }
+    this.setData(update)
+    if (!code) {
+      wx.removeStorageSync(STORAGE_KEYS.PROMOTE_CODE)
+    }
+  },
+
+  async onPromoteBlur() {
+    await this.checkPromoteCode({ silent: true })
+  },
+
+  onPromoteClear() {
+    wx.removeStorageSync(STORAGE_KEYS.PROMOTE_CODE)
+    this.setData({
+      'form.promote_code': '',
+      promoStatus: '',
+      promoMessage: ''
+    })
+  },
+
+  async checkPromoteCode(options = {}) {
+    const code = String(this.data.form.promote_code || '').trim().toUpperCase()
+    if (!code) {
+      this.setData({ promoStatus: '', promoMessage: '' })
+      wx.removeStorageSync(STORAGE_KEYS.PROMOTE_CODE)
+      return true
+    }
+
+    this.setData({ checkingPromo: true })
+    try {
+      const data = await get(API_PATHS.PROMOTE_CODE_CHECK, { code }, { showError: false })
+      if (data && data.valid) {
+        wx.setStorageSync(STORAGE_KEYS.PROMOTE_CODE, code)
+        this.setData({
+          'form.promote_code': code,
+          promoStatus: 'success',
+          promoMessage: data.message || '已识别有效推广码'
+        })
+        return true
+      }
+
+      const message = (data && data.message) || '推广码无效或合伙人未激活'
+      this.setData({ promoStatus: 'error', promoMessage: message })
+      if (!options.silent) {
+        wx.showToast({ title: message, icon: 'none' })
+      }
+      return false
+    } catch (err) {
+      const message = (err && err.message) || '推广码校验失败，请稍后重试'
+      this.setData({ promoStatus: 'error', promoMessage: message })
+      if (!options.silent) {
+        wx.showToast({ title: message, icon: 'none' })
+      }
+      return false
+    } finally {
+      this.setData({ checkingPromo: false })
+    }
   },
 
   validateForm() {
@@ -185,8 +346,22 @@ Page({
       return
     }
 
-    this.setData({ submitting: true })
     const { form } = this.data
+    if (form.marriage === '离异') {
+      wx.showModal({
+        title: '需先提交复入申请',
+        content: '离异用户暂不能直接进入普通注册，请先提交离异复入申请并等待平台人工审核。',
+        confirmText: '去申请',
+        showCancel: false,
+        success: () => this.goDivorceReview()
+      })
+      return
+    }
+
+    const promoOk = await this.checkPromoteCode({ silent: false })
+    if (!promoOk) return
+
+    this.setData({ submitting: true })
 
     try {
       const data = await post(API_PATHS.REGISTER, {
@@ -201,7 +376,7 @@ Page({
         house_car: form.houseCar || '',
         height_range: form.height,
         circle_id: form.circleId,
-        promote_code: form.promote_code,
+        promote_code: String(form.promote_code || '').trim().toUpperCase(),
         agreements: ['user_service', 'privacy', 'data_auth'],
         device_info: `${wx.getSystemInfoSync().model || ''} ${wx.getSystemInfoSync().system || ''}`
       }, { showLoading: true, loadingText: '提交中...' })

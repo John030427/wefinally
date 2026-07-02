@@ -51,7 +51,7 @@ function formatSetting(row) {
   return {
     prefer_age: row.age_min && row.age_max ? `${row.age_min}-${row.age_max}岁` : '',
     prefer_education: row.min_education || '',
-    prefer_city: row.like_circle_ids || '',
+    prefer_city: '',
     like_marry_status: row.like_marry_status || '',
     like_baby_plan: row.like_baby_plan || '',
     prefer_height: row.height_min && row.height_max ? `${row.height_min}-${row.height_max}cm` : '',
@@ -182,7 +182,7 @@ router.post(
           [
             ageRange.age_min, ageRange.age_max,
             heightRange.height_min, heightRange.height_max,
-            prefer_education || null, prefer_city || '',
+            prefer_education || null, '',
             like_marry_status || null, like_baby_plan || null,
             my_values.trim(), expect_values.trim(),
             req.auth.id,
@@ -199,7 +199,7 @@ router.post(
             req.auth.id,
             ageRange.age_min, ageRange.age_max,
             heightRange.height_min, heightRange.height_max,
-            prefer_education || null, prefer_city || '',
+            prefer_education || null, '',
             like_marry_status || null, like_baby_plan || null,
             my_values.trim(), expect_values.trim(),
           ]

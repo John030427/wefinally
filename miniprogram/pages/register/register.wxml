@@ -57,8 +57,8 @@
 
       <view class="form-item">
         <text class="form-label required">职业圈层</text>
-        <picker mode="selector" range="{{circleNames}}" value="{{form.circleIndex}}" bindchange="onPickerChange" data-field="circle">
-          <view class="picker-value {{form.circleName ? '' : 'placeholder'}}">{{form.circleName || '请选择50大职业圈层'}}</view>
+        <picker mode="multiSelector" range="{{circleMatrix}}" value="{{circleMultiIndex}}" bindcolumnchange="onCircleColumnChange" bindchange="onCircleChange">
+          <view class="picker-value {{form.circleName ? '' : 'placeholder'}}">{{form.circleName || '请选择职业板块和圈层'}}</view>
         </picker>
       </view>
 
@@ -97,9 +97,13 @@
         </picker>
       </view>
 
-      <view class="form-item" wx:if="{{form.promote_code}}">
-        <text class="form-label">推广码</text>
-        <view class="picker-value readonly">{{form.promote_code}}</view>
+      <view class="form-item">
+        <text class="form-label">推广码（选填）</text>
+        <view class="promo-row">
+          <input class="promo-input" value="{{form.promote_code}}" placeholder="可不填；填写后绑定合伙人" maxlength="50" bindinput="onPromoteInput" bindblur="onPromoteBlur" />
+          <view wx:if="{{form.promote_code}}" class="promo-clear" bindtap="onPromoteClear">清空</view>
+        </view>
+        <view wx:if="{{promoMessage || checkingPromo}}" class="promo-hint {{promoStatus}}">{{checkingPromo ? '校验中...' : promoMessage}}</view>
       </view>
     </view>
 

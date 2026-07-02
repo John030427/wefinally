@@ -2,7 +2,7 @@ const { STORAGE_KEYS } = require('./utils/constants')
 
 App({
   globalData: {
-    API_BASE_URL: 'https://api.wefinally.com',
+    API_BASE_URL: 'http://127.0.0.1:3000',
     userInfo: null,
     token: '',
     isLoggedIn: false,

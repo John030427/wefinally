@@ -5,6 +5,7 @@ const { signToken } = require('../middleware/auth');
 const { fail, success } = require('../utils/response');
 const { hashPassword, comparePassword, generatePromoteCode } = require('../utils/crypto');
 const { isVipActive, isDivorced } = require('../middleware/guard');
+const { createDevWxSession, isDevWxLoginEnabled } = require('../services/devWxLogin');
 const {
   ROLES,
   USER_STATUS,
@@ -14,6 +15,10 @@ const {
 const router = express.Router();
 
 async function wxCode2Session(code) {
+  if (isDevWxLoginEnabled()) {
+    return createDevWxSession(code);
+  }
+
   const appid = process.env.WX_APPID;
   const secret = process.env.WX_SECRET;
   if (!appid || !secret) {

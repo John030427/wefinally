@@ -118,7 +118,7 @@ router.post(
         }
       }
 
-      if (!payment && process.env.NODE_ENV !== 'production') {
+      if ((payment?.mock || !payment) && process.env.NODE_ENV !== 'production') {
         await markOrderPaid(order.order_no, `MOCK_${Date.now()}`);
         return success(res, {
           order_no: order.order_no,

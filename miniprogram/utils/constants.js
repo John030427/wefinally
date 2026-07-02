@@ -26,13 +26,16 @@ const API_PATHS = {
   ACCOUNT_CANCEL: '/api/user/cancel',
   RULES: '/api/platform/rules',
   CIRCLES: '/api/common/circles',
-  AGREEMENTS: '/api/common/agreements'
+  AGREEMENTS: '/api/common/agreements',
+  PROMOTE_CODE_CHECK: '/api/common/promote-code',
+  DIVORCE_REVIEW: '/api/user/divorce-review',
+  DIVORCE_REVIEW_STATUS: '/api/user/divorce-review/status'
 }
 
 const GENDER_OPTIONS = ['男', '女']
 const EDUCATION_OPTIONS = ['高中及以下', '大专', '本科', '硕士', '博士']
 const INCOME_OPTIONS = ['5万以下', '5-10万', '10-20万', '20-50万', '50万以上']
-const MARRIAGE_OPTIONS = ['未婚']
+const MARRIAGE_OPTIONS = ['未婚', '离异']
 const BABY_PLAN_OPTIONS = ['1年内', '2-3年内', '3-5年内', '5年后', '丁克', '待定']
 const HOUSE_CAR_OPTIONS = ['无', '有车', '有房', '有房有车']
 const CITY_OPTIONS = [

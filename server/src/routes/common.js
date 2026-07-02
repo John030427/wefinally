@@ -1,6 +1,6 @@
 const express = require('express');
 const pool = require('../config/db');
-const { success } = require('../utils/response');
+const { success, fail } = require('../utils/response');
 const { VIP_PRICE, VIP_DAYS, MATCH_COOLDOWN_DAYS, MATCH_DAYS } = require('../config/constants');
 
 const router = express.Router();
@@ -13,6 +13,48 @@ router.get('/circles', async (req, res, next) => {
        FROM occupation_circle WHERE status = 1 ORDER BY id ASC`
     );
     return success(res, rows);
+  } catch (err) {
+    next(err);
+  }
+});
+
+/** GET /api/common/promote-code */
+router.get('/promote-code', async (req, res, next) => {
+  try {
+    const code = String(req.query.code || '').trim().toUpperCase();
+    if (!code) {
+      return fail(res, '请填写推广码');
+    }
+
+    const [rows] = await pool.query(
+      `SELECT p.id AS partner_id, p.promote_code, p.circle_id,
+              oc.circle_name, oc.plate_name
+       FROM \`partner\` p
+       LEFT JOIN occupation_circle oc ON oc.id = p.circle_id
+       WHERE p.promote_code = ? AND p.status = 1
+       LIMIT 1`,
+      [code]
+    );
+
+    if (rows.length === 0) {
+      return success(res, {
+        valid: false,
+        message: '推广码无效或合伙人未激活',
+      });
+    }
+
+    const partner = rows[0];
+    return success(res, {
+      valid: true,
+      partner_id: partner.partner_id,
+      promote_code: partner.promote_code,
+      circle_id: partner.circle_id,
+      circle_name: partner.circle_name || '',
+      plate_name: partner.plate_name || '',
+      message: partner.circle_name
+        ? `已识别 ${partner.circle_name} 合伙人推广码`
+        : '已识别有效推广码',
+    });
   } catch (err) {
     next(err);
   }

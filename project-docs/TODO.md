@@ -9,27 +9,27 @@
 
 ### R0：本地跑通（不改业务逻辑）
 
-- [ ] 执行 `database/import.bat` 或手动导入 init.sql
-- [ ] 配置 `server/.env`（DB、JWT、微信占位）
-- [ ] `cd server && npm install && npm run dev`
-- [ ] 验证 `GET /api/common/health`
+- [x] 执行 `database/import.bat` 或手动导入 init.sql
+- [x] 配置 `server/.env`（DB、JWT、微信占位）
+- [x] `cd server && npm install && npm run dev`
+- [x] 验证 `GET /api/common/health`
 - [ ] 微信开发者工具导入 miniprogram，改 API_BASE_URL
 - [ ] 记录所有报错到 DEVELOPMENT_LOG
 
 ### R1：修确定性 Bug（不影响 UI）
 
-- [ ] `admin.js` 提现驳回 status 修正
-- [ ] `user.js` cancel 与 marry_report 类型分离
-- [ ] `admin.js` 隐私日志 auth_time 字段修正
-- [ ] `user.js` like_circle_ids 赋值逻辑修正
+- [x] `admin.js` 提现驳回 status 修正（`server/selfcheck/known-bugs.js` 覆盖）
+- [x] `user.js` cancel 与 marry_report 类型分离（`server/selfcheck/known-bugs.js` 覆盖）
+- [x] `admin.js` 隐私日志 auth_time 字段修正（`server/selfcheck/known-bugs.js` 覆盖）
+- [x] `match.js`/`user.js` like_circle_ids 赋值逻辑修正（`server/selfcheck/known-bugs.js` 覆盖）
 
 ### R3：安全加固（不影响 UI）
 
-- [ ] 生产环境强制 JWT_SECRET，去除 dev 默认值
-- [ ] 限制 CORS_ORIGIN
-- [ ] `/api/wxpay/unified` 加 userAuth
-- [ ] 支付回调强制验签（有 key 时）
-- [ ] 文档提醒修改默认 admin 密码
+- [x] 生产环境强制 JWT_SECRET，去除 dev 默认值
+- [x] 限制 CORS_ORIGIN
+- [x] `/api/wxpay/unified` 加 userAuth
+- [x] 支付回调强制验签（有 key 时）
+- [x] 文档提醒修改默认 admin 密码
 
 ---
 
@@ -78,14 +78,14 @@
 
 ### 见面安全确认
 
-- [ ] DB：`meet_report` 表设计 + migration
-- [ ] 后端：CRUD API + 状态机
-- [ ] 前端：`pages/meet-safety` 表单页
+- [x] DB：`meet_report` 表设计 + migration
+- [x] 后端：CRUD API + 状态机（`server/selfcheck/meet-safety.js` 覆盖）
+- [x] 前端：`pages/meet-safety` 表单页
 - [ ] 前端：`match-detail` 入口按钮
-- [ ] 见面安全卡展示 + `onShareAppMessage`
-- [ ] 前端：`pages/meet-safety-list` 历史记录
-- [ ] profile 菜单增加入口
-- [ ] safetyConfig 全套开关与文案
+- [x] ~~见面安全卡展示 + `onShareAppMessage`~~（已按老板口径撤下，保留报备 + SOS）
+- [x] 前端：`pages/meet-safety-list` 历史记录
+- [x] profile 菜单增加入口
+- [x] safetyConfig 全套开关与文案
 
 ### 体验补缺（小 UI）
 

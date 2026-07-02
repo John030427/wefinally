@@ -54,7 +54,7 @@ router.post('/divorce-restore/:userId', adminAuth, async (req, res, next) => {
       );
       if (report_id) {
         await pool.query(
-          'UPDATE marry_report SET audit_status = 1 WHERE id = ? AND user_id = ?',
+          'UPDATE marry_report SET audit_status = 1, reject_reason = \'\', update_time = NOW() WHERE id = ? AND user_id = ?',
           [report_id, userId]
         );
       }
@@ -63,8 +63,8 @@ router.post('/divorce-restore/:userId', adminAuth, async (req, res, next) => {
 
     if (report_id) {
       await pool.query(
-        'UPDATE marry_report SET audit_status = 2 WHERE id = ? AND user_id = ?',
-        [report_id, userId]
+        'UPDATE marry_report SET audit_status = 2, reject_reason = ?, update_time = NOW() WHERE id = ? AND user_id = ?',
+        [String(reject_reason || '').slice(0, 255), report_id, userId]
       );
     }
     return success(res, null, reject_reason || '已驳回复入申请');
@@ -114,9 +114,10 @@ router.get('/list', adminAuth, async (req, res, next) => {
 
     const [count] = await pool.query('SELECT COUNT(*) AS total FROM marry_report');
     const [rows] = await pool.query(
-      `SELECT mr.*, u.openid, u.gender, u.city
+      `SELECT mr.*, COALESCE(NULLIF(mr.openid, ''), u.openid) AS openid,
+              u.gender, u.city
        FROM marry_report mr
-       JOIN \`user\` u ON u.id = mr.user_id
+       LEFT JOIN \`user\` u ON u.id = mr.user_id
        ORDER BY mr.id DESC LIMIT ? OFFSET ?`,
       [pageSize, offset]
     );

@@ -22,10 +22,10 @@
 
 | 文件/模块 | 当前问题 | 影响 | 建议处理方式 | 是否立即修改 | 是否影响已有 UI |
 |-----------|----------|------|--------------|--------------|-----------------|
-| `server/src/routes/admin.js` 提现驳回 | 驳回时 `status` 置为 `1`（已结算）而非驳回态 | 合伙人资金/状态错误 | 改为正确驳回状态并回滚 balance | **是**（R1） | 否 |
-| `server/src/routes/user.js` cancel | 使用 `marry_report.report_type=1`（与结婚报备同类型） | 报表语义混乱、审核流错误 | 新增 cancel 类型或独立表 | **是**（R1） | 否 |
-| `server/src/routes/admin.js` 隐私日志 | `/admin/privacy-logs` 返回 `auth_time: row.create_time`（admin.js:503），但 `user_privacy_auth_log` 表**根本没有 `create_time` 列**（只有 `auth_time`，init.sql:212）→ 授权时间恒为 null/空 | 管理后台授权时间显示为空 | 改为 `row.auth_time` | **是**（R1） | 否 |
-| `server/src/routes/user.js` match-settings | `like_circle_ids: like_circle_ids \|\| prefer_city` | 可能把城市字符串写入圈层字段 | 修正赋值逻辑 | **是**（R1） | 否 |
+| `server/src/routes/admin.js` 提现驳回 | 驳回时 `status` 置为 `1`（已结算）而非驳回态 | 合伙人资金/状态错误 | **已修**：驳回写 `status=2` 并回滚 balance；`server/selfcheck/known-bugs.js` 覆盖 | 已完成 | 否 |
+| `server/src/routes/user.js` cancel | 使用 `marry_report.report_type=1`（与结婚报备同类型） | 报表语义混乱、审核流错误 | **已修**：`MARRY_REPORT_TYPE.CANCEL=3`；审核不增加领证数；`server/selfcheck/known-bugs.js` 覆盖 | 已完成 | 否 |
+| `server/src/routes/admin.js` 隐私日志 | `/admin/privacy-logs` 返回 `auth_time: row.create_time`（admin.js:503），但 `user_privacy_auth_log` 表**根本没有 `create_time` 列**（只有 `auth_time`，init.sql:212）→ 授权时间恒为 null/空 | 管理后台授权时间显示为空 | **已修**：返回 `row.auth_time`；`server/selfcheck/known-bugs.js` 覆盖 | 已完成 | 否 |
+| `server/src/routes/user.js` / `server/src/routes/match.js` match-settings | `like_circle_ids` 曾被 `prefer_city` 污染 | 可能把城市字符串写入圈层字段 | **已修**：两条保存路径均不再写入城市；`server/selfcheck/known-bugs.js` 覆盖 | 已完成 | 否 |
 | `server/src/services/matchService.js` | 候选要求双方 VIP；仅单向写 `user_match_log` | 与已确认需求不符（B12/B13） | 放开候选 VIP；双向契合；对称写记录 | **是**（P1 专项） | 极小（非 VIP 可见提示） |
 | `server/src/routes/user.js` + `match.js` | 两套择偶保存 API 重复 | 维护成本、行为可能不一致 | 保留一套，另一套 deprecated | 否（R4 待确认） | 否 |
 | `miniprogram/pages/register/register.js` | 身高用 150-200cm 内联，未用 `HEIGHT_RANGE_OPTIONS` | 与 PRD 区间档位不一致 | 改用 constants 区间选项 + 旧数据迁移（新写分桶逻辑，`normalizeHeightRange` 不分桶） | **是（已确认 Q3：立即改 + 迁移）** | 极小 |
@@ -70,7 +70,7 @@
 
 ## 四、可重构项（小步）
 
-1. **R1**：4 处确定性 Bug（纯后端，零 UI 影响）
+1. **已完成**：R1 4 处确定性 Bug（纯后端，零 UI 影响）已由 `server/selfcheck/known-bugs.js` 覆盖
 2. **R2**：constants 收敛 + matchConfig 骨架 + 前端读 config（行为不变）
 3. **R3**：安全中间件与 env 校验
 4. **匹配专项**：双向互配 + 非 VIP 候选（需测试用例）

@@ -36,6 +36,7 @@ miniprogram/
 2. 修改 `project.config.json` → `appid`
 3. 修改 `app.js` → `globalData.API_BASE_URL` 为后端 API 地址
 4. 开发阶段可在开发者工具中勾选「不校验合法域名」
+5. 若暂无真实 `WX_SECRET`，可在后端 `server/.env` 临时设置 `DEV_WX_LOGIN_ENABLED=true` 后重启后端，用本地 dev openid 跑通登录/注册/页面流程；该开关默认关闭，生产环境无效。
 
 ## 页面说明
 

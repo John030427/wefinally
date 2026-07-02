@@ -39,19 +39,19 @@
 |------|--------|------|
 | 微信登录 + 注册 + 协议 | DONE | 三协议勾选、全下拉注册 |
 | 择偶配置 + 三观文本 + 7天冷却 | DONE | 前后端均已实现 |
-| AI 定时匹配（周三/五） | PARTIAL | cron 已实现；需改双向互配、候选放开非 VIP |
-| VIP 188/30天 + 微信支付 | PARTIAL | 逻辑完成；需真支付密钥与安全加固 |
+| AI 定时匹配（周三/五） | DONE | cron、双向互配、候选放开非 VIP、跨批次去重已实现 |
+| VIP 188/30天 + 微信支付 | PARTIAL | 逻辑完成；需真支付密钥 |
 | 合伙人体系 | DONE | 注册冻结→激活→推广码→分润→提现 |
 | 管理后台 | PARTIAL | 10+ 模块可用；部分页面简化 |
 | AI 客服 | DONE | 知识库关键词匹配 + 转人工 |
-| 婚姻报备 / 注销 | PARTIAL | 有 Bug（cancel 类型误用） |
-| **外貌描述** | NOT STARTED | 用户新增需求 |
-| **线下见面安全确认** | NOT STARTED | 用户新增需求 |
+| 婚姻报备 / 注销 | PARTIAL | 核心 Bug 已修；离异 proof/状态 UI 待完善 |
+| **外貌描述** | DONE（默认关） | 外貌文本 + LLM 标签预留已实现，LLM/匹配权重默认关 |
+| **线下见面安全确认** | DONE | 报备 + LBS + 紧急联系人 + SOS；安全卡已撤 |
 | **配置化** | PARTIAL | 部分已集中在 constants |
 
-### 已知 Bug（待 R1 修复）
+### R1 已知 Bug 收口
 
-见 `CODE_REVIEW.md` 与 `TODO.md`。
+R1 四个确定性 Bug 已修复并由 `server/selfcheck/known-bugs.js` 覆盖。仍待完善项见 `TODO.md` 的 P2/P3。
 
 ---
 
@@ -126,7 +126,8 @@ npm run dev
 1. 微信开发者工具导入 `miniprogram/` 目录
 2. 填写 AppID（替换 `project.config.json` 中的占位符）
 3. 修改 `app.js` 中 `API_BASE_URL` 为本地或测试域名
-4. 开发阶段可关闭「不校验合法域名」
+4. 开发阶段勾选「不校验合法域名」
+5. 无 AppSecret 时，可临时在 `server/.env` 设置 `DEV_WX_LOGIN_ENABLED=true` 后重启后端，使用本地 dev openid 跑完整 UI/业务流程；默认必须保持 `false`，生产环境不会生效。
 
 ### 4. 一键脚本（可选）
 
@@ -176,28 +177,25 @@ WeFinally婚恋小程序项目/
 
 ## 九、当前存在的问题
 
-### 确定性 Bug
+### 已修复并有自检覆盖
 
-1. 管理后台驳回提现误写 `status=1`（应为驳回状态）
-2. `/api/user/cancel` 误用 `marry_report.report_type=1`
-3. 隐私日志 `auth_time` 取错列名
-4. `user.js` 的 `like_circle_ids || prefer_city` 疑把城市写入圈层字段
+1. 管理后台驳回提现误写 `status=1`（`server/selfcheck/known-bugs.js`）
+2. `/api/user/cancel` 误用 `marry_report.report_type=1`（`server/selfcheck/known-bugs.js`）
+3. 隐私日志 `auth_time` 取错列名（`server/selfcheck/known-bugs.js`）
+4. `like_circle_ids` 被 `prefer_city` 污染（`server/selfcheck/known-bugs.js`）
 
 ### 逻辑与 PRD 偏差（已确认需改）
 
-5. 匹配目前为单向记录，需改为**双向互配**
-6. 候选池目前要求双方 VIP，需改为**被匹配对象不要求 VIP**
-7. 注册身高用精确 cm，PRD 要求身高区间档位
+5. 注册身高已改区间档位；微信开发者工具仍需人工端到端验 UI
 
 ### 安全
 
-8. JWT 默认密钥 `dev_secret`、CORS=*、wxpay 未鉴权
+6. 微信支付真环境密钥、合法域名、上线资质仍待配置
 
 ### 未完成的新需求
 
-9. 外貌描述字段
-10. 线下见面安全确认 + 见面安全卡
-11. 配置化（12/23 项尚缺）
+7. 外貌 LLM、匹配订阅通知默认关闭，启用前需补齐资质/授权/模板/预算
+8. 前端真机/微信开发者工具全链路仍需人工验收
 
 ---
 

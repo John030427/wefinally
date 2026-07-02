@@ -90,6 +90,68 @@ function buildProfilePayload(user, settings) {
   };
 }
 
+async function resolveOpenid(source = {}) {
+  const bodyOpenid = String(source.openid || '').trim();
+  if (bodyOpenid) return bodyOpenid;
+  const code = String(source.code || '').trim();
+  if (!code) return '';
+  return (await wxCode2Session(code)).openid;
+}
+
+function divorceReviewStatus(row) {
+  if (!row) return 'not_submitted';
+  if (Number(row.audit_status) === 1) return 'approved';
+  if (Number(row.audit_status) === 2) return 'rejected';
+  return 'pending';
+}
+
+function divorceReviewStatusText(status) {
+  const map = {
+    not_submitted: '未提交',
+    pending: '审核中',
+    approved: '审核通过',
+    rejected: '审核驳回',
+  };
+  return map[status] || map.not_submitted;
+}
+
+function formatDivorceReview(row) {
+  const status = divorceReviewStatus(row);
+  if (!row) {
+    return {
+      status,
+      audit_status: null,
+      status_text: divorceReviewStatusText(status),
+      message: '尚未提交离异复入申请',
+    };
+  }
+
+  return {
+    id: row.id,
+    status,
+    audit_status: row.audit_status,
+    status_text: divorceReviewStatusText(status),
+    message: status === 'approved'
+      ? '申请已审核通过，请联系平台客服完成人工开通'
+      : status === 'rejected'
+        ? '申请被驳回，可修改信息后重新提交'
+        : '申请已提交，请等待平台审核',
+    openid: row.openid || '',
+    contact_phone: row.contact_phone || '',
+    review_note: row.review_note || '',
+    reject_reason: row.reject_reason || '',
+    create_time: row.create_time,
+    update_time: row.update_time || row.create_time,
+  };
+}
+
+function buildReviewNote(reviewNote, deviceInfo) {
+  const note = String(reviewNote || '').trim();
+  const device = String(deviceInfo || '').trim();
+  const joined = device ? `${note}${note ? '\n' : ''}设备：${device}` : note;
+  return joined.slice(0, 500);
+}
+
 /** POST /api/user/register */
 router.post('/register', async (req, res, next) => {
   const conn = await pool.getConnection();
@@ -139,12 +201,13 @@ router.post('/register', async (req, res, next) => {
       return fail(res, '请同意全部三项协议');
     }
 
+    const normalizedPromoteCode = String(promote_code || '').trim().toUpperCase();
     let promotePartnerId = 0;
-    let lockedPromoteCode = promote_code || '';
-    if (promote_code) {
+    let lockedPromoteCode = '';
+    if (normalizedPromoteCode) {
       const [partners] = await conn.query(
         'SELECT id, promote_code FROM `partner` WHERE promote_code = ? AND status = ?',
-        [promote_code, PARTNER_STATUS.ACTIVE]
+        [normalizedPromoteCode, PARTNER_STATUS.ACTIVE]
       );
       if (partners.length === 0) return fail(res, '推广码无效或合伙人未激活');
       promotePartnerId = partners[0].id;
@@ -224,6 +287,82 @@ router.post('/register', async (req, res, next) => {
     next(err);
   } finally {
     conn.release();
+  }
+});
+
+/** GET /api/user/divorce-review/status — 注册前离异复入申请状态 */
+router.get('/divorce-review/status', async (req, res, next) => {
+  try {
+    const openid = await resolveOpenid(req.query);
+    if (!openid) return fail(res, '缺少 openid 或 code');
+
+    const [rows] = await pool.query(
+      `SELECT *
+       FROM marry_report
+       WHERE report_type = ? AND (
+         openid = ?
+         OR user_id IN (SELECT id FROM \`user\` WHERE openid = ?)
+       )
+       ORDER BY id DESC
+       LIMIT 1`,
+      [MARRY_REPORT_TYPE.DIVORCE, openid, openid]
+    );
+
+    return success(res, formatDivorceReview(rows[0] || null));
+  } catch (err) {
+    next(err);
+  }
+});
+
+/** POST /api/user/divorce-review — 注册前离异复入申请 */
+router.post('/divorce-review', async (req, res, next) => {
+  try {
+    const openid = await resolveOpenid(req.body);
+    if (!openid) return fail(res, '缺少 openid 或 code');
+
+    const contactPhone = String(req.body.contact_phone || req.body.phone || '').trim();
+    if (!/^\d{11}$/.test(contactPhone)) return fail(res, '请输入正确的联系电话');
+
+    const [blocked] = await pool.query(
+      'SELECT openid FROM openid_blacklist WHERE openid = ?',
+      [openid]
+    );
+    if (blocked.length > 0) return fail(res, '账号已被限制注册', 403, 403);
+
+    const [latestRows] = await pool.query(
+      `SELECT *
+       FROM marry_report
+       WHERE report_type = ? AND (
+         openid = ?
+         OR user_id IN (SELECT id FROM \`user\` WHERE openid = ?)
+       )
+       ORDER BY id DESC
+       LIMIT 1`,
+      [MARRY_REPORT_TYPE.DIVORCE, openid, openid]
+    );
+    const latest = latestRows[0];
+    if (latest && Number(latest.audit_status) === 0) {
+      return success(res, formatDivorceReview(latest), '已有待审核申请，请勿重复提交');
+    }
+    if (latest && Number(latest.audit_status) === 1) {
+      return success(res, formatDivorceReview(latest), '申请已审核通过，请联系平台客服完成开通');
+    }
+
+    const [result] = await pool.query(
+      `INSERT INTO marry_report
+       (user_id, openid, report_type, proof_img, contact_phone, review_note, audit_status)
+       VALUES (0, ?, ?, '', ?, ?, 0)`,
+      [
+        openid,
+        MARRY_REPORT_TYPE.DIVORCE,
+        contactPhone,
+        buildReviewNote(req.body.review_note || req.body.remark, req.body.device_info),
+      ]
+    );
+    const [rows] = await pool.query('SELECT * FROM marry_report WHERE id = ?', [result.insertId]);
+    return success(res, formatDivorceReview(rows[0]), '离异复入申请已提交，请等待平台审核');
+  } catch (err) {
+    next(err);
   }
 });
 

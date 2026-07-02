@@ -551,11 +551,11 @@ router.post('/marry-reports/:id/approve', async (req, res, next) => {
 
     if (approve) {
       await conn.query(
-        'UPDATE marry_report SET audit_status = 1 WHERE id = ?',
+        'UPDATE marry_report SET audit_status = 1, reject_reason = \'\', update_time = NOW() WHERE id = ?',
         [reportId]
       );
 
-      if (report.report_type === MARRY_REPORT_TYPE.CANCEL) {
+      if (Number(report.report_type) === MARRY_REPORT_TYPE.CANCEL) {
         await conn.query(
           'UPDATE `user` SET status = ?, is_vip = 0, vip_expire_time = NULL WHERE id = ?',
           [USER_STATUS.BANNED, report.user_id]
@@ -564,7 +564,7 @@ router.post('/marry-reports/:id/approve', async (req, res, next) => {
         return success(res, null, '审核通过，账号已注销');
       }
 
-      if (report.report_type === MARRY_REPORT_TYPE.MARRY) {
+      if (Number(report.report_type) === MARRY_REPORT_TYPE.MARRY) {
         await conn.query(
           'UPDATE `user` SET status = ?, is_vip = 0, vip_expire_time = NULL WHERE id = ?',
           [USER_STATUS.MARRIED, report.user_id]
@@ -581,8 +581,8 @@ router.post('/marry-reports/:id/approve', async (req, res, next) => {
     }
 
     await conn.query(
-      'UPDATE marry_report SET audit_status = 2 WHERE id = ?',
-      [reportId]
+      'UPDATE marry_report SET audit_status = 2, reject_reason = ?, update_time = NOW() WHERE id = ?',
+      [String(reject_reason || '').slice(0, 255), reportId]
     );
     await conn.commit();
     return success(res, null, reject_reason || '已驳回');
@@ -598,8 +598,10 @@ router.post('/marry-reports/:id/approve', async (req, res, next) => {
 router.get('/marry-reports', async (req, res, next) => {
   try {
     const [rows] = await pool.query(
-      `SELECT mr.*, u.openid FROM marry_report mr
-       JOIN \`user\` u ON u.id = mr.user_id
+      `SELECT mr.*, COALESCE(NULLIF(mr.openid, ''), u.openid) AS openid,
+              u.gender, u.city
+       FROM marry_report mr
+       LEFT JOIN \`user\` u ON u.id = mr.user_id
        ORDER BY mr.id DESC LIMIT 100`
     );
     return success(res, rows);

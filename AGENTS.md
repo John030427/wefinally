@@ -13,13 +13,12 @@
 - `project-docs/MODULES/` — 各模块规格
 - `project-docs/DEVELOPMENT_LOG.md` — 变更流水（每次改完追加一条）
 
-## 当前要做的任务
-按这两份计划执行（**先 13 后 11，同一个 agent 顺序做，不要并行**），**按 Task 顺序、每个 Task 一个 commit、跑计划里的验收**：
-- `plan-module13-free-whitelist.md` — 批量导入 + 公职/教师/医护免费白名单
-- `plan-module11-meet-safety.md` — 见面安全 110 方案一
+## 当前状态与接手原则
+当前分支：`feature/appearance-llm-match`。module11 / module13、匹配增强、匹配订阅通知预留、外貌 LLM 方案丙均已交付并验收；不要再把旧 plan 当作当前任务重复执行。
 
-> 两份计划唯一的共享文件是 `miniprogram/pages/profile/`（各加一个菜单项：13 加「公益免费认证」、11 加「见面安全记录」）——顺序做、两个菜单项都保留、不要互相覆盖。其余文件不重叠。
-> 跑完两份后，把结果各追加一条到 `project-docs/DEVELOPMENT_LOG.md`，等人工 review。
+外貌 LLM 仍是默认关闭：`llmConfig.enabled=false`、`matchConfig.useAppearanceInMatch=false`。未拿到霞姐知情同意、个保法授权、内容安全与预算确认前，不开启。
+
+新任务以用户最新指令或新的 plan 为准。执行前先看 `project-docs/DEVELOPMENT_LOG.md` 和 `server/selfcheck/`，优先复用已有自检脚本，不再写完即删临时验收。
 
 ## 硬约束（违反即返工）
 - **不改**：`orderService` 分润、支付流程、`matchCron` 周三/五节奏、`database/init.sql` 已上线结构（要改表写新 `database/patch-*.sql`）、`app.wxss` 设计系统。

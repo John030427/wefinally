@@ -585,6 +585,120 @@ LLM **只在用户存外貌时调一次**抽结构化标签存库;**匹配时只
 
 ---
 
+## 2026-07-02 — 自检脚本沉淀 + R1 老 Bug 文档收口
+
+### 类型
+测试沉淀 / Bug 收口 / 文档
+
+### 修改目的
+把此前跑完即删的验收脚本沉淀为 `server/selfcheck/*.js`，覆盖匹配核心、免费会员、见面安全、LLM 默认关回退、R1 确定性 Bug；同时清理文档里“R1 待修”的过期状态。
+
+### 涉及文件
+- `server/selfcheck/*`
+- `server/package.json`
+- `server/src/routes/match.js`
+- `AGENTS.md`
+- `project-docs/TODO.md`
+- `project-docs/README_HANDOVER.md`
+- `project-docs/REQUIREMENTS.md`
+- `project-docs/CODE_REVIEW.md`
+- `project-docs/MODULES/07-合伙人体系.md`
+- `project-docs/MODULES/10-婚姻报备与数据公示.md`
+
+### 测试
+- [x] `node --check` selfcheck 脚本与改动路由
+- [x] `npm run selfcheck`
+
+### 备注
+沉淀过程中发现小程序实际使用的 `/api/match/setting` 仍会把 `prefer_city` 写入 `like_circle_ids`，已按 R1 根因一并修复，并纳入 `known-bugs.js`。
+
+---
+
+## 2026-07-02 — 本地开发微信登录开关
+
+### 类型
+开发调试 / 安全开关 / 文档
+
+### 修改目的
+微信开发者工具联调阶段暂无真实 `WX_SECRET` 时，允许本地显式开启 dev 登录，绕过微信 `code2session`，先跑通登录、注册和页面业务流程；默认关闭，且生产环境强制无效。
+
+### 涉及文件
+- `server/src/services/devWxLogin.js`
+- `server/src/routes/auth.js`
+- `server/selfcheck/dev-login.js`
+- `server/selfcheck/run-all.js`
+- `server/.env.example`
+- `miniprogram/README.md`
+- `project-docs/README_HANDOVER.md`
+
+### 测试
+- [x] `node selfcheck/dev-login.js`
+- [x] `node --check selfcheck/dev-login.js selfcheck/run-all.js src/services/devWxLogin.js src/routes/auth.js`
+- [x] `npm run selfcheck`
+- [x] 默认关闭时 `POST /api/auth/wx-login` 仍走微信校验并返回 `invalid appsecret`
+- [x] 临时开启时 `POST /api/auth/wx-login` 返回本地 openid 和 `needRegister=true`
+
+### 备注
+本机 `server/.env` 已写入 AppID `wx91c6559ea4490a29`，`DEV_WX_LOGIN_ENABLED=false` 保持默认关闭；当前调试用后端进程可临时开启 dev 登录，重启后端前需按需切换。
+
+---
+
+## 2026-07-02 — 注册体验优化：圈层分组、离异复入、推广码选填
+
+### 类型
+体验优化 / 后端接口 / 自检
+
+### 修改目的
+解决注册流程三个卡点：职业圈层从 50 项单列选择改为按板块二级选择；婚姻状况补“离异”并转入人工复入审核状态页；推广码改为选填，空值允许注册，填错才拦截，填对绑定激活合伙人。
+
+### 涉及文件
+- `database/patch-007-register-ux.sql`
+- `server/src/routes/common.js`
+- `server/src/routes/user.js`
+- `server/src/routes/admin.js`
+- `server/src/routes/report.js`
+- `server/selfcheck/register-ux.js`
+- `server/selfcheck/run-all.js`
+- `miniprogram/app.json`
+- `miniprogram/pages/register/*`
+- `miniprogram/pages/divorce-review/*`
+- `miniprogram/utils/constants.js`
+- `miniprogram/utils/util.js`
+
+### 测试
+- [x] `node --check` 后端改动路由、新增自检和小程序 JS
+- [x] `Get-ChildItem selfcheck/*.js | ForEach-Object { node --check $_.FullName }`
+- [x] `node selfcheck/register-ux.js`
+- [x] `npm run selfcheck`
+
+### 备注
+本地已应用 `patch-007-register-ux.sql`；离异申请仅记录 openid、联系电话、备注和设备信息，不提供用户端证明文件上传，审核通过后也不自动创建可匹配用户。
+
+---
+
+## 2026-07-03 — 本地 VIP 支付 mock 不再调用微信支付
+
+### 类型
+Bug修复 / 支付联调 / 自检
+
+### 修改目的
+修复真机/开发联调时点击开通 VIP 后弹出“调用支付 JSAPI 缺少参数：total_fee”的问题。根因是开发环境未配置微信商户号/API Key 时，后端生成了 `payment.mock=true` 的假支付参数并返回给小程序，前端随后仍调用 `wx.requestPayment`。
+
+### 涉及文件
+- `server/src/routes/order.js`
+- `server/selfcheck/vip-purchase-dev.js`
+- `server/selfcheck/run-all.js`
+- `server/selfcheck/register-ux.js`
+
+### 测试
+- [x] `node selfcheck/vip-purchase-dev.js`
+- [x] `npm run selfcheck`
+
+### 备注
+仅调整开发环境 mock 支付分支：遇到 mock payment 时直接本地标记订单已支付并返回 `payment: null`，不触发小程序支付 JSAPI；未改 `orderService` 分润/入账逻辑。`register-ux` 自检改为自动选择空闲圈层，避免与本地测试合伙人账号冲突。
+
+---
+
 ## 模板（后续变更请复制）
 
 ```markdown

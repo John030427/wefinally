@@ -1,0 +1,18 @@
+{
+  "type": "design",
+  "designSystems": [],
+  "primaryDesignSystem": null,
+  "assets": {
+    "Apple Style Mobile Prototype": {
+      "versions": [
+        {
+          "path": "Apple Style Mobile Prototype.html",
+          "createdAt": "2026-07-02T08:08:50.199Z",
+          "status": "needs-review"
+        }
+      ]
+    }
+  },
+  "createdAt": "2026-07-02T08:08:50.199Z",
+  "updatedAt": "2026-07-02T09:21:45.890Z"
+}
