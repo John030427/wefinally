@@ -2,7 +2,12 @@ const fs = require('fs');
 const path = require('path');
 const llmConfig = require('../src/config/llmConfig');
 const matchConfig = require('../src/config/matchConfig');
-const { extractAppearanceTags, generateMatchReport } = require('../src/services/llmService');
+const {
+  extractAppearanceTags,
+  generateMatchReport,
+  generateMutualMatchReports,
+  rerankMatchCandidates,
+} = require('../src/services/llmService');
 const { ok } = require('./_helpers');
 
 (async () => {
@@ -13,6 +18,10 @@ const { ok } = require('./_helpers');
   ok('extractAppearanceTags returns null when disabled', (await extractAppearanceTags('高 瘦 文艺')) === null);
   const report = await generateMatchReport({}, {}, {});
   ok('generateMatchReport returns disabled when off', report.status === 3);
+  const mutualReport = await generateMutualMatchReports({}, {}, {}, {});
+  ok('generateMutualMatchReports returns disabled when off', mutualReport.status === 3);
+  const rerank = await rerankMatchCandidates({}, []);
+  ok('rerankMatchCandidates returns disabled when off', rerank.status === 3);
 
   const matchService = fs.readFileSync(path.join(__dirname, '..', 'src', 'services', 'matchService.js'), 'utf8');
   ok('matchService does not call extractAppearanceTags', !matchService.includes('extractAppearanceTags'));

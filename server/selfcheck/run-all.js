@@ -6,6 +6,7 @@ const scripts = [
   'match.js',
   'match-psych-report.js',
   'llm-default-off.js',
+  'ai-weighted-default-off.js',
   'partner-dashboard.js',
   'dev-login.js',
   'free-member.js',

@@ -4,7 +4,7 @@ const { scorePsychProfile } = require('../utils/psychMatch');
 const { USER_STATUS } = require('../config/constants');
 const cfg = require('../config/matchConfig');
 const { sendMatchNotice } = require('./wxNotify');
-const { generateMatchReport } = require('./llmService');
+const { generateMutualMatchReports, rerankMatchCandidates } = require('./llmService');
 
 const COMBINE = (ab, ba) => (ab + ba) / 2;
 
@@ -161,6 +161,36 @@ function scorePair(user, settings, candidate, viewSim) {
   return scorePairDetail(user, settings, candidate, viewSim).total;
 }
 
+async function applyAiRerank(user, eligible) {
+  if (!eligible.length) return eligible;
+  eligible.sort((a, b) => b.combined - a.combined || b.viewSim - a.viewSim);
+
+  const rerank = await rerankMatchCandidates(user, eligible);
+  if (rerank.status === 3) return eligible;
+  if (rerank.status !== 1) {
+    eligible[0].aiWeight = { status: rerank.status, fallback: true, error: rerank.error || '' };
+    return eligible;
+  }
+
+  for (const item of eligible) {
+    const ai = rerank.scores[item.candidate.id];
+    if (!ai) continue;
+    const algorithmScore = Math.min(100, item.combined);
+    const finalScore = Math.round((algorithmScore * 0.7 + ai.ai_score * 0.3) * 100) / 100;
+    item.aiWeight = {
+      status: 1,
+      algorithm_score: algorithmScore,
+      ai_score: ai.ai_score,
+      final_score: finalScore,
+      reason: ai.reason || '',
+    };
+    item.sortScore = finalScore;
+  }
+
+  eligible.sort((a, b) => (b.sortScore ?? b.combined) - (a.sortScore ?? a.combined) || b.viewSim - a.viewSim);
+  return eligible;
+}
+
 async function getActiveVipUsers(conn) {
   const [rows] = await conn.query(
     `SELECT u.*, ms.age_min, ms.age_max, ms.height_min, ms.height_max,
@@ -271,7 +301,7 @@ async function runBatchMatch(batchDate, matchType) {
 
       let eligible = scored.filter((s) => s.meetsFloor);
       if (eligible.length === 0 && cfg.smallPoolFallback) eligible = scored;
-      eligible.sort((a, b) => b.combined - a.combined || b.viewSim - a.viewSim);
+      eligible = await applyAiRerank(user, eligible);
       const best = eligible[0];
       if (!best) continue;
 
@@ -280,6 +310,7 @@ async function runBatchMatch(batchDate, matchType) {
         total: best.scoreAB.total,
         mutual_total: best.combined,
         view_similarity: best.viewSim,
+        ai_weight: best.aiWeight || null,
         side: best.scoreAB.detail,
       };
       const scoreDetailB = {
@@ -287,6 +318,7 @@ async function runBatchMatch(batchDate, matchType) {
         total: best.scoreBA.total,
         mutual_total: best.combined,
         view_similarity: best.viewSim,
+        ai_weight: best.aiWeight || null,
         side: best.scoreBA.detail,
       };
       const [inserted] = await conn.query(
@@ -305,35 +337,38 @@ async function runBatchMatch(batchDate, matchType) {
       notices.push({ openid: user.openid, date: batchDate, type: matchType });
       notices.push({ openid: best.candidate.openid, date: batchDate, type: matchType });
       reports.push({
-        logId: inserted.insertId,
-        viewer: user,
-        partner: best.candidate,
-        scoreDetail: scoreDetailA,
-      });
-      reports.push({
-        logId: inserted.insertId + 1,
-        viewer: best.candidate,
-        partner: user,
-        scoreDetail: scoreDetailB,
+        logAId: inserted.insertId,
+        logBId: inserted.insertId + 1,
+        userA: user,
+        userB: best.candidate,
+        scoreDetailA,
+        scoreDetailB,
       });
       matched += 1;
     }
 
     await conn.commit();
     for (const r of reports) {
-      const report = await generateMatchReport(r.viewer, r.partner, r.scoreDetail);
-      await pool.query(
-        `UPDATE user_match_log
-         SET ai_report_text = ?, ai_report_status = ?, ai_report_error = ?, ai_report_time = ?
-         WHERE id = ?`,
-        [
-          report.text || null,
-          report.status,
-          String(report.error || '').slice(0, 255),
-          report.status === 1 ? new Date() : null,
-          r.logId,
-        ]
-      ).catch((e) => console.error('[match report] update fail:', e.message));
+      const report = await generateMutualMatchReports(r.userA, r.userB, r.scoreDetailA, r.scoreDetailB);
+      const now = report.status === 1 ? new Date() : null;
+      const updates = [
+        [r.logAId, report.a],
+        [r.logBId, report.b],
+      ];
+      for (const [logId, item] of updates) {
+        await pool.query(
+          `UPDATE user_match_log
+           SET ai_report_text = ?, ai_report_status = ?, ai_report_error = ?, ai_report_time = ?
+           WHERE id = ?`,
+          [
+            item.text || null,
+            report.status,
+            String(item.error || '').slice(0, 255),
+            now,
+            logId,
+          ]
+        ).catch((e) => console.error('[match report] update fail:', e.message));
+      }
     }
     for (const n of notices) {
       await sendMatchNotice(n.openid, { date: n.date, type: n.type });
@@ -349,6 +384,7 @@ async function runBatchMatch(batchDate, matchType) {
 
 module.exports = {
   runBatchMatch,
+  applyAiRerank,
   scorePair,
   scorePairDetail,
   calcAge,

@@ -730,6 +730,31 @@ Bug修复 / 支付联调 / 自检
 
 ---
 
+## 2026-07-03 — Branch B：AI加权 Top K 重排实验
+
+### 类型
+实验功能 / 匹配算法 / 文档
+
+### 修改目的
+在 Branch A 可解释算法基础上增加 AI 加权重排实验：先由算法筛选候选，再在开关开启时让 DeepSeek 对 Top K 生成 `ai_score`，按 70/30 合成最终排序分。默认关闭，失败自动回退算法排序。
+
+### 涉及文件
+- `server/src/services/llmService.js`
+- `server/src/services/matchService.js`
+- `server/selfcheck/ai-weighted-default-off.js`
+- `server/selfcheck/llm-default-off.js`
+- `server/selfcheck/run-all.js`
+- `project-docs/MATCH_EXPERIMENT_COMPARE.md`
+
+### 测试
+- [x] `node --check src/services/matchService.js src/services/llmService.js selfcheck/llm-default-off.js selfcheck/ai-weighted-default-off.js`
+- [x] `npm run selfcheck`
+
+### 备注
+`AI_MATCH_WEIGHT_ENABLED=false` 保持默认关闭；默认关闭时自检确认 AI 重排不改变算法排序。报告调用已调整为“一对匹配一次 LLM 调用返回双方报告”，便于成本对比。
+
+---
+
 ## 模板（后续变更请复制）
 
 ```markdown
