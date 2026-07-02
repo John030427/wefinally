@@ -49,6 +49,18 @@
       </view>
     </view>
 
+    <view class="compat-card card" wx:if="{{hasTotalScore}}">
+      <view class="compat-title">综合匹配度</view>
+      <view class="compat-score-row">
+        <text class="compat-score-num">{{totalScore}}</text>
+        <text class="compat-score-unit">分</text>
+      </view>
+      <view class="progress-bar progress-lg">
+        <view class="progress-fill progress-pink" style="width: {{totalScore}}%"></view>
+      </view>
+      <view class="compat-hint">基于基础条件、三观文本和关系偏好综合计算</view>
+    </view>
+
     <view class="compat-card card">
       <view class="compat-title">三观契合度</view>
 
@@ -70,6 +82,14 @@
           <view class="compat-empty-text">对方暂未完善三观理念，暂无契合度评估</view>
         </view>
       </block>
+    </view>
+
+    <view class="report-card card" wx:if="{{!detail.locked}}">
+      <view class="meet-title">AI匹配报告</view>
+      <view wx:if="{{detail.aiReportText}}" class="report-text">{{detail.aiReportText}}</view>
+      <view wx:elif="{{detail.aiReportStatus === 3}}" class="compat-hint">AI报告默认关闭，当前展示算法匹配结果</view>
+      <view wx:elif="{{detail.aiReportStatus === 2}}" class="compat-hint">AI报告暂未生成成功，匹配结果不受影响</view>
+      <view wx:else class="compat-hint">AI报告待生成</view>
     </view>
 
     <view class="meet-card card">

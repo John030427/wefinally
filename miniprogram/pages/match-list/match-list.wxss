@@ -31,6 +31,12 @@
   margin-bottom: 8rpx;
 }
 
+.item-score {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8rpx;
+}
+
 .item-arrow {
   position: absolute;
   right: 32rpx;

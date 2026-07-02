@@ -699,6 +699,37 @@ Bug修复 / 支付联调 / 自检
 
 ---
 
+## 2026-07-03 — Branch A：心理学算法匹配 + AI报告默认关
+
+### 类型
+新功能 / 匹配算法 / 自检
+
+### 修改目的
+保留旧纯算法双向互选骨架，加入轻量心理/关系偏好维度；匹配结果写入综合分和分数拆解。AI 仅用于匹配后给双方生成报告，默认关闭，不参与排序。
+
+### 涉及文件
+- `database/patch-008-match-psych-report.sql`
+- `server/src/config/llmConfig.js`
+- `server/src/config/matchConfig.js`
+- `server/src/services/matchService.js`
+- `server/src/services/llmService.js`
+- `server/src/utils/psychMatch.js`
+- `server/src/routes/match.js`
+- `server/src/routes/user.js`
+- `server/selfcheck/match-psych-report.js`
+- `server/selfcheck/partner-dashboard.js`
+- `miniprogram/pages/match-setting/*`
+- `miniprogram/pages/match-detail/*`
+
+### 测试
+- [x] `node --check server/src/services/matchService.js server/src/services/llmService.js server/src/routes/match.js server/src/routes/user.js server/selfcheck/match-psych-report.js server/selfcheck/partner-dashboard.js`
+- [x] `npm run selfcheck`
+
+### 备注
+本地已应用 `patch-008-match-psych-report.sql`。`LLM_MATCH_REPORT_ENABLED=false`、`AI_MATCH_WEIGHT_ENABLED=false` 均保持默认关闭；报告关闭时自检确认匹配照常生成且 `ai_report_status=3`。
+
+---
+
 ## 模板（后续变更请复制）
 
 ```markdown

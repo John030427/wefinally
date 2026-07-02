@@ -7,6 +7,7 @@ module.exports = {
   weights: {
     baby: 30,      // 婚育节奏一致
     view: 25,      // 三观文本契合度
+    psych: 18,     // 轻量心理/关系偏好
     appearance: 10, // 外貌（我方期待 vs 对方实际 标签重合）
     age: 15,       // 年龄落在区间
     height: 12,    // 身高落在区间

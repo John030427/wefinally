@@ -32,6 +32,7 @@ Page({
       const raw = (data && (data.list || data.items)) || (Array.isArray(data) ? data : [])
       const list = raw.map((item) => {
         const score = item.view_similarity ?? item.compatibilityScore
+        const totalScore = item.total_score ?? item.totalScore
         return {
           id: item.id || item.matchId,
           matchType: item.match_type || item.matchType || '',
@@ -39,6 +40,7 @@ Page({
           gender: genderText(item.gender),
           age: item.age || calcAge(item.birth_year),
           city: item.city || '--',
+          totalScore: totalScore != null ? Math.min(100, Math.round(Number(totalScore))) : null,
           score: score !== null && score !== undefined ? Number(score) : null,
           scoreColor: score != null ? getCompatibilityColor(score) : '',
           scoreTag: score != null ? getCompatibilityTagClass(score) : ''

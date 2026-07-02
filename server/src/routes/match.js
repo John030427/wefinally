@@ -16,6 +16,7 @@ const {
   VIEW_TEXT_MAX,
   USER_STATUS,
 } = require('../config/constants');
+const { normalizePsychProfile } = require('../utils/psychMatch');
 
 const router = express.Router();
 
@@ -57,6 +58,7 @@ function formatSetting(row) {
     prefer_height: row.height_min && row.height_max ? `${row.height_min}-${row.height_max}cm` : '',
     my_values: row.self_view_text || '',
     expect_values: row.target_view_text || '',
+    psych_profile: normalizePsychProfile(row.psych_profile_json),
     ...row,
   };
 }
@@ -66,6 +68,15 @@ function ageBand(birthYear) {
   const age = new Date().getFullYear() - Number(birthYear);
   const lo = Math.floor(age / 5) * 5;
   return `${lo}-${lo + 5}岁`;
+}
+
+function parseJson(value) {
+  if (!value) return null;
+  try {
+    return typeof value === 'string' ? JSON.parse(value) : value;
+  } catch (e) {
+    return null;
+  }
 }
 
 function formatMatchItem(row, vip) {
@@ -78,6 +89,7 @@ function formatMatchItem(row, vip) {
       match_date: row.match_date,
       match_type: row.match_type,
       view_similarity: null,
+      total_score: null,
       message: '你有一位匹配对象，开通 VIP 查看完整匹配详情',
     };
   }
@@ -93,6 +105,10 @@ function formatMatchItem(row, vip) {
     match_type: row.match_type,
     view_similarity: row.view_similarity,
     compatibilityScore: row.view_similarity,
+    total_score: Number(row.total_score || 0),
+    totalScore: Number(row.total_score || 0),
+    score_detail: parseJson(row.score_detail_json),
+    ai_report_status: row.ai_report_status,
     matched_user_id: row.match_user_id,
     age_band: ageBand(row.birth_year),
     height_range: row.height_range,
@@ -159,7 +175,7 @@ router.post(
 
       const {
         prefer_age, prefer_education, prefer_city, prefer_height,
-        like_marry_status, like_baby_plan,
+        like_marry_status, like_baby_plan, psych_profile,
         my_values, expect_values,
       } = req.body;
 
@@ -170,6 +186,7 @@ router.post(
 
       const ageRange = parseAgeRange(prefer_age);
       const heightRange = parseHeightRange(prefer_height);
+      const psychProfileJson = JSON.stringify(normalizePsychProfile(psych_profile));
 
       if (current) {
         await pool.query(
@@ -177,14 +194,14 @@ router.post(
             age_min = ?, age_max = ?, height_min = ?, height_max = ?,
             min_education = ?, like_circle_ids = ?,
             like_marry_status = ?, like_baby_plan = ?,
-            self_view_text = ?, target_view_text = ?, last_edit_time = NOW()
+            self_view_text = ?, target_view_text = ?, psych_profile_json = ?, last_edit_time = NOW()
            WHERE user_id = ?`,
           [
             ageRange.age_min, ageRange.age_max,
             heightRange.height_min, heightRange.height_max,
             prefer_education || null, '',
             like_marry_status || null, like_baby_plan || null,
-            my_values.trim(), expect_values.trim(),
+            my_values.trim(), expect_values.trim(), psychProfileJson,
             req.auth.id,
           ]
         );
@@ -193,15 +210,15 @@ router.post(
           `INSERT INTO user_match_setting
            (user_id, age_min, age_max, height_min, height_max, min_education,
             like_circle_ids, like_marry_status, like_baby_plan,
-            self_view_text, target_view_text, last_edit_time)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+            self_view_text, target_view_text, psych_profile_json, last_edit_time)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
           [
             req.auth.id,
             ageRange.age_min, ageRange.age_max,
             heightRange.height_min, heightRange.height_max,
             prefer_education || null, '',
             like_marry_status || null, like_baby_plan || null,
-            my_values.trim(), expect_values.trim(),
+            my_values.trim(), expect_values.trim(), psychProfileJson,
           ]
         );
       }
@@ -242,7 +259,8 @@ router.post('/start', requireVip, async (req, res) => {
 router.get('/latest', async (req, res, next) => {
   try {
     const [rows] = await pool.query(
-      `SELECT ml.id, ml.match_date, ml.match_type, ml.view_similarity, ml.create_time,
+      `SELECT ml.id, ml.match_date, ml.match_type, ml.view_similarity, ml.total_score,
+              ml.score_detail_json, ml.ai_report_status, ml.create_time,
               ml.match_user_id, u.gender, u.birth_year, u.height_range,
               u.education, u.city, u.baby_plan, oc.circle_name
        FROM user_match_log ml
@@ -276,7 +294,8 @@ router.get('/list', async (req, res, next) => {
     const total = countRows[0].total;
 
     const [rows] = await pool.query(
-      `SELECT ml.id, ml.match_date, ml.match_type, ml.view_similarity, ml.create_time,
+      `SELECT ml.id, ml.match_date, ml.match_type, ml.view_similarity, ml.total_score,
+              ml.score_detail_json, ml.ai_report_status, ml.create_time,
               ml.match_user_id, u.gender, u.birth_year, u.height_range,
               u.education, u.city, u.baby_plan, oc.circle_name
        FROM user_match_log ml
@@ -334,6 +353,7 @@ async function loadMatchDetail(req, res, next, matchId) {
         match_type: match.match_type,
         locked: true,
         view_similarity: null,
+        total_score: null,
         message: '你有一位匹配对象，开通 VIP 查看完整匹配详情',
       });
     }
@@ -346,6 +366,12 @@ async function loadMatchDetail(req, res, next, matchId) {
       locked: false,
       view_similarity: match.view_similarity,
       compatibilityScore: match.view_similarity,
+      total_score: Number(match.total_score || 0),
+      totalScore: Number(match.total_score || 0),
+      score_detail: parseJson(match.score_detail_json),
+      ai_report_text: match.ai_report_text || '',
+      ai_report_status: match.ai_report_status,
+      ai_report_error: match.ai_report_error || '',
       age_band: ageBand(match.birth_year),
       height_range: match.height_range,
       education: match.education,

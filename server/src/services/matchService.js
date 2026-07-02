@@ -1,8 +1,10 @@
 const pool = require('../config/db');
 const { computeViewSimilarity } = require('../utils/viewSimilarity');
+const { scorePsychProfile } = require('../utils/psychMatch');
 const { USER_STATUS } = require('../config/constants');
 const cfg = require('../config/matchConfig');
 const { sendMatchNotice } = require('./wxNotify');
+const { generateMatchReport } = require('./llmService');
 
 const COMBINE = (ab, ba) => (ab + ba) / 2;
 
@@ -22,6 +24,7 @@ function settingsOf(row) {
     like_baby_plan: row.like_baby_plan,
     like_income: row.like_income,
     like_house_car: row.like_house_car,
+    psych_profile_json: row.psych_profile_json,
   };
 }
 
@@ -73,68 +76,89 @@ function parseTags(s) {
   }
 }
 
-/**
- * Score weights: baby_plan > view_similarity > age/height > education > circle > city
- * 满分权重读 matchConfig.weights；else 分支的基础分为兜底，保持原值（ponytail: 主权重可调即可）。
- */
-function scorePair(user, settings, candidate, viewSim) {
+function scorePairDetail(user, settings, candidate, viewSim) {
   const W = cfg.weights;
+  const detail = {};
   let score = 0;
 
   const likeBaby = settings.like_baby_plan;
-  if (likeBaby && candidate.baby_plan === likeBaby) score += W.baby;
-  else if (!likeBaby) score += 10;
+  if (likeBaby && candidate.baby_plan === likeBaby) detail.baby = W.baby;
+  else if (!likeBaby) detail.baby = 10;
+  else detail.baby = 0;
+  score += detail.baby;
 
-  score += (viewSim / 100) * W.view;
+  detail.view = Math.round((viewSim / 100) * W.view * 100) / 100;
+  score += detail.view;
+
+  const psych = scorePsychProfile(settings.psych_profile_json, candidate.psych_profile_json);
+  detail.psych = psych.compared ? Math.round((psych.score / 100) * (W.psych || 0) * 100) / 100 : 0;
+  detail.psych_score = psych.score;
+  detail.psych_compared = psych.compared;
+  detail.psych_detail = psych.detail;
+  score += detail.psych;
 
   const cAge = calcAge(candidate.birth_year);
   if (cAge != null && settings.age_min != null && settings.age_max != null) {
-    if (cAge >= settings.age_min && cAge <= settings.age_max) score += W.age;
+    if (cAge >= settings.age_min && cAge <= settings.age_max) detail.age = W.age;
     else {
       const dist = Math.min(Math.abs(cAge - settings.age_min), Math.abs(cAge - settings.age_max));
-      score += Math.max(0, W.age - dist * 2);
+      detail.age = Math.max(0, W.age - dist * 2);
     }
   } else {
-    score += 5;
+    detail.age = 5;
   }
+  score += detail.age;
 
   const cHeight = parseHeightCm(candidate.height_range);
   if (cHeight && settings.height_min && settings.height_max) {
-    if (cHeight >= settings.height_min && cHeight <= settings.height_max) score += W.height;
+    if (cHeight >= settings.height_min && cHeight <= settings.height_max) detail.height = W.height;
     else {
       const dist = Math.min(
         Math.abs(cHeight - settings.height_min),
         Math.abs(cHeight - settings.height_max)
       );
-      score += Math.max(0, W.height - dist);
+      detail.height = Math.max(0, W.height - dist);
     }
   } else {
-    score += 3;
+    detail.height = 3;
   }
+  score += detail.height;
 
-  // 学历：层级比较——达到或高于要求给满分（不再要求完全相等）
   if (settings.min_education) {
-    score += eduRank(candidate.education) >= eduRank(settings.min_education) ? W.education : 0;
+    detail.education = eduRank(candidate.education) >= eduRank(settings.min_education) ? W.education : 0;
   } else {
-    score += 2;
+    detail.education = 2;
   }
+  score += detail.education;
 
-  if (circleMatches(settings.like_circle_ids, candidate.circle_id)) score += W.circle;
-  else score += 2;
+  detail.circle = circleMatches(settings.like_circle_ids, candidate.circle_id) ? W.circle : 2;
+  score += detail.circle;
 
-  if (user.city && candidate.city === user.city) score += W.city;
-  else score += 1;
+  detail.city = user.city && candidate.city === user.city ? W.city : 1;
+  score += detail.city;
 
   if (cfg.useAppearanceInMatch) {
     const want = parseTags(user.appearance_want_tags);
     const have = parseTags(candidate.appearance_tags);
     if (want.length && have.length) {
       const overlap = want.filter((t) => have.includes(t)).length / want.length;
-      score += (W.appearance || 0) * overlap;
+      detail.appearance = Math.round((W.appearance || 0) * overlap * 100) / 100;
+      score += detail.appearance;
     }
   }
 
-  return Math.round(score * 100) / 100;
+  return {
+    total: Math.round(score * 100) / 100,
+    detail,
+  };
+}
+
+/**
+ * Score weights: baby_plan > view_similarity > age/height > education > circle > city
+ * 满分权重读 matchConfig.weights；else 分支的基础分为兜底，保持原值（ponytail: 主权重可调即可）。
+ */
+function scorePair(user, settings, candidate, viewSim) {
+  return scorePairDetail(user, settings, candidate, viewSim).total;
 }
 
 async function getActiveVipUsers(conn) {
@@ -142,7 +166,7 @@ async function getActiveVipUsers(conn) {
     `SELECT u.*, ms.age_min, ms.age_max, ms.height_min, ms.height_max,
             ms.min_education, ms.like_circle_ids, ms.like_marry_status,
             ms.like_baby_plan, ms.like_income, ms.like_house_car,
-            ms.self_view_text, ms.target_view_text
+            ms.self_view_text, ms.target_view_text, ms.psych_profile_json
      FROM \`user\` u
      INNER JOIN user_match_setting ms ON ms.user_id = u.id
      WHERE u.status = ?
@@ -160,7 +184,7 @@ async function getCandidates(conn, user) {
     `SELECT u.*, ms.age_min, ms.age_max, ms.height_min, ms.height_max,
             ms.min_education, ms.like_circle_ids, ms.like_marry_status,
             ms.like_baby_plan, ms.like_income, ms.like_house_car,
-            ms.self_view_text, ms.target_view_text
+            ms.self_view_text, ms.target_view_text, ms.psych_profile_json
      FROM \`user\` u
      INNER JOIN user_match_setting ms ON ms.user_id = u.id
      WHERE u.id != ?
@@ -186,6 +210,7 @@ async function runBatchMatch(batchDate, matchType) {
     const vipUsers = await getActiveVipUsers(conn);
     const usedThisBatch = new Set();
     const notices = [];
+    const reports = [];
 
     for (const user of vipUsers) {
       if (usedThisBatch.has(user.id)) continue;
@@ -232,13 +257,15 @@ async function runBatchMatch(batchDate, matchType) {
           c.self_view_text,
           c.target_view_text
         );
-        const scoreAB = scorePair(user, settingsA, c, viewSim);
-        const scoreBA = scorePair(c, settingsOf(c), user, viewSim);
+        const scoreAB = scorePairDetail(user, settingsA, c, viewSim);
+        const scoreBA = scorePairDetail(c, settingsOf(c), user, viewSim);
         scored.push({
           candidate: c,
           viewSim,
-          combined: COMBINE(scoreAB, scoreBA),
-          meetsFloor: Math.min(scoreAB, scoreBA) >= cfg.minSideScore,
+          scoreAB,
+          scoreBA,
+          combined: COMBINE(scoreAB.total, scoreBA.total),
+          meetsFloor: Math.min(scoreAB.total, scoreBA.total) >= cfg.minSideScore,
         });
       }
 
@@ -248,23 +275,66 @@ async function runBatchMatch(batchDate, matchType) {
       const best = eligible[0];
       if (!best) continue;
 
-      await conn.query(
+      const scoreDetailA = {
+        version: 'algo_psych_v1',
+        total: best.scoreAB.total,
+        mutual_total: best.combined,
+        view_similarity: best.viewSim,
+        side: best.scoreAB.detail,
+      };
+      const scoreDetailB = {
+        version: 'algo_psych_v1',
+        total: best.scoreBA.total,
+        mutual_total: best.combined,
+        view_similarity: best.viewSim,
+        side: best.scoreBA.detail,
+      };
+      const [inserted] = await conn.query(
         `INSERT INTO user_match_log
-         (user_id, match_user_id, view_similarity, match_date, match_type)
-         VALUES (?, ?, ?, ?, ?), (?, ?, ?, ?, ?)`,
+         (user_id, match_user_id, view_similarity, total_score, score_detail_json, score_version, match_date, match_type)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?)`,
         [
-          user.id, best.candidate.id, best.viewSim, batchDate, matchType,
-          best.candidate.id, user.id, best.viewSim, batchDate, matchType,
+          user.id, best.candidate.id, best.viewSim, best.scoreAB.total,
+          JSON.stringify(scoreDetailA), 'algo_psych_v1', batchDate, matchType,
+          best.candidate.id, user.id, best.viewSim, best.scoreBA.total,
+          JSON.stringify(scoreDetailB), 'algo_psych_v1', batchDate, matchType,
         ]
       );
       usedThisBatch.add(user.id);
       usedThisBatch.add(best.candidate.id);
       notices.push({ openid: user.openid, date: batchDate, type: matchType });
       notices.push({ openid: best.candidate.openid, date: batchDate, type: matchType });
+      reports.push({
+        logId: inserted.insertId,
+        viewer: user,
+        partner: best.candidate,
+        scoreDetail: scoreDetailA,
+      });
+      reports.push({
+        logId: inserted.insertId + 1,
+        viewer: best.candidate,
+        partner: user,
+        scoreDetail: scoreDetailB,
+      });
       matched += 1;
     }
 
     await conn.commit();
+    for (const r of reports) {
+      const report = await generateMatchReport(r.viewer, r.partner, r.scoreDetail);
+      await pool.query(
+        `UPDATE user_match_log
+         SET ai_report_text = ?, ai_report_status = ?, ai_report_error = ?, ai_report_time = ?
+         WHERE id = ?`,
+        [
+          report.text || null,
+          report.status,
+          String(report.error || '').slice(0, 255),
+          report.status === 1 ? new Date() : null,
+          r.logId,
+        ]
+      ).catch((e) => console.error('[match report] update fail:', e.message));
+    }
     for (const n of notices) {
       await sendMatchNotice(n.openid, { date: n.date, type: n.type });
     }
@@ -280,6 +350,7 @@ async function runBatchMatch(batchDate, matchType) {
 module.exports = {
   runBatchMatch,
   scorePair,
+  scorePairDetail,
   calcAge,
   parseHeightCm,
   hardOk,

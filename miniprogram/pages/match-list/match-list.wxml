@@ -44,6 +44,7 @@
       </view>
       <view class="item-body">{{item.gender}} · {{item.age}}岁 · {{item.city}}</view>
       <view class="item-score" wx:if="{{item.score !== null}}">
+        <text class="tag tag-pink" wx:if="{{item.totalScore !== null}}">综合 {{item.totalScore}}分</text>
         <text class="tag {{item.scoreTag}}">三观契合 {{item.score}}%</text>
       </view>
       <view class="item-arrow">›</view>

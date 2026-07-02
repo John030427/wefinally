@@ -43,9 +43,17 @@ const CITY_OPTIONS = [
   '南京', '西安', '苏州', '天津', '长沙', '郑州', '青岛', '厦门'
 ]
 const AGE_RANGE_OPTIONS = ['20-25岁', '25-30岁', '30-35岁', '35-40岁', '40-45岁', '45岁以上']
-const HEIGHT_RANGE_OPTIONS = ['150-160cm', '160-170cm', '170-180cm', '180-190cm', '190cm以上']
+const HEIGHT_RANGE_OPTIONS = ['140-150cm', '150-160cm', '160-170cm', '170-180cm', '180-190cm', '190cm以上']
 const LIKE_MARRY_OPTIONS = ['未婚', '不限']
 const LIKE_BABY_PLAN_OPTIONS = ['1年内', '2-3年内', '3-5年内', '5年后', '丁克', '待定', '不限']
+const PSYCH_PROFILE_OPTIONS = {
+  marriage_pace: ['稳定推进', '先磨合再定', '顺其自然'],
+  conflict_style: ['及时沟通', '冷静后沟通', '需要空间'],
+  security_space: ['高陪伴感', '亲密也独立', '重视个人空间'],
+  family_boundary: ['大家庭融合', '小家庭优先', '边界清晰'],
+  money_view: ['共同规划', '相对独立', '稳健储蓄'],
+  career_family: ['事业优先', '家庭优先', '动态平衡']
+}
 
 const COOLDOWN_DAYS = 7
 const VIP_PRICE = 188
@@ -80,6 +88,7 @@ module.exports = {
   HEIGHT_RANGE_OPTIONS,
   LIKE_MARRY_OPTIONS,
   LIKE_BABY_PLAN_OPTIONS,
+  PSYCH_PROFILE_OPTIONS,
   COOLDOWN_DAYS,
   VIP_PRICE,
   VIP_DAYS,

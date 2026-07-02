@@ -2,16 +2,19 @@ const fs = require('fs');
 const path = require('path');
 const llmConfig = require('../src/config/llmConfig');
 const matchConfig = require('../src/config/matchConfig');
-const { extractAppearanceTags } = require('../src/services/llmService');
+const { extractAppearanceTags, generateMatchReport } = require('../src/services/llmService');
 const { ok } = require('./_helpers');
 
 (async () => {
   ok('llmConfig.enabled is false', llmConfig.enabled === false);
+  ok('llm match report is false', llmConfig.matchReportEnabled === false);
+  ok('llm ai weight is false', llmConfig.aiWeightEnabled === false);
   ok('matchConfig.useAppearanceInMatch is false', matchConfig.useAppearanceInMatch === false);
   ok('extractAppearanceTags returns null when disabled', (await extractAppearanceTags('高 瘦 文艺')) === null);
+  const report = await generateMatchReport({}, {}, {});
+  ok('generateMatchReport returns disabled when off', report.status === 3);
 
   const matchService = fs.readFileSync(path.join(__dirname, '..', 'src', 'services', 'matchService.js'), 'utf8');
-  ok('matchService does not import llmService', !matchService.includes('llmService'));
   ok('matchService does not call extractAppearanceTags', !matchService.includes('extractAppearanceTags'));
 })().catch((err) => {
   console.error(err.message);

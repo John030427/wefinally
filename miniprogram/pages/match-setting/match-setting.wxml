@@ -79,6 +79,52 @@
     </view>
 
     <view class="card">
+      <view class="section-title">关系偏好</view>
+
+      <view class="form-item">
+        <text class="form-label">婚姻节奏</text>
+        <picker mode="selector" range="{{marriagePaceOptions}}" value="{{form.marriagePaceIndex}}" bindchange="onPickerChange" data-field="marriagePace" disabled="{{cooldownActive}}">
+          <view class="picker-value {{form.marriagePace ? '' : 'placeholder'}}">{{form.marriagePace || '请选择'}}</view>
+        </picker>
+      </view>
+
+      <view class="form-item">
+        <text class="form-label">冲突处理</text>
+        <picker mode="selector" range="{{conflictStyleOptions}}" value="{{form.conflictStyleIndex}}" bindchange="onPickerChange" data-field="conflictStyle" disabled="{{cooldownActive}}">
+          <view class="picker-value {{form.conflictStyle ? '' : 'placeholder'}}">{{form.conflictStyle || '请选择'}}</view>
+        </picker>
+      </view>
+
+      <view class="form-item">
+        <text class="form-label">安全感/空间</text>
+        <picker mode="selector" range="{{securitySpaceOptions}}" value="{{form.securitySpaceIndex}}" bindchange="onPickerChange" data-field="securitySpace" disabled="{{cooldownActive}}">
+          <view class="picker-value {{form.securitySpace ? '' : 'placeholder'}}">{{form.securitySpace || '请选择'}}</view>
+        </picker>
+      </view>
+
+      <view class="form-item">
+        <text class="form-label">家庭边界</text>
+        <picker mode="selector" range="{{familyBoundaryOptions}}" value="{{form.familyBoundaryIndex}}" bindchange="onPickerChange" data-field="familyBoundary" disabled="{{cooldownActive}}">
+          <view class="picker-value {{form.familyBoundary ? '' : 'placeholder'}}">{{form.familyBoundary || '请选择'}}</view>
+        </picker>
+      </view>
+
+      <view class="form-item">
+        <text class="form-label">金钱观</text>
+        <picker mode="selector" range="{{moneyViewOptions}}" value="{{form.moneyViewIndex}}" bindchange="onPickerChange" data-field="moneyView" disabled="{{cooldownActive}}">
+          <view class="picker-value {{form.moneyView ? '' : 'placeholder'}}">{{form.moneyView || '请选择'}}</view>
+        </picker>
+      </view>
+
+      <view class="form-item">
+        <text class="form-label">事业家庭</text>
+        <picker mode="selector" range="{{careerFamilyOptions}}" value="{{form.careerFamilyIndex}}" bindchange="onPickerChange" data-field="careerFamily" disabled="{{cooldownActive}}">
+          <view class="picker-value {{form.careerFamily ? '' : 'placeholder'}}">{{form.careerFamily || '请选择'}}</view>
+        </picker>
+      </view>
+    </view>
+
+    <view class="card">
       <view class="section-title">【我的三观自述】</view>
       <view class="section-hint">婚恋观、生活理念、世界观、人生观、价值观（{{textMinLen}}-{{textMaxLen}}字）</view>
       <textarea

@@ -76,7 +76,7 @@ Page({
   initBirthYears() {
     const currentYear = new Date().getFullYear()
     const years = []
-    for (let y = currentYear - 50; y <= currentYear - 18; y++) {
+    for (let y = currentYear - 65; y <= currentYear - 18; y++) {
       years.push(`${y}年`)
     }
     years.reverse()

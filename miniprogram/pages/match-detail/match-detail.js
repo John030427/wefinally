@@ -13,6 +13,8 @@ Page({
     matchId: '',
     detail: null,
     compatibilityScore: 0,
+    totalScore: 0,
+    hasTotalScore: false,
     hasScore: false,
     compatibilityLevel: '',
     progressColor: 'progress-gray',
@@ -46,8 +48,10 @@ Page({
       }
 
       const score = detail.view_similarity ?? detail.compatibilityScore ?? detail.compatibility_score
+      const totalScore = detail.total_score ?? detail.totalScore ?? 0
       const locked = !!detail.locked
       const hasScore = !locked && score !== null && score !== undefined && score > 0
+      const hasTotalScore = !locked && totalScore !== null && totalScore !== undefined && Number(totalScore) > 0
 
       const normalized = {
         locked,
@@ -59,14 +63,21 @@ Page({
         matchedUserId: detail.matched_user_id || detail.match_user_id || 0,
         matchType: detail.match_type || detail.matchType || '',
         matchDate: detail.match_date || detail.matchDate || '',
+        totalScore: Math.min(100, Math.round(Number(totalScore) || 0)),
+        scoreDetail: detail.score_detail || detail.scoreDetail || null,
+        aiReportText: detail.ai_report_text || detail.aiReportText || '',
+        aiReportStatus: detail.ai_report_status ?? detail.aiReportStatus ?? 0,
         lockMsg: detail.message || '开通 VIP 查看完整匹配详情'
       }
 
       const numScore = hasScore ? Number(score) : 0
+      const numTotalScore = hasTotalScore ? normalized.totalScore : 0
 
       this.setData({
         pageState: 'success',
         detail: normalized,
+        totalScore: numTotalScore,
+        hasTotalScore,
         compatibilityScore: numScore,
         hasScore,
         compatibilityLevel: hasScore ? getCompatibilityLevel(numScore) : '',

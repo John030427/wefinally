@@ -22,8 +22,9 @@ function formatUserForAdmin(row) {
 
 function formatPartnerForAdmin(row) {
   if (!row) return row;
+  const { password, ...safeRow } = row;
   return {
-    ...row,
+    ...safeRow,
     username: row.phone || row.username,
     real_name: row.name || row.real_name,
     created_at: row.create_time || row.created_at,

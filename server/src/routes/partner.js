@@ -62,7 +62,13 @@ router.get('/dashboard', async (req, res, next) => {
 
     const partnerId = req.auth.id;
 
-    const [partner] = await pool.query('SELECT * FROM `partner` WHERE id = ?', [partnerId]);
+    const [partner] = await pool.query(
+      `SELECT id, circle_id, name, phone, status, promote_code,
+              total_promote_user, total_promote_vip, total_commission,
+              balance, create_time, update_time
+       FROM \`partner\` WHERE id = ?`,
+      [partnerId]
+    );
 
     if (partner.length === 0) return fail(res, '合伙人不存在', 404, 404);
 
@@ -432,7 +438,7 @@ router.get('/promote-tools', async (req, res, next) => {
 
       promote_code: code,
 
-      mini_program_path: `/pages/register/index?promote_code=${code}`,
+      mini_program_path: `/pages/register/register?promote_code=${code}`,
 
       share_title: 'WeFinally · 遇见对的人',
 

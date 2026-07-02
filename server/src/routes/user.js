@@ -13,6 +13,7 @@ const {
 } = require('../middleware/guard');
 const { success, fail } = require('../utils/response');
 const { extractAppearanceTags } = require('../services/llmService');
+const { normalizePsychProfile } = require('../utils/psychMatch');
 const {
   AGREEMENT_TYPES,
   MATCH_COOLDOWN_DAYS,
@@ -508,7 +509,7 @@ router.put(
         age_min, age_max, height_min, height_max,
         min_education, like_circle_ids, like_marry_status,
         like_baby_plan, like_income, like_house_car,
-        self_view_text, target_view_text,
+        self_view_text, target_view_text, psych_profile,
         prefer_age, prefer_education, prefer_city, prefer_height,
         my_values, expect_values,
       } = req.body;
@@ -536,6 +537,7 @@ router.put(
         like_house_car: like_house_car || null,
         self_view_text: selfText || null,
         target_view_text: targetText || null,
+        psych_profile_json: JSON.stringify(normalizePsychProfile(psych_profile)),
       };
 
       if (current) {
@@ -544,13 +546,13 @@ router.put(
             age_min = ?, age_max = ?, height_min = ?, height_max = ?,
             min_education = ?, like_circle_ids = ?, like_marry_status = ?,
             like_baby_plan = ?, like_income = ?, like_house_car = ?,
-            self_view_text = ?, target_view_text = ?, last_edit_time = NOW()
+            self_view_text = ?, target_view_text = ?, psych_profile_json = ?, last_edit_time = NOW()
            WHERE user_id = ?`,
           [
             payload.age_min, payload.age_max, payload.height_min, payload.height_max,
             payload.min_education, payload.like_circle_ids, payload.like_marry_status,
             payload.like_baby_plan, payload.like_income, payload.like_house_car,
-            payload.self_view_text, payload.target_view_text,
+            payload.self_view_text, payload.target_view_text, payload.psych_profile_json,
             req.auth.id,
           ]
         );
@@ -559,14 +561,14 @@ router.put(
           `INSERT INTO user_match_setting
            (user_id, age_min, age_max, height_min, height_max, min_education,
             like_circle_ids, like_marry_status, like_baby_plan, like_income,
-            like_house_car, self_view_text, target_view_text, last_edit_time)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+            like_house_car, self_view_text, target_view_text, psych_profile_json, last_edit_time)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
           [
             req.auth.id,
             payload.age_min, payload.age_max, payload.height_min, payload.height_max,
             payload.min_education, payload.like_circle_ids, payload.like_marry_status,
             payload.like_baby_plan, payload.like_income, payload.like_house_car,
-            payload.self_view_text, payload.target_view_text,
+            payload.self_view_text, payload.target_view_text, payload.psych_profile_json,
           ]
         );
       }

@@ -8,6 +8,7 @@ const {
   HEIGHT_RANGE_OPTIONS,
   LIKE_MARRY_OPTIONS,
   LIKE_BABY_PLAN_OPTIONS,
+  PSYCH_PROFILE_OPTIONS,
   TEXT_MIN_LEN,
   TEXT_MAX_LEN,
   SUBSCRIBE_TMPL_IDS
@@ -24,6 +25,12 @@ Page({
     heightRangeOptions: HEIGHT_RANGE_OPTIONS,
     likeMarryOptions: LIKE_MARRY_OPTIONS,
     likeBabyPlanOptions: LIKE_BABY_PLAN_OPTIONS,
+    marriagePaceOptions: PSYCH_PROFILE_OPTIONS.marriage_pace,
+    conflictStyleOptions: PSYCH_PROFILE_OPTIONS.conflict_style,
+    securitySpaceOptions: PSYCH_PROFILE_OPTIONS.security_space,
+    familyBoundaryOptions: PSYCH_PROFILE_OPTIONS.family_boundary,
+    moneyViewOptions: PSYCH_PROFILE_OPTIONS.money_view,
+    careerFamilyOptions: PSYCH_PROFILE_OPTIONS.career_family,
     form: {
       preferAge: '',
       preferAgeIndex: -1,
@@ -37,6 +44,18 @@ Page({
       likeMarryIndex: -1,
       likeBabyPlan: '',
       likeBabyPlanIndex: -1,
+      marriagePace: '',
+      marriagePaceIndex: -1,
+      conflictStyle: '',
+      conflictStyleIndex: -1,
+      securitySpace: '',
+      securitySpaceIndex: -1,
+      familyBoundary: '',
+      familyBoundaryIndex: -1,
+      moneyView: '',
+      moneyViewIndex: -1,
+      careerFamily: '',
+      careerFamilyIndex: -1,
       myValues: '',
       expectValues: ''
     },
@@ -119,6 +138,13 @@ Page({
     pick(HEIGHT_RANGE_OPTIONS, data.prefer_height, 'preferHeight', 'preferHeightIndex')
     pick(LIKE_MARRY_OPTIONS, data.like_marry_status, 'likeMarry', 'likeMarryIndex')
     pick(LIKE_BABY_PLAN_OPTIONS, data.like_baby_plan, 'likeBabyPlan', 'likeBabyPlanIndex')
+    const psych = data.psych_profile || data.psychProfile || {}
+    pick(PSYCH_PROFILE_OPTIONS.marriage_pace, psych.marriage_pace, 'marriagePace', 'marriagePaceIndex')
+    pick(PSYCH_PROFILE_OPTIONS.conflict_style, psych.conflict_style, 'conflictStyle', 'conflictStyleIndex')
+    pick(PSYCH_PROFILE_OPTIONS.security_space, psych.security_space, 'securitySpace', 'securitySpaceIndex')
+    pick(PSYCH_PROFILE_OPTIONS.family_boundary, psych.family_boundary, 'familyBoundary', 'familyBoundaryIndex')
+    pick(PSYCH_PROFILE_OPTIONS.money_view, psych.money_view, 'moneyView', 'moneyViewIndex')
+    pick(PSYCH_PROFILE_OPTIONS.career_family, psych.career_family, 'careerFamily', 'careerFamilyIndex')
     form.myValues = data.my_values || data.myValues || ''
     form.expectValues = data.expect_values || data.expectValues || ''
     this.setData({
@@ -155,7 +181,13 @@ Page({
       preferCity: { options: 'cityOptions', key: 'preferCity' },
       preferHeight: { options: 'heightRangeOptions', key: 'preferHeight' },
       likeMarry: { options: 'likeMarryOptions', key: 'likeMarry' },
-      likeBabyPlan: { options: 'likeBabyPlanOptions', key: 'likeBabyPlan' }
+      likeBabyPlan: { options: 'likeBabyPlanOptions', key: 'likeBabyPlan' },
+      marriagePace: { options: 'marriagePaceOptions', key: 'marriagePace' },
+      conflictStyle: { options: 'conflictStyleOptions', key: 'conflictStyle' },
+      securitySpace: { options: 'securitySpaceOptions', key: 'securitySpace' },
+      familyBoundary: { options: 'familyBoundaryOptions', key: 'familyBoundary' },
+      moneyView: { options: 'moneyViewOptions', key: 'moneyView' },
+      careerFamily: { options: 'careerFamilyOptions', key: 'careerFamily' }
     }
     const config = map[field]
     const value = this.data[config.options][index]
@@ -218,6 +250,14 @@ Page({
         prefer_height: form.preferHeight,
         like_marry_status: form.likeMarry,
         like_baby_plan: form.likeBabyPlan,
+        psych_profile: {
+          marriage_pace: form.marriagePace,
+          conflict_style: form.conflictStyle,
+          security_space: form.securitySpace,
+          family_boundary: form.familyBoundary,
+          money_view: form.moneyView,
+          career_family: form.careerFamily
+        },
         my_values: form.myValues.trim(),
         expect_values: form.expectValues.trim()
       }, { showLoading: true, loadingText: '保存中...' })
