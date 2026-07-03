@@ -70,6 +70,11 @@
   line-height: 1;
 }
 
+.compat-score-text {
+  font-size: 44rpx;
+  line-height: 1.2;
+}
+
 .compat-score-unit {
   font-size: 32rpx;
   color: #666;

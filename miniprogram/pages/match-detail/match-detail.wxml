@@ -50,15 +50,14 @@
     </view>
 
     <view class="compat-card card" wx:if="{{hasTotalScore}}">
-      <view class="compat-title">综合匹配度</view>
+      <view class="compat-title">综合匹配参考</view>
       <view class="compat-score-row">
-        <text class="compat-score-num">{{totalScore}}</text>
-        <text class="compat-score-unit">分</text>
+        <text class="compat-score-num compat-score-text">{{totalScoreText}}</text>
       </view>
       <view class="progress-bar progress-lg">
         <view class="progress-fill progress-pink" style="width: {{totalScorePercent}}%"></view>
       </view>
-      <view class="compat-hint">原始综合匹配分，进度条按 100 封顶展示</view>
+      <view class="compat-hint">基于资料、择偶条件、三观文本和关系偏好测算，仅作优先了解参考</view>
     </view>
 
     <view class="breakdown-card card" wx:if="{{detail.scoreBreakdown && detail.scoreBreakdown.length}}">
@@ -74,7 +73,7 @@
         <view class="breakdown-note">{{item.note}}</view>
       </view>
       <view class="quality-line" wx:if="{{detail.qualityText}}">{{detail.qualityText}}</view>
-      <view class="quality-line" wx:if="{{detail.psychScore !== null}}">心理/关系偏好原始分：{{detail.psychScore}}</view>
+      <view class="quality-line" wx:if="{{psychText}}">{{psychText}}</view>
     </view>
 
     <view class="compat-card card">
@@ -82,14 +81,13 @@
 
       <block wx:if="{{hasScore}}">
         <view class="compat-score-row">
-          <text class="compat-score-num">{{compatibilityScore}}</text>
-          <text class="compat-score-unit">%</text>
+          <text class="compat-score-num compat-score-text">{{compatibilityText}}</text>
           <text class="compat-level tag {{tagClass}}">{{compatibilityLevel}}</text>
         </view>
         <view class="progress-bar progress-lg">
-          <view class="progress-fill {{progressColor}}" style="width: {{compatibilityScore}}%"></view>
+          <view class="progress-fill {{progressColor}}" style="width: {{compatibilityPercent}}%"></view>
         </view>
-        <view class="compat-hint">基于双方三观文本语义分析，前台仅展示契合度百分比</view>
+        <view class="compat-hint">基于双方三观文本语义分析，仅作资料契合参考，不代表线下相处保证</view>
       </block>
 
       <block wx:else>

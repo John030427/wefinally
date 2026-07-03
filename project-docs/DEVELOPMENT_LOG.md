@@ -941,6 +941,38 @@ Bug修复 / 测试工具
 
 ---
 
+## 2026-07-03 — 匹配演示样本真实感与前台降承诺展示
+
+### 类型
+前端展示 / 测试工具
+
+### 修改目的
+避免用户侧看到 `100%` 或满分式表达后误以为平台承诺线下约会结果；本地演示数据改为 8 条合成真实感案例，覆盖跨城、学历、圈层、心理、事业异地、三观适中等场景，且前台主视觉改为等级文案。
+
+### 涉及文件
+- `server/selfcheck/match-demo-seed.js`
+- `miniprogram/utils/util.js`
+- `miniprogram/pages/index/index.js`
+- `miniprogram/pages/index/index.wxml`
+- `miniprogram/pages/match-list/match-list.js`
+- `miniprogram/pages/match-list/match-list.wxml`
+- `miniprogram/pages/match-detail/match-detail.js`
+- `miniprogram/pages/match-detail/match-detail.wxml`
+- `miniprogram/pages/match-detail/match-detail.wxss`
+
+### 测试
+- [x] `node --check selfcheck/match-demo-seed.js`
+- [x] `node --check utils/util.js pages/match-list/match-list.js pages/index/index.js pages/match-detail/match-detail.js`
+- [x] `npm run selfcheck`
+- [x] `npm run demo:match-clear && npm run demo:match-seed`
+- [x] `GET /api/match/list` 返回 8 条演示记录，综合分约 `90-96`，三观相似约 `68-96`
+- [x] 前端检索确认不再显示 `三观 xx%`、`综合 xx分`、`原始分` 等裸分承诺文案
+
+### 备注
+用户侧首页、记录页、详情页主视觉显示“综合较高契合 / 三观值得了解 / 关系偏好较为接近”等等级文案；字段拆解和 API 仍保留原始分数，方便开发调试和算法验收。
+
+---
+
 ## 模板（后续变更请复制）
 
 ```markdown

@@ -3,7 +3,9 @@ const { API_PATHS } = require('../../utils/constants')
 const {
   formatDateOnly,
   getCompatibilityColor,
+  getCompatibilityDisplayText,
   getCompatibilityLevel,
+  getTotalMatchDisplayText,
   getCompatibilityTagClass
 } = require('../../utils/util')
 
@@ -48,6 +50,15 @@ function buildQualityText(scoreDetail) {
   return `未通过门槛：${reasons.join('、') || '未知原因'}`
 }
 
+function buildPsychText(value) {
+  const score = Number(value)
+  if (!Number.isFinite(score)) return ''
+  if (score >= 85) return '关系偏好高度接近'
+  if (score >= 65) return '关系偏好较为接近'
+  if (score >= 50) return '关系偏好需要磨合'
+  return '关系偏好差异明显'
+}
+
 function shortDate(value) {
   return formatDateOnly(value)
 }
@@ -61,6 +72,10 @@ Page({
     compatibilityScore: 0,
     totalScore: 0,
     totalScorePercent: 0,
+    totalScoreText: '',
+    compatibilityPercent: 0,
+    compatibilityText: '',
+    psychText: '',
     hasTotalScore: false,
     hasScore: false,
     compatibilityLevel: '',
@@ -112,12 +127,18 @@ Page({
         matchDate: shortDate(detail.match_date || detail.matchDate || ''),
         totalScore: Math.round(Number(totalScore) || 0),
         totalScorePercent: Math.min(100, Math.round(Number(totalScore) || 0)),
+        totalScoreText: getTotalMatchDisplayText(totalScore),
+        compatibilityText: getCompatibilityDisplayText(score),
+        compatibilityPercent: Math.min(95, Math.round(Number(score) || 0)),
         scoreDetail: detail.score_detail || detail.scoreDetail || null,
         scoreBreakdown: buildScoreBreakdown(detail.score_detail || detail.scoreDetail || null),
         qualityText: buildQualityText(detail.score_detail || detail.scoreDetail || null),
         psychScore: (detail.score_detail || detail.scoreDetail || {}).side
           ? (detail.score_detail || detail.scoreDetail || {}).side.psych_score
           : null,
+        psychText: buildPsychText((detail.score_detail || detail.scoreDetail || {}).side
+          ? (detail.score_detail || detail.scoreDetail || {}).side.psych_score
+          : null),
         aiReportText: detail.ai_report_text || detail.aiReportText || '',
         aiReportStatus: detail.ai_report_status ?? detail.aiReportStatus ?? 0,
         lockMsg: detail.message || '开通 VIP 查看完整匹配详情'
@@ -131,6 +152,10 @@ Page({
         detail: normalized,
         totalScore: numTotalScore,
         totalScorePercent: hasTotalScore ? normalized.totalScorePercent : 0,
+        totalScoreText: hasTotalScore ? normalized.totalScoreText : '',
+        compatibilityText: hasScore ? normalized.compatibilityText : '',
+        compatibilityPercent: hasScore ? normalized.compatibilityPercent : 0,
+        psychText: normalized.psychText,
         hasTotalScore,
         compatibilityScore: numScore,
         hasScore,

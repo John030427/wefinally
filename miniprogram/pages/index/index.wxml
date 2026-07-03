@@ -56,7 +56,7 @@
         <text>{{latestMatch.gender}} · {{latestMatch.age}}岁 · {{latestMatch.city}}</text>
       </view>
       <view class="match-score" wx:if="{{latestMatch.score !== null}}">
-        三观契合度 {{latestMatch.score}}%
+        {{latestMatch.scoreText}}
       </view>
       <view class="match-link">查看详情 ›</view>
     </view>

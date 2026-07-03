@@ -1,6 +1,6 @@
 const { get } = require('../../utils/request')
 const { API_PATHS, MATCH_SCHEDULE } = require('../../utils/constants')
-const { formatDateOnly, getNextMatchTime, genderText, calcAge } = require('../../utils/util')
+const { formatDateOnly, getNextMatchTime, genderText, calcAge, getCompatibilityDisplayText } = require('../../utils/util')
 
 Page({
   data: {
@@ -51,6 +51,7 @@ Page({
           matchType: latest.match_type || latest.matchType || '',
           matchDate: formatDateOnly(latest.match_date || latest.matchDate),
           score: latest.view_similarity ?? latest.compatibilityScore ?? null,
+          scoreText: getCompatibilityDisplayText(latest.view_similarity ?? latest.compatibilityScore ?? 0),
           gender: genderText(latest.gender),
           age: latest.age || calcAge(latest.birth_year),
           city: latest.city || '--'

@@ -18,24 +18,176 @@ const {
   clearDemoMatchData,
 } = require('./match-demo-clear');
 
+const DEMO_VIEW_TEXT = {
+  devSelf:
+    '我重视长期婚姻、责任感、稳定沟通和共同经营家庭，遇到分歧愿意复盘，也尊重彼此成长空间',
+  devTarget:
+    '希望对方真诚稳定，有责任心，愿意认真经营关系，能一起规划家庭和事业，也保留彼此成长空间',
+};
+
+const PARTNER_TEXT = {
+  steady:
+    '我期待稳定亲密关系，重视责任、沟通和长期家庭经营，分歧时愿意复盘，也支持彼此成长',
+  city:
+    '我工作节奏比较稳定，重视长期承诺和有效沟通，异地也愿意提前安排见面与未来规划',
+  circle:
+    '我在职业圈层里接触人多，但感情上偏慢热，重视坦诚、责任和稳定经营',
+  boundary:
+    '我喜欢清晰边界和独立空间，也重视承诺、复盘沟通和稳定的家庭经营',
+  education:
+    '我不太看重学历标签，更看重责任感、诚实沟通、生活稳定和共同解决问题的能力',
+  career:
+    '我事业心比较强，平时节奏忙，但会为重要关系留时间，重视承诺和长期计划',
+  open:
+    '我喜欢新鲜体验和旅行，也重视关系中的责任、沟通和未来规划',
+};
+
+const PSYCH_VARIANTS = {
+  stable: PSYCH.stable,
+  boundary: {
+    ...PSYCH.stable,
+    conflict_style: '冷静后沟通',
+    security_space: '重视个人空间',
+  },
+};
+
 const DEMO_MATCHES = [
-  { suffix: 'high', matchDate: '2026-07-03', matchType: '演示高契合' },
-  { suffix: 'view', matchDate: '2026-07-01', matchType: '演示三观中等', viewSim: 65 },
   {
-    suffix: 'psych',
-    matchDate: '2026-06-26',
-    matchType: '演示心理磨合',
-    partnerPsych: {
-      marriage_pace: PSYCH.stable.marriage_pace,
-      conflict_style: '冷静后沟通',
-      security_space: PSYCH.stable.security_space,
-      family_boundary: '边界清晰',
-      money_view: PSYCH.stable.money_view,
-      career_family: '事业优先',
+    suffix: 'steady',
+    matchDate: '2026-07-03',
+    matchType: '演示高契合',
+    viewSim: 92,
+    partner: {
+      education: '硕士',
+      city: '深圳',
+      circleId: 1,
+      babyPlan: '3-5年内',
+      setting: {
+        psychProfile: PSYCH_VARIANTS.stable,
+        selfViewText: PARTNER_TEXT.steady,
+        targetViewText: PARTNER_TEXT.steady,
+      },
     },
   },
-  { suffix: 'edu', matchDate: '2026-06-24', matchType: '演示学历软扣', partnerEducation: '高中及以下' },
-  { suffix: 'city', matchDate: '2026-06-19', matchType: '演示异地扣分', partnerCity: '广州' },
+  {
+    suffix: 'cross_city',
+    matchDate: '2026-07-01',
+    matchType: '演示跨城',
+    viewSim: 84,
+    partner: {
+      education: '本科',
+      city: '广州',
+      circleId: 1,
+      babyPlan: '2-3年内',
+      setting: {
+        psychProfile: PSYCH_VARIANTS.stable,
+        selfViewText: PARTNER_TEXT.city,
+        targetViewText: PARTNER_TEXT.city,
+      },
+    },
+  },
+  {
+    suffix: 'education',
+    matchDate: '2026-06-26',
+    matchType: '演示学历',
+    viewSim: 76,
+    partner: {
+      education: '高中及以下',
+      city: '深圳',
+      circleId: 1,
+      babyPlan: '1年内',
+      setting: {
+        psychProfile: PSYCH_VARIANTS.stable,
+        selfViewText: PARTNER_TEXT.education,
+        targetViewText: PARTNER_TEXT.education,
+      },
+    },
+  },
+  {
+    suffix: 'low_view',
+    matchDate: '2026-06-24',
+    matchType: '演示三观适中',
+    viewSim: 68,
+    partner: {
+      education: '本科',
+      city: '深圳',
+      circleId: 1,
+      babyPlan: '待定',
+      setting: {
+        psychProfile: PSYCH_VARIANTS.stable,
+        selfViewText: PARTNER_TEXT.open,
+        targetViewText: PARTNER_TEXT.open,
+      },
+    },
+  },
+  {
+    suffix: 'circle',
+    matchDate: '2026-06-19',
+    matchType: '演示圈层',
+    viewSim: 88,
+    partner: {
+      education: '大专',
+      city: '深圳',
+      circleId: 4,
+      babyPlan: '待定',
+      setting: {
+        psychProfile: PSYCH_VARIANTS.stable,
+        selfViewText: PARTNER_TEXT.circle,
+        targetViewText: PARTNER_TEXT.circle,
+      },
+    },
+  },
+  {
+    suffix: 'psych',
+    matchDate: '2026-06-17',
+    matchType: '演示心理',
+    viewSim: 92,
+    partner: {
+      education: '本科',
+      city: '深圳',
+      circleId: 1,
+      babyPlan: '丁克',
+      setting: {
+        psychProfile: PSYCH_VARIANTS.boundary,
+        selfViewText: PARTNER_TEXT.boundary,
+        targetViewText: PARTNER_TEXT.boundary,
+      },
+    },
+  },
+  {
+    suffix: 'career',
+    matchDate: '2026-06-12',
+    matchType: '演示事业异地',
+    viewSim: 96,
+    partner: {
+      education: '博士',
+      city: '杭州',
+      circleId: 5,
+      babyPlan: '3-5年内',
+      setting: {
+        psychProfile: PSYCH_VARIANTS.stable,
+        selfViewText: PARTNER_TEXT.career,
+        targetViewText: PARTNER_TEXT.career,
+      },
+    },
+  },
+  {
+    suffix: 'open_view',
+    matchDate: '2026-06-10',
+    matchType: '演示三观中等',
+    viewSim: 80,
+    partner: {
+      education: '大专',
+      city: '上海',
+      circleId: 1,
+      babyPlan: '丁克',
+      setting: {
+        psychProfile: PSYCH_VARIANTS.stable,
+        selfViewText: PARTNER_TEXT.open,
+        targetViewText: PARTNER_TEXT.open,
+      },
+    },
+  },
 ];
 
 function cloneCase(row, overrides = {}) {
@@ -49,13 +201,35 @@ function cloneCase(row, overrides = {}) {
   };
 }
 
-function partnerForScenario(basePartner, scenario) {
-  const settingOverrides = {};
-  if (scenario.partnerPsych) settingOverrides.psychProfile = scenario.partnerPsych;
+function demoDevCaseForGender(gender) {
+  return cloneCase(stableCaseForGender(gender), {
+    babyPlan: '待定',
+    setting: {
+      minEducation: '高中及以下',
+      likeBabyPlan: null,
+      selfViewText: DEMO_VIEW_TEXT.devSelf,
+      targetViewText: DEMO_VIEW_TEXT.devTarget,
+      psychProfile: PSYCH_VARIANTS.stable,
+    },
+  });
+}
+
+function partnerForScenario(basePartner, scenario, devCase) {
+  const partner = scenario.partner || {};
+  const settingOverrides = {
+    likeBabyPlan: null,
+    minEducation: '大专',
+    likeCircleIds: String(devCase.circleId),
+    ...(partner.setting || {}),
+  };
   return cloneCase(basePartner, {
     openid: `${PARTNER_PREFIX}${scenario.suffix}`,
-    education: scenario.partnerEducation || basePartner.education,
-    city: scenario.partnerCity || basePartner.city,
+    age: partner.age || basePartner.age,
+    heightRange: partner.heightRange || basePartner.heightRange,
+    education: partner.education || basePartner.education,
+    circleId: partner.circleId || basePartner.circleId,
+    city: partner.city || basePartner.city,
+    babyPlan: partner.babyPlan || basePartner.babyPlan,
     setting: settingOverrides,
   });
 }
@@ -254,14 +428,14 @@ async function insertDemoLog(devId, partnerId, devCase, partnerCase, scenario) {
     await clearDemoMatchData();
 
     const gender = await existingDevGender();
-    const devCase = stableCaseForGender(gender);
+    const devCase = demoDevCaseForGender(gender);
     const basePartner = stablePartnerForGender(gender);
     const devId = await upsertUser(DEV_OPENID, devCase);
     await upsertSetting(devId, devCase);
 
     const inserted = [];
     for (const scenario of DEMO_MATCHES) {
-      const partnerCase = partnerForScenario(basePartner, scenario);
+      const partnerCase = partnerForScenario(basePartner, scenario, devCase);
       const partnerId = await upsertUser(partnerCase.openid, partnerCase);
       await upsertSetting(partnerId, partnerCase);
       inserted.push(await insertDemoLog(devId, partnerId, devCase, partnerCase, scenario));

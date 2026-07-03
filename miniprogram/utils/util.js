@@ -61,6 +61,22 @@ function getCompatibilityLevel(score) {
   return '契合度偏低'
 }
 
+function getCompatibilityDisplayText(score) {
+  const s = Number(score) || 0
+  if (s >= 90) return '三观高度契合'
+  if (s >= 75) return '三观较高契合'
+  if (s >= 60) return '三观值得了解'
+  return '三观存在差异'
+}
+
+function getTotalMatchDisplayText(score) {
+  const s = Number(score) || 0
+  if (s >= 105) return '综合高度契合'
+  if (s >= 95) return '综合较高契合'
+  if (s >= 90) return '综合值得了解'
+  return '综合谨慎了解'
+}
+
 function getCompatibilityTagClass(score) {
   const s = Number(score) || 0
   if (s >= 80) return 'tag-green'
@@ -141,6 +157,8 @@ module.exports = {
   setCooldownEnd,
   getCompatibilityColor,
   getCompatibilityLevel,
+  getCompatibilityDisplayText,
+  getTotalMatchDisplayText,
   getCompatibilityTagClass,
   parsePromoteCode,
   validateTextLength,
