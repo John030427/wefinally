@@ -161,6 +161,34 @@ function scorePair(user, settings, candidate, viewSim) {
   return scorePairDetail(user, settings, candidate, viewSim).total;
 }
 
+function psychGateFails(detail, gate) {
+  const compared = Number(detail?.psych_compared || 0);
+  if (compared < Number(gate.minPsychCompared || 0)) return false;
+  const score = Number(detail?.psych_score);
+  return Number.isFinite(score) && score < Number(gate.minPsychScore || 0);
+}
+
+function passesQualityGate(scoreAB, scoreBA, viewSim) {
+  const gate = cfg.qualityGate || {};
+  const sideA = Number(scoreAB?.total || 0);
+  const sideB = Number(scoreBA?.total || 0);
+  const reasons = [];
+
+  if (gate.enabled === false) {
+    const legacyMin = Number(cfg.minSideScore || 0);
+    if (Math.min(sideA, sideB) < legacyMin) reasons.push('side_score');
+    return { pass: reasons.length === 0, reasons };
+  }
+
+  if (Math.min(sideA, sideB) < Number(gate.minSideScore || 0)) reasons.push('side_score');
+  if (Number(viewSim || 0) < Number(gate.minViewSimilarity || 0)) reasons.push('view_similarity');
+  if (psychGateFails(scoreAB?.detail, gate) || psychGateFails(scoreBA?.detail, gate)) {
+    reasons.push('psych_score');
+  }
+
+  return { pass: reasons.length === 0, reasons };
+}
+
 async function applyAiRerank(user, eligible) {
   if (!eligible.length) return eligible;
   eligible.sort((a, b) => b.combined - a.combined || b.viewSim - a.viewSim);
@@ -299,19 +327,33 @@ async function runBatchMatch(batchDate, matchType, options = {}) {
         );
         const scoreAB = scorePairDetail(user, settingsA, c, viewSim);
         const scoreBA = scorePairDetail(c, settingsOf(c), user, viewSim);
+        const quality = passesQualityGate(scoreAB, scoreBA, viewSim);
         scored.push({
           candidate: c,
           viewSim,
           scoreAB,
           scoreBA,
           combined: COMBINE(scoreAB.total, scoreBA.total),
-          meetsFloor: Math.min(scoreAB.total, scoreBA.total) >= cfg.minSideScore,
+          quality,
         });
       }
 
-      let eligible = scored.filter((s) => s.meetsFloor);
-      if (eligible.length === 0 && cfg.smallPoolFallback) eligible = scored;
-      eligible = await applyAiRerank(user, eligible);
+      let eligible = scored.filter((s) => s.quality.pass);
+      let usingQualityFallback = false;
+      if (
+        eligible.length === 0
+        && cfg.smallPoolFallback
+        && (cfg.qualityGate?.allowSmallPoolFallback !== false)
+      ) {
+        scored.forEach((s) => { s.qualityFallback = true; });
+        eligible = scored;
+        usingQualityFallback = true;
+      }
+      if (usingQualityFallback) {
+        eligible.sort((a, b) => b.combined - a.combined || b.viewSim - a.viewSim);
+      } else {
+        eligible = await applyAiRerank(user, eligible);
+      }
       const best = eligible[0];
       if (!best) continue;
 
@@ -321,6 +363,11 @@ async function runBatchMatch(batchDate, matchType, options = {}) {
         mutual_total: best.combined,
         view_similarity: best.viewSim,
         ai_weight: best.aiWeight || null,
+        quality_gate: {
+          pass: best.quality.pass,
+          reasons: best.quality.reasons,
+          fallback: Boolean(best.qualityFallback),
+        },
         side: best.scoreAB.detail,
       };
       const scoreDetailB = {
@@ -329,6 +376,11 @@ async function runBatchMatch(batchDate, matchType, options = {}) {
         mutual_total: best.combined,
         view_similarity: best.viewSim,
         ai_weight: best.aiWeight || null,
+        quality_gate: {
+          pass: best.quality.pass,
+          reasons: best.quality.reasons,
+          fallback: Boolean(best.qualityFallback),
+        },
         side: best.scoreBA.detail,
       };
       const [inserted] = await conn.query(
@@ -397,6 +449,7 @@ module.exports = {
   applyAiRerank,
   scorePair,
   scorePairDetail,
+  passesQualityGate,
   calcAge,
   parseHeightCm,
   hardOk,
