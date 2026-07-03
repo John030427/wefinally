@@ -11,7 +11,7 @@ const {
   userToken,
 } = require('./_helpers');
 
-const openids = ['sc_bug_cancel', 'sc_bug_marry', 'sc_bug_privacy', 'sc_bug_match'];
+const openids = ['sc_bug_cancel', 'sc_bug_cancel_peer', 'sc_bug_marry', 'sc_bug_privacy', 'sc_bug_match'];
 const partnerPhones = ['sc_partner_phone'];
 
 async function insertPartner() {
@@ -45,6 +45,19 @@ async function insertPartner() {
     ok('withdraw reject uses status=2 and refunds balance', withdraw.status === 2 && Number(partner.balance) === 150);
 
     const cancelUser = await createUser({ openid: openids[0], isVip: 1 });
+    const cancelPeer = await createUser({ openid: openids[1], isVip: 1 });
+    await pool.query(
+      `INSERT INTO user_match_setting
+       (user_id, age_min, age_max, height_min, height_max, min_education, self_view_text, target_view_text)
+       VALUES (?, 25, 35, 160, 180, '本科', '注销自检三观文本长度足够', '注销自检期待文本长度足够')`,
+      [cancelUser.id]
+    );
+    await pool.query(
+      `INSERT INTO user_match_log
+       (user_id, match_user_id, view_similarity, total_score, match_date, match_type)
+       VALUES (?, ?, 80, 90, '2026-07-03', '注销自检'), (?, ?, 80, 90, '2026-07-03', '注销自检')`,
+      [cancelUser.id, cancelPeer.id, cancelPeer.id, cancelUser.id]
+    );
     const [cancelReport] = await pool.query(
       'INSERT INTO marry_report (user_id, report_type, proof_img, audit_status) VALUES (?, ?, ?, 0)',
       [cancelUser.id, MARRY_REPORT_TYPE.CANCEL, 'cancel']
@@ -54,8 +67,14 @@ async function insertPartner() {
     const [[cancelAfter]] = await pool.query('SELECT status, is_vip FROM `user` WHERE id = ?', [cancelUser.id]);
     const [[statAfterCancel]] = await pool.query('SELECT marry_success_count FROM system_stat WHERE id = 1');
     ok('cancel report bans user without increasing marry count', cancelAfter.status === 2 && cancelAfter.is_vip === 0 && Number(statAfterCancel.marry_success_count) === statBefore);
+    const [[cancelSetting]] = await pool.query('SELECT COUNT(*) AS c FROM user_match_setting WHERE user_id = ?', [cancelUser.id]);
+    const [[cancelLogs]] = await pool.query(
+      'SELECT COUNT(*) AS c FROM user_match_log WHERE user_id = ? OR match_user_id = ?',
+      [cancelUser.id, cancelUser.id]
+    );
+    ok('cancel report removes user from match pool and visible match logs', Number(cancelSetting.c) === 0 && Number(cancelLogs.c) === 0);
 
-    const marryUser = await createUser({ openid: openids[1], isVip: 1 });
+    const marryUser = await createUser({ openid: openids[2], isVip: 1 });
     const [marryReport] = await pool.query(
       'INSERT INTO marry_report (user_id, report_type, proof_img, audit_status) VALUES (?, ?, ?, 0)',
       [marryUser.id, MARRY_REPORT_TYPE.MARRY, 'marry']
@@ -66,7 +85,7 @@ async function insertPartner() {
     const [[statAfterMarry]] = await pool.query('SELECT marry_success_count FROM system_stat WHERE id = 1');
     ok('marry report marks married and increases marry count once', marryAfter.status === 3 && marryAfter.is_vip === 0 && Number(statAfterMarry.marry_success_count) === statBefore + 1);
 
-    const privacyUser = await createUser({ openid: openids[2] });
+    const privacyUser = await createUser({ openid: openids[3] });
     await pool.query(
       `INSERT INTO user_privacy_auth_log
        (openid, user_id, auth_service, auth_privacy, auth_data, device_info, auth_time)
@@ -77,7 +96,7 @@ async function insertPartner() {
     const found = logs.json.data.list.find((row) => row.user_id === privacyUser.id);
     ok('privacy logs return auth_time', logs.status === 200 && found && String(found.auth_time).includes('2026'));
 
-    const matchUser = await createUser({ openid: openids[3] });
+    const matchUser = await createUser({ openid: openids[4] });
     const matchToken = userToken(matchUser);
     const text = '这是一个用于自检的三观描述文本，长度足够通过校验';
     const setting = await request('POST', '/api/match/setting', {

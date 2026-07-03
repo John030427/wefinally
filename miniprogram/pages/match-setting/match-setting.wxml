@@ -125,6 +125,39 @@
     </view>
 
     <view class="card">
+      <view class="section-title">外貌偏好</view>
+      <view class="section-hint">霞姐已确认“增加匹配度”方向；当前先记录文字，不上传照片、不公开展示对方原文</view>
+
+      <view class="form-item">
+        <text class="form-label">我的外貌描述</text>
+        <textarea
+          class="textarea-input"
+          placeholder="例如：中等偏高，日常穿搭简洁，气质清爽..."
+          maxlength="{{appearanceMaxLen}}"
+          value="{{appearanceDescription}}"
+          bindinput="onAppearanceDescriptionInput"
+          disabled="{{cooldownActive}}"
+          show-confirm-bar="{{false}}"
+        />
+        <view class="char-counter">当前 {{appearanceDescriptionLen}} / {{appearanceMaxLen}} 字</view>
+      </view>
+
+      <view class="form-item">
+        <text class="form-label">期待对方外貌</text>
+        <textarea
+          class="textarea-input"
+          placeholder="例如：希望对方干净自然，运动感或文艺感都可以..."
+          maxlength="{{appearanceMaxLen}}"
+          value="{{appearanceWant}}"
+          bindinput="onAppearanceWantInput"
+          disabled="{{cooldownActive}}"
+          show-confirm-bar="{{false}}"
+        />
+        <view class="char-counter">当前 {{appearanceWantLen}} / {{appearanceMaxLen}} 字</view>
+      </view>
+    </view>
+
+    <view class="card">
       <view class="section-title">【我的三观自述】</view>
       <view class="section-hint">婚恋观、生活理念、世界观、人生观、价值观（{{textMinLen}}-{{textMaxLen}}字）</view>
       <textarea

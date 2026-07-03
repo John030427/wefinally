@@ -560,6 +560,11 @@ router.post('/marry-reports/:id/approve', async (req, res, next) => {
           'UPDATE `user` SET status = ?, is_vip = 0, vip_expire_time = NULL WHERE id = ?',
           [USER_STATUS.BANNED, report.user_id]
         );
+        await conn.query('DELETE FROM user_match_setting WHERE user_id = ?', [report.user_id]);
+        await conn.query(
+          'DELETE FROM user_match_log WHERE user_id = ? OR match_user_id = ?',
+          [report.user_id, report.user_id]
+        );
         await conn.commit();
         return success(res, null, '审核通过，账号已注销');
       }

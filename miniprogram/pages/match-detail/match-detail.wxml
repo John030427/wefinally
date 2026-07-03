@@ -76,6 +76,12 @@
       <view class="quality-line" wx:if="{{psychText}}">{{psychText}}</view>
     </view>
 
+    <view class="compat-card card" wx:if="{{!detail.locked}}">
+      <view class="compat-title">外貌匹配参考</view>
+      <view class="compat-hint">{{detail.appearanceText}}</view>
+      <navigator url="/pages/match-setting/match-setting" class="meet-link">完善外貌描述与期待 ›</navigator>
+    </view>
+
     <view class="compat-card card">
       <view class="compat-title">三观契合度</view>
 

@@ -973,6 +973,40 @@ Bug修复 / 测试工具
 
 ---
 
+## 2026-07-03 — 外貌入口、见面安全时间、注销匹配池与交接文档
+
+### 类型
+前端展示 / Bug修复 / 测试工具 / 文档
+
+### 修改目的
+按最新测试反馈收口：外貌描述进入择偶配置和匹配详情流程；线下见面安全确认兼容用户输入的单数字日期/全角冒号，避免 MySQL datetime 500；注销审核通过后清理用户择偶设置和匹配记录；演示匹配年龄改年龄段展示并补充新对话交接文档。
+
+### 涉及文件
+- `server/src/routes/meet.js`
+- `server/src/routes/admin.js`
+- `server/selfcheck/meet-safety.js`
+- `server/selfcheck/known-bugs.js`
+- `server/selfcheck/match-demo-seed.js`
+- `miniprogram/pages/match-setting/*`
+- `miniprogram/pages/match-detail/*`
+- `miniprogram/pages/index/*`
+- `miniprogram/pages/match-list/*`
+- `project-docs/NEXT_THREAD_HANDOFF_2026-07-03.md`
+
+### 测试
+- [x] `node --check src/routes/meet.js src/routes/admin.js selfcheck/meet-safety.js selfcheck/known-bugs.js selfcheck/match-demo-seed.js`
+- [x] `node --check pages/match-setting/match-setting.js pages/match-detail/match-detail.js pages/index/index.js pages/match-list/match-list.js`
+- [x] 重启本地后端并通过 `/api/common/health`
+- [x] `npm run selfcheck`
+- [x] `npm run demo:match-clear && npm run demo:match-seed`
+- [x] `POST /api/meet/create` 使用 `2026-9-01 18：00` 保存成功
+- [x] `GET /api/match/list` 返回 8 条演示记录并包含年龄段
+
+### 备注
+外貌仍不展示对方原文，不默认开启 LLM/外貌加权；期望年龄暂不改多选，后续如要“随意年龄”建议新增 `不限年龄` 选项并做 null 回显。
+
+---
+
 ## 模板（后续变更请复制）
 
 ```markdown

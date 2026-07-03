@@ -59,6 +59,12 @@ function buildPsychText(value) {
   return '关系偏好差异明显'
 }
 
+function buildAppearanceText(scoreDetail) {
+  const appearanceScore = Number((scoreDetail && scoreDetail.side && scoreDetail.side.appearance) || 0)
+  if (appearanceScore > 0) return '外貌偏好已纳入本次综合匹配参考'
+  return '外貌描述已作为匹配资料预留，当前不展示对方外貌原文'
+}
+
 function shortDate(value) {
   return formatDateOnly(value)
 }
@@ -132,6 +138,7 @@ Page({
         compatibilityPercent: Math.min(95, Math.round(Number(score) || 0)),
         scoreDetail: detail.score_detail || detail.scoreDetail || null,
         scoreBreakdown: buildScoreBreakdown(detail.score_detail || detail.scoreDetail || null),
+        appearanceText: buildAppearanceText(detail.score_detail || detail.scoreDetail || null),
         qualityText: buildQualityText(detail.score_detail || detail.scoreDetail || null),
         psychScore: (detail.score_detail || detail.scoreDetail || {}).side
           ? (detail.score_detail || detail.scoreDetail || {}).side.psych_score

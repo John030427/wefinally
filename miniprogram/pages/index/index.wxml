@@ -53,7 +53,7 @@
         <text class="match-date">{{latestMatch.matchDate}}</text>
       </view>
       <view class="match-info">
-        <text>{{latestMatch.gender}} · {{latestMatch.age}}岁 · {{latestMatch.city}}</text>
+        <text>{{latestMatch.gender}} · {{latestMatch.ageText}} · {{latestMatch.city}}</text>
       </view>
       <view class="match-score" wx:if="{{latestMatch.score !== null}}">
         {{latestMatch.scoreText}}

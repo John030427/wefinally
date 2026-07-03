@@ -8,6 +8,26 @@ const cfg = require('../config/safetyConfig');
 const router = express.Router();
 router.use(userAuth, requireActiveUser);
 
+function normalizeMeetTime(value) {
+  const raw = String(value || '').trim().replace(/：/g, ':');
+  if (!raw) return null;
+  const m = raw.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})(?:\s+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?$/);
+  if (!m) return false;
+  const [, year, month, day, hour = '0', minute = '0', second = '0'] = m;
+  const date = new Date(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second));
+  if (
+    date.getFullYear() !== Number(year)
+    || date.getMonth() !== Number(month) - 1
+    || date.getDate() !== Number(day)
+    || date.getHours() !== Number(hour)
+    || date.getMinutes() !== Number(minute)
+  ) {
+    return false;
+  }
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${year}-${pad(month)}-${pad(day)} ${pad(hour)}:${pad(minute)}:${pad(second)}`;
+}
+
 /** POST /api/meet/create */
 router.post('/create', async (req, res, next) => {
   try {
@@ -16,6 +36,8 @@ router.post('/create', async (req, res, next) => {
     if (cfg.emergencyContactRequired && !/^\d{11}$/.test(String(emergency_contact || ''))) {
       return fail(res, '请填写有效的紧急联系人手机号');
     }
+    const normalizedMeetTime = normalizeMeetTime(meet_time);
+    if (normalizedMeetTime === false) return fail(res, '请填写有效的见面时间，如 2026-09-01 18:00');
     const cardNo = 'MC' + Date.now().toString(36).toUpperCase();
     const [r] = await pool.query(
       `INSERT INTO meet_report
@@ -24,7 +46,7 @@ router.post('/create', async (req, res, next) => {
       [
         req.auth.id,
         Number(match_user_id) || 0,
-        meet_time || null,
+        normalizedMeetTime,
         String(meet_place || '').slice(0, 200),
         lat ?? null,
         lng ?? null,

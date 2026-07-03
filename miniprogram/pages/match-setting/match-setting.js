@@ -1,4 +1,4 @@
-const { get, post } = require('../../utils/request')
+const { get, post, put } = require('../../utils/request')
 const {
   API_PATHS,
   STORAGE_KEYS,
@@ -61,6 +61,11 @@ Page({
     },
     myValuesLen: 0,
     expectValuesLen: 0,
+    appearanceDescription: '',
+    appearanceWant: '',
+    appearanceDescriptionLen: 0,
+    appearanceWantLen: 0,
+    appearanceMaxLen: 500,
     textMinLen: TEXT_MIN_LEN,
     textMaxLen: TEXT_MAX_LEN,
     cooldownActive: false,
@@ -99,12 +104,14 @@ Page({
     }
 
     try {
-      const [settingData, cooldownData] = await Promise.all([
+      const [settingData, cooldownData, profileData] = await Promise.all([
         get(API_PATHS.MATCH_SETTING, {}, { showError: false }).catch(() => null),
-        get(API_PATHS.MATCH_SETTING_COOLDOWN, {}, { showError: false }).catch(() => null)
+        get(API_PATHS.MATCH_SETTING_COOLDOWN, {}, { showError: false }).catch(() => null),
+        get(API_PATHS.USER_PROFILE, {}, { showError: false }).catch(() => null)
       ])
 
       if (settingData) this.fillForm(settingData)
+      if (profileData) this.fillAppearance(profileData)
 
       const cooldownEnd = (cooldownData && (cooldownData.cooldownEndTime || cooldownData.cooldown_end_time)) ||
         (cooldownData && cooldownData.cooldown_remain_days > 0
@@ -151,6 +158,17 @@ Page({
       form,
       myValuesLen: form.myValues.length,
       expectValuesLen: form.expectValues.length
+    })
+  },
+
+  fillAppearance(data) {
+    const appearanceDescription = data.appearance_description || ''
+    const appearanceWant = data.appearance_want || ''
+    this.setData({
+      appearanceDescription,
+      appearanceWant,
+      appearanceDescriptionLen: appearanceDescription.length,
+      appearanceWantLen: appearanceWant.length
     })
   },
 
@@ -207,6 +225,16 @@ Page({
     this.setData({ 'form.expectValues': val, expectValuesLen: val.length })
   },
 
+  onAppearanceDescriptionInput(e) {
+    const val = e.detail.value || ''
+    this.setData({ appearanceDescription: val, appearanceDescriptionLen: val.length })
+  },
+
+  onAppearanceWantInput(e) {
+    const val = e.detail.value || ''
+    this.setData({ appearanceWant: val, appearanceWantLen: val.length })
+  },
+
   validateForm() {
     const { form, cooldownActive } = this.data
     if (cooldownActive) {
@@ -243,6 +271,14 @@ Page({
     const { form } = this.data
 
     try {
+      const profile = await put(API_PATHS.USER_PROFILE_UPDATE, {
+        appearance_description: this.data.appearanceDescription.trim(),
+        appearance_want: this.data.appearanceWant.trim()
+      }, { showError: false })
+      const app = getApp()
+      app.globalData.userInfo = profile
+      wx.setStorageSync(STORAGE_KEYS.USER_INFO, profile)
+
       await post(API_PATHS.MATCH_SETTING, {
         prefer_age: form.preferAge,
         prefer_education: form.preferEducation,

@@ -58,6 +58,7 @@ const DEMO_MATCHES = [
     matchType: '演示高契合',
     viewSim: 92,
     partner: {
+      age: 31,
       education: '硕士',
       city: '深圳',
       circleId: 1,
@@ -75,6 +76,7 @@ const DEMO_MATCHES = [
     matchType: '演示跨城',
     viewSim: 84,
     partner: {
+      age: 28,
       education: '本科',
       city: '广州',
       circleId: 1,
@@ -92,6 +94,7 @@ const DEMO_MATCHES = [
     matchType: '演示学历',
     viewSim: 76,
     partner: {
+      age: 35,
       education: '高中及以下',
       city: '深圳',
       circleId: 1,
@@ -109,6 +112,7 @@ const DEMO_MATCHES = [
     matchType: '演示三观适中',
     viewSim: 68,
     partner: {
+      age: 29,
       education: '本科',
       city: '深圳',
       circleId: 1,
@@ -126,6 +130,7 @@ const DEMO_MATCHES = [
     matchType: '演示圈层',
     viewSim: 88,
     partner: {
+      age: 37,
       education: '大专',
       city: '深圳',
       circleId: 4,
@@ -143,6 +148,7 @@ const DEMO_MATCHES = [
     matchType: '演示心理',
     viewSim: 92,
     partner: {
+      age: 34,
       education: '本科',
       city: '深圳',
       circleId: 1,
@@ -160,6 +166,7 @@ const DEMO_MATCHES = [
     matchType: '演示事业异地',
     viewSim: 96,
     partner: {
+      age: 40,
       education: '博士',
       city: '杭州',
       circleId: 5,
@@ -177,6 +184,7 @@ const DEMO_MATCHES = [
     matchType: '演示三观中等',
     viewSim: 80,
     partner: {
+      age: 26,
       education: '大专',
       city: '上海',
       circleId: 1,
@@ -205,6 +213,8 @@ function demoDevCaseForGender(gender) {
   return cloneCase(stableCaseForGender(gender), {
     babyPlan: '待定',
     setting: {
+      ageMin: 25,
+      ageMax: 42,
       minEducation: '高中及以下',
       likeBabyPlan: null,
       selfViewText: DEMO_VIEW_TEXT.devSelf,

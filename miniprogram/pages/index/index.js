@@ -46,6 +46,7 @@ Page({
       const isVip = profile && (profile.isVip || profile.is_vip === 1)
       let latestMatch = null
       if (latest && (latest.id || latest.matchId)) {
+        const age = latest.age || calcAge(latest.birth_year)
         latestMatch = {
           id: latest.id || latest.matchId,
           matchType: latest.match_type || latest.matchType || '',
@@ -53,7 +54,7 @@ Page({
           score: latest.view_similarity ?? latest.compatibilityScore ?? null,
           scoreText: getCompatibilityDisplayText(latest.view_similarity ?? latest.compatibilityScore ?? 0),
           gender: genderText(latest.gender),
-          age: latest.age || calcAge(latest.birth_year),
+          ageText: latest.age_band || (age === '--' ? '--' : `${age}岁`),
           city: latest.city || '--'
         }
       }

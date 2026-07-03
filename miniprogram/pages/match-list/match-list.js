@@ -41,12 +41,13 @@ Page({
       const list = raw.map((item) => {
         const score = item.view_similarity ?? item.compatibilityScore
         const totalScore = item.total_score ?? item.totalScore
+        const age = item.age || calcAge(item.birth_year)
         return {
           id: item.id || item.matchId,
           matchType: item.match_type || item.matchType || '',
           matchDate: formatDateOnly(item.match_date || item.matchDate),
           gender: genderText(item.gender),
-          age: item.age || calcAge(item.birth_year),
+          ageText: item.age_band || (age === '--' ? '--' : `${age}岁`),
           city: item.city || '--',
           totalScore: totalScore != null ? Math.round(Number(totalScore)) : null,
           totalScoreText: totalScore != null ? getTotalMatchDisplayText(totalScore) : '',
