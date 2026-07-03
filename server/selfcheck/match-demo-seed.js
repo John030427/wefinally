@@ -19,11 +19,11 @@ const {
 } = require('./match-demo-clear');
 
 const DEMO_MATCHES = [
-  { suffix: 'high', matchDate: '2099-02-14', matchType: '演示高契合' },
-  { suffix: 'view', matchDate: '2099-02-13', matchType: '演示三观中等', viewSim: 65 },
+  { suffix: 'high', matchDate: '2026-07-03', matchType: '演示高契合' },
+  { suffix: 'view', matchDate: '2026-07-01', matchType: '演示三观中等', viewSim: 65 },
   {
     suffix: 'psych',
-    matchDate: '2099-02-12',
+    matchDate: '2026-06-26',
     matchType: '演示心理磨合',
     partnerPsych: {
       marriage_pace: PSYCH.stable.marriage_pace,
@@ -34,8 +34,8 @@ const DEMO_MATCHES = [
       career_family: '事业优先',
     },
   },
-  { suffix: 'edu', matchDate: '2099-02-11', matchType: '演示学历软扣', partnerEducation: '高中及以下' },
-  { suffix: 'city', matchDate: '2099-02-10', matchType: '演示异地扣分', partnerCity: '广州' },
+  { suffix: 'edu', matchDate: '2026-06-24', matchType: '演示学历软扣', partnerEducation: '高中及以下' },
+  { suffix: 'city', matchDate: '2026-06-19', matchType: '演示异地扣分', partnerCity: '广州' },
 ];
 
 function cloneCase(row, overrides = {}) {

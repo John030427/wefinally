@@ -911,6 +911,36 @@ AI 加权分支现在先筛 `quality.pass`，再调用 `applyAiRerank`；只有�
 
 ---
 
+## 2026-07-03 — 匹配演示日期修正
+
+### 类型
+Bug修复 / 测试工具
+
+### 修改目的
+修复 MySQL `DATE` 经 Node JSON 序列化后在小程序端显示为前一天的问题；同时将本地演示匹配日期从 2099 年改为 2026 年近期周三/周五，避免演示时出现明显不真实日期。
+
+### 涉及文件
+- `server/src/routes/match.js`
+- `server/selfcheck/match-demo-seed.js`
+- `server/selfcheck/match-demo-clear.js`
+- `miniprogram/utils/util.js`
+- `miniprogram/pages/index/index.js`
+- `miniprogram/pages/match-list/match-list.js`
+- `miniprogram/pages/match-detail/match-detail.js`
+
+### 测试
+- [x] `node --check src/routes/match.js selfcheck/match-demo-seed.js selfcheck/match-demo-clear.js`
+- [x] `node --check utils/util.js pages/match-list/match-list.js pages/index/index.js pages/match-detail/match-detail.js`
+- [x] 重启本地后端并通过 `/api/common/health`
+- [x] `npm run demo:match-clear && npm run demo:match-seed`
+- [x] `GET /api/match/list` 返回 5 条演示记录，首条日期为 `2026-07-03`
+- [x] `npm run selfcheck`
+
+### 备注
+演示数据日期现在为 `2026-07-03`、`2026-07-01`、`2026-06-26`、`2026-06-24`、`2026-06-19`。
+
+---
+
 ## 模板（后续变更请复制）
 
 ```markdown

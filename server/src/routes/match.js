@@ -79,14 +79,29 @@ function parseJson(value) {
   }
 }
 
+function pad2(n) {
+  return String(n).padStart(2, '0');
+}
+
+function formatDateOnly(value) {
+  if (!value) return '';
+  const source = value instanceof Date ? value : new Date(value);
+  if (!Number.isNaN(source.getTime())) {
+    return `${source.getFullYear()}-${pad2(source.getMonth() + 1)}-${pad2(source.getDate())}`;
+  }
+  const match = String(value).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return match ? `${match[1]}-${match[2]}-${match[3]}` : String(value);
+}
+
 function formatMatchItem(row, vip) {
+  const matchDate = formatDateOnly(row.match_date);
   if (!vip) {
     return {
       id: row.id,
       matchId: row.id,
       status: 'matched',
       locked: true,
-      match_date: row.match_date,
+      match_date: matchDate,
       match_type: row.match_type,
       view_similarity: null,
       total_score: null,
@@ -101,7 +116,7 @@ function formatMatchItem(row, vip) {
     locked: false,
     matchTime: row.create_time,
     createdAt: row.create_time,
-    match_date: row.match_date,
+    match_date: matchDate,
     match_type: row.match_type,
     gender: row.gender,
     birth_year: row.birth_year,
@@ -347,12 +362,13 @@ async function loadMatchDetail(req, res, next, matchId) {
     const match = rows[0];
     const me = req.user || (await loadUser(req.auth.id));
     const vip = isVipActive(me);
+    const matchDate = formatDateOnly(match.match_date);
 
     if (!vip) {
       return success(res, {
         id: match.id,
         matchId: match.id,
-        match_date: match.match_date,
+        match_date: matchDate,
         match_type: match.match_type,
         locked: true,
         view_similarity: null,
@@ -364,7 +380,7 @@ async function loadMatchDetail(req, res, next, matchId) {
     return success(res, {
       id: match.id,
       matchId: match.id,
-      match_date: match.match_date,
+      match_date: matchDate,
       match_type: match.match_type,
       locked: false,
       view_similarity: match.view_similarity,

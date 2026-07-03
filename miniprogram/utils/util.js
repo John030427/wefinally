@@ -14,6 +14,16 @@ function formatDate(date, fmt = 'YYYY-MM-DD HH:mm:ss') {
   return fmt.replace(/YYYY|MM|DD|HH|mm|ss/g, (k) => map[k])
 }
 
+function formatDateOnly(value) {
+  if (!value) return ''
+  const raw = String(value)
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw
+  const dateText = formatDate(value, 'YYYY-MM-DD')
+  if (dateText) return dateText
+  const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})/)
+  return match ? `${match[1]}-${match[2]}-${match[3]}` : ''
+}
+
 function getCooldownRemain(cooldownEndTime) {
   const end = Number(cooldownEndTime)
   if (!end || isNaN(end)) {
@@ -126,6 +136,7 @@ function getNextMatchTime() {
 
 module.exports = {
   formatDate,
+  formatDateOnly,
   getCooldownRemain,
   setCooldownEnd,
   getCompatibilityColor,

@@ -1,7 +1,7 @@
 const { get } = require('../../utils/request')
 const { API_PATHS } = require('../../utils/constants')
 const {
-  formatDate,
+  formatDateOnly,
   getCompatibilityColor,
   getCompatibilityLevel,
   getCompatibilityTagClass
@@ -49,7 +49,7 @@ function buildQualityText(scoreDetail) {
 }
 
 function shortDate(value) {
-  return value ? formatDate(value, 'YYYY-MM-DD') : ''
+  return formatDateOnly(value)
 }
 
 Page({

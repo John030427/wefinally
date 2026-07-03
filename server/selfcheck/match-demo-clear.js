@@ -5,8 +5,6 @@ const { ok, pool } = require('./_helpers');
 const DEV_OPENID = process.env.DEV_WX_OPENID || 'dev_wefinally_local_openid';
 const PARTNER_OPENID = 'sc_demo_match_partner';
 const PARTNER_PREFIX = 'sc_demo_match_';
-const MATCH_DATE = '2099-02-14';
-const MATCH_TYPE = '演示匹配';
 
 async function idsForOpenids(openids) {
   const [rows] = await pool.query(
@@ -42,8 +40,6 @@ async function clearDemoMatchData() {
 
 module.exports = {
   DEV_OPENID,
-  MATCH_DATE,
-  MATCH_TYPE,
   PARTNER_PREFIX,
   PARTNER_OPENID,
   clearDemoMatchData,
