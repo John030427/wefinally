@@ -777,6 +777,32 @@ Bug修复 / 支付联调 / 自检
 
 ---
 
+## 2026-07-03 — 严格匹配质量门槛
+
+### 类型
+匹配算法 / 自检 / 文档
+
+### 修改目的
+在算法匹配链路中加入默认开启的质量门槛，低三观、低心理契合或任一方综合分过低时不再进入匹配，避免用户池小时为了凑数输出低质量匹配。
+
+### 涉及文件
+- `server/src/config/matchConfig.js`
+- `server/src/services/matchService.js`
+- `server/selfcheck/match.js`
+- `server/selfcheck/match-effect-cases.js`
+- `project-docs/MATCH_EXPERIMENT_COMPARE.md`
+
+### 测试
+- [x] `node --check src/services/matchService.js; node --check selfcheck/match.js; node --check selfcheck/match-effect-cases.js`
+- [x] `node selfcheck/match.js`
+- [x] `node selfcheck/match-effect-cases.js`
+- [x] `npm run selfcheck`
+
+### 备注
+`matchConfig.qualityGate.enabled=true`，默认要求双方各自分不低于 90、三观相似不低于 40；心理维度至少比较 3 项后，任一方心理分低于 50 则拒绝。`smallPoolFallback=false` 时严格执行，运营显式开启兜底时才允许低质量候选进入兜底。
+
+---
+
 ## 模板（后续变更请复制）
 
 ```markdown

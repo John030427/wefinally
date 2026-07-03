@@ -23,3 +23,26 @@ const good = { baby_plan: null, birth_year: 1995, height_range: '170-180cm', edu
 const bad = { ...good, education: '高中及以下' };
 
 ok('education soft score rewards minimum-or-above', m.scorePair(user, setting, good, 0) > m.scorePair(user, setting, bad, 0));
+
+function score(total, psychScore = 100, psychCompared = 6) {
+  return {
+    total,
+    detail: {
+      psych_score: psychScore,
+      psych_compared: psychCompared,
+    },
+  };
+}
+
+ok('quality gate accepts high compatibility', m.passesQualityGate(score(118), score(118), 100).pass === true);
+
+const lowView = m.passesQualityGate(score(100), score(100), 16);
+ok('quality gate rejects low view similarity', lowView.pass === false && lowView.reasons.includes('view_similarity'));
+
+const lowPsych = m.passesQualityGate(score(100, 0, 6), score(100, 100, 6), 80);
+ok('quality gate rejects sufficiently compared low psych score', lowPsych.pass === false && lowPsych.reasons.includes('psych_score'));
+
+ok('quality gate does not kill old users with incomplete psych data', m.passesQualityGate(score(95, 0, 2), score(95, 0, 0), 80).pass === true);
+
+const lowSide = m.passesQualityGate(score(89, 100, 6), score(110, 100, 6), 80);
+ok('quality gate rejects low one-sided score', lowSide.pass === false && lowSide.reasons.includes('side_score'));

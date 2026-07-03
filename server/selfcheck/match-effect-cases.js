@@ -223,8 +223,9 @@ const EXPECTED_PAIRS = [
   ['sc_case_m_short', 'sc_case_f_short'],
   ['sc_case_m_dink', 'sc_case_f_dink'],
   ['sc_case_m_low_edu', 'sc_case_f_low_edu_ok'],
-  ['sc_case_m_psych_low', 'sc_case_f_psych_low'],
 ];
+
+const UNMATCHED_BY_GATE = ['sc_case_m_psych_low', 'sc_case_f_psych_low'];
 
 async function requireColumn(table, column) {
   const [rows] = await pool.query(
@@ -326,7 +327,7 @@ function printPairTable(rows) {
     }
 
     const result = await runBatchMatch(BATCH_DATE, '周五', { scopeOpenidPrefix: 'sc_case_' });
-    ok('effect case pool creates five expected pairs', result.matched === EXPECTED_PAIRS.length);
+    ok('effect case pool creates four strict-quality expected pairs', result.matched === EXPECTED_PAIRS.length);
 
     const [rows] = await pool.query(
       `SELECT ml.*, u.openid AS user_openid, mu.openid AS match_openid
@@ -347,6 +348,7 @@ function printPairTable(rows) {
     const involved = new Set(rows.flatMap((r) => [r.user_openid, r.match_openid]));
     ok('age hard filter leaves over-age case unmatched', !involved.has('sc_case_m_age_fail'));
     ok('age hard filter leaves guarded candidate unmatched', !involved.has('sc_case_f_age_guard'));
+    ok('quality gate leaves low view/psych case unmatched', UNMATCHED_BY_GATE.every((openid) => !involved.has(openid)));
 
     const shortDetail = parseDetail(rowFor(rows, 'sc_case_f_short', 'sc_case_m_short'));
     ok('140-150cm case is matchable', Number(shortDetail.side.height) > 0);
@@ -355,10 +357,8 @@ function printPairTable(rows) {
     ok('below-min education is soft-scored not hard-rejected', lowEduDetail.side.education === 0);
 
     const stableDetail = parseDetail(rowFor(rows, 'sc_case_m_stable', 'sc_case_f_stable'));
-    const psychLowDetail = parseDetail(rowFor(rows, 'sc_case_m_psych_low', 'sc_case_f_psych_low'));
     ok('high psychology pair records 100 psych score', stableDetail.side.psych_score === 100);
-    ok('mismatched psychology pair records low psych score', psychLowDetail.side.psych_score === 0);
-    ok('high psychology pair scores above mismatched pair', stableDetail.total > psychLowDetail.total);
+    ok('high compatibility pair passes quality gate', stableDetail.quality_gate && stableDetail.quality_gate.pass === true);
 
     const dinkDetail = parseDetail(rowFor(rows, 'sc_case_m_dink', 'sc_case_f_dink'));
     ok('same baby plan earns full baby score', dinkDetail.side.baby === 30);

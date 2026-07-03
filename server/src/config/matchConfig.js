@@ -16,6 +16,14 @@ module.exports = {
     city: 4,       // 同城
   },
   minSideScore: 20, // 双向各自最低软分，低于则不配（次级质量线）
+  qualityGate: {
+    enabled: true,              // 严格上线口径：默认宁可少配，也不输出低质量匹配
+    minSideScore: 90,           // 双方各自分都要过线
+    minViewSimilarity: 40,      // 三观文本明显不合直接拒绝
+    minPsychScore: 50,          // 心理/关系偏好充分比较后低于此值拒绝
+    minPsychCompared: 3,        // 至少比较 3 项后才启用心理硬门槛，避免误杀老用户
+    allowSmallPoolFallback: true,
+  },
   // 硬条件：开启后不满足直接一票否决（仅当用户设了对应偏好才校验）
   hard: {
     age: true,           // 已确认：年龄区间硬过滤
