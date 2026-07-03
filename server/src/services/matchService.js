@@ -161,7 +161,16 @@ function scorePair(user, settings, candidate, viewSim) {
   return scorePairDetail(user, settings, candidate, viewSim).total;
 }
 
-async function getActiveVipUsers(conn) {
+function scopedOpenidClause(options, alias = 'u') {
+  if (!options || !options.scopeOpenidPrefix) return { sql: '', params: [] };
+  return {
+    sql: ` AND ${alias}.openid LIKE ?`,
+    params: [`${options.scopeOpenidPrefix}%`],
+  };
+}
+
+async function getActiveVipUsers(conn, options = {}) {
+  const scope = scopedOpenidClause(options);
   const [rows] = await conn.query(
     `SELECT u.*, ms.age_min, ms.age_max, ms.height_min, ms.height_max,
             ms.min_education, ms.like_circle_ids, ms.like_marry_status,
@@ -172,14 +181,15 @@ async function getActiveVipUsers(conn) {
      WHERE u.status = ?
        AND u.is_vip = 1
        AND u.vip_expire_time > NOW()
-       AND u.marry_status != '离异'`,
-    [USER_STATUS.NORMAL]
+       AND u.marry_status != '离异'${scope.sql}`,
+    [USER_STATUS.NORMAL, ...scope.params]
   );
   return rows;
 }
 
-async function getCandidates(conn, user) {
+async function getCandidates(conn, user, options = {}) {
   const targetGender = user.gender === 1 ? 2 : 1;
+  const scope = scopedOpenidClause(options);
   const [rows] = await conn.query(
     `SELECT u.*, ms.age_min, ms.age_max, ms.height_min, ms.height_max,
             ms.min_education, ms.like_circle_ids, ms.like_marry_status,
@@ -190,8 +200,8 @@ async function getCandidates(conn, user) {
      WHERE u.id != ?
        AND u.status = ?
        AND u.gender = ?
-       AND u.marry_status != '离异'`,
-    [user.id, USER_STATUS.NORMAL, targetGender]
+       AND u.marry_status != '离异'${scope.sql}`,
+    [user.id, USER_STATUS.NORMAL, targetGender, ...scope.params]
   );
   return rows;
 }
@@ -200,14 +210,14 @@ async function getCandidates(conn, user) {
  * Run matching for all active VIP users for a batch date.
  * Each user receives at most 1 match per batch.
  */
-async function runBatchMatch(batchDate, matchType) {
+async function runBatchMatch(batchDate, matchType, options = {}) {
   const conn = await pool.getConnection();
   let matched = 0;
   let users = 0;
 
   try {
     await conn.beginTransaction();
-    const vipUsers = await getActiveVipUsers(conn);
+    const vipUsers = await getActiveVipUsers(conn, options);
     const usedThisBatch = new Set();
     const notices = [];
     const reports = [];
@@ -225,7 +235,7 @@ async function runBatchMatch(batchDate, matchType) {
       }
 
       const settingsA = settingsOf(user);
-      const candidates = await getCandidates(conn, user);
+      const candidates = await getCandidates(conn, user, options);
       if (candidates.length === 0) continue;
 
       users += 1;

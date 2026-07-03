@@ -5,6 +5,7 @@ const { BASE_URL } = require('./_helpers');
 const scripts = [
   'match.js',
   'match-psych-report.js',
+  'match-effect-cases.js',
   'llm-default-off.js',
   'partner-dashboard.js',
   'dev-login.js',
