@@ -46,7 +46,7 @@ async function insertSetting(userId, psych) {
     await insertSetting(a.id, psych);
     await insertSetting(b.id, psych);
 
-    const result = await runBatchMatch('2099-01-03', '周三');
+    const result = await runBatchMatch('2099-01-03', '周三', { scopeOpenidPrefix: 'sc_match_psych_' });
     ok('psych match creates one pair', result.matched === 1);
 
     const [rows] = await pool.query(

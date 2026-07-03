@@ -778,6 +778,30 @@ Bug修复 / 支付联调 / 自检
 
 ---
 
+## 2026-07-03 — 匹配效果案例自检沉淀
+
+### 类型
+测试 / 匹配算法
+
+### 修改目的
+用 `sc_case_` 合成用户沉淀一组可重复运行的匹配效果测试，覆盖三观/心理高低分、年龄硬过滤、140-150cm 身高、学历软扣分与婚育节奏分，方便后续对比算法+AI报告和 AI加权分支。
+
+### 涉及文件
+- `server/src/services/matchService.js`
+- `server/selfcheck/match-psych-report.js`
+- `server/selfcheck/match-effect-cases.js`
+- `server/selfcheck/run-all.js`
+
+### 测试
+- [x] `node --check src/services/matchService.js selfcheck/match-psych-report.js selfcheck/match-effect-cases.js selfcheck/run-all.js`
+- [x] `node selfcheck/match-effect-cases.js`
+- [x] `npm run selfcheck`
+
+### 备注
+`runBatchMatch` 新增可选 `scopeOpenidPrefix`，默认不传时行为不变；自检脚本用该参数只跑 `sc_case_` 测试池，结束后清理测试用户和匹配记录。
+
+---
+
 ## 模板（后续变更请复制）
 
 ```markdown
