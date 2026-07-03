@@ -6,7 +6,9 @@
   "scripts": {
     "start": "node src/app.js",
     "dev": "node --watch src/app.js",
-    "selfcheck": "node selfcheck/run-all.js"
+    "selfcheck": "node selfcheck/run-all.js",
+    "demo:match-seed": "node selfcheck/match-demo-seed.js",
+    "demo:match-clear": "node selfcheck/match-demo-clear.js"
   },
   "engines": {
     "node": ">=18.0.0"

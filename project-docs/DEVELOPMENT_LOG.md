@@ -855,6 +855,33 @@ AI 加权分支现在先筛 `quality.pass`，再调用 `applyAiRerank`；只有�
 
 ---
 
+## 2026-07-03 — 本地匹配记录演示数据
+
+### 类型
+测试工具 / 自检复用
+
+### 修改目的
+将 `sc_case_` 合成匹配案例抽为共享 fixtures，并新增本地演示 seed/clear 命令，让当前微信开发者工具登录账号能直接看到一条匹配记录。
+
+### 涉及文件
+- `server/package.json`
+- `server/selfcheck/match-effect-fixtures.js`
+- `server/selfcheck/match-effect-cases.js`
+- `server/selfcheck/match-demo-seed.js`
+- `server/selfcheck/match-demo-clear.js`
+
+### 测试
+- [x] `node --check selfcheck/match-effect-cases.js selfcheck/match-effect-fixtures.js selfcheck/match-demo-seed.js selfcheck/match-demo-clear.js`
+- [x] `npm run demo:match-clear`
+- [x] `npm run demo:match-seed`
+- [x] `GET /api/match/list` 返回当前 `DEV_WX_OPENID` 可见的 1 条演示匹配
+- [x] `npm run selfcheck`
+
+### 备注
+`npm run selfcheck` 不运行演示 seed，仍会清理自己的 `sc_case_` 数据；`demo:match-seed` 会保留 `sc_demo_match_partner` 和双向演示匹配记录，便于小程序「记录」页测试。清理演示数据可运行 `npm run demo:match-clear`。
+
+---
+
 ## 模板（后续变更请复制）
 
 ```markdown
