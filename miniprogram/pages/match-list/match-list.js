@@ -1,6 +1,6 @@
 const { get } = require('../../utils/request')
 const { API_PATHS } = require('../../utils/constants')
-const { genderText, calcAge, getCompatibilityColor, getCompatibilityTagClass } = require('../../utils/util')
+const { formatDate, genderText, calcAge, getCompatibilityColor, getCompatibilityTagClass } = require('../../utils/util')
 
 Page({
   data: {
@@ -36,11 +36,11 @@ Page({
         return {
           id: item.id || item.matchId,
           matchType: item.match_type || item.matchType || '',
-          matchDate: item.match_date || item.matchDate || '',
+          matchDate: item.match_date || item.matchDate ? formatDate(item.match_date || item.matchDate, 'YYYY-MM-DD') : '',
           gender: genderText(item.gender),
           age: item.age || calcAge(item.birth_year),
           city: item.city || '--',
-          totalScore: totalScore != null ? Math.min(100, Math.round(Number(totalScore))) : null,
+          totalScore: totalScore != null ? Math.round(Number(totalScore)) : null,
           score: score !== null && score !== undefined ? Number(score) : null,
           scoreColor: score != null ? getCompatibilityColor(score) : '',
           scoreTag: score != null ? getCompatibilityTagClass(score) : ''

@@ -56,9 +56,25 @@
         <text class="compat-score-unit">分</text>
       </view>
       <view class="progress-bar progress-lg">
-        <view class="progress-fill progress-pink" style="width: {{totalScore}}%"></view>
+        <view class="progress-fill progress-pink" style="width: {{totalScorePercent}}%"></view>
       </view>
-      <view class="compat-hint">基于基础条件、三观文本和关系偏好综合计算</view>
+      <view class="compat-hint">原始综合匹配分，进度条按 100 封顶展示</view>
+    </view>
+
+    <view class="breakdown-card card" wx:if="{{detail.scoreBreakdown && detail.scoreBreakdown.length}}">
+      <view class="compat-title">字段拆解</view>
+      <view class="breakdown-row" wx:for="{{detail.scoreBreakdown}}" wx:key="key">
+        <view class="breakdown-head">
+          <text class="breakdown-label">{{item.label}}</text>
+          <text class="breakdown-score">{{item.scoreText}}/{{item.max}}</text>
+        </view>
+        <view class="progress-bar breakdown-bar">
+          <view class="progress-fill progress-pink" style="width: {{item.percent}}%"></view>
+        </view>
+        <view class="breakdown-note">{{item.note}}</view>
+      </view>
+      <view class="quality-line" wx:if="{{detail.qualityText}}">{{detail.qualityText}}</view>
+      <view class="quality-line" wx:if="{{detail.psychScore !== null}}">心理/关系偏好原始分：{{detail.psychScore}}</view>
     </view>
 
     <view class="compat-card card">

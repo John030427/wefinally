@@ -2,6 +2,7 @@ require('dotenv').config();
 
 const { ok, pool, USER_STATUS } = require('./_helpers');
 const {
+  PSYCH,
   birthYear,
   stableCaseForGender,
   stablePartnerForGender,
@@ -13,11 +14,51 @@ const {
 } = require('../src/services/matchService');
 const {
   DEV_OPENID,
-  MATCH_DATE,
-  MATCH_TYPE,
-  PARTNER_OPENID,
+  PARTNER_PREFIX,
   clearDemoMatchData,
 } = require('./match-demo-clear');
+
+const DEMO_MATCHES = [
+  { suffix: 'high', matchDate: '2099-02-14', matchType: '演示高契合' },
+  { suffix: 'view', matchDate: '2099-02-13', matchType: '演示三观中等', viewSim: 65 },
+  {
+    suffix: 'psych',
+    matchDate: '2099-02-12',
+    matchType: '演示心理磨合',
+    partnerPsych: {
+      marriage_pace: PSYCH.stable.marriage_pace,
+      conflict_style: '冷静后沟通',
+      security_space: PSYCH.stable.security_space,
+      family_boundary: '边界清晰',
+      money_view: PSYCH.stable.money_view,
+      career_family: '事业优先',
+    },
+  },
+  { suffix: 'edu', matchDate: '2099-02-11', matchType: '演示学历软扣', partnerEducation: '高中及以下' },
+  { suffix: 'city', matchDate: '2099-02-10', matchType: '演示异地扣分', partnerCity: '广州' },
+];
+
+function cloneCase(row, overrides = {}) {
+  return {
+    ...row,
+    ...overrides,
+    setting: {
+      ...row.setting,
+      ...(overrides.setting || {}),
+    },
+  };
+}
+
+function partnerForScenario(basePartner, scenario) {
+  const settingOverrides = {};
+  if (scenario.partnerPsych) settingOverrides.psychProfile = scenario.partnerPsych;
+  return cloneCase(basePartner, {
+    openid: `${PARTNER_PREFIX}${scenario.suffix}`,
+    education: scenario.partnerEducation || basePartner.education,
+    city: scenario.partnerCity || basePartner.city,
+    setting: settingOverrides,
+  });
+}
 
 function toSetting(row) {
   const s = row.setting;
@@ -136,9 +177,10 @@ async function upsertSetting(userId, row) {
   );
 }
 
-function buildScoreDetail(score, mutualTotal, viewSim, quality) {
+function buildScoreDetail(score, mutualTotal, viewSim, quality, scenarioLabel) {
   return {
     version: 'algo_psych_v1',
+    scenario: scenarioLabel,
     total: score.total,
     mutual_total: mutualTotal,
     view_similarity: viewSim,
@@ -152,25 +194,27 @@ function buildScoreDetail(score, mutualTotal, viewSim, quality) {
   };
 }
 
-async function insertDemoLogs(devId, partnerId, devCase, partnerCase) {
+async function insertDemoLog(devId, partnerId, devCase, partnerCase, scenario) {
   const devUser = toUser(DEV_OPENID, devId, devCase);
-  const partnerUser = toUser(PARTNER_OPENID, partnerId, partnerCase);
+  const partnerUser = toUser(partnerCase.openid, partnerId, partnerCase);
   const devSetting = toSetting(devCase);
   const partnerSetting = toSetting(partnerCase);
-  const viewSim = computeViewSimilarity(
-    devSetting.self_view_text,
-    devSetting.target_view_text,
-    partnerSetting.self_view_text,
-    partnerSetting.target_view_text
-  );
+  const viewSim = Number.isFinite(Number(scenario.viewSim))
+    ? Number(scenario.viewSim)
+    : computeViewSimilarity(
+      devSetting.self_view_text,
+      devSetting.target_view_text,
+      partnerSetting.self_view_text,
+      partnerSetting.target_view_text
+    );
   const scoreAB = scorePairDetail(devUser, devSetting, partnerUser, viewSim);
   const scoreBA = scorePairDetail(partnerUser, partnerSetting, devUser, viewSim);
   const quality = passesQualityGate(scoreAB, scoreBA, viewSim);
-  ok('demo pair passes strict quality gate', quality.pass === true);
+  ok(`${scenario.matchType} passes strict quality gate`, quality.pass === true);
 
   const mutualTotal = Math.round(((scoreAB.total + scoreBA.total) / 2) * 100) / 100;
-  const detailA = buildScoreDetail(scoreAB, mutualTotal, viewSim, quality);
-  const detailB = buildScoreDetail(scoreBA, mutualTotal, viewSim, quality);
+  const detailA = buildScoreDetail(scoreAB, mutualTotal, viewSim, quality, scenario.matchType);
+  const detailB = buildScoreDetail(scoreBA, mutualTotal, viewSim, quality, scenario.matchType);
 
   await pool.query(
     `INSERT INTO user_match_log
@@ -184,19 +228,25 @@ async function insertDemoLogs(devId, partnerId, devCase, partnerCase) {
       viewSim,
       scoreAB.total,
       JSON.stringify(detailA),
-      MATCH_DATE,
-      MATCH_TYPE,
+      scenario.matchDate,
+      scenario.matchType,
       partnerId,
       devId,
       viewSim,
       scoreBA.total,
       JSON.stringify(detailB),
-      MATCH_DATE,
-      MATCH_TYPE,
+      scenario.matchDate,
+      scenario.matchType,
     ]
   );
 
-  return { mutualTotal, scoreA: scoreAB.total, scoreB: scoreBA.total, viewSim };
+  return {
+    type: scenario.matchType,
+    partner_openid: partnerCase.openid,
+    total: scoreAB.total,
+    view_similarity: viewSim,
+    psych_score: scoreAB.detail.psych_score,
+  };
 }
 
 (async () => {
@@ -205,25 +255,20 @@ async function insertDemoLogs(devId, partnerId, devCase, partnerCase) {
 
     const gender = await existingDevGender();
     const devCase = stableCaseForGender(gender);
-    const partnerCase = {
-      ...stablePartnerForGender(gender),
-      openid: PARTNER_OPENID,
-    };
-
+    const basePartner = stablePartnerForGender(gender);
     const devId = await upsertUser(DEV_OPENID, devCase);
-    const partnerId = await upsertUser(PARTNER_OPENID, partnerCase);
     await upsertSetting(devId, devCase);
-    await upsertSetting(partnerId, partnerCase);
 
-    const result = await insertDemoLogs(devId, partnerId, devCase, partnerCase);
-    ok(`demo match visible for ${DEV_OPENID}`, true);
-    console.log(JSON.stringify({
-      dev_openid: DEV_OPENID,
-      partner_openid: PARTNER_OPENID,
-      match_date: MATCH_DATE,
-      match_type: MATCH_TYPE,
-      ...result,
-    }, null, 2));
+    const inserted = [];
+    for (const scenario of DEMO_MATCHES) {
+      const partnerCase = partnerForScenario(basePartner, scenario);
+      const partnerId = await upsertUser(partnerCase.openid, partnerCase);
+      await upsertSetting(partnerId, partnerCase);
+      inserted.push(await insertDemoLog(devId, partnerId, devCase, partnerCase, scenario));
+    }
+
+    ok(`demo matches visible for ${DEV_OPENID}`, inserted.length === DEMO_MATCHES.length);
+    console.log(JSON.stringify({ dev_openid: DEV_OPENID, count: inserted.length, matches: inserted }, null, 2));
   } finally {
     await pool.end();
   }

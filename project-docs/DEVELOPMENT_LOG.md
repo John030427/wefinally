@@ -882,6 +882,35 @@ AI 加权分支现在先筛 `quality.pass`，再调用 `applyAiRerank`；只有�
 
 ---
 
+## 2026-07-03 — 匹配详情分项拆解与多场景演示数据
+
+### 类型
+前端展示 / 测试工具 / Bug修复
+
+### 修改目的
+解释综合匹配分为何可能超过 100，并在匹配详情页展示婚育、三观、心理、年龄、身高、学历、圈层、城市等分项；同时将本地演示数据从 1 条扩展为 5 条，覆盖高契合、三观中等、心理磨合、学历软扣和异地扣分。
+
+### 涉及文件
+- `server/src/routes/match.js`
+- `server/selfcheck/match-demo-seed.js`
+- `server/selfcheck/match-demo-clear.js`
+- `miniprogram/pages/match-detail/*`
+- `miniprogram/pages/match-list/match-list.js`
+- `miniprogram/pages/index/index.js`
+
+### 测试
+- [x] `node --check src/routes/match.js selfcheck/match-demo-seed.js selfcheck/match-demo-clear.js`
+- [x] `node --check miniprogram/pages/match-detail/match-detail.js miniprogram/pages/match-list/match-list.js miniprogram/pages/index/index.js`
+- [x] `npm run demo:match-clear && npm run demo:match-seed`
+- [x] `GET /api/match/list` 返回当前 `DEV_WX_OPENID` 可见的 5 条演示匹配，且包含 gender/birth_year/city
+- [x] `GET /api/match/detail` 返回完整 `score_detail.side` 和 `quality_gate`
+- [x] `npm run selfcheck`
+
+### 备注
+前端现在显示原始综合分，进度条仍按 100 封顶；列表和首页日期格式化为 `YYYY-MM-DD`。演示数据保留在本地数据库，方便微信开发者工具直接刷新测试。
+
+---
+
 ## 模板（后续变更请复制）
 
 ```markdown
