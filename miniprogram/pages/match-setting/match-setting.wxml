@@ -57,14 +57,7 @@
       </view>
 
       <view class="form-item">
-        <text class="form-label">偏好城市</text>
-        <picker mode="selector" range="{{cityOptions}}" value="{{form.preferCityIndex}}" bindchange="onPickerChange" data-field="preferCity" disabled="{{cooldownActive}}">
-          <view class="picker-value {{form.preferCity ? '' : 'placeholder'}}">{{form.preferCity || '请选择'}}</view>
-        </picker>
-      </view>
-
-      <view class="form-item">
-        <text class="form-label">婚姻状态偏好</text>
+        <text class="form-label">婚史接受度</text>
         <picker mode="selector" range="{{likeMarryOptions}}" value="{{form.likeMarryIndex}}" bindchange="onPickerChange" data-field="likeMarry" disabled="{{cooldownActive}}">
           <view class="picker-value {{form.likeMarry ? '' : 'placeholder'}}">{{form.likeMarry || '请选择'}}</view>
         </picker>
@@ -79,68 +72,8 @@
     </view>
 
     <view class="card">
-      <view class="section-title">关系偏好</view>
-
-      <view class="form-item">
-        <text class="form-label">婚姻节奏</text>
-        <picker mode="selector" range="{{marriagePaceOptions}}" value="{{form.marriagePaceIndex}}" bindchange="onPickerChange" data-field="marriagePace" disabled="{{cooldownActive}}">
-          <view class="picker-value {{form.marriagePace ? '' : 'placeholder'}}">{{form.marriagePace || '请选择'}}</view>
-        </picker>
-      </view>
-
-      <view class="form-item">
-        <text class="form-label">冲突处理</text>
-        <picker mode="selector" range="{{conflictStyleOptions}}" value="{{form.conflictStyleIndex}}" bindchange="onPickerChange" data-field="conflictStyle" disabled="{{cooldownActive}}">
-          <view class="picker-value {{form.conflictStyle ? '' : 'placeholder'}}">{{form.conflictStyle || '请选择'}}</view>
-        </picker>
-      </view>
-
-      <view class="form-item">
-        <text class="form-label">安全感/空间</text>
-        <picker mode="selector" range="{{securitySpaceOptions}}" value="{{form.securitySpaceIndex}}" bindchange="onPickerChange" data-field="securitySpace" disabled="{{cooldownActive}}">
-          <view class="picker-value {{form.securitySpace ? '' : 'placeholder'}}">{{form.securitySpace || '请选择'}}</view>
-        </picker>
-      </view>
-
-      <view class="form-item">
-        <text class="form-label">家庭边界</text>
-        <picker mode="selector" range="{{familyBoundaryOptions}}" value="{{form.familyBoundaryIndex}}" bindchange="onPickerChange" data-field="familyBoundary" disabled="{{cooldownActive}}">
-          <view class="picker-value {{form.familyBoundary ? '' : 'placeholder'}}">{{form.familyBoundary || '请选择'}}</view>
-        </picker>
-      </view>
-
-      <view class="form-item">
-        <text class="form-label">金钱观</text>
-        <picker mode="selector" range="{{moneyViewOptions}}" value="{{form.moneyViewIndex}}" bindchange="onPickerChange" data-field="moneyView" disabled="{{cooldownActive}}">
-          <view class="picker-value {{form.moneyView ? '' : 'placeholder'}}">{{form.moneyView || '请选择'}}</view>
-        </picker>
-      </view>
-
-      <view class="form-item">
-        <text class="form-label">事业家庭</text>
-        <picker mode="selector" range="{{careerFamilyOptions}}" value="{{form.careerFamilyIndex}}" bindchange="onPickerChange" data-field="careerFamily" disabled="{{cooldownActive}}">
-          <view class="picker-value {{form.careerFamily ? '' : 'placeholder'}}">{{form.careerFamily || '请选择'}}</view>
-        </picker>
-      </view>
-    </view>
-
-    <view class="card">
       <view class="section-title">外貌偏好</view>
-      <view class="section-hint">霞姐已确认“增加匹配度”方向；当前先记录文字，不上传照片、不公开展示对方原文</view>
-
-      <view class="form-item">
-        <text class="form-label">我的外貌描述</text>
-        <textarea
-          class="textarea-input"
-          placeholder="例如：中等偏高，日常穿搭简洁，气质清爽..."
-          maxlength="{{appearanceMaxLen}}"
-          value="{{appearanceDescription}}"
-          bindinput="onAppearanceDescriptionInput"
-          disabled="{{cooldownActive}}"
-          show-confirm-bar="{{false}}"
-        />
-        <view class="char-counter">当前 {{appearanceDescriptionLen}} / {{appearanceMaxLen}} 字</view>
-      </view>
+      <view class="section-hint">这里只填写期待对方外貌；我的外貌描述在注册基础资料或“我的-外貌描述”里维护。不上传照片、不公开展示原文。</view>
 
       <view class="form-item">
         <text class="form-label">期待对方外貌</text>

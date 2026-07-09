@@ -4,16 +4,26 @@ const {
   STORAGE_KEYS,
   AGE_RANGE_OPTIONS,
   EDUCATION_OPTIONS,
-  CITY_OPTIONS,
   HEIGHT_RANGE_OPTIONS,
   LIKE_MARRY_OPTIONS,
   LIKE_BABY_PLAN_OPTIONS,
-  PSYCH_PROFILE_OPTIONS,
   TEXT_MIN_LEN,
   TEXT_MAX_LEN,
   SUBSCRIBE_TMPL_IDS
 } = require('../../utils/constants')
 const { getCooldownRemain, setCooldownEnd, validateTextLength } = require('../../utils/util')
+
+function normalizeLikeMarryLabel(value) {
+  if (value === '未婚') return '仅看未婚'
+  if (value === '不限') return '可接受离异'
+  return value || ''
+}
+
+function toLikeMarryValue(value) {
+  if (value === '仅看未婚') return '未婚'
+  if (value === '可接受离异') return '不限'
+  return value || ''
+}
 
 Page({
   data: {
@@ -21,41 +31,20 @@ Page({
     errorMsg: '',
     ageRangeOptions: AGE_RANGE_OPTIONS,
     educationOptions: EDUCATION_OPTIONS,
-    cityOptions: CITY_OPTIONS,
     heightRangeOptions: HEIGHT_RANGE_OPTIONS,
     likeMarryOptions: LIKE_MARRY_OPTIONS,
     likeBabyPlanOptions: LIKE_BABY_PLAN_OPTIONS,
-    marriagePaceOptions: PSYCH_PROFILE_OPTIONS.marriage_pace,
-    conflictStyleOptions: PSYCH_PROFILE_OPTIONS.conflict_style,
-    securitySpaceOptions: PSYCH_PROFILE_OPTIONS.security_space,
-    familyBoundaryOptions: PSYCH_PROFILE_OPTIONS.family_boundary,
-    moneyViewOptions: PSYCH_PROFILE_OPTIONS.money_view,
-    careerFamilyOptions: PSYCH_PROFILE_OPTIONS.career_family,
     form: {
       preferAge: '',
       preferAgeIndex: -1,
       preferEducation: '',
       preferEducationIndex: -1,
-      preferCity: '',
-      preferCityIndex: -1,
       preferHeight: '',
       preferHeightIndex: -1,
       likeMarry: '',
       likeMarryIndex: -1,
       likeBabyPlan: '',
       likeBabyPlanIndex: -1,
-      marriagePace: '',
-      marriagePaceIndex: -1,
-      conflictStyle: '',
-      conflictStyleIndex: -1,
-      securitySpace: '',
-      securitySpaceIndex: -1,
-      familyBoundary: '',
-      familyBoundaryIndex: -1,
-      moneyView: '',
-      moneyViewIndex: -1,
-      careerFamily: '',
-      careerFamilyIndex: -1,
       myValues: '',
       expectValues: ''
     },
@@ -141,17 +130,9 @@ Page({
     }
     pick(AGE_RANGE_OPTIONS, data.prefer_age || data.preferAge, 'preferAge', 'preferAgeIndex')
     pick(EDUCATION_OPTIONS, data.prefer_education || data.min_education, 'preferEducation', 'preferEducationIndex')
-    pick(CITY_OPTIONS, data.prefer_city || data.like_city, 'preferCity', 'preferCityIndex')
     pick(HEIGHT_RANGE_OPTIONS, data.prefer_height, 'preferHeight', 'preferHeightIndex')
-    pick(LIKE_MARRY_OPTIONS, data.like_marry_status, 'likeMarry', 'likeMarryIndex')
+    pick(LIKE_MARRY_OPTIONS, normalizeLikeMarryLabel(data.like_marry_status), 'likeMarry', 'likeMarryIndex')
     pick(LIKE_BABY_PLAN_OPTIONS, data.like_baby_plan, 'likeBabyPlan', 'likeBabyPlanIndex')
-    const psych = data.psych_profile || data.psychProfile || {}
-    pick(PSYCH_PROFILE_OPTIONS.marriage_pace, psych.marriage_pace, 'marriagePace', 'marriagePaceIndex')
-    pick(PSYCH_PROFILE_OPTIONS.conflict_style, psych.conflict_style, 'conflictStyle', 'conflictStyleIndex')
-    pick(PSYCH_PROFILE_OPTIONS.security_space, psych.security_space, 'securitySpace', 'securitySpaceIndex')
-    pick(PSYCH_PROFILE_OPTIONS.family_boundary, psych.family_boundary, 'familyBoundary', 'familyBoundaryIndex')
-    pick(PSYCH_PROFILE_OPTIONS.money_view, psych.money_view, 'moneyView', 'moneyViewIndex')
-    pick(PSYCH_PROFILE_OPTIONS.career_family, psych.career_family, 'careerFamily', 'careerFamilyIndex')
     form.myValues = data.my_values || data.myValues || ''
     form.expectValues = data.expect_values || data.expectValues || ''
     this.setData({
@@ -196,16 +177,9 @@ Page({
     const map = {
       preferAge: { options: 'ageRangeOptions', key: 'preferAge' },
       preferEducation: { options: 'educationOptions', key: 'preferEducation' },
-      preferCity: { options: 'cityOptions', key: 'preferCity' },
       preferHeight: { options: 'heightRangeOptions', key: 'preferHeight' },
       likeMarry: { options: 'likeMarryOptions', key: 'likeMarry' },
-      likeBabyPlan: { options: 'likeBabyPlanOptions', key: 'likeBabyPlan' },
-      marriagePace: { options: 'marriagePaceOptions', key: 'marriagePace' },
-      conflictStyle: { options: 'conflictStyleOptions', key: 'conflictStyle' },
-      securitySpace: { options: 'securitySpaceOptions', key: 'securitySpace' },
-      familyBoundary: { options: 'familyBoundaryOptions', key: 'familyBoundary' },
-      moneyView: { options: 'moneyViewOptions', key: 'moneyView' },
-      careerFamily: { options: 'careerFamilyOptions', key: 'careerFamily' }
+      likeBabyPlan: { options: 'likeBabyPlanOptions', key: 'likeBabyPlan' }
     }
     const config = map[field]
     const value = this.data[config.options][index]
@@ -241,7 +215,7 @@ Page({
       wx.showModal({ title: '冷却中', content: '全套择偶配置7天内仅可修改1次，请等待冷却结束', showCancel: false })
       return false
     }
-    if (!form.preferAge || !form.preferEducation || !form.preferCity || !form.preferHeight) {
+    if (!form.preferAge || !form.preferEducation || !form.preferHeight) {
       wx.showToast({ title: '请完善择偶条件', icon: 'none' })
       return false
     }
@@ -272,7 +246,6 @@ Page({
 
     try {
       const profile = await put(API_PATHS.USER_PROFILE_UPDATE, {
-        appearance_description: this.data.appearanceDescription.trim(),
         appearance_want: this.data.appearanceWant.trim()
       }, { showError: false })
       const app = getApp()
@@ -282,18 +255,10 @@ Page({
       await post(API_PATHS.MATCH_SETTING, {
         prefer_age: form.preferAge,
         prefer_education: form.preferEducation,
-        prefer_city: form.preferCity,
         prefer_height: form.preferHeight,
-        like_marry_status: form.likeMarry,
+        like_marry_status: toLikeMarryValue(form.likeMarry),
         like_baby_plan: form.likeBabyPlan,
-        psych_profile: {
-          marriage_pace: form.marriagePace,
-          conflict_style: form.conflictStyle,
-          security_space: form.securitySpace,
-          family_boundary: form.familyBoundary,
-          money_view: form.moneyView,
-          career_family: form.careerFamily
-        },
+        psych_profile: null,
         my_values: form.myValues.trim(),
         expect_values: form.expectValues.trim()
       }, { showLoading: true, loadingText: '保存中...' })

@@ -9,10 +9,24 @@ Page({
     messages: [],
     inputText: '',
     sending: false,
-    scrollToView: ''
+    scrollToView: '',
+    handoffContext: null,
+    handoffAutoSent: false
   },
 
-  onLoad() {
+  onLoad(options) {
+    const handoffTicketId = Number(options.handoffTicketId || 0)
+    const matchLogId = Number(options.matchLogId || 0)
+    const matchUserId = Number(options.matchUserId || 0)
+    if (handoffTicketId || matchLogId || matchUserId) {
+      this.setData({
+        handoffContext: {
+          handoff_ticket_id: handoffTicketId,
+          match_log_id: matchLogId,
+          match_user_id: matchUserId
+        }
+      })
+    }
     this.loadHistory()
   },
 
@@ -69,6 +83,7 @@ Page({
         messages,
         scrollToView: `msg-${messages[messages.length - 1].id}`
       })
+      this.autoSendHandoffMessage()
     } catch (err) {
       this.setData({
         pageState: 'success',
@@ -79,7 +94,17 @@ Page({
           timeText: formatDate(new Date(), 'HH:mm')
         }]
       })
+      this.autoSendHandoffMessage()
     }
+  },
+
+  autoSendHandoffMessage() {
+    if (!this.data.handoffContext || this.data.handoffAutoSent) return
+    this.setData({
+      handoffAutoSent: true,
+      inputText: '我想申请这位匹配对象的官方奔现对接，请客服协助核对双方意向、见面时间地点和安全确认。'
+    })
+    this.onSend()
   },
 
   onRetry() {
@@ -112,7 +137,10 @@ Page({
     this.setData({ messages, inputText: '', sending: true, scrollToView: `msg-${userMsg.id}` })
 
     try {
-      const reply = await post(API_PATHS.CHAT_SEND, { message: text, content: text }, { showError: false })
+      const reply = await post(API_PATHS.CHAT_SEND, Object.assign({
+        message: text,
+        content: text
+      }, this.data.handoffContext || {}), { showError: false })
       const content = (reply && (reply.content || reply.ai_content || reply.answer)) ||
         (typeof reply === 'string' ? reply : '感谢您的咨询，如需人工协助系统将自动转接。')
       const botMsg = {

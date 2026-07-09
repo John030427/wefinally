@@ -1,3 +1,7 @@
+delete process.env.LLM_ENABLED;
+delete process.env.LLM_MATCH_REPORT_ENABLED;
+delete process.env.LLM_MOCK_MODE;
+
 const { cleanupOpenids, createUser, ok, pool } = require('./_helpers');
 const { runBatchMatch } = require('../src/services/matchService');
 const llmConfig = require('../src/config/llmConfig');

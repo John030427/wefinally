@@ -9,6 +9,7 @@ const {
 } = require('./match-effect-fixtures');
 const {
   computeViewSimilarity,
+  harmonicMean,
   passesQualityGate,
   scorePairDetail,
 } = require('../src/services/matchService');
@@ -212,6 +213,8 @@ function cloneCase(row, overrides = {}) {
 function demoDevCaseForGender(gender) {
   return cloneCase(stableCaseForGender(gender), {
     babyPlan: '待定',
+    appearanceDescription: '干净清爽，穿搭自然，生活规律，有运动感',
+    appearanceWant: '希望对方清爽自然，简洁大方，有稳定生活感',
     setting: {
       ageMin: 25,
       ageMax: 42,
@@ -240,6 +243,8 @@ function partnerForScenario(basePartner, scenario, devCase) {
     circleId: partner.circleId || basePartner.circleId,
     city: partner.city || basePartner.city,
     babyPlan: partner.babyPlan || basePartner.babyPlan,
+    appearanceDescription: partner.appearanceDescription || '清爽自然，通勤简洁，生活稳定',
+    appearanceWant: partner.appearanceWant || '希望对方干净清爽，稳定真诚',
     setting: settingOverrides,
   });
 }
@@ -278,6 +283,8 @@ function toUser(openid, id, row) {
     status: USER_STATUS.NORMAL,
     is_vip: 1,
     psych_profile_json: JSON.stringify(row.setting.psychProfile),
+    appearance_description: row.appearanceDescription || '',
+    appearance_want: row.appearanceWant || '',
   };
 }
 
@@ -291,20 +298,22 @@ async function upsertUser(openid, row) {
   await pool.query(
     `INSERT INTO \`user\`
      (openid, gender, birth_year, height_range, education, circle_id, city,
-      marry_status, baby_plan, status, is_vip, vip_expire_time)
-     VALUES (?, ?, ?, ?, ?, ?, ?, '未婚', ?, ?, 1, ?)
-     ON DUPLICATE KEY UPDATE
-      gender = VALUES(gender),
-      birth_year = VALUES(birth_year),
+       marry_status, baby_plan, status, is_vip, vip_expire_time, appearance_description, appearance_want)
+      VALUES (?, ?, ?, ?, ?, ?, ?, '未婚', ?, ?, 1, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE
+       gender = VALUES(gender),
+       birth_year = VALUES(birth_year),
       height_range = VALUES(height_range),
       education = VALUES(education),
       circle_id = VALUES(circle_id),
       city = VALUES(city),
       marry_status = '未婚',
-      baby_plan = VALUES(baby_plan),
-      status = VALUES(status),
-      is_vip = 1,
-      vip_expire_time = VALUES(vip_expire_time)`,
+       baby_plan = VALUES(baby_plan),
+       status = VALUES(status),
+       is_vip = 1,
+       vip_expire_time = VALUES(vip_expire_time),
+       appearance_description = VALUES(appearance_description),
+       appearance_want = VALUES(appearance_want)`,
     [
       openid,
       row.gender,
@@ -316,6 +325,8 @@ async function upsertUser(openid, row) {
       row.babyPlan,
       USER_STATUS.NORMAL,
       vipExpire,
+      row.appearanceDescription || '',
+      row.appearanceWant || '',
     ]
   );
 
@@ -363,18 +374,21 @@ async function upsertSetting(userId, row) {
 
 function buildScoreDetail(score, mutualTotal, viewSim, quality, scenarioLabel) {
   return {
-    version: 'algo_psych_v1',
+    version: 'algo_evidence_v2',
     scenario: scenarioLabel,
     total: score.total,
+    max_total: score.maxTotal,
+    normalized_total: score.normalizedTotal,
     mutual_total: mutualTotal,
     view_similarity: viewSim,
     ai_weight: null,
+    report_status: 3,
     quality_gate: {
       pass: quality.pass,
       reasons: quality.reasons,
       fallback: false,
     },
-    side: score.detail,
+    side: { ...score.detail, dimensions: score.dimensions },
   };
 }
 
@@ -396,7 +410,7 @@ async function insertDemoLog(devId, partnerId, devCase, partnerCase, scenario) {
   const quality = passesQualityGate(scoreAB, scoreBA, viewSim);
   ok(`${scenario.matchType} passes strict quality gate`, quality.pass === true);
 
-  const mutualTotal = Math.round(((scoreAB.total + scoreBA.total) / 2) * 100) / 100;
+  const mutualTotal = harmonicMean(scoreAB.total, scoreBA.total);
   const detailA = buildScoreDetail(scoreAB, mutualTotal, viewSim, quality, scenario.matchType);
   const detailB = buildScoreDetail(scoreBA, mutualTotal, viewSim, quality, scenario.matchType);
 
@@ -404,8 +418,8 @@ async function insertDemoLog(devId, partnerId, devCase, partnerCase, scenario) {
     `INSERT INTO user_match_log
      (user_id, match_user_id, view_similarity, total_score, score_detail_json,
       score_version, ai_report_status, ai_report_error, match_date, match_type)
-     VALUES (?, ?, ?, ?, ?, 'algo_psych_v1', 3, 'disabled', ?, ?),
-            (?, ?, ?, ?, ?, 'algo_psych_v1', 3, 'disabled', ?, ?)`,
+      VALUES (?, ?, ?, ?, ?, 'algo_evidence_v2', 3, 'disabled', ?, ?),
+             (?, ?, ?, ?, ?, 'algo_evidence_v2', 3, 'disabled', ?, ?)`,
     [
       devId,
       partnerId,

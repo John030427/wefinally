@@ -25,7 +25,7 @@ Page({
     this.setData({ pageState: 'loading' })
     const app = getApp()
     if (!app.globalData.isLoggedIn) {
-      wx.redirectTo({ url: '/pages/welcome/welcome' })
+      wx.redirectTo({ url: '/pages/login/login' })
       return
     }
 
@@ -39,8 +39,12 @@ Page({
       const data = await get(API_PATHS.MATCH_LIST, {}, { showError: false })
       const raw = (data && (data.list || data.items)) || (Array.isArray(data) ? data : [])
       const list = raw.map((item) => {
-        const score = item.view_similarity ?? item.compatibilityScore
-        const totalScore = item.total_score ?? item.totalScore
+        const score = item.view_similarity !== null && item.view_similarity !== undefined
+          ? item.view_similarity
+          : item.compatibilityScore
+        const totalScore = item.total_score !== null && item.total_score !== undefined
+          ? item.total_score
+          : item.totalScore
         const age = item.age || calcAge(item.birth_year)
         return {
           id: item.id || item.matchId,

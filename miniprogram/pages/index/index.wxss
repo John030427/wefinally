@@ -34,6 +34,38 @@
   font-weight: 600;
 }
 
+.dev-match-btn {
+  margin: 20rpx 0 0;
+  height: 72rpx;
+  line-height: 72rpx;
+  border-radius: 12rpx;
+  background: #fff;
+  color: #ff5f82;
+  font-size: 26rpx;
+  font-weight: 600;
+  padding: 0;
+}
+
+.dev-match-btn::after {
+  border: none;
+}
+
+.dev-reset-btn {
+  margin: 18rpx 0 0;
+  height: 68rpx;
+  line-height: 68rpx;
+  border-radius: 8rpx;
+  background: #ffffff;
+  border: 2rpx solid #ff6b8a;
+  color: #ff6b8a;
+  font-size: 24rpx;
+  padding: 0;
+}
+
+.dev-reset-btn::after {
+  border: none;
+}
+
 .vip-banner {
   display: flex;
   align-items: center;
@@ -59,6 +91,45 @@
   display: flex;
   align-items: center;
   gap: 16rpx;
+}
+
+.safety-home {
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
+  background: #fff;
+}
+
+.safety-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.safety-title {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 8rpx;
+}
+
+.safety-desc {
+  font-size: 24rpx;
+  color: #888;
+  line-height: 1.5;
+}
+
+.safety-call {
+  width: 108rpx;
+  height: 72rpx;
+  border-radius: 36rpx;
+  background: #ff6b8a;
+  color: #fff;
+  font-size: 28rpx;
+  font-weight: 600;
+  flex: 0 0 108rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .vip-badge {

@@ -14,13 +14,16 @@ const API_PATHS = {
   USER_PROFILE_UPDATE: '/api/user/profile',
   MATCH_SETTING: '/api/match/setting',
   MATCH_SETTING_COOLDOWN: '/api/match/setting/cooldown',
+  MATCH_START: '/api/match/start',
   MATCH_LIST: '/api/match/list',
   MATCH_DETAIL: '/api/match/detail',
+  MATCH_HANDOFF: '/api/match/handoff',
+  MATCH_REPORT: '/api/match/report',
   MATCH_LATEST: '/api/match/latest',
   VIP_INFO: '/api/vip/info',
   VIP_PURCHASE: '/api/vip/purchase',
-  MARRY_STAT: '/api/platform/marry-stat',
   ORDER_STATUS: '/api/order/status',
+  MARRY_STAT: '/api/platform/marry-stat',
   MARRY_REPORT: '/api/user/marry-report',
   CHAT_SEND: '/api/chat/send',
   CHAT_HISTORY: '/api/chat/history',
@@ -28,6 +31,9 @@ const API_PATHS = {
   RULES: '/api/platform/rules',
   CIRCLES: '/api/common/circles',
   AGREEMENTS: '/api/common/agreements',
+  COMMON_CONFIG: '/api/common/config',
+  SAFETY_CONFIG: '/api/common/safety-config',
+  MEET_SOS: '/api/meet/sos',
   PROMOTE_CODE_CHECK: '/api/common/promote-code',
   DIVORCE_REVIEW: '/api/user/divorce-review',
   DIVORCE_REVIEW_STATUS: '/api/user/divorce-review/status'
@@ -45,7 +51,7 @@ const CITY_OPTIONS = [
 ]
 const AGE_RANGE_OPTIONS = ['20-25岁', '25-30岁', '30-35岁', '35-40岁', '40-45岁', '45岁以上']
 const HEIGHT_RANGE_OPTIONS = ['140-150cm', '150-160cm', '160-170cm', '170-180cm', '180-190cm', '190cm以上']
-const LIKE_MARRY_OPTIONS = ['未婚', '不限']
+const LIKE_MARRY_OPTIONS = ['仅看未婚', '可接受离异']
 const LIKE_BABY_PLAN_OPTIONS = ['1年内', '2-3年内', '3-5年内', '5年后', '丁克', '待定', '不限']
 const PSYCH_PROFILE_OPTIONS = {
   marriage_pace: ['稳定推进', '先磨合再定', '顺其自然'],
@@ -62,6 +68,11 @@ const VIP_DAYS = 30
 const TEXT_MIN_LEN = 20
 const TEXT_MAX_LEN = 300
 const SUBSCRIBE_TMPL_IDS = []
+const GUANGDONG_110_DEFAULT = {
+  enabled: true,
+  appId: 'wxf654be7f2931bfcb',
+  path: ''
+}
 
 const AGREEMENT_ITEMS = [
   { key: 'userAgreement', label: '我已阅读并同意《用户服务协议》', type: 'user_service' },
@@ -96,6 +107,7 @@ module.exports = {
   TEXT_MIN_LEN,
   TEXT_MAX_LEN,
   SUBSCRIBE_TMPL_IDS,
+  GUANGDONG_110_DEFAULT,
   AGREEMENT_ITEMS,
   MATCH_SCHEDULE
 }

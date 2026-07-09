@@ -1,3 +1,7 @@
+delete process.env.LLM_ENABLED;
+delete process.env.AI_MATCH_WEIGHT_ENABLED;
+delete process.env.LLM_MOCK_MODE;
+
 const { applyAiRerank } = require('../src/services/matchService');
 const llmConfig = require('../src/config/llmConfig');
 const { ok } = require('./_helpers');

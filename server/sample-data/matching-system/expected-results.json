@@ -1,0 +1,64 @@
+{
+  "main": {
+    "viewer": "sample_match_main_m",
+    "algorithmFirst": "sample_match_main_algo_first_f",
+    "aiFirst": "sample_match_main_ai_preferred_f",
+    "scoreVersion": "algo_evidence_v2",
+    "reportStatus": 1
+  },
+  "reportFailure": {
+    "viewer": "sample_match_fail_m",
+    "partner": "sample_match_fail_report_fail_f",
+    "reportStatus": 2
+  },
+  "wave2": [
+    {
+      "name": "新用户小池_窄条件首匹配",
+      "batchDate": "2099-02-10",
+      "viewer": "sample_match_case_narrow_m",
+      "partner": "sample_match_case_narrow_f"
+    },
+    {
+      "name": "年龄边界_刚好命中",
+      "batchDate": "2099-02-11",
+      "viewer": "sample_match_case_age_boundary_m",
+      "partner": "sample_match_case_age_boundary_f"
+    },
+    {
+      "name": "旧关系偏好_缺失不误杀",
+      "batchDate": "2099-02-12",
+      "viewer": "sample_match_case_legacy_psych_m",
+      "partner": "sample_match_case_legacy_psych_f"
+    },
+    {
+      "name": "婚育不限_节奏不同仍可配",
+      "batchDate": "2099-02-13",
+      "viewer": "sample_match_case_baby_unlimited_m",
+      "partner": "sample_match_case_baby_unlimited_f"
+    },
+    {
+      "name": "身高边界_软分可解释",
+      "batchDate": "2099-02-14",
+      "viewer": "sample_match_case_height_boundary_m",
+      "partner": "sample_match_case_height_boundary_f"
+    },
+    {
+      "name": "外貌近义_清爽简洁命中",
+      "batchDate": "2099-02-15",
+      "viewer": "sample_match_case_appearance_synonym_m",
+      "partner": "sample_match_case_appearance_synonym_f"
+    },
+    {
+      "name": "关系轻差异_仍可接受",
+      "batchDate": "2099-02-16",
+      "viewer": "sample_match_case_psych_soft_diff_m",
+      "partner": "sample_match_case_psych_soft_diff_f"
+    },
+    {
+      "name": "AI重排_三候选反转",
+      "batchDate": "2099-02-17",
+      "viewer": "sample_match_case_ai_three_m",
+      "partner": "sample_match_case_ai_three_ai_preferred_f"
+    }
+  ]
+}

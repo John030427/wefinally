@@ -17,6 +17,7 @@ const {
   USER_STATUS,
 } = require('../config/constants');
 const { normalizePsychProfile } = require('../utils/psychMatch');
+const { runBatchMatch } = require('../services/matchService');
 
 const router = express.Router();
 
@@ -39,8 +40,7 @@ function parseHeightRange(preferHeight) {
 }
 
 function validateViewText(text, label) {
-  if (!text) return null;
-  const len = text.trim().length;
+  const len = String(text || '').trim().length;
   if (len < VIEW_TEXT_MIN || len > VIEW_TEXT_MAX) {
     return `${label}长度需在 ${VIEW_TEXT_MIN}-${VIEW_TEXT_MAX} 字之间`;
   }
@@ -61,6 +61,167 @@ function formatSetting(row) {
     psych_profile: normalizePsychProfile(row.psych_profile_json),
     ...row,
   };
+}
+
+function formatHandoffTicket(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    match_log_id: row.match_log_id,
+    user_id: row.user_id,
+    match_user_id: row.match_user_id,
+    status: row.status,
+    status_text: handoffStatusText(row.status),
+    service_note: row.service_note || '',
+    create_time: row.create_time,
+    update_time: row.update_time,
+  };
+}
+
+function handoffStatusText(status) {
+  return {
+    submitted: '已提交',
+    processing: '客服处理中',
+    waiting_partner: '等待对方确认',
+    arranged: '已安排',
+    closed: '已关闭',
+  }[status] || '已提交';
+}
+
+async function getHandoffTicket(matchLogId, userId) {
+  const [rows] = await pool.query(
+    'SELECT * FROM match_handoff_ticket WHERE match_log_id = ? AND user_id = ? LIMIT 1',
+    [matchLogId, userId]
+  ).catch(() => [[]]);
+  return rows[0] || null;
+}
+
+function calcAge(birthYear) {
+  if (!birthYear) return null;
+  return new Date().getFullYear() - Number(birthYear);
+}
+
+function birthYearForAge(age) {
+  return new Date().getFullYear() - Number(age || 30);
+}
+
+function rangeText(min, max, suffix, fallback) {
+  if (min && max) return `${min}-${max}${suffix}`;
+  return fallback;
+}
+
+function defaultPsychProfile() {
+  return {
+    marriage_pace: '稳定推进',
+    conflict_style: '及时沟通',
+    security_space: '亲密也独立',
+    family_boundary: '小家庭优先',
+    money_view: '共同规划',
+    career_family: '动态平衡',
+  };
+}
+
+function devCandidateOpenid(user) {
+  if (String(user.openid || '').startsWith('sc_dev_match_seed_current')) {
+    return 'sc_dev_match_seed_current_candidate';
+  }
+  return `dev_candidate_${user.id}`;
+}
+
+async function ensureDevCurrentUserCandidate(userId) {
+  const [rows] = await pool.query(
+    `SELECT u.*, ms.age_min, ms.age_max, ms.height_min, ms.height_max,
+            ms.min_education, ms.like_baby_plan, ms.self_view_text,
+            ms.target_view_text, ms.psych_profile_json
+     FROM \`user\` u
+     INNER JOIN user_match_setting ms ON ms.user_id = u.id
+     WHERE u.id = ?`,
+    [userId]
+  );
+  const user = rows[0];
+  if (!user) return null;
+
+  const targetGender = Number(user.gender) === 1 ? 2 : 1;
+  const ageMin = Number(user.age_min) || 25;
+  const ageMax = Number(user.age_max) || ageMin + 5;
+  const targetAge = Math.round((ageMin + ageMax) / 2);
+  const currentAge = calcAge(user.birth_year) || targetAge;
+  const ownHeight = parseHeightRange(user.height_range);
+  const candidateOpenid = devCandidateOpenid(user);
+  const candidateBabyPlan = user.like_baby_plan && user.like_baby_plan !== '不限'
+    ? user.like_baby_plan
+    : (user.baby_plan || '待定');
+  const psychJson = user.psych_profile_json || JSON.stringify(defaultPsychProfile());
+  const vipExpire = new Date(Date.now() + 30 * 86400000);
+
+  await pool.query(
+    `INSERT INTO \`user\`
+     (openid, gender, birth_year, height_range, education, circle_id, city,
+      marry_status, baby_plan, status, is_vip, vip_expire_time,
+      appearance_description, appearance_want)
+     VALUES (?, ?, ?, ?, ?, ?, ?, '未婚', ?, ?, 1, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE
+      gender = VALUES(gender),
+      birth_year = VALUES(birth_year),
+      height_range = VALUES(height_range),
+      education = VALUES(education),
+      circle_id = VALUES(circle_id),
+      city = VALUES(city),
+      marry_status = '未婚',
+      baby_plan = VALUES(baby_plan),
+      status = VALUES(status),
+      is_vip = 1,
+      vip_expire_time = VALUES(vip_expire_time),
+      appearance_description = VALUES(appearance_description),
+      appearance_want = VALUES(appearance_want)`,
+    [
+      candidateOpenid,
+      targetGender,
+      birthYearForAge(targetAge),
+      rangeText(user.height_min, user.height_max, 'cm', '160-170cm'),
+      user.min_education || user.education || '本科',
+      user.circle_id || 1,
+      user.city || '深圳',
+      candidateBabyPlan,
+      USER_STATUS.NORMAL,
+      vipExpire,
+      '开发测试候选：资料用于本地真机匹配自测',
+      '希望对方真诚稳定，愿意认真沟通和经营关系',
+    ]
+  );
+  const [[candidate]] = await pool.query('SELECT id FROM `user` WHERE openid = ?', [candidateOpenid]);
+  await pool.query(
+    `INSERT INTO user_match_setting
+     (user_id, age_min, age_max, height_min, height_max, min_education,
+      like_circle_ids, like_marry_status, like_baby_plan,
+      self_view_text, target_view_text, psych_profile_json, last_edit_time)
+     VALUES (?, ?, ?, ?, ?, '高中及以下', '', '未婚', ?, ?, ?, ?, NULL)
+     ON DUPLICATE KEY UPDATE
+      age_min = VALUES(age_min),
+      age_max = VALUES(age_max),
+      height_min = VALUES(height_min),
+      height_max = VALUES(height_max),
+      min_education = VALUES(min_education),
+      like_circle_ids = VALUES(like_circle_ids),
+      like_marry_status = VALUES(like_marry_status),
+      like_baby_plan = VALUES(like_baby_plan),
+      self_view_text = VALUES(self_view_text),
+      target_view_text = VALUES(target_view_text),
+      psych_profile_json = VALUES(psych_profile_json),
+      last_edit_time = NULL`,
+    [
+      candidate.id,
+      Math.max(18, currentAge - 5),
+      Math.min(65, currentAge + 5),
+      ownHeight.height_min || 140,
+      ownHeight.height_max || 220,
+      user.baby_plan || null,
+      user.target_view_text || '我重视稳定关系、真诚沟通和共同规划，也愿意认真了解后推进婚姻',
+      user.self_view_text || '希望对方真诚稳定，沟通顺畅，愿意共同规划家庭和未来生活',
+      psychJson,
+    ]
+  );
+  return candidate;
 }
 
 function ageBand(birthYear) {
@@ -192,14 +353,16 @@ router.post(
       }
 
       const {
-        prefer_age, prefer_education, prefer_city, prefer_height,
+        prefer_age, prefer_education, prefer_height,
         like_marry_status, like_baby_plan, psych_profile,
         my_values, expect_values,
       } = req.body;
+      const myValues = String(my_values || '').trim();
+      const expectValues = String(expect_values || '').trim();
 
-      const err1 = validateViewText(my_values, '我的三观自述');
+      const err1 = validateViewText(myValues, '我的三观自述');
       if (err1) return fail(res, err1);
-      const err2 = validateViewText(expect_values, '期待对方三观');
+      const err2 = validateViewText(expectValues, '期待对方三观');
       if (err2) return fail(res, err2);
 
       const ageRange = parseAgeRange(prefer_age);
@@ -219,7 +382,7 @@ router.post(
             heightRange.height_min, heightRange.height_max,
             prefer_education || null, '',
             like_marry_status || null, like_baby_plan || null,
-            my_values.trim(), expect_values.trim(), psychProfileJson,
+            myValues, expectValues, psychProfileJson,
             req.auth.id,
           ]
         );
@@ -236,7 +399,7 @@ router.post(
             heightRange.height_min, heightRange.height_max,
             prefer_education || null, '',
             like_marry_status || null, like_baby_plan || null,
-            my_values.trim(), expect_values.trim(), psychProfileJson,
+            myValues, expectValues, psychProfileJson,
           ]
         );
       }
@@ -245,11 +408,6 @@ router.post(
         'UPDATE `user` SET last_match_setting_time = NOW() WHERE id = ?',
         [req.auth.id]
       );
-
-      const [users] = await pool.query('SELECT status FROM `user` WHERE id = ?', [req.auth.id]);
-      if (users[0].status === USER_STATUS.PENDING) {
-        await pool.query('UPDATE `user` SET status = ? WHERE id = ?', [USER_STATUS.NORMAL, req.auth.id]);
-      }
 
       const [updatedRows] = await pool.query(
         'SELECT * FROM user_match_setting WHERE user_id = ?',
@@ -268,9 +426,39 @@ router.post(
   }
 );
 
-/** POST /api/match/start — matching is cron-only (Wed/Fri) */
-router.post('/start', requireVip, async (req, res) => {
-  return fail(res, '系统每周三、周五 0:00 自动匹配，无需手动发起');
+/** POST /api/match/start — dev-only manual trigger for real-device testing */
+router.post('/start', requireVip, async (req, res, next) => {
+  try {
+    if (process.env.NODE_ENV === 'production' || process.env.DEV_MATCH_START_ENABLED !== 'true') {
+      return fail(res, '系统每周三、周五 0:00 自动匹配；开发测试需开启 DEV_MATCH_START_ENABLED=true');
+    }
+    const batchDate = String(req.body?.batch_date || new Date().toISOString().slice(0, 10)).slice(0, 10);
+    const scope = String(req.body?.scope_openid_prefix || '').trim();
+    const allowRematch = req.body?.allow_rematch === true;
+    const allowQualityFallback = req.body?.allow_quality_fallback === true;
+    const resetUserBatch = req.body?.reset_user_batch === true;
+    const devSeedCurrentUserCandidates = req.body?.dev_seed_current_user_candidates === true;
+    if (devSeedCurrentUserCandidates) {
+      await ensureDevCurrentUserCandidate(req.auth.id);
+    }
+    if (resetUserBatch) {
+      await pool.query(
+        `DELETE FROM user_match_log
+         WHERE match_date = ? AND (user_id = ? OR match_user_id = ?)`,
+        [batchDate, req.auth.id, req.auth.id]
+      );
+    }
+    const options = {
+      ...(scope ? { scopeOpenidPrefix: scope } : {}),
+      ...(devSeedCurrentUserCandidates ? { onlyUserId: req.auth.id } : {}),
+      ...(allowRematch ? { allowRematch: true } : {}),
+      ...(allowQualityFallback ? { allowQualityFallback: true } : {}),
+    };
+    const result = await runBatchMatch(batchDate, '手动测试匹配', options);
+    return success(res, { batch_date: batchDate, ...result }, '已触发手动测试匹配');
+  } catch (err) {
+    next(err);
+  }
 });
 
 /** GET /api/match/latest — 最近一次匹配（首页用） */
@@ -345,6 +533,59 @@ router.get('/detail', async (req, res, next) => {
   }
 });
 
+/** POST /api/match/handoff — official customer-service mediated match handoff */
+router.post('/handoff', requireVip, async (req, res, next) => {
+  try {
+    const matchLogId = Number(req.body?.match_log_id || req.body?.matchLogId || req.body?.id);
+    const matchUserId = Number(req.body?.match_user_id || req.body?.matchUserId || req.body?.matched_user_id || req.body?.matchedUserId);
+    if (!matchLogId && !matchUserId) return fail(res, '缺少匹配ID');
+
+    let match = null;
+    if (matchLogId) {
+      const [rows] = await pool.query(
+        'SELECT id, user_id, match_user_id FROM user_match_log WHERE id = ? AND user_id = ? LIMIT 1',
+        [matchLogId, req.auth.id]
+      );
+      match = rows[0] || null;
+    }
+    if (!match && matchUserId) {
+      const [fallbackRows] = await pool.query(
+        `SELECT id, user_id, match_user_id
+         FROM user_match_log
+         WHERE user_id = ? AND match_user_id = ?
+         ORDER BY match_date DESC, id DESC
+         LIMIT 1`,
+        [req.auth.id, matchUserId]
+      );
+      match = fallbackRows[0] || null;
+    }
+    if (!match) return fail(res, '匹配记录不存在，请返回匹配记录页重新进入', 404, 404);
+
+    const existing = await getHandoffTicket(match.id, req.auth.id);
+    if (existing) return success(res, formatHandoffTicket(existing), '已提交官方对接申请');
+
+    const [created] = await pool.query(
+      `INSERT INTO match_handoff_ticket
+       (match_log_id, user_id, match_user_id, status)
+       VALUES (?, ?, ?, 'submitted')`,
+      [match.id, req.auth.id, match.match_user_id]
+    );
+    await pool.query(
+      `INSERT INTO ai_chat_log (user_id, user_content, ai_content, is_manual_transfer)
+       VALUES (?, ?, ?, 1)`,
+      [
+        req.auth.id,
+        `申请官方奔现对接：匹配记录#${match.id}`,
+        '已收到你的官方奔现对接申请，平台客服会先核对双方意向，再推进下一步。',
+      ]
+    ).catch(() => {});
+    const [tickets] = await pool.query('SELECT * FROM match_handoff_ticket WHERE id = ?', [created.insertId]);
+    return success(res, formatHandoffTicket(tickets[0]), '已提交官方对接申请');
+  } catch (err) {
+    next(err);
+  }
+});
+
 async function loadMatchDetail(req, res, next, matchId) {
   try {
     const [rows] = await pool.query(
@@ -391,6 +632,9 @@ async function loadMatchDetail(req, res, next, matchId) {
       ai_report_text: match.ai_report_text || '',
       ai_report_status: match.ai_report_status,
       ai_report_error: match.ai_report_error || '',
+      handoff_ticket: formatHandoffTicket(await getHandoffTicket(match.id, req.auth.id)),
+      match_user_id: match.match_user_id,
+      matched_user_id: match.match_user_id,
       gender: match.gender,
       birth_year: match.birth_year,
       city: match.city,

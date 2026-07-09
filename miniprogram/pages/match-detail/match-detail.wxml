@@ -60,17 +60,57 @@
       <view class="compat-hint">基于资料、择偶条件、三观文本和关系偏好测算，仅作优先了解参考</view>
     </view>
 
+    <view class="report-card card" wx:if="{{!detail.locked}}">
+      <view class="report-header">
+        <view class="meet-title">AI匹配报告</view>
+        <view class="report-status {{detail.aiReportStatus === 1 ? 'ready' : (detail.aiReportStatus === 4 ? 'running' : '')}}">
+          {{detail.reportStatusText}}
+        </view>
+      </view>
+      <view wx:if="{{detail.aiReportText}}" class="report-text">{{detail.aiReportText}}</view>
+      <block wx:else>
+        <view wx:if="{{detail.reportHintText}}" class="compat-hint">{{detail.reportHintText}}</view>
+        <view wx:elif="{{detail.aiReportStatus === 4}}" class="compat-hint">AI报告生成中，请稍等后刷新进度；匹配结果已完成，不影响后续操作。</view>
+        <view wx:elif="{{detail.aiReportStatus === 2}}" class="compat-hint">AI报告暂未生成成功，可稍后重试；匹配结果不受影响。</view>
+        <view wx:elif="{{detail.aiReportStatus === 3}}" class="compat-hint">AI报告未开启，可手动生成。</view>
+        <view wx:else class="compat-hint">匹配已完成，AI报告待手动生成。</view>
+        <view wx:if="{{detail.localReportText}}" class="local-report-box">
+          <view class="local-report-title">临时婚恋参考（非AI报告）</view>
+          <view class="report-text">{{detail.localReportText}}</view>
+        </view>
+      </block>
+      <view class="report-actions">
+        <button
+          wx:if="{{detail.canGenerateReport}}"
+          class="report-action-btn"
+          loading="{{reportGenerating}}"
+          disabled="{{reportGenerating}}"
+          bindtap="requestAiReport"
+        >{{detail.reportActionText}}</button>
+        <button
+          wx:if="{{detail.canRefreshReport}}"
+          class="report-action-btn"
+          loading="{{reportGenerating}}"
+          disabled="{{reportGenerating}}"
+          bindtap="onRetry"
+        >刷新进度</button>
+      </view>
+    </view>
+
     <view class="breakdown-card card" wx:if="{{detail.scoreBreakdown && detail.scoreBreakdown.length}}">
       <view class="compat-title">字段拆解</view>
-      <view class="breakdown-row" wx:for="{{detail.scoreBreakdown}}" wx:key="key">
+      <view class="breakdown-row" wx:for="{{detail.scoreBreakdown}}" wx:key="key" bindtap="onToggleFieldExplain" data-key="{{item.key}}">
         <view class="breakdown-head">
           <text class="breakdown-label">{{item.label}}</text>
-          <text class="breakdown-score">{{item.scoreText}}/{{item.max}}</text>
+          <view class="breakdown-value">
+            <text class="breakdown-score">{{item.scoreText}}/{{item.max}}</text>
+            <text class="breakdown-arrow">{{item.expanded ? '收起' : '解释'}}</text>
+          </view>
         </view>
         <view class="progress-bar breakdown-bar">
           <view class="progress-fill progress-pink" style="width: {{item.percent}}%"></view>
         </view>
-        <view class="breakdown-note">{{item.note}}</view>
+        <view class="breakdown-note" wx:if="{{item.expanded}}">{{item.explain}}</view>
       </view>
       <view class="quality-line" wx:if="{{detail.qualityText}}">{{detail.qualityText}}</view>
       <view class="quality-line" wx:if="{{psychText}}">{{psychText}}</view>
@@ -104,19 +144,21 @@
       </block>
     </view>
 
-    <view class="report-card card" wx:if="{{!detail.locked}}">
-      <view class="meet-title">AI匹配报告</view>
-      <view wx:if="{{detail.aiReportText}}" class="report-text">{{detail.aiReportText}}</view>
-      <view wx:elif="{{detail.aiReportStatus === 3}}" class="compat-hint">AI报告默认关闭，当前展示算法匹配结果</view>
-      <view wx:elif="{{detail.aiReportStatus === 2}}" class="compat-hint">AI报告暂未生成成功，匹配结果不受影响</view>
-      <view wx:else class="compat-hint">AI报告待生成</view>
-    </view>
-
     <view class="meet-card card">
       <view class="meet-title">奔现对接</view>
-      <view class="meet-desc">匹配成功后，平台提供官方一对一私密奔现对接服务。如需协助，请通过 AI 客服联系平台工作人员。</view>
-      <navigator url="/pages/meet-safety/meet-safety?matchUserId={{detail.matchedUserId}}" class="meet-link safety-link">线下见面安全确认 ›</navigator>
-      <navigator url="/pages/chat/chat" class="meet-link">联系 AI 客服 ›</navigator>
+      <view class="meet-desc">匹配成功后，平台提供官方一对一私密奔现对接服务。双方不开放私聊，由平台客服核对意向后推进。</view>
+      <view class="handoff-status" wx:if="{{detail.handoffTicket}}">
+        当前状态：{{detail.handoffTicket.status_text || '已提交'}}
+      </view>
+      <view class="meet-actions">
+        <navigator url="/pages/meet-safety/meet-safety?matchUserId={{detail.matchedUserId}}&matchLogId={{matchId}}" class="meet-action-btn meet-action-primary">线下见面安全确认</navigator>
+        <button
+          class="meet-action-btn"
+          loading="{{handoffSubmitting}}"
+          disabled="{{handoffSubmitting}}"
+          bindtap="requestHandoff"
+        >{{detail.handoffTicket ? '查看对接状态' : '申请官方奔现对接'}}</button>
+      </view>
     </view>
 
     <view class="privacy-note">

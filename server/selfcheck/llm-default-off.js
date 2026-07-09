@@ -1,3 +1,8 @@
+delete process.env.LLM_ENABLED;
+delete process.env.LLM_MATCH_REPORT_ENABLED;
+delete process.env.AI_MATCH_WEIGHT_ENABLED;
+delete process.env.LLM_MOCK_MODE;
+
 const fs = require('fs');
 const path = require('path');
 const llmConfig = require('../src/config/llmConfig');
@@ -14,7 +19,7 @@ const { ok } = require('./_helpers');
   ok('llmConfig.enabled is false', llmConfig.enabled === false);
   ok('llm match report is false', llmConfig.matchReportEnabled === false);
   ok('llm ai weight is false', llmConfig.aiWeightEnabled === false);
-  ok('matchConfig.useAppearanceInMatch is false', matchConfig.useAppearanceInMatch === false);
+  ok('appearance preference match is enabled', matchConfig.useAppearanceInMatch === true);
   ok('extractAppearanceTags returns null when disabled', (await extractAppearanceTags('高 瘦 文艺')) === null);
   const report = await generateMatchReport({}, {}, {});
   ok('generateMatchReport returns disabled when off', report.status === 3);

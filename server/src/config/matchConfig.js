@@ -2,7 +2,7 @@
 module.exports = {
   avoidRematch: true,       // 跨批次去重：同一对已匹配过则不再配
   smallPoolFallback: false, // 小池兜底：无人过软分门槛时，放宽软分(硬条件仍守)，默认关，早期由运营开
-  useAppearanceInMatch: false, // 丙启用且有标签时才计入；默认关
+  useAppearanceInMatch: true,  // 外貌按“期待描述 vs 对方自述”的契合度计入，不做颜值评分
   // 各维度满分（软分，命中给满分）
   weights: {
     baby: 30,      // 婚育节奏一致
