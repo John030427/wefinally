@@ -11,6 +11,8 @@ Page({
     isVip: false,
     vipExpireDate: '',
     purchasing: false,
+    paymentProcessing: false,
+    processingText: '',
     benefits: [
       { icon: '🎯', title: 'AI 定时匹配', desc: '每周三、周五 0:00 各空投 1 位对象' },
       { icon: '💭', title: '三观契合度', desc: '查看匹配对象三观契合度分析' },
@@ -54,6 +56,31 @@ Page({
     this.loadVipInfo()
   },
 
+  sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms))
+  },
+
+  async pollOrderStatus(orderNo, maxAttempts = 5) {
+    for (let i = 0; i < maxAttempts; i += 1) {
+      try {
+        const status = await get(API_PATHS.ORDER_STATUS, { order_no: orderNo }, { showError: false })
+        if (status && status.is_paid) return status
+      } catch (err) {
+        // Payment may be confirmed by a delayed callback; keep the UI in processing state.
+      }
+      await this.sleep(1200)
+    }
+    return null
+  },
+
+  showProcessingModal() {
+    wx.showModal({
+      title: '支付处理中',
+      content: '微信支付已返回，平台还在确认结果。请稍后刷新会员状态。',
+      showCancel: false
+    })
+  },
+
   async onPurchase() {
     if (this.data.purchasing) return
     if (this.data.isVip) {
@@ -92,10 +119,35 @@ Page({
                 fail: reject
               })
             })
+            this.setData({
+              paymentProcessing: true,
+              processingText: '正在确认支付结果...'
+            })
+            const paid = await this.pollOrderStatus(result.order_no, 5)
+            this.setData({ paymentProcessing: false, processingText: '' })
+            if (paid && paid.is_paid) {
+              wx.showToast({ title: '开通成功', icon: 'success' })
+              this.loadVipInfo()
+              return
+            }
+            this.showProcessingModal()
+            this.loadVipInfo()
+            return
           }
 
-          wx.showToast({ title: '开通成功', icon: 'success' })
+          if (result && result.demo_granted) {
+            wx.showToast({ title: '开通成功', icon: 'success' })
+            this.loadVipInfo()
+            return
+          }
+
+          wx.showModal({
+            title: '支付暂未开启',
+            content: result && result.message ? result.message : '微信支付暂未开启，请稍后重试',
+            showCancel: false
+          })
           this.loadVipInfo()
+          return
         } catch (err) {
           if (err && err.errMsg && err.errMsg.includes('cancel')) {
             wx.showToast({ title: '已取消支付', icon: 'none' })

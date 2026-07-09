@@ -48,6 +48,9 @@
     </view>
 
     <view class="safe-bottom">
+      <view class="vip-processing" wx:if="{{paymentProcessing}}">
+        {{processingText || '正在确认支付结果...'}}
+      </view>
       <button
         class="btn-primary"
         bindtap="onPurchase"

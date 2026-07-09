@@ -81,3 +81,10 @@
   font-size: 24rpx;
   color: #888;
 }
+
+.vip-processing {
+  margin-bottom: 16rpx;
+  color: #666;
+  font-size: 26rpx;
+  text-align: center;
+}
