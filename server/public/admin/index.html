@@ -89,7 +89,9 @@
       <div class="sidebar-head"><h2>WeFinally Admin</h2><small>超级管理后台</small></div>
       <nav class="nav" id="nav">
         <button class="nav-item active" data-p="dashboard">数据看板</button>
+        <button class="nav-item" data-p="service">客服工作台</button>
         <button class="nav-item" data-p="users">用户管理</button>
+        <button class="nav-item" data-p="matches">匹配记录</button>
         <button class="nav-item" data-p="partners">合伙人管理</button>
         <button class="nav-item" data-p="orders">订单对账</button>
         <button class="nav-item" data-p="withdrawals">提现审核</button>
@@ -98,7 +100,9 @@
         <button class="nav-item" data-p="stats">公示数据</button>
         <button class="nav-item" data-p="knowledge">AI 知识库</button>
         <button class="nav-item" data-p="chat">客服会话</button>
+        <button class="nav-item" data-p="handoff">奔现工单</button>
         <button class="nav-item" data-p="privacy">授权日志</button>
+        <button class="nav-item" data-p="whitelist">白名单</button>
         <button class="nav-item" data-p="export">数据导出</button>
         <button class="nav-item" data-p="logs">系统日志</button>
       </nav>
@@ -115,12 +119,26 @@
 (function () {
   const API = '/api';
   const TK = 'wf_admin_token';
-  const TITLES = { dashboard:'数据看板', users:'用户管理', partners:'合伙人管理', orders:'订单对账', withdrawals:'提现审核', marry:'婚姻报备', cancel:'注销/离异审核', stats:'公示数据配置', knowledge:'AI 知识库', chat:'客服会话', privacy:'合规授权日志', export:'数据导出', logs:'系统日志' };
+  const RK = 'wf_admin_role';
+  const TITLES = { dashboard:'数据看板', service:'客服工作台', users:'用户管理', matches:'匹配记录', partners:'合伙人管理', orders:'订单对账', withdrawals:'提现审核', marry:'婚姻报备', cancel:'注销/离异审核', stats:'公示数据配置', knowledge:'AI 知识库', chat:'客服会话', handoff:'奔现工单', privacy:'合规授权日志', whitelist:'单位白名单', export:'数据导出', logs:'系统日志' };
+  const ROLE_PAGES = { customer_service: ['service', 'orders', 'chat', 'handoff'] };
   let page = 'dashboard', dashRange = 'today', cacheUsers = [], cacheOrders = [];
 
   function token() { return localStorage.getItem(TK); }
   function setToken(t) { localStorage.setItem(TK, t); }
-  function clearToken() { localStorage.removeItem(TK); }
+  function adminRole() { return localStorage.getItem(RK) || 'super_admin'; }
+  function setAdminRole(role) { localStorage.setItem(RK, role || 'super_admin'); }
+  function clearToken() { localStorage.removeItem(TK); localStorage.removeItem(RK); }
+  function allowedPages() { return ROLE_PAGES[adminRole()] || null; }
+  function isPageAllowed(p) { const list = allowedPages(); return !list || list.includes(p); }
+  function defaultPage() { const list = allowedPages(); return list ? list[0] : 'dashboard'; }
+  function roleText(role) { return role === 'customer_service' ? '客服' : role === 'finance' ? '财务' : role === 'auditor' ? '审核' : '超级管理员'; }
+  function applyRoleNav() {
+    const list = allowedPages();
+    document.querySelectorAll('.nav-item').forEach(el => {
+      el.classList.toggle('hidden', !!list && !list.includes(el.dataset.p));
+    });
+  }
 
   function toast(m, ok) {
     const e = document.createElement('div');
@@ -131,6 +149,7 @@
   }
 
   function esc(s) { if (s == null) return ''; const d = document.createElement('div'); d.textContent = String(s); return d.innerHTML; }
+  function sourceText(s) { return ({ public: '公职', edu: '教师', med: '医护' })[s] || s || '-'; }
 
   function modal(title, body, foot) {
     document.getElementById('modalRoot').innerHTML = '<div class="modal-bg" onclick="if(event.target===this)closeM()"><div class="modal"><div class="modal-hd">' + title + '</div><div class="modal-bd">' + body + '</div><div class="modal-ft">' + (foot || '<button class="btn btn-outline" onclick="closeM()">关闭</button>') + '</div></div></div>';
@@ -149,11 +168,12 @@
   }
 
   function showLogin() { document.getElementById('loginPage').classList.remove('hidden'); document.getElementById('appPage').classList.add('hidden'); }
-  function showApp() { document.getElementById('loginPage').classList.add('hidden'); document.getElementById('appPage').classList.remove('hidden'); }
+  function showApp() { document.getElementById('loginPage').classList.add('hidden'); document.getElementById('appPage').classList.remove('hidden'); applyRoleNav(); }
 
   function loading() { document.getElementById('content').innerHTML = '<div class="loading">加载中...</div>'; }
 
   function navTo(p) {
+    if (!isPageAllowed(p)) p = defaultPage();
     page = p;
     document.getElementById('pageTitle').textContent = TITLES[p] || p;
     document.querySelectorAll('.nav-item').forEach(el => el.classList.toggle('active', el.dataset.p === p));
@@ -177,7 +197,9 @@
     loading();
     try {
       if (page === 'dashboard') await pgDashboard();
+      else if (page === 'service') await pgService();
       else if (page === 'users') await pgUsers();
+      else if (page === 'matches') await pgMatches();
       else if (page === 'partners') await pgPartners();
       else if (page === 'orders') await pgOrders();
       else if (page === 'withdrawals') await pgWithdrawals();
@@ -186,7 +208,9 @@
       else if (page === 'stats') await pgStats();
       else if (page === 'knowledge') await pgKnowledge();
       else if (page === 'chat') await pgChat();
+      else if (page === 'handoff') await pgHandoff();
       else if (page === 'privacy') await pgPrivacy();
+      else if (page === 'whitelist') await pgWhitelist();
       else if (page === 'export') pgExport();
       else if (page === 'logs') await pgLogs();
     } catch (e) {
@@ -240,6 +264,86 @@
   }
   window.pgUsers = pgUsers;
 
+  async function pgMatches() {
+    const pg = Number(document.getElementById('mPg')?.value || 1);
+    const data = await api('/admin/matches?page=' + pg + '&pageSize=50');
+    let rows = data.list.length ? data.list.map(m => {
+      const report = Number(m.ai_report_status || 0) === 1 ? '已生成' : Number(m.ai_report_status || 0) === 3 ? '关闭/失败' : '待生成';
+      const score = m.total_score == null ? '-' : Number(m.total_score).toFixed(1);
+      const view = m.view_similarity == null ? '-' : Number(m.view_similarity).toFixed(0);
+      return '<tr><td>' + m.id + '</td><td>' + esc(m.user_openid) + '</td><td>' + esc(m.matched_openid) + '</td><td>' + esc(m.match_date || '-') + '</td><td>' + esc(m.match_type || '-') + '</td><td>' + score + '</td><td>' + view + '</td><td>' + esc(m.score_version || '-') + '</td><td>' + report + '</td><td>' + esc(m.create_time || '-') + '</td><td><button class="btn btn-sm btn-outline" onclick="viewMatch(' + m.id + ')">诊断</button></td></tr>';
+    }).join('') : '<tr><td colspan="11" class="empty">暂无匹配记录</td></tr>';
+    document.getElementById('content').innerHTML =
+      '<div class="card"><div class="card-hd"><strong>全量匹配记录</strong><button class="btn btn-sm btn-outline" onclick="pgMatches()">刷新</button></div><div class="card-bd"><table><thead><tr><th>ID</th><th>用户 openid</th><th>匹配 openid</th><th>批次日期</th><th>类型</th><th>总分</th><th>三观</th><th>版本</th><th>AI报告</th><th>创建时间</th><th>操作</th></tr></thead><tbody>' + rows + '</tbody></table>' +
+      pag(data.page, data.totalPages, 'mPg') + '</div></div>';
+  }
+  window.pgMatches = pgMatches;
+
+  function fieldLine(label, value) {
+    const text = value === null || value === undefined || value === '' ? '-' : value;
+    return '<p style="margin:.35rem 0"><strong>' + label + '：</strong>' + esc(text) + '</p>';
+  }
+
+  function psychText(setting) {
+    if (!setting || !setting.psych_profile_json) return '-';
+    try {
+      const p = typeof setting.psych_profile_json === 'string' ? JSON.parse(setting.psych_profile_json) : setting.psych_profile_json;
+      return Object.keys(p).map(k => k + ': ' + p[k]).join('；');
+    } catch (e) {
+      return setting.psych_profile_json;
+    }
+  }
+
+  function settingHtml(title, user) {
+    const s = user.match_settings || {};
+    return '<div class="card" style="margin-bottom:.75rem"><div class="card-hd"><strong>' + title + '</strong></div><div class="card-bd">' +
+      fieldLine('openid', user.openid) +
+      fieldLine('性别', user.gender === 1 ? '男' : user.gender === 2 ? '女' : user.gender) +
+      fieldLine('出生年/城市', [user.birth_year, user.city].filter(Boolean).join(' / ')) +
+      fieldLine('身高/学历/圈层', [user.height_range, user.education, user.circle_name || user.circle_id].filter(Boolean).join(' / ')) +
+      fieldLine('婚育/状态', [user.marry_status, user.baby_plan, 'status=' + user.status].filter(Boolean).join(' / ')) +
+      fieldLine('外貌自述 appearance_description', user.appearance_description) +
+      fieldLine('外貌期待 appearance_want', user.appearance_want) +
+      fieldLine('三观自述 self_view_text', s.self_view_text) +
+      fieldLine('期待三观 target_view_text', s.target_view_text) +
+      fieldLine('关系偏好 psych_profile_json', psychText(s)) +
+      fieldLine('择偶年龄/身高/学历', [s.age_min && s.age_max ? s.age_min + '-' + s.age_max : '', s.height_min && s.height_max ? s.height_min + '-' + s.height_max : '', s.min_education].filter(Boolean).join(' / ')) +
+      fieldLine('婚育偏好/圈层偏好', [s.like_baby_plan, s.like_circle_ids].filter(Boolean).join(' / ')) +
+      '</div></div>';
+  }
+
+  function dimensionHtml(detail) {
+    const dims = detail && detail.side && detail.side.dimensions ? detail.side.dimensions : {};
+    const keys = Object.keys(dims);
+    if (!keys.length) return '<p class="empty">暂无分项得分</p>';
+    return '<table><thead><tr><th>字段</th><th>得分</th><th>满分</th><th>百分比</th></tr></thead><tbody>' + keys.map(k => {
+      const d = dims[k] || {};
+      return '<tr><td>' + esc(d.label || k) + '</td><td>' + esc(d.raw_score) + '</td><td>' + esc(d.max) + '</td><td>' + esc(d.percent) + '%</td></tr>';
+    }).join('') + '</tbody></table>';
+  }
+
+  window.viewMatch = async function (id) {
+    try {
+      const data = await api('/admin/matches/' + id);
+      const detail = data.score_detail || {};
+      const gate = detail.quality_gate || {};
+      const reasons = (gate.reasons || []).join('、') || '-';
+      modal('匹配诊断 #' + id,
+        '<div class="card"><div class="card-hd"><strong>质量门槛</strong></div><div class="card-bd">' +
+        fieldLine('是否通过', gate.pass ? '通过' : '未通过') +
+        fieldLine('失败原因', reasons) +
+        fieldLine('是否兜底', gate.fallback ? '是' : '否') +
+        fieldLine('算法版本', data.log.score_version || detail.version) +
+        fieldLine('总分/三观相似', [data.log.total_score, data.log.view_similarity].filter(v => v !== null && v !== undefined).join(' / ')) +
+        '</div></div>' +
+        '<div class="card"><div class="card-hd"><strong>分项得分</strong></div><div class="card-bd">' + dimensionHtml(detail) + '</div></div>' +
+        '<div class="card"><div class="card-hd"><strong>双方资料</strong></div><div class="card-bd">' +
+        settingHtml('用户侧', data.owner) + settingHtml('匹配对象侧', data.partner) +
+        '</div></div>'
+      );
+    } catch (e) { toast(e.message, false); }
+  };
+
   function statusBadge(s) {
     const m = { 0: ['待审核', 'b-pending'], 1: ['正常', 'b-ok'], 2: ['封号', 'b-ban'], 3: ['已结婚', 'b-ban'] };
     const x = m[s] || ['?', 'b-pending'];
@@ -248,11 +352,24 @@
 
   window.editUser = async function (id) {
     const d = await api('/admin/users/' + id);
+    const u = d.user || {};
+    const s = d.match_settings || {};
     modal('编辑用户 #' + id,
       '<div class="form-group"><label>昵称</label><input id="euNick" value="' + esc(d.user.nickname || '') + '" /></div>' +
       '<div class="form-group"><label>手机</label><input id="euPhone" value="' + esc(d.user.phone || '') + '" /></div>' +
       '<div class="form-group"><label>状态</label><select id="euStatus"><option value="0">待审核</option><option value="1">正常</option><option value="2">封号</option><option value="3">已结婚</option></select></div>' +
-      '<div class="form-group"><label>VIP到期</label><input id="euVip" type="datetime-local" /></div>',
+      '<div class="form-group"><label>VIP到期</label><input id="euVip" type="datetime-local" /></div>' +
+      '<div class="card"><div class="card-hd"><strong>用户详细信息</strong></div><div class="card-bd">' +
+      fieldLine('openid', u.openid) +
+      fieldLine('性别/出生年/城市', [u.gender === 1 ? '男' : u.gender === 2 ? '女' : u.gender, u.birth_year, u.city].filter(Boolean).join(' / ')) +
+      fieldLine('身高/学历/圈层', [u.height_range, u.education, u.circle_id].filter(Boolean).join(' / ')) +
+      fieldLine('外貌自述 appearance_description', u.appearance_description) +
+      fieldLine('外貌期待 appearance_want', u.appearance_want) +
+      fieldLine('三观自述 self_view_text', s.self_view_text) +
+      fieldLine('期待三观 target_view_text', s.target_view_text) +
+      fieldLine('关系偏好 psych_profile_json', psychText(s)) +
+      fieldLine('择偶年龄/身高/学历', [s.age_min && s.age_max ? s.age_min + '-' + s.age_max : '', s.height_min && s.height_max ? s.height_min + '-' + s.height_max : '', s.min_education].filter(Boolean).join(' / ')) +
+      '</div></div>',
       '<button class="btn btn-outline" onclick="closeM()">取消</button><button class="btn btn-primary" onclick="saveUser(' + id + ')">保存</button>');
     document.getElementById('euStatus').value = d.user.status;
     if (d.user.vip_expire_at) document.getElementById('euVip').value = d.user.vip_expire_at.replace(' ', 'T').slice(0, 16);
@@ -288,17 +405,50 @@
     try { await api('/admin/partners/' + id + '/approve', { method: 'POST', body: { action } }); toast(action === 'reject' ? '已拒绝' : '已激活', true); pgPartners(); } catch (e) { toast(e.message, false); }
   };
 
+  async function pgService() {
+    const data = await api('/admin/service/workbench');
+    const sessions = data.chat_sessions || [];
+    const tickets = data.handoff_tickets || [];
+    const orders = data.orders || [];
+    const sessionRows = sessions.length ? sessions.map(s =>
+      '<tr><td>' + s.id + '</td><td>' + esc(s.nickname) + '</td><td>' + esc(s.phone || '-') + '</td><td>' + esc(s.updated_at || '-') + '</td><td><button class="btn btn-sm btn-outline" onclick="replyChat(' + s.id + ')">回复</button></td></tr>'
+    ).join('') : '<tr><td colspan="5" class="empty">暂无待处理会话</td></tr>';
+    const ticketRows = tickets.length ? tickets.map(t => {
+      const status = encodeURIComponent(t.status || 'submitted');
+      const note = encodeURIComponent(t.service_note || '');
+      return '<tr><td>' + t.id + '</td><td>' + esc(t.user_openid || t.user_id) + '</td><td>' + esc(t.match_user_openid || t.match_user_id) + '</td><td>' + esc(t.status_text || t.status) + '</td><td>' + esc(t.service_note || '-') + '</td><td><button class="btn btn-sm btn-outline" onclick="editHandoff(' + t.id + ',\\'' + status + '\\',\\'' + note + '\\')">处理</button> <button class="btn btn-sm btn-outline" onclick="replyChat(' + t.user_id + ')">回复申请人</button></td></tr>';
+    }).join('') : '<tr><td colspan="6" class="empty">暂无奔现工单</td></tr>';
+    const orderRows = orders.length ? orders.map(o =>
+      '<tr><td>' + esc(o.order_no) + '</td><td>' + o.user_id + '</td><td>¥' + Number(o.amount || 0).toFixed(2) + '</td><td>' + (Number(o.status) === 1 ? '已付' : '待付') + '</td><td>' + (o.settled ? '已结算' : '未结算') + '</td><td>' + esc(o.paid_at || o.created_at || '-') + '</td></tr>'
+    ).join('') : '<tr><td colspan="6" class="empty">暂无订单</td></tr>';
+    document.getElementById('content').innerHTML =
+      '<div class="stats-grid">' + sc('待处理会话', sessions.length) + sc('奔现工单', tickets.length) + sc('最近订单', orders.length) + '</div>' +
+      '<div class="card"><div class="card-hd"><strong>待处理会话</strong><button class="btn btn-sm btn-outline" onclick="pgService()">刷新</button></div><div class="card-bd"><table><thead><tr><th>会话ID</th><th>用户</th><th>手机</th><th>更新时间</th><th>操作</th></tr></thead><tbody>' + sessionRows + '</tbody></table></div></div>' +
+      '<div class="card"><div class="card-hd"><strong>官方奔现工单</strong></div><div class="card-bd"><table><thead><tr><th>工单ID</th><th>申请人</th><th>匹配对象</th><th>状态</th><th>客服备注</th><th>操作</th></tr></thead><tbody>' + ticketRows + '</tbody></table></div></div>' +
+      '<div class="card"><div class="card-hd"><strong>最近订单</strong></div><div class="card-bd"><table><thead><tr><th>订单号</th><th>用户</th><th>金额</th><th>支付</th><th>结算</th><th>时间</th></tr></thead><tbody>' + orderRows + '</tbody></table></div></div>' +
+      '<p style="font-size:.8125rem;color:var(--muted)">客服账号仅处理客服会话、奔现工单和订单状态查询，不开放用户修改、导出、白名单导入等高权限操作。</p>';
+  }
+  window.pgService = pgService;
+
   async function pgOrders() {
     const data = await api('/admin/orders?pageSize=50');
-    let rows = data.list.length ? data.list.map(o =>
-      '<tr><td>' + esc(o.order_no) + '</td><td>' + o.user_id + '</td><td>¥' + Number(o.amount).toFixed(2) + '</td><td>¥' + Number(o.partner_commission || 0).toFixed(2) + '</td><td>' + esc(o.partner_name || '-') + '</td><td>' + (o.status === 1 ? '已付' : '待付') + '</td><td>' + (o.settled ? '已结算' : '未结算') + '</td><td>' + esc(o.paid_at || o.created_at) + '</td></tr>'
-    ).join('') : '<tr><td colspan="8" class="empty">暂无</td></tr>';
+    const service = adminRole() === 'customer_service';
+    let rows = data.list.length ? data.list.map(o => service
+      ? '<tr><td>' + esc(o.order_no) + '</td><td>' + o.user_id + '</td><td>¥' + Number(o.amount).toFixed(2) + '</td><td>' + (o.status === 1 ? '已付' : '待付') + '</td><td>' + (o.settled ? '已结算' : '未结算') + '</td><td>' + esc(o.paid_at || o.created_at) + '</td></tr>'
+      : '<tr><td>' + esc(o.order_no) + '</td><td>' + o.user_id + '</td><td>¥' + Number(o.amount).toFixed(2) + '</td><td>¥' + Number(o.partner_commission || 0).toFixed(2) + '</td><td>' + esc(o.partner_name || '-') + '</td><td>' + (o.status === 1 ? '已付' : '待付') + '</td><td>' + (o.settled ? '已结算' : '未结算') + '</td><td>' + esc(o.paid_at || o.created_at) + '</td></tr>'
+    ).join('') : '<tr><td colspan="' + (service ? 6 : 8) + '" class="empty">暂无</td></tr>';
     const paid = data.list.filter(o => o.status === 1);
     const totalRev = paid.reduce((s, o) => s + Number(o.amount), 0);
     const totalComm = paid.reduce((s, o) => s + Number(o.partner_commission || 0), 0);
+    const stats = service
+      ? '<div class="stats-grid">' + sc('订单总数', data.total) + sc('已付订单', paid.length) + sc('已付金额', totalRev.toFixed(2)) + '</div>'
+      : '<div class="stats-grid">' + sc('订单总数', data.total) + sc('已付营收', totalRev.toFixed(2)) + sc('合伙人分润', totalComm.toFixed(2)) + sc('平台收入', (totalRev - totalComm).toFixed(2)) + '</div>';
+    const head = service
+      ? '<tr><th>订单号</th><th>用户</th><th>金额</th><th>支付</th><th>结算</th><th>时间</th></tr>'
+      : '<tr><th>订单号</th><th>用户</th><th>金额</th><th>分润</th><th>合伙人</th><th>支付</th><th>结算</th><th>时间</th></tr>';
     document.getElementById('content').innerHTML =
-      '<div class="stats-grid">' + sc('订单总数', data.total) + sc('已付营收', totalRev.toFixed(2)) + sc('合伙人分润', totalComm.toFixed(2)) + sc('平台收入', (totalRev - totalComm).toFixed(2)) + '</div>' +
-      '<div class="card"><div class="card-bd"><table><thead><tr><th>订单号</th><th>用户</th><th>金额</th><th>分润</th><th>合伙人</th><th>支付</th><th>结算</th><th>时间</th></tr></thead><tbody>' + rows + '</tbody></table></div></div>';
+      stats +
+      '<div class="card"><div class="card-bd"><table><thead>' + head + '</thead><tbody>' + rows + '</tbody></table></div></div>';
   }
 
   async function pgWithdrawals() {
@@ -429,6 +579,42 @@
     try {
       await api('/admin/chat/reply', { method: 'POST', body: { session_id: sid, content: document.getElementById('replyContent').value } });
       closeM(); toast('已回复', true);
+      if (page === 'service') pgService();
+      else if (page === 'chat') pgChat();
+    } catch (e) { toast(e.message, false); }
+  };
+
+  async function pgHandoff() {
+    const rows = await api('/admin/handoff/tickets');
+    let html = rows.length ? rows.map(t => {
+      const status = encodeURIComponent(t.status || 'submitted');
+      const note = encodeURIComponent(t.service_note || '');
+      return '<tr><td>' + t.id + '</td><td>' + t.match_log_id + '</td><td>' + esc(t.user_openid || t.user_id) + '</td><td>' + esc(t.match_user_openid || t.match_user_id) + '</td><td>' + esc(t.status_text || t.status) + '</td><td>' + esc(t.service_note || '-') + '</td><td>' + esc(t.update_time || '') + '</td><td><button class="btn btn-sm btn-outline" onclick="editHandoff(' + t.id + ',\\'' + status + '\\',\\'' + note + '\\')">处理</button> <button class="btn btn-sm btn-outline" onclick="replyChat(' + t.user_id + ')">回复申请人</button></td></tr>';
+    }).join('') : '<tr><td colspan="8" class="empty">暂无奔现工单</td></tr>';
+    document.getElementById('content').innerHTML =
+      '<div class="card"><div class="card-hd"><strong>官方奔现对接工单</strong></div><div class="card-bd"><table><thead><tr><th>工单ID</th><th>匹配ID</th><th>申请人</th><th>匹配对象</th><th>状态</th><th>客服备注</th><th>更新时间</th><th>操作</th></tr></thead><tbody>' + html + '</tbody></table></div></div>' +
+      '<p style="font-size:.8125rem;color:var(--muted)">PRD要求用户间无私聊；工单仅供平台客服分别确认双方意向。</p>';
+  }
+
+  window.editHandoff = function (id, status, note) {
+    modal('处理奔现工单 #' + id,
+      '<div class="form-group"><label>状态</label><select id="handoffStatus"><option value="submitted">已提交</option><option value="processing">客服处理中</option><option value="waiting_partner">等待对方确认</option><option value="arranged">已安排</option><option value="closed">已关闭</option></select></div><div class="form-group"><label>客服备注</label><textarea id="handoffNote" rows="4"></textarea></div>',
+      '<button class="btn btn-outline" onclick="closeM()">取消</button><button class="btn btn-primary" onclick="saveHandoff(' + id + ')">保存</button>');
+    document.getElementById('handoffStatus').value = decodeURIComponent(status || 'submitted');
+    document.getElementById('handoffNote').value = decodeURIComponent(note || '');
+  };
+  window.saveHandoff = async function (id) {
+    try {
+      await api('/admin/handoff/tickets/' + id, {
+        method: 'PUT',
+        body: {
+          status: document.getElementById('handoffStatus').value,
+          service_note: document.getElementById('handoffNote').value
+        }
+      });
+      closeM(); toast('已更新', true);
+      if (page === 'service') pgService();
+      else pgHandoff();
     } catch (e) { toast(e.message, false); }
   };
 
@@ -447,6 +633,41 @@
       '<div class="card"><div class="card-hd"><strong>用户协议授权记录（抽样）</strong></div><div class="card-bd"><table><thead><tr><th>用户ID</th><th>昵称</th><th>已授权协议</th><th>注册时间</th></tr></thead><tbody>' + rows + '</tbody></table></div></div>' +
       '<p style="font-size:.8125rem;color:var(--muted)">完整合规日志见 user_agreements / user_privacy_auth_log 表。</p>';
   }
+
+  async function pgWhitelist() {
+    const [batches, whitelist] = await Promise.all([
+      api('/admin/whitelist/batches'),
+      api('/admin/whitelist')
+    ]);
+    const batchRows = batches.list && batches.list.length ? batches.list.map(b =>
+      '<tr><td>' + b.id + '</td><td>' + esc(sourceText(b.source)) + '</td><td>' + esc(b.unit || '-') + '</td><td>' + b.received_count + '</td><td>' + b.imported_count + '</td><td>' + esc(b.create_time || '-') + '</td></tr>'
+    ).join('') : '<tr><td colspan="6" class="empty">暂无导入批次</td></tr>';
+    const listRows = whitelist.list && whitelist.list.length ? whitelist.list.map(w =>
+      '<tr><td>' + w.id + '</td><td>' + esc(w.phone_masked || '-') + '</td><td>' + esc(w.name || '-') + '</td><td>' + esc(w.unit || '-') + '</td><td>' + esc(sourceText(w.source)) + '</td><td>' + (w.used ? '<span class="badge b-ok">已领取</span>' : '<span class="badge b-pending">未领取</span>') + '</td><td>' + esc(w.create_time || '-') + '</td></tr>'
+    ).join('') : '<tr><td colspan="7" class="empty">暂无白名单</td></tr>';
+    document.getElementById('content').innerHTML =
+      '<div class="card"><div class="card-hd"><strong>单位白名单导入</strong><button class="btn btn-sm btn-outline" onclick="pgWhitelist()">刷新</button></div><div class="card-bd">' +
+      '<p style="font-size:.8125rem;color:var(--muted);margin-bottom:.75rem">对外口径：单位白名单导入，用户首次微信登录后用登记手机号激活权益；后台仅脱敏展示手机号。</p>' +
+      '<div class="form-group"><label>导入 JSON</label><textarea id="wlJson" rows="5" placeholder=\'[{"phone":"13800009991","name":"张三","unit":"深圳某单位","source":"public"}]\'></textarea></div>' +
+      '<button class="btn btn-primary" onclick="importWhitelist()">导入白名单</button>' +
+      '</div></div>' +
+      '<div class="card"><div class="card-hd"><strong>导入批次</strong></div><div class="card-bd"><table><thead><tr><th>ID</th><th>来源</th><th>单位</th><th>接收</th><th>导入</th><th>时间</th></tr></thead><tbody>' + batchRows + '</tbody></table></div></div>' +
+      '<div class="card"><div class="card-hd"><strong>白名单脱敏列表</strong></div><div class="card-bd"><table><thead><tr><th>ID</th><th>手机号</th><th>姓名</th><th>单位</th><th>来源</th><th>状态</th><th>创建时间</th></tr></thead><tbody>' + listRows + '</tbody></table></div></div>';
+  }
+  window.pgWhitelist = pgWhitelist;
+
+  window.importWhitelist = async function () {
+    try {
+      const raw = document.getElementById('wlJson').value.trim();
+      const parsed = JSON.parse(raw || '[]');
+      const list = Array.isArray(parsed) ? parsed : [parsed];
+      const result = await api('/admin/whitelist/import', { method: 'POST', body: { list } });
+      toast('已导入 ' + result.imported + ' 条，批次 #' + result.batch_id, true);
+      pgWhitelist();
+    } catch (e) {
+      toast(e.message || '导入失败', false);
+    }
+  };
 
   function pgExport() {
     document.getElementById('content').innerHTML =
@@ -481,7 +702,7 @@
   function pag(cur, total, id) {
     return '<div class="pagination">第 ' + cur + ' / ' + total + ' 页 <button class="btn btn-sm btn-outline" onclick="goPg(\'' + id + '\',' + (cur - 1) + ')">上一页</button><button class="btn btn-sm btn-outline" onclick="goPg(\'' + id + '\',' + (cur + 1) + ')">下一页</button><input type="hidden" id="' + id + '" value="' + cur + '" /></div>';
   }
-  window.goPg = function (id, p) { if (p < 1) return; document.getElementById(id).value = p; if (page === 'users') pgUsers(); };
+  window.goPg = function (id, p) { if (p < 1) return; document.getElementById(id).value = p; if (page === 'users') pgUsers(); else if (page === 'matches') pgMatches(); };
 
   document.getElementById('loginForm').addEventListener('submit', async function (e) {
     e.preventDefault();
@@ -492,8 +713,9 @@
     try {
       const d = await api('/auth/admin-login', { method: 'POST', body: { username: document.getElementById('loginUser').value.trim(), password: document.getElementById('loginPass').value } });
       setToken(d.token);
-      document.getElementById('adminName').textContent = d.admin.username;
-      showApp(); navTo('dashboard'); toast('登录成功', true);
+      setAdminRole(d.admin.role || d.admin.admin_role || 'super_admin');
+      document.getElementById('adminName').textContent = d.admin.username + ' · ' + roleText(adminRole());
+      showApp(); navTo(defaultPage()); toast('登录成功', true);
     } catch (ex) { err.textContent = ex.message; err.classList.remove('hidden'); }
     finally { btn.disabled = false; }
   });
@@ -501,7 +723,10 @@
   document.getElementById('logoutBtn').addEventListener('click', function () { clearToken(); showLogin(); });
   document.getElementById('nav').addEventListener('click', function (e) { const b = e.target.closest('.nav-item'); if (b) navTo(b.dataset.p); });
 
-  if (token()) { showApp(); navTo('dashboard'); } else showLogin();
+  if (token()) {
+    document.getElementById('adminName').textContent = roleText(adminRole());
+    showApp(); navTo(defaultPage());
+  } else showLogin();
 })();
   </script>
 </body>

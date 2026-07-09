@@ -7,14 +7,8 @@ Page({
     const app = getApp()
     if (app.globalData.isLoggedIn) {
       wx.switchTab({ url: '/pages/index/index' })
+      return
     }
-  },
-
-  goLogin() {
-    wx.navigateTo({ url: '/pages/login/login' })
-  },
-
-  goRules() {
-    wx.navigateTo({ url: '/pages/rules/rules' })
+    wx.redirectTo({ url: '/pages/login/login' })
   }
 })

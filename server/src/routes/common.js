@@ -1,7 +1,16 @@
 const express = require('express');
 const pool = require('../config/db');
 const { success, fail } = require('../utils/response');
-const { VIP_PRICE, VIP_DAYS, MATCH_COOLDOWN_DAYS, MATCH_DAYS } = require('../config/constants');
+const {
+  VIP_PRICE,
+  VIP_DAYS,
+  MATCH_COOLDOWN_DAYS,
+  MATCH_DAYS,
+  VIEW_TEXT_MIN,
+  VIEW_TEXT_MAX,
+} = require('../config/constants');
+const safetyConfig = require('../config/safetyConfig');
+const matchConfig = require('../config/matchConfig');
 
 const router = express.Router();
 
@@ -65,7 +74,9 @@ router.get('/stats', async (req, res, next) => {
   try {
     const [[users]] = await pool.query('SELECT COUNT(*) AS c FROM `user` WHERE status = 1');
     const [[vip]] = await pool.query(
-      'SELECT COUNT(*) AS c FROM `user` WHERE status = 1 AND is_vip = 1 AND vip_expire_time > NOW()'
+      `SELECT COUNT(*) AS c FROM \`user\`
+       WHERE status = 1
+         AND (free_member = 1 OR (is_vip = 1 AND vip_expire_time > NOW()))`
     );
     const [[matches]] = await pool.query('SELECT COUNT(*) AS c FROM user_match_log');
     const [[stat]] = await pool.query(
@@ -107,6 +118,51 @@ router.get('/agreements', (req, res) => {
       vip_days: VIP_DAYS,
       match_cooldown_days: MATCH_COOLDOWN_DAYS,
       match_days: MATCH_DAYS,
+    },
+  });
+});
+
+/** GET /api/common/safety-config */
+router.get('/safety-config', (req, res) => {
+  return success(res, {
+    sosPhone: safetyConfig.sosPhone,
+    guangdong110: {
+      enabled: Boolean(safetyConfig.guangdong110?.enabled && safetyConfig.guangdong110?.appId),
+      appId: safetyConfig.guangdong110?.appId || '',
+      path: safetyConfig.guangdong110?.path || '',
+    },
+  });
+});
+
+/** GET /api/common/config — 小程序/后台只读业务配置 */
+router.get('/config', (req, res) => {
+  return success(res, {
+    vip: {
+      price: VIP_PRICE,
+      days: VIP_DAYS,
+    },
+    match: {
+      days: MATCH_DAYS,
+      cooldownDays: MATCH_COOLDOWN_DAYS,
+      useAppearanceInMatch: matchConfig.useAppearanceInMatch,
+      weights: matchConfig.weights,
+      qualityGate: matchConfig.qualityGate,
+    },
+    text: {
+      viewTextMin: VIEW_TEXT_MIN,
+      viewTextMax: VIEW_TEXT_MAX,
+      meetNoteMaxLen: safetyConfig.meetNoteMaxLen,
+    },
+    safety: {
+      meetSafetyEnabled: safetyConfig.meetSafetyEnabled,
+      emergencyContactRequired: safetyConfig.emergencyContactRequired,
+      sosPhone: safetyConfig.sosPhone,
+      safetyTipsText: safetyConfig.safetyTipsText,
+      guangdong110: {
+        enabled: Boolean(safetyConfig.guangdong110?.enabled && safetyConfig.guangdong110?.appId),
+        appId: safetyConfig.guangdong110?.appId || '',
+        path: safetyConfig.guangdong110?.path || '',
+      },
     },
   });
 });

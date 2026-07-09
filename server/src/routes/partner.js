@@ -86,7 +86,8 @@ router.get('/dashboard', async (req, res, next) => {
 
       `SELECT COUNT(*) AS c FROM \`user\`
 
-       WHERE promote_partner_id = ? AND is_vip = 1 AND vip_expire_time > NOW()`,
+       WHERE promote_partner_id = ?
+         AND (free_member = 1 OR (is_vip = 1 AND vip_expire_time > NOW()))`,
 
       [partnerId]
 

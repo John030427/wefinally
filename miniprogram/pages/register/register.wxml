@@ -98,6 +98,19 @@
       </view>
 
       <view class="form-item">
+        <text class="form-label">我的外貌描述（选填）</text>
+        <textarea
+          class="textarea-input"
+          placeholder="例如：中等偏高，日常穿搭简洁，气质清爽..."
+          maxlength="{{appearanceMaxLen}}"
+          value="{{form.appearanceDescription}}"
+          bindinput="onAppearanceDescriptionInput"
+          show-confirm-bar="{{false}}"
+        />
+        <view class="char-counter">当前 {{appearanceDescriptionLen}} / {{appearanceMaxLen}} 字</view>
+      </view>
+
+      <view class="form-item">
         <text class="form-label">推广码（选填）</text>
         <view class="promo-row">
           <input class="promo-input" value="{{form.promote_code}}" placeholder="可不填；填写后绑定合伙人" maxlength="50" bindinput="onPromoteInput" bindblur="onPromoteBlur" />

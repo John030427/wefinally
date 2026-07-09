@@ -13,6 +13,7 @@ npm-debug.log*
 logs/
 cloudbase-export/
 cloudbase-export-jsonl/
+server/sample-data/matching-system/latest-run.json
 
 # WeChat devtools
 project.private.config.json

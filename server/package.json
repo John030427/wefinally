@@ -7,9 +7,14 @@
     "start": "node src/app.js",
     "dev": "node --watch src/app.js",
     "selfcheck": "node selfcheck/run-all.js",
+    "selfcheck:cloudbase": "node selfcheck/cloudbase-migration.js",
     "selfcheck:cloudpay": "node selfcheck/cloudbase-wechatpay.js && node selfcheck/cloudbase-vip-payment.js && node selfcheck/cloudbase-wxpay-notify.js && node selfcheck/miniprogram-vip-payment.js",
     "demo:match-seed": "node selfcheck/match-demo-seed.js",
-    "demo:match-clear": "node selfcheck/match-demo-clear.js"
+    "demo:match-clear": "node selfcheck/match-demo-clear.js",
+    "sample:match-clear": "node sample-data/matching-system/clear.js",
+    "sample:match-seed": "node sample-data/matching-system/seed.js",
+    "sample:match-run": "node sample-data/matching-system/run.js",
+    "sample:match-e2e": "node sample-data/matching-system/e2e.js"
   },
   "engines": {
     "node": ">=18.0.0"
@@ -23,7 +28,7 @@
     "express-rate-limit": "^7.5.0",
     "jsonwebtoken": "^9.0.2",
     "mysql2": "^3.12.0",
-    "node-cron": "^3.0.3",
+    "node-cron": "^4.5.0",
     "uuid": "^11.0.5"
   }
 }

@@ -7,7 +7,7 @@ const {
   request,
 } = require('./_helpers');
 
-const openids = ['sc_reg_empty_promo', 'sc_reg_valid_promo', 'sc_reg_bad_promo', 'sc_divorce_review'];
+const openids = ['sc_reg_empty_promo', 'sc_reg_valid_promo', 'sc_reg_bad_promo', 'sc_divorce_review', 'sc_reg_appearance'];
 const partnerPhones = ['sc_regux_partner'];
 const promoteCode = 'SCUX1234';
 
@@ -74,6 +74,39 @@ async function insertPartner() {
     ok('empty promote_code can register without partner binding', emptyPromo.status === 200 && emptyPromo.json.code === 0);
     const [[emptyUser]] = await pool.query('SELECT promote_partner_id, promote_code FROM `user` WHERE openid = ?', [openids[0]]);
     ok('empty promote_code stores no partner binding', emptyUser.promote_partner_id === 0 && emptyUser.promote_code === '');
+
+    const appearanceText = '注册时填写的外貌描述自检文本';
+    const appearanceWant = '注册时填写的期待外貌自检文本';
+    const appearanceRegister = await request('POST', '/api/user/register', {
+      ...registerBase,
+      openid: 'sc_reg_appearance',
+      appearance_description: appearanceText,
+      appearance_want: appearanceWant,
+    });
+    ok('register accepts appearance fields', appearanceRegister.status === 200 && appearanceRegister.json.code === 0);
+    const [[appearanceUser]] = await pool.query(
+      'SELECT id, appearance_description, appearance_want FROM `user` WHERE openid = ?',
+      ['sc_reg_appearance']
+    );
+    ok('register stores appearance as basic profile', appearanceUser.appearance_description === appearanceText && appearanceUser.appearance_want === appearanceWant);
+    await pool.query(
+      'UPDATE `user` SET appearance_tags = ?, appearance_want_tags = ? WHERE id = ?',
+      [JSON.stringify(['旧描述标签']), JSON.stringify(['旧期待标签']), appearanceUser.id]
+    );
+    const clearAppearance = await request('PUT', '/api/user/profile', {
+      appearance_description: '',
+      appearance_want: '',
+    }, appearanceRegister.json.data.token);
+    ok('profile appearance clear succeeds', clearAppearance.status === 200 && clearAppearance.json.code === 0);
+    const [[clearedAppearance]] = await pool.query(
+      'SELECT appearance_description, appearance_want, appearance_tags, appearance_want_tags FROM `user` WHERE id = ?',
+      [appearanceUser.id]
+    );
+    ok('clearing appearance text also clears stale tags',
+      clearedAppearance.appearance_description === ''
+      && clearedAppearance.appearance_want === ''
+      && clearedAppearance.appearance_tags === '[]'
+      && clearedAppearance.appearance_want_tags === '[]');
 
     const promoCheck = await request('GET', `/api/common/promote-code?code=${promoteCode}`);
     ok('valid promote_code lookup succeeds', promoCheck.status === 200

@@ -1,14 +1,5 @@
 <view class="welcome-page">
-  <view class="welcome-bg"></view>
-  <view class="welcome-content">
-    <view class="brand-name">WeFinally</view>
-    <view class="brand-slogan">纯结婚导向 · 严肃婚恋</view>
-    <view class="brand-features">
-      <text>· AI 定时精准匹配</text>
-      <text>· 三观同频契合分析</text>
-      <text>· 无照骗 · 无私聊 · 无社交</text>
-    </view>
-    <button class="btn-primary welcome-btn" bindtap="goLogin">微信一键登录</button>
-    <view class="rules-link" bindtap="goRules">查看平台规则</view>
-  </view>
+  <image class="cover-image" src="/assets/wefinally-cover-branded.jpg" mode="aspectFill" />
+  <view class="cover-shade"></view>
+  <view class="welcome-loading">正在进入...</view>
 </view>

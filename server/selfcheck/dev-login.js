@@ -43,6 +43,10 @@ function withEnv(env, fn) {
     const session = devWxLogin.createDevWxSession('any-devtools-code');
     ok('dev wx login returns configured openid', session.openid === 'sc_dev_login');
     ok('dev wx login marks session as local dev only', session.devLogin === true);
+    const override = devWxLogin.createDevWxSession('any-devtools-code', process.env, 'uat_register_20260706_001');
+    ok('dev wx login can override openid for registration retest', override.openid === 'uat_register_20260706_001');
+    const invalid = devWxLogin.createDevWxSession('any-devtools-code', process.env, 'bad openid');
+    ok('dev wx login ignores invalid override openid', invalid.openid === 'sc_dev_login');
   });
 })().catch((err) => {
   console.error(err.stack || err.message);

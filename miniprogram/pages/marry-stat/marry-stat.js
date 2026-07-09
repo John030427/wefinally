@@ -22,7 +22,9 @@ Page({
 
     try {
       const data = await get(API_PATHS.MARRY_STAT, {}, { showError: false })
-      const count = (data && (data.count ?? data.marry_success_count)) || 0
+      const count = data
+        ? (data.count !== null && data.count !== undefined ? data.count : data.marry_success_count)
+        : 0
       this.setData({ pageState: 'success', count })
     } catch (err) {
       this.setData({

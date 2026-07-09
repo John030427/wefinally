@@ -250,14 +250,15 @@ CREATE TABLE IF NOT EXISTS `admin` (
   `id` int NOT NULL AUTO_INCREMENT,
   `username` varchar(50) NOT NULL UNIQUE,
   `password` varchar(100) NOT NULL,
+  `role` varchar(30) NOT NULL DEFAULT 'super_admin' COMMENT 'super_admin/customer_service/finance/auditor',
   `status` tinyint DEFAULT 1,
   `create_time` datetime DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='超级管理员';
 
 -- 默认管理员 admin / admin123456（bcrypt 哈希）
-INSERT INTO `admin` (`username`, `password`, `status`) VALUES
-('admin', '$2a$10$t9YCAITJUYtWHJBqdwYfQ.nQKnqCyjLKUduU/1kdNSyza45nUmS5.', 1);
+INSERT INTO `admin` (`username`, `password`, `role`, `status`) VALUES
+('admin', '$2a$10$t9YCAITJUYtWHJBqdwYfQ.nQKnqCyjLKUduU/1kdNSyza45nUmS5.', 'super_admin', 1);
 
 -- AI 客服知识库初始 FAQ（会员、匹配、规则、奔现、订单、注销）
 INSERT INTO `ai_knowledge` (`question`, `answer`, `status`) VALUES

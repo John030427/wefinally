@@ -52,10 +52,13 @@ Page({
       circleId: 0,
       circleIndex: -1,
       circleName: '',
+      appearanceDescription: '',
       promote_code: ''
     },
     birthYearOptions: [],
     heightOptions: [],
+    appearanceDescriptionLen: 0,
+    appearanceMaxLen: 500,
     promoStatus: '',
     promoMessage: '',
     checkingPromo: false,
@@ -261,6 +264,14 @@ Page({
     }
   },
 
+  onAppearanceDescriptionInput(e) {
+    const value = e.detail.value || ''
+    this.setData({
+      'form.appearanceDescription': value,
+      appearanceDescriptionLen: value.length
+    })
+  },
+
   async onPromoteBlur() {
     await this.checkPromoteCode({ silent: true })
   },
@@ -375,6 +386,7 @@ Page({
         baby_plan: form.babyPlan,
         house_car: form.houseCar || '',
         height_range: form.height,
+        appearance_description: form.appearanceDescription.trim(),
         circle_id: form.circleId,
         promote_code: String(form.promote_code || '').trim().toUpperCase(),
         agreements: ['user_service', 'privacy', 'data_auth'],

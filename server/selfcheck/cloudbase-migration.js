@@ -46,6 +46,7 @@ const indexJs = read('miniprogram/pages/index/index.js');
 const matchDetailJs = read('miniprogram/pages/match-detail/match-detail.js');
 const matchDetailWxml = read('miniprogram/pages/match-detail/match-detail.wxml');
 const meetSafetyJs = read('miniprogram/pages/meet-safety/meet-safety.js');
+const minimaxHardcodedKeySymbol = ['DEMO', 'MINIMAX', 'API', 'KEY'].join('_');
 const matchStartBody = cloudMatchJs.split('async function start')[1]
   ? cloudMatchJs.split('async function start')[1].split('module.exports')[0]
   : cloudMatchJs;
@@ -68,7 +69,7 @@ ok('cloud manual match avoids repeated partners', cloudMatchJs.includes('seenPar
 ok('cloud MiniMax report helper exists', exists('miniprogram/cloudfunctions/api/lib/minimax.js'));
 ok('cloud match report uses MiniMax or deterministic fallback', cloudMatchJs.includes("require('../lib/minimax')") && cloudMatchJs.includes('generateMutualMatchReports') && cloudMatchJs.includes('fallbackMatchReportText'));
 ok('cloud MiniMax key can be read from safe runtime config', read('miniprogram/cloudfunctions/api/lib/minimax.js').includes("systemValue('minimax_api_key')"));
-ok('cloud MiniMax has demo hardcoded key fallback', read('miniprogram/cloudfunctions/api/lib/minimax.js').includes('DEMO_MINIMAX_API_KEY'));
+ok('cloud MiniMax has no hardcoded key fallback', !read('miniprogram/cloudfunctions/api/lib/minimax.js').includes(minimaxHardcodedKeySymbol));
 ok('cloud MiniMax request timeout stays below 3s cloud call limit', read('miniprogram/cloudfunctions/api/lib/minimax.js').includes('CLOUD_FUNCTION_SAFE_TIMEOUT_MS'));
 ok('cloud manual match no longer waits for MiniMax report', !matchStartBody.includes('generateMutualMatchReports'));
 ok('cloud match detail keeps field breakdown scores', cloudMatchJs.includes('ensureScoreDetailDimensions') && cloudMatchJs.includes('buildDemoScoreDetail'));

@@ -16,6 +16,30 @@
   font-size: 28rpx;
 }
 
+.datetime-row {
+  display: flex;
+  gap: 16rpx;
+}
+
+.datetime-picker {
+  flex: 1;
+  min-width: 0;
+}
+
+.picker-like {
+  height: 80rpx;
+  line-height: 80rpx;
+  padding: 0 24rpx;
+  border-radius: 8rpx;
+  background: #f8f8f8;
+  font-size: 28rpx;
+  color: #333;
+}
+
+.picker-like.placeholder {
+  color: #999;
+}
+
 .textarea {
   width: 100%;
   min-height: 160rpx;
@@ -100,13 +124,70 @@
   line-height: 1.7;
 }
 
+.guard-status {
+  margin-top: 24rpx;
+  padding: 18rpx 20rpx;
+  border-radius: 8rpx;
+  background: #f7f7f7;
+  color: #777;
+  font-size: 24rpx;
+  line-height: 1.5;
+}
+
+.guard-status.active {
+  background: #fff3f6;
+  color: #ff6b8a;
+}
+
+.guard-evidence {
+  margin-top: 16rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 6rpx;
+  font-size: 24rpx;
+  color: #555;
+}
+
+.share-btn,
+.guard-btn {
+  margin-top: 24rpx;
+  height: 88rpx;
+  line-height: 1;
+  border-radius: 8rpx;
+  background: #ffffff;
+  border: 2rpx solid #ff6b8a;
+  color: #ff6b8a;
+  font-size: 28rpx;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  padding: 0 24rpx;
+  white-space: nowrap;
+  font-family: inherit;
+}
+
+.share-btn::after,
+.guard-btn::after {
+  border: none;
+}
+
+.guard-btn.active {
+  background: #333333;
+  border-color: #333333;
+  color: #ffffff;
+}
+
 .sos-btn {
   margin-top: 24rpx;
   height: 88rpx;
-  line-height: 88rpx;
   border-radius: 8rpx;
   background: #e53935;
   color: #fff;
   font-size: 30rpx;
   font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }

@@ -1,55 +1,37 @@
 .welcome-page {
   min-height: 100vh;
   position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  overflow: hidden;
+  background: #f7edf7;
 }
 
-.welcome-bg {
+.cover-image {
   position: absolute;
-  inset: 0;
-  background: linear-gradient(160deg, #fff0f3 0%, #f8f4f5 50%, #ffe8ee 100%);
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
 }
 
-.welcome-content {
+.cover-shade {
+  position: absolute;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.04) 0%, rgba(255, 244, 249, 0.12) 48%, rgba(248, 229, 242, 0.92) 100%);
+}
+
+.welcome-loading {
   position: relative;
   z-index: 1;
-  text-align: center;
-  padding: 64rpx 48rpx;
-  width: 100%;
-  box-sizing: border-box;
-}
-
-.brand-name {
-  font-size: 72rpx;
-  font-weight: 700;
-  color: #ff6b8a;
-  margin-bottom: 16rpx;
-  letter-spacing: 2rpx;
-}
-
-.brand-slogan {
-  font-size: 32rpx;
-  color: #555;
-  margin-bottom: 48rpx;
-}
-
-.brand-features {
+  min-height: 100vh;
   display: flex;
-  flex-direction: column;
-  gap: 12rpx;
-  font-size: 26rpx;
-  color: #888;
-  margin-bottom: 80rpx;
-}
-
-.welcome-btn {
-  width: 80% !important;
-  margin: 0 auto 32rpx;
-}
-
-.rules-link {
-  font-size: 26rpx;
-  color: #ff6b8a;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0 44rpx calc(68rpx + env(safe-area-inset-bottom));
+  box-sizing: border-box;
+  color: #8d7891;
+  font-size: 22rpx;
+  text-align: center;
 }

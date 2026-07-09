@@ -82,6 +82,8 @@ async function cleanupOpenids(openids) {
   const ids = users.map((u) => u.id);
   if (ids.length) {
     const qs = placeholders(ids);
+    await pool.query(`DELETE FROM match_handoff_ticket WHERE user_id IN (${qs}) OR match_user_id IN (${qs})`, [...ids, ...ids]).catch(() => {});
+    await pool.query(`DELETE FROM meet_location_log WHERE user_id IN (${qs})`, ids).catch(() => {});
     await pool.query(`DELETE FROM sos_log WHERE user_id IN (${qs})`, ids).catch(() => {});
     await pool.query(`DELETE FROM meet_report WHERE user_id IN (${qs})`, ids).catch(() => {});
     await pool.query(`DELETE FROM user_match_log WHERE user_id IN (${qs}) OR match_user_id IN (${qs})`, [...ids, ...ids]).catch(() => {});

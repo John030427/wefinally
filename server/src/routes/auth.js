@@ -8,15 +8,16 @@ const { isVipActive, isDivorced } = require('../middleware/guard');
 const { createDevWxSession, isDevWxLoginEnabled } = require('../services/devWxLogin');
 const {
   ROLES,
+  ADMIN_ROLES,
   USER_STATUS,
   PARTNER_STATUS,
 } = require('../config/constants');
 
 const router = express.Router();
 
-async function wxCode2Session(code) {
+async function wxCode2Session(code, devOpenid = '') {
   if (isDevWxLoginEnabled()) {
-    return createDevWxSession(code);
+    return createDevWxSession(code, process.env, devOpenid);
   }
 
   const appid = process.env.WX_APPID;
@@ -68,10 +69,10 @@ function sanitizeUser(u) {
 /** POST /api/auth/wx-login */
 router.post('/wx-login', async (req, res, next) => {
   try {
-    const { code } = req.body;
+    const { code, devOpenid } = req.body;
     if (!code) return fail(res, '缺少 code');
 
-    const wx = await wxCode2Session(code);
+    const wx = await wxCode2Session(code, devOpenid);
 
     if (await isOpenidBlacklisted(wx.openid)) {
       return fail(res, '账号已被限制注册/登录', 403, 403);
@@ -157,8 +158,17 @@ router.post('/admin-login', async (req, res, next) => {
       return fail(res, '账号或密码错误', 401, 401);
     }
 
-    const token = signToken({ id: admin.id, role: ROLES.ADMIN, username });
-    return success(res, { token, admin: { id: admin.id, username: admin.username } });
+    const adminRole = admin.role || ADMIN_ROLES.SUPER_ADMIN;
+    const token = signToken({ id: admin.id, role: ROLES.ADMIN, username, admin_role: adminRole });
+    return success(res, {
+      token,
+      admin: {
+        id: admin.id,
+        username: admin.username,
+        role: adminRole,
+        admin_role: adminRole,
+      },
+    });
   } catch (err) {
     next(err);
   }

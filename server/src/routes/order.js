@@ -81,15 +81,17 @@ router.get('/list', async (req, res, next) => {
 router.get('/info', async (req, res, next) => {
   try {
     const [rows] = await pool.query(
-      'SELECT is_vip, vip_expire_time FROM `user` WHERE id = ?',
+      'SELECT is_vip, vip_expire_time, free_member, free_source FROM `user` WHERE id = ?',
       [req.auth.id]
     );
     if (rows.length === 0) return fail(res, '用户不存在', 404, 404);
     const user = rows[0];
-    const active = user.is_vip === 1 && user.vip_expire_time && new Date(user.vip_expire_time) > new Date();
+    const active = user.free_member === 1 || (user.is_vip === 1 && user.vip_expire_time && new Date(user.vip_expire_time) > new Date());
     return success(res, {
       is_vip: active ? 1 : 0,
       isVip: active,
+      free_member: user.free_member || 0,
+      free_source: user.free_source || '',
       vip_expire_time: user.vip_expire_time,
       expireDate: user.vip_expire_time,
       price: VIP_PRICE,

@@ -1,4 +1,7 @@
 <view class="login-page">
+  <image class="login-cover-image" src="/assets/wefinally-cover-branded.jpg" mode="aspectFill" />
+  <view class="login-cover-shade"></view>
+
   <block wx:if="{{pageState === 'loading'}}">
     <view class="state-wrap">
       <view class="state-icon">⏳</view>
@@ -24,16 +27,14 @@
 
   <block wx:else>
     <view class="login-content">
-      <view class="logo-text">WeFinally</view>
-      <view class="login-desc">使用微信账号快速登录</view>
-      <view class="login-card card">
-        <view class="login-tip">登录即表示您同意平台相关服务条款</view>
-        <button
-          class="btn-primary login-btn"
+      <view class="login-panel">
+        <view
+          class="login-primary login-btn {{logging ? 'is-disabled' : ''}}"
           bindtap="onWxLogin"
-          disabled="{{logging}}"
-          loading="{{logging}}"
-        >微信一键登录</button>
+          hover-class="login-primary-hover"
+        >{{logging ? '登录中...' : '微信一键登录'}}</view>
+        <view class="login-secondary" bindtap="goRules">查看平台规则</view>
+        <view class="login-tip">登录即表示同意服务协议、隐私授权与婚恋真实性承诺</view>
       </view>
     </view>
   </block>

@@ -45,4 +45,11 @@ module.exports = {
     PARTNER: 'partner',
     ADMIN: 'admin',
   },
+
+  ADMIN_ROLES: {
+    SUPER_ADMIN: 'super_admin',
+    CUSTOMER_SERVICE: 'customer_service',
+    FINANCE: 'finance',
+    AUDITOR: 'auditor',
+  },
 };

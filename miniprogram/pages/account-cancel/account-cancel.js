@@ -38,7 +38,7 @@ Page({
             title: '申请已提交',
             content: '注销申请已提交，请等待平台审核。',
             showCancel: false,
-            success: () => wx.reLaunch({ url: '/pages/welcome/welcome' })
+            success: () => wx.reLaunch({ url: '/pages/login/login' })
           })
         } catch (err) {
           wx.showModal({

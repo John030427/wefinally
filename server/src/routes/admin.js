@@ -8,6 +8,7 @@ const {
   PARTNER_STATUS,
   VIP_PRICE,
   MARRY_REPORT_TYPE,
+  ADMIN_ROLES,
 } = require('../config/constants');
 const {
   formatUserForAdmin,
@@ -21,13 +22,95 @@ const {
 const router = express.Router();
 
 router.use(adminAuth);
+router.use(requireAdminAccess);
+
+const CUSTOMER_SERVICE_RULES = [
+  ['GET', /^\/service\/workbench$/],
+  ['GET', /^\/orders$/],
+  ['GET', /^\/chat\/sessions$/],
+  ['POST', /^\/chat\/reply$/],
+  ['GET', /^\/handoff\/tickets$/],
+  ['PUT', /^\/handoff\/tickets\/\d+$/],
+];
+
+function currentAdminRole(req) {
+  return req.auth?.admin_role || req.auth?.adminRole || ADMIN_ROLES.SUPER_ADMIN;
+}
+
+function hasRouteAccess(req) {
+  const role = currentAdminRole(req);
+  if (role === ADMIN_ROLES.SUPER_ADMIN) return true;
+  if (role === ADMIN_ROLES.CUSTOMER_SERVICE) {
+    return CUSTOMER_SERVICE_RULES.some(([method, pattern]) => req.method === method && pattern.test(req.path));
+  }
+  return false;
+}
+
+function requireAdminAccess(req, res, next) {
+  req.adminRole = currentAdminRole(req);
+  if (hasRouteAccess(req)) return next();
+  return fail(res, '当前账号无权访问该后台模块', 403, 403);
+}
+
+function maskPhone(phone) {
+  const value = String(phone || '').trim();
+  const matched = value.match(/^(\d{3})\d{4}(\d{4})$/);
+  if (matched) return `${matched[1]}****${matched[2]}`;
+  if (!value) return '';
+  return `${value.slice(0, 3)}****`;
+}
+
+function handoffStatusText(status) {
+  return {
+    submitted: '已提交',
+    processing: '客服处理中',
+    waiting_partner: '等待对方确认',
+    arranged: '已安排',
+    closed: '已关闭',
+  }[status] || '已提交';
+}
+
+function formatHandoffTicket(row) {
+  return {
+    id: row.id,
+    match_log_id: row.match_log_id,
+    user_id: row.user_id,
+    match_user_id: row.match_user_id,
+    status: row.status,
+    status_text: handoffStatusText(row.status),
+    service_note: row.service_note || '',
+    user_openid: row.user_openid || '',
+    user_city: row.user_city || '',
+    match_user_openid: row.match_user_openid || '',
+    match_user_city: row.match_user_city || '',
+    create_time: row.create_time,
+    update_time: row.update_time,
+  };
+}
+
+function formatOrderForService(row) {
+  const order = formatOrderForAdmin(row);
+  return {
+    id: order.id,
+    order_no: order.order_no,
+    user_id: order.user_id,
+    openid: order.openid || '',
+    amount: order.amount,
+    status: order.status,
+    pay_status: order.status,
+    settled: order.settled,
+    paid_at: order.paid_at,
+    created_at: order.created_at,
+  };
+}
 
 /** GET /api/admin/dashboard */
 router.get('/dashboard', async (req, res, next) => {
   try {
     const [[u]] = await pool.query('SELECT COUNT(*) AS c FROM `user`');
     const [[vip]] = await pool.query(
-      'SELECT COUNT(*) AS c FROM `user` WHERE is_vip = 1 AND vip_expire_time > NOW()'
+      `SELECT COUNT(*) AS c FROM \`user\`
+       WHERE free_member = 1 OR (is_vip = 1 AND vip_expire_time > NOW())`
     );
     const [[p]] = await pool.query('SELECT COUNT(*) AS c FROM `partner`');
     const [[o]] = await pool.query(
@@ -313,7 +396,10 @@ router.get('/orders', async (req, res, next) => {
        ORDER BY o.id DESC LIMIT ? OFFSET ?`,
       [pageSize, offset]
     );
-    return success(res, paginate(rows.map(formatOrderForAdmin), count[0].total, page, pageSize));
+    const formatter = req.adminRole === ADMIN_ROLES.CUSTOMER_SERVICE
+      ? formatOrderForService
+      : formatOrderForAdmin;
+    return success(res, paginate(rows.map(formatter), count[0].total, page, pageSize));
   } catch (err) {
     next(err);
   }
@@ -457,6 +543,81 @@ router.post('/chat/reply', async (req, res, next) => {
   }
 });
 
+/** GET /api/admin/handoff/tickets — official match handoff tickets */
+router.get('/handoff/tickets', async (req, res, next) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT t.*, u.openid AS user_openid, u.city AS user_city,
+              mu.openid AS match_user_openid, mu.city AS match_user_city
+       FROM match_handoff_ticket t
+       JOIN \`user\` u ON u.id = t.user_id
+       JOIN \`user\` mu ON mu.id = t.match_user_id
+       ORDER BY t.update_time DESC, t.id DESC
+       LIMIT 100`
+    );
+    return success(res, rows.map(formatHandoffTicket));
+  } catch (err) {
+    next(err);
+  }
+});
+
+/** PUT /api/admin/handoff/tickets/:id */
+router.put('/handoff/tickets/:id', async (req, res, next) => {
+  try {
+    const status = String(req.body?.status || '').trim();
+    const serviceNote = String(req.body?.service_note || req.body?.serviceNote || '').trim().slice(0, 500);
+    const allowed = new Set(['submitted', 'processing', 'waiting_partner', 'arranged', 'closed']);
+    if (!allowed.has(status)) return fail(res, '无效状态');
+
+    await pool.query(
+      'UPDATE match_handoff_ticket SET status = ?, service_note = ? WHERE id = ?',
+      [status, serviceNote, req.params.id]
+    );
+    const [rows] = await pool.query('SELECT * FROM match_handoff_ticket WHERE id = ?', [req.params.id]);
+    if (!rows.length) return fail(res, '工单不存在', 404, 404);
+    return success(res, formatHandoffTicket(rows[0]), '已更新');
+  } catch (err) {
+    next(err);
+  }
+});
+
+/** GET /api/admin/service/workbench — customer-service focused queue */
+router.get('/service/workbench', async (req, res, next) => {
+  try {
+    const [chatRows] = await pool.query(
+      `SELECT acl.user_id, MAX(acl.id) AS last_log_id, MAX(acl.create_time) AS last_time,
+              u.openid, u.gender, u.city
+       FROM ai_chat_log acl
+       JOIN \`user\` u ON u.id = acl.user_id
+       WHERE acl.is_manual_transfer = 1
+       GROUP BY acl.user_id, u.openid, u.gender, u.city
+       ORDER BY last_time DESC LIMIT 20`
+    );
+    const [ticketRows] = await pool.query(
+      `SELECT t.*, u.openid AS user_openid, u.city AS user_city,
+              mu.openid AS match_user_openid, mu.city AS match_user_city
+       FROM match_handoff_ticket t
+       JOIN \`user\` u ON u.id = t.user_id
+       JOIN \`user\` mu ON mu.id = t.match_user_id
+       ORDER BY t.update_time DESC, t.id DESC
+       LIMIT 20`
+    );
+    const [orderRows] = await pool.query(
+      `SELECT o.*, u.openid
+       FROM user_order o
+       LEFT JOIN \`user\` u ON u.id = o.user_id
+       ORDER BY o.id DESC LIMIT 20`
+    );
+    return success(res, {
+      chat_sessions: chatRows.map(formatChatSession),
+      handoff_tickets: ticketRows.map(formatHandoffTicket),
+      orders: orderRows.map(formatOrderForService),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 /** PUT /api/admin/stats */
 router.put('/stats', async (req, res, next) => {
   try {
@@ -531,6 +692,66 @@ router.get('/matches', async (req, res, next) => {
   }
 });
 
+function parseScoreDetail(value) {
+  if (!value) return null;
+  try {
+    return typeof value === 'string' ? JSON.parse(value) : value;
+  } catch (e) {
+    return null;
+  }
+}
+
+async function loadAdminMatchSide(userId) {
+  const [users] = await pool.query(
+    `SELECT u.*, oc.circle_name
+     FROM \`user\` u
+     LEFT JOIN occupation_circle oc ON oc.id = u.circle_id
+     WHERE u.id = ?
+     LIMIT 1`,
+    [userId]
+  );
+  const [settings] = await pool.query(
+    'SELECT * FROM user_match_setting WHERE user_id = ? LIMIT 1',
+    [userId]
+  );
+  return {
+    ...formatUserForAdmin(users[0]),
+    circle_name: users[0]?.circle_name || '',
+    match_settings: settings[0] || null,
+  };
+}
+
+/** GET /api/admin/matches/:id — 匹配诊断详情（双方资料 + 设置 + 分项分） */
+router.get('/matches/:id', async (req, res, next) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT ml.*, u.openid AS user_openid, mu.openid AS matched_openid
+       FROM user_match_log ml
+       JOIN \`user\` u ON u.id = ml.user_id
+       JOIN \`user\` mu ON mu.id = ml.match_user_id
+       WHERE ml.id = ?
+       LIMIT 1`,
+      [req.params.id]
+    );
+    if (rows.length === 0) return fail(res, '匹配记录不存在', 404, 404);
+
+    const log = rows[0];
+    const [owner, partner] = await Promise.all([
+      loadAdminMatchSide(log.user_id),
+      loadAdminMatchSide(log.match_user_id),
+    ]);
+
+    return success(res, {
+      log,
+      owner,
+      partner,
+      score_detail: parseScoreDetail(log.score_detail_json),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 /** POST /api/admin/marry-reports/:id/approve — 结婚报备/注销审核 */
 router.post('/marry-reports/:id/approve', async (req, res, next) => {
   const conn = await pool.getConnection();
@@ -548,6 +769,10 @@ router.post('/marry-reports/:id/approve', async (req, res, next) => {
       return fail(res, '报备记录不存在', 404, 404);
     }
     const report = reports[0];
+    if (Number(report.audit_status) !== 0) {
+      await conn.rollback();
+      return fail(res, '报备记录已处理');
+    }
 
     if (approve) {
       await conn.query(
@@ -677,17 +902,56 @@ router.get('/export/partners', async (req, res, next) => {
 /** POST /api/admin/admins */
 router.post('/admins', async (req, res, next) => {
   try {
-    const { username, password } = req.body;
+    const { username, password, role } = req.body;
     if (!username || !password) return fail(res, '账号密码不能为空');
+    const adminRole = Object.values(ADMIN_ROLES).includes(role)
+      ? role
+      : ADMIN_ROLES.SUPER_ADMIN;
 
     const [exists] = await pool.query('SELECT id FROM `admin` WHERE username = ?', [username]);
     if (exists.length > 0) return fail(res, '用户名已存在');
 
     const [r] = await pool.query(
-      'INSERT INTO `admin` (username, password) VALUES (?, ?)',
-      [username, hashPassword(password)]
+      'INSERT INTO `admin` (username, password, role) VALUES (?, ?, ?)',
+      [username, hashPassword(password), adminRole]
     );
-    return success(res, { id: r.insertId }, '管理员创建成功');
+    return success(res, { id: r.insertId, role: adminRole }, '管理员创建成功');
+  } catch (err) {
+    next(err);
+  }
+});
+
+/** GET /api/admin/whitelist — 管理端脱敏查看单位白名单 */
+router.get('/whitelist', async (req, res, next) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT id, phone, name, unit, source, used, create_time
+       FROM free_whitelist ORDER BY id DESC LIMIT 200`
+    );
+    return success(res, {
+      list: rows.map((row) => ({
+        id: row.id,
+        phone_masked: maskPhone(row.phone),
+        name: row.name || '',
+        unit: row.unit || '',
+        source: row.source || '',
+        used: row.used,
+        create_time: row.create_time,
+      })),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/** GET /api/admin/whitelist/batches — 白名单导入批次审计 */
+router.get('/whitelist/batches', async (req, res, next) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT id, admin_id, source, unit, received_count, imported_count, create_time
+       FROM free_whitelist_import_batch ORDER BY id DESC LIMIT 100`
+    );
+    return success(res, { list: rows });
   } catch (err) {
     next(err);
   }
@@ -695,24 +959,46 @@ router.post('/admins', async (req, res, next) => {
 
 /** POST /api/admin/whitelist/import — 批量导入脱敏白名单（幂等，按 phone 去重） */
 router.post('/whitelist/import', async (req, res, next) => {
+  let conn;
   try {
+    conn = await pool.getConnection();
     const list = Array.isArray(req.body.list) ? req.body.list : [];
     const ok = ['public', 'edu', 'med'];
+    const first = list[0] || {};
+    const batchSource = ok.includes(req.body.source) ? req.body.source : (ok.includes(first.source) ? first.source : 'public');
+    const batchUnit = String(req.body.unit || first.unit || '').slice(0, 100);
     let inserted = 0;
+
+    await conn.beginTransaction();
+    const [batch] = await conn.query(
+      `INSERT INTO free_whitelist_import_batch
+       (admin_id, source, unit, received_count, imported_count)
+       VALUES (?,?,?,?,0)`,
+      [req.auth.id || 0, batchSource, batchUnit, list.length]
+    );
+
     for (const r of list) {
       const phone = String(r.phone || '').trim();
       const source = ok.includes(r.source) ? r.source : 'public';
       if (!/^\d{11}$/.test(phone)) continue; // ponytail: 只收 11 位手机号，脏数据跳过
-      await pool.query(
+      await conn.query(
         `INSERT INTO free_whitelist (phone, name, unit, source) VALUES (?, ?, ?, ?)
          ON DUPLICATE KEY UPDATE name=VALUES(name), unit=VALUES(unit), source=VALUES(source)`,
         [phone, String(r.name || '').slice(0, 50), String(r.unit || '').slice(0, 100), source]
       );
       inserted += 1;
     }
-    return success(res, { received: list.length, imported: inserted });
+    await conn.query(
+      'UPDATE free_whitelist_import_batch SET imported_count = ? WHERE id = ?',
+      [inserted, batch.insertId]
+    );
+    await conn.commit();
+    return success(res, { received: list.length, imported: inserted, batch_id: batch.insertId });
   } catch (err) {
+    if (conn) await conn.rollback();
     next(err);
+  } finally {
+    if (conn) conn.release();
   }
 });
 

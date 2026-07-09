@@ -98,10 +98,11 @@ startVipExpireCron();
 startSettleCron();
 
 // ─── Start ───────────────────────────────────────────────────
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`WeFinally server running on port ${PORT}`);
   console.log(`Admin static: http://localhost:${PORT}/admin`);
   console.log(`Health check: http://localhost:${PORT}/api/common/health`);
+  console.log(`LAN health check: http://<电脑IPv4>:${PORT}/api/common/health`);
 });
 
 module.exports = app;

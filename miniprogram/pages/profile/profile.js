@@ -12,7 +12,7 @@ Page({
       { icon: '⚙️', title: '择偶配置', url: '/pages/match-setting/match-setting' },
       { icon: '📝', title: '外貌描述', url: '/pages/appearance/appearance' },
       { icon: '👑', title: 'VIP 会员', url: '/pages/vip/vip' },
-      { icon: '🎖️', title: '公益免费认证', action: 'claimFree' },
+      { icon: '🎖️', title: '激活码兑换', action: 'claimFree' },
       { icon: '🛡️', title: '见面安全记录', url: '/pages/meet-safety-list/meet-safety-list' },
       { icon: '💒', title: '领证数据公示', url: '/pages/marry-stat/marry-stat' },
       { icon: '📋', title: '婚姻报备', url: '/pages/marry-report/marry-report' },
@@ -30,7 +30,7 @@ Page({
     this.setData({ pageState: 'loading' })
     const app = getApp()
     if (!app.globalData.isLoggedIn) {
-      wx.redirectTo({ url: '/pages/welcome/welcome' })
+      wx.redirectTo({ url: '/pages/login/login' })
       return
     }
 
@@ -83,17 +83,17 @@ Page({
 
   onClaimFree() {
     wx.showModal({
-      title: '公益免费认证',
+      title: '激活码兑换',
       editable: true,
-      placeholderText: '输入单位登记的手机号',
+      placeholderText: '输入平台提供的激活码',
       success: async (r) => {
         if (!r.confirm) return
         try {
-          await post('/api/user/claim-free', { phone: (r.content || '').trim() }, { showLoading: true })
-          wx.showToast({ title: '已开通免费会员', icon: 'success' })
+          await post('/api/user/claim-free', { activation_code: (r.content || '').trim() }, { showLoading: true })
+          wx.showToast({ title: '激活成功', icon: 'success' })
           this.loadProfile()
         } catch (e) {
-          wx.showModal({ title: '认证失败', content: (e && e.message) || '手机号不在名单内', showCancel: false })
+          wx.showModal({ title: '激活失败', content: (e && e.message) || '激活码无效或已使用', showCancel: false })
         }
       }
     })
@@ -107,7 +107,7 @@ Page({
         if (res.confirm) {
           getApp().clearLoginState()
           wx.showToast({ title: '已退出', icon: 'success' })
-          setTimeout(() => wx.reLaunch({ url: '/pages/welcome/welcome' }), 800)
+          setTimeout(() => wx.reLaunch({ url: '/pages/login/login' }), 800)
         }
       }
     })

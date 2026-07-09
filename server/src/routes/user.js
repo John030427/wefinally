@@ -69,8 +69,7 @@ function parseHeightRange(preferHeight) {
 }
 
 function validateViewText(text, label) {
-  if (!text) return null;
-  const len = text.trim().length;
+  const len = String(text || '').trim().length;
   if (len < VIEW_TEXT_MIN || len > VIEW_TEXT_MAX) {
     return `${label}长度需在 ${VIEW_TEXT_MIN}-${VIEW_TEXT_MAX} 字之间`;
   }
@@ -173,6 +172,8 @@ router.post('/register', async (req, res, next) => {
       marriage_status,
       marry_status,
       house_car,
+      appearance_description,
+      appearance_want,
       promote_code,
       agreements,
       device_info,
@@ -228,8 +229,8 @@ router.post('/register', async (req, res, next) => {
       `INSERT INTO \`user\`
        (openid, gender, birth_year, height_range, education, circle_id, city,
         marry_status, baby_plan, income_range, house_car, status,
-        promote_partner_id, promote_code)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        promote_partner_id, promote_code, appearance_description, appearance_want)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         openid,
         parsedGender,
@@ -245,6 +246,8 @@ router.post('/register', async (req, res, next) => {
         USER_STATUS.PENDING,
         promotePartnerId,
         lockedPromoteCode,
+        appearance_description != null ? String(appearance_description).slice(0, 500) : null,
+        appearance_want != null ? String(appearance_want).slice(0, 500) : null,
       ]
     );
 
@@ -440,15 +443,11 @@ router.put(
 
       if (appearance_description != null) {
         const tags = await extractAppearanceTags(appearance_description);
-        if (tags) {
-          await pool.query('UPDATE `user` SET appearance_tags = ? WHERE id = ?', [JSON.stringify(tags), req.auth.id]);
-        }
+        await pool.query('UPDATE `user` SET appearance_tags = ? WHERE id = ?', [JSON.stringify(tags || []), req.auth.id]);
       }
       if (appearance_want != null) {
         const wt = await extractAppearanceTags(appearance_want);
-        if (wt) {
-          await pool.query('UPDATE `user` SET appearance_want_tags = ? WHERE id = ?', [JSON.stringify(wt), req.auth.id]);
-        }
+        await pool.query('UPDATE `user` SET appearance_want_tags = ? WHERE id = ?', [JSON.stringify(wt || []), req.auth.id]);
       }
 
       const [rows] = await pool.query(
@@ -510,14 +509,14 @@ router.put(
         min_education, like_circle_ids, like_marry_status,
         like_baby_plan, like_income, like_house_car,
         self_view_text, target_view_text, psych_profile,
-        prefer_age, prefer_education, prefer_city, prefer_height,
+        prefer_age, prefer_education, prefer_height,
         my_values, expect_values,
       } = req.body;
 
       const ageRange = parseAgeRange(prefer_age);
       const heightRange = parseHeightRange(prefer_height);
-      const selfText = self_view_text || my_values;
-      const targetText = target_view_text || expect_values;
+      const selfText = String(self_view_text || my_values || '').trim();
+      const targetText = String(target_view_text || expect_values || '').trim();
 
       const err1 = validateViewText(selfText, '自我描述');
       if (err1) return fail(res, err1);
@@ -577,11 +576,6 @@ router.put(
         'UPDATE `user` SET last_match_setting_time = NOW() WHERE id = ?',
         [req.auth.id]
       );
-
-      const [users] = await pool.query('SELECT status FROM `user` WHERE id = ?', [req.auth.id]);
-      if (users[0].status === USER_STATUS.PENDING) {
-        await pool.query('UPDATE `user` SET status = ? WHERE id = ?', [USER_STATUS.NORMAL, req.auth.id]);
-      }
 
       const [updated] = await pool.query(
         'SELECT * FROM user_match_setting WHERE user_id = ?',
@@ -647,28 +641,44 @@ router.post(
   }
 );
 
-/** POST /api/user/claim-free — 登录用户自报手机号，命中白名单则开通终身免费会员 */
+/** POST /api/user/claim-free — 登录用户输入激活码，命中白名单则开通会员 */
 router.post(
   '/claim-free',
   debounceMiddleware((req) => `claim-free:${req.auth.id}`),
   async (req, res, next) => {
+    let conn;
     try {
-      const phone = String(req.body.phone || '').trim();
-      if (!/^\d{11}$/.test(phone)) return fail(res, '请输入正确的手机号');
-      const [rows] = await pool.query(
-        'SELECT * FROM free_whitelist WHERE phone = ? LIMIT 1',
-        [phone]
+      const activationCode = String(req.body.activation_code || req.body.phone || '').trim();
+      if (!/^\d{11}$/.test(activationCode)) return fail(res, '请输入正确的激活码');
+
+      conn = await pool.getConnection();
+      await conn.beginTransaction();
+      const [rows] = await conn.query(
+        'SELECT * FROM free_whitelist WHERE phone = ? LIMIT 1 FOR UPDATE',
+        [activationCode]
       );
-      if (rows.length === 0) return fail(res, '该手机号不在公益免费名单内');
+      if (rows.length === 0) {
+        await conn.rollback();
+        return fail(res, '激活码无效');
+      }
       const wl = rows[0];
-      await pool.query(
+      if (Number(wl.used) === 1) {
+        await conn.rollback();
+        return fail(res, '激活码已使用');
+      }
+
+      await conn.query(
         'UPDATE `user` SET free_member = 1, free_source = ? WHERE id = ?',
         [wl.source, req.auth.id]
       );
-      await pool.query('UPDATE free_whitelist SET used = 1 WHERE id = ?', [wl.id]);
-      return success(res, { free_source: wl.source }, '已开通公益免费会员');
+      await conn.query('UPDATE free_whitelist SET used = 1 WHERE id = ?', [wl.id]);
+      await conn.commit();
+      return success(res, { free_source: wl.source }, '会员已激活');
     } catch (err) {
+      if (conn) await conn.rollback().catch(() => {});
       next(err);
+    } finally {
+      if (conn) conn.release();
     }
   }
 );
