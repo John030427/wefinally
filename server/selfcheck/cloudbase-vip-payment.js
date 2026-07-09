@@ -139,6 +139,51 @@ async function main() {
   assert.strictEqual(status.pay_status, 1)
   assert.strictEqual(status.is_paid, true)
 
+  const { createVipHandlers } = require('../../miniprogram/cloudfunctions/api/handlers/vip')
+  const fakeUser = Object.assign({}, user, { is_vip: 0, vip_expire_time: null })
+  let createdOrder = null
+  const handlers = createVipHandlers({
+    currentUser: async () => fakeUser,
+    flagEnabled: async () => false,
+    readWechatPayConfig: () => Object.assign({}, config, {
+      enabled: true,
+      ready: true,
+      merchantPrivateKeyPem: 'PRIVATE_KEY'
+    }),
+    requestJsapiPrepay: async ({ orderNo, amountTotal }) => {
+      assert.strictEqual(orderNo, 'WF_TEST_ORDER_2')
+      assert.strictEqual(amountTotal, 18800)
+      return { prepay_id: 'wx_prepay_2' }
+    },
+    buildMiniProgramPayParams: () => ({
+      timeStamp: '123',
+      nonceStr: 'nonce',
+      package: 'prepay_id=wx_prepay_2',
+      signType: 'RSA',
+      paySign: 'pay-sign'
+    }),
+    orderService: {
+      createPendingVipOrder: async () => {
+        createdOrder = {
+          order_no: 'WF_TEST_ORDER_2',
+          price: 188,
+          amount_total: 18800,
+          pay_status: 0
+        }
+        return createdOrder
+      },
+      savePrepay: async (order, prepay) => Object.assign(order, { prepay_id: prepay.prepay_id }),
+      getStatusForUser: async () => ({ order_no: 'WF_TEST_ORDER_2', pay_status: 1, is_paid: true })
+    }
+  })
+  const purchase = await handlers.purchase({}, {})
+  assert.strictEqual(createdOrder.order_no, 'WF_TEST_ORDER_2')
+  assert.strictEqual(purchase.order_no, 'WF_TEST_ORDER_2')
+  assert.strictEqual(purchase.payment.package, 'prepay_id=wx_prepay_2')
+  assert.strictEqual(purchase.demo_granted, false)
+  const routeStatus = await handlers.status({ order_no: 'WF_TEST_ORDER_2' }, {})
+  assert.strictEqual(routeStatus.is_paid, true)
+
   console.log('PASS - cloudbase vip payment order service')
 }
 

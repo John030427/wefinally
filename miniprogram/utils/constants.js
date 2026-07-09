@@ -20,6 +20,7 @@ const API_PATHS = {
   VIP_INFO: '/api/vip/info',
   VIP_PURCHASE: '/api/vip/purchase',
   MARRY_STAT: '/api/platform/marry-stat',
+  ORDER_STATUS: '/api/order/status',
   MARRY_REPORT: '/api/user/marry-report',
   CHAT_SEND: '/api/chat/send',
   CHAT_HISTORY: '/api/chat/history',
