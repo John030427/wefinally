@@ -32,7 +32,7 @@
 - [x] BOSS_IDEAS_CHECKLIST 区分 A/B/C/D 四组来源
 - [x] 模块13：批量导入 + 公职/教师/医护公益免费白名单
 - [x] 模块11：见面安全 110 方案一（后端验收通过，前端需微信开发者工具手测）
-- [x] 外貌 LLM 匹配方案丙分支实现（默认关，回退验收通过）
+- [x] 外貌匹配方案丙分支实现（本地偏好契合分已开启，LLM 标签默认关）
 - [x] `server/selfcheck/` 沉淀匹配/免费会员/见面安全/LLM 默认关/R1 Bug 自检
 
 ---
@@ -67,7 +67,7 @@
 | 非 VIP 被匹配后的详情展示策略 | ✅ 已关闭 — 模糊展示 + VIP 引导（Q1） |
 | 匹配详情字段是否收紧 | ✅ 已关闭 — 收紧为最小集（Q2） |
 | 注册身高改区间 | ✅ 已关闭 — 立即改 + 兼容迁移（Q3） |
-| 外貌描述展示/打分范围 | ✅ 已关闭 — v1 不展示不打分；LLM 画像列 v2（Q4） |
+| 外貌描述展示/打分范围 | ✅ 已更新 — 不展示给对方；按自述与期待的偏好契合度计入匹配分；LLM 标签仍为增强项 |
 | 三观必填 / 安全卡范围 | ✅ 已关闭 — 三观选填填了校验；安全卡仅转本人好友（B-Q1/Q5） |
 
 > **2026-06-29 第二轮**：所有已知产品问题均已关闭，方向锁定 188 PRD。详见 `QUESTIONS_TO_BOSS.md` 与 `DEVELOPMENT_LOG.md` 第二轮条目。
@@ -86,12 +86,12 @@
 
 - 模块13：新增白名单 DB patch、管理员导入 API、用户领取公益免费身份、VIP 豁免、profile 入口。
 - 模块11：新增见面报备/SOS DB patch、safetyConfig、`/api/meet`、小程序安全确认页/历史页、match-detail/profile 入口。
-- 后端验收已通过；`getLocation`、`makePhoneCall`、分享需在微信开发者工具手动验证。
+- 后端验收已通过；`getLocation`、广东110小程序跳转、分享需在微信开发者工具/真机手动验证。
 
 **2026-06-30 外貌 LLM 匹配分支**
 
 - 新增外貌描述/期待外貌字段、LLM 标签抽取 hook、标签重合匹配分、外貌编辑页。
-- `llmConfig.enabled=false`、`useAppearanceInMatch=false` 默认关；PUT/GET 和匹配回退验收通过。
+- `llmConfig.enabled=false`，LLM 标签默认关；`useAppearanceInMatch=true`，外貌偏好本地契合分已开启；PUT/GET 和匹配验收通过。
 
 ---
 

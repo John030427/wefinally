@@ -11,6 +11,7 @@ WeFinally婚恋小程序项目/
 ├── miniprogram/          # 微信小程序原生前端
 │   ├── pages/            # 页面（注册、匹配、会员、AI 客服等）
 │   ├── utils/            # 请求封装、常量
+│   ├── cloudfunctions/   # 微信云函数（login/api）
 │   └── app.js / app.json
 ├── server/               # Node.js + Express 后端
 │   ├── src/
@@ -38,8 +39,9 @@ WeFinally婚恋小程序项目/
 | 层级 | 技术 |
 |------|------|
 | 前端 | 原生微信小程序 |
-| 后端 | Node.js 18+ / Express |
-| 数据库 | MySQL 8.0 |
+| 小程序云端 | 微信云开发 CloudBase / 云函数 / 云数据库 |
+| 本地后台 | Node.js 18+ / Express |
+| 本地数据库 | MySQL 8.0 |
 | 定时任务 | node-cron（内置） |
 | 部署 | 腾讯云轻量 + 宝塔 + Nginx + PM2 |
 
@@ -76,8 +78,7 @@ database\import.bat
 
 # 或手动
 mysql -u root -p < database/init.sql
-# 已有库追加合伙人审核表：
-mysql -u root -p < database/patch-002-partner-audit.sql
+# 再按文件名顺序追加 database/patch-00*.sql
 ```
 
 ### 2. 后端
@@ -95,12 +96,18 @@ npm run dev
 - 超级管理后台：`http://localhost:3000/admin/`
 - 合伙人后台：`http://localhost:3000/partner/`
 
-### 3. 小程序
+### 3. 小程序（云开发体验版）
 
 1. 微信开发者工具导入 `miniprogram/` 目录
 2. 填写 AppID
-3. 修改 `utils/request.js` 中 API 基址为本地或测试域名
-4. 开发阶段可在工具中关闭「不校验合法域名」
+3. 上传部署 `cloudfunctions/login` 和 `cloudfunctions/api`
+4. 云开发环境使用 `cloud1-d4gy8l52g08bba326`
+5. 体验版不再修改 API 基址，也不再依赖本地 `3000`
+
+云开发导入与测试：
+
+- [云开发迁移指南](./project-docs/CLOUDBASE_MIGRATION_GUIDE_2026-07-08.md)
+- [云开发体验版测试指南](./project-docs/USER_TEST_GUIDE_CLOUDBASE_2026-07-08.md)
 
 ---
 

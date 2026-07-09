@@ -49,9 +49,10 @@ yum install -y wget && wget -O install.sh https://download.bt.cn/install/install
 # SSH 登录服务器后
 cd /www/wwwroot/wefinally
 mysql -u wefinally -p wefinally < database/init.sql
+# 再按文件名顺序执行 database/patch-00*.sql
 ```
 
-或在宝塔 **phpMyAdmin** 中导入 `database/init.sql`。
+或在宝塔 **phpMyAdmin** 中依次导入 `database/init.sql` 和 `database/patch-00*.sql`。
 
 > **注意**：`database/init.sql` 为产品规格表结构（`user`、`partner`、`occupation_circle` 等）。若后端 `server/` 使用 `migrations/001_schema.sql` 另一套表名（`users`、`partners`），请与开发团队确认统一 schema 后再导入，避免表名不一致。
 

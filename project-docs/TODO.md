@@ -1,7 +1,7 @@
 # 待办任务清单
 
 > 按优先级排序。完成项请移至 DEVELOPMENT_LOG 并勾选。  
-> 最后更新：2026-06-29
+> 最后更新：2026-07-05
 
 ---
 
@@ -37,8 +37,8 @@
 
 ### R2：配置化收敛（行为不变）
 
-- [ ] 新建 `server/src/config/matchConfig.js` 抽出权重
-- [ ] 实现 `GET /api/common/config`
+- [x] 新建 `server/src/config/matchConfig.js` 抽出权重
+- [x] 实现 `GET /api/common/config`
 - [ ] 前端 `app.onLaunch` 拉取 config
 - [ ] 消除 `index.wxml` 硬编码 188（改绑 data）
 - [ ] 更新 CONFIG_DESIGN 实施状态
@@ -74,7 +74,7 @@
 - [ ] 后端：管理后台用户详情可读该字段；**匹配接口不返回给对方**
 - [ ] 前端：profile 页增加 textarea（复用 match-setting 样式）
 - [ ] ~~前端：match-detail 只读展示~~ **v1 不做**（Q4：不展示给匹配对象）
-- [ ] safetyConfig：`appearanceMaxLen`、`appearanceVisibleToMatch=false`；matchConfig：`useAppearanceInMatch=false`
+- [x] safetyConfig：`appearanceMaxLen`、`appearanceVisibleToMatch=false`；matchConfig：`useAppearanceInMatch=true`，外貌按偏好契合度计分
 
 ### 见面安全确认
 
@@ -84,8 +84,18 @@
 - [ ] 前端：`match-detail` 入口按钮
 - [x] ~~见面安全卡展示 + `onShareAppMessage`~~（已按老板口径撤下，保留报备 + SOS）
 - [x] 前端：`pages/meet-safety-list` 历史记录
+- [x] 前端：用户主动前台安全守护（`wx.startLocationUpdate` + `wx.onLocationChange`）
+- [x] 后端：首页无报备 SOS 留痕（`POST /api/meet/sos`）
 - [x] profile 菜单增加入口
 - [x] safetyConfig 全套开关与文案
+- [ ] 上线前：定位字段级加密、访问审计、短信/24h值守方案
+
+### 单位白名单/激活码兑换
+
+- [x] 后端：`free_whitelist_import_batch` 导入批次留痕
+- [x] 后端：管理员白名单列表手机号脱敏
+- [x] 后台：白名单导入页 + 批次/脱敏列表
+- [ ] 上线前：单位授权凭证留存、字段级加密、访问审计
 
 ### 体验补缺（小 UI）
 
@@ -111,7 +121,7 @@
 
 - [ ] **外貌描述 v2：关键词 → LLM 生成用户画像**（已立项；启动前须过 5 项确认，见 MODULES/03 与 QUESTIONS 衍生需求；会改"v1 不接 LLM"决定）
 - [ ] LLM 匹配理由（matchConfig.aiGenerateReason）
-- [ ] 外貌参与匹配权重
+- [x] 外貌参与匹配权重（偏好契合分，不做颜值评分）
 - [ ] 行为推荐模型（路线 C）
 - [ ] MBTI 轻量测试（需老板确认）
 

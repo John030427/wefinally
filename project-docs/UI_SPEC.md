@@ -152,7 +152,7 @@
   💒 领证数据公示
   📋 婚姻报备
   💬 AI 智能客服
-  🎖️ 公益免费认证      ← ⭐ 点→弹框输手机号领取(claim-free)
+  🎖️ 激活码兑换        ← ⭐ 点→弹框输手机号领取(claim-free)
   🛡️ 见面安全记录      ← ⭐ → meet-safety-list
   📜 平台规则
   ❌ 账号注销
@@ -196,10 +196,12 @@
 .card
   已提交见面安全确认
   预计时间 / 预计地点 / 定位 / 说明
-  [ 🆘 一键呼救 110 ]   ← 拨110 + 记录SOS + 弹"同时联系紧急联系人"
+  状态：安全守护未开启 / 已开启
+  [ 开启安全守护 ]      ← wx.startLocationUpdate + wx.onLocationChange 前台上传轨迹
+  [ 🆘 一键呼救 110 ]   ← 记录SOS + 拉起广东110小程序；失败则提示复制/搜索官方小程序
   (安全卡转发按钮已按老板要求撤掉)
 ```
-交互：getLocation 需授权（工具里设模拟定位）；呼救 → /api/meet/:id/sos → wx.makePhoneCall(110)。
+交互：getLocation 需授权（工具里设模拟定位）；开启守护仅前台上传定位；呼救 → /api/meet/:id/sos → wx.navigateToMiniProgram 拉起广东110。
 
 ### ⭐meet-safety-list 见面安全记录（历史）
 ```
@@ -220,12 +222,12 @@
 welcome → login → (新)agreement → register → match-setting → index
 index ──(VIP)──> match-detail ──> 奔现对接(AI客服) / 线下见面安全确认 → meet-safety → 🆘呼救
 index ──(非VIP)─> match-detail(🔒模糊) → vip 开通
-profile → 公益免费认证(输手机号领免费) / 见面安全记录 / 婚姻报备 / 注销
+profile → 激活码兑换(输单位登记手机号领免费) / 见面安全记录 / 婚姻报备 / 注销
 ```
 
 ---
 
 ## 6. 设计调试备注
 - 渲染请用第 0 节令牌；⭐ 页是本轮重点，先看这些。
-- 真机交互(getLocation/拨110/支付)只能在微信开发者工具/真机验，设计稿不涉及。
+- 真机交互(getLocation/广东110跳转/支付)只能在微信开发者工具/真机验，设计稿不涉及。
 - 想要可点 HTML 原型(而非线框 md)，可另出 baoyu-design 版。

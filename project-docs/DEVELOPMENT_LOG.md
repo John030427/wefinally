@@ -445,7 +445,7 @@ v1 只做 JSON 批量导入接口和用户自报手机号领取；单位自助�
 - [x] `node --check`：`safetyConfig.js`、`meet.js`、`app.js`、新增/改动小程序 JS
 - [x] `app.json` 可 JSON 解析
 - [x] 后端验收：缺安全勾选失败；正常创建返回 `id/card_no`；SOS 返回 `sosPhone=110` 和紧急联系人；`sos_log` 写入 1 条；list 返回 1 条
-- [ ] 微信开发者工具手动验收：`getLocation` 授权、`makePhoneCall`、`open-type=share`
+- [ ] 微信开发者工具/真机手动验收：`getLocation` 授权、广东110小程序跳转、`open-type=share`
 
 ### 提交
 `306dcb6`、`f304b74`、`f3ed55b`、`b3e1cb5`

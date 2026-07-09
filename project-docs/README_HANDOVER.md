@@ -45,7 +45,7 @@
 | 管理后台 | PARTIAL | 10+ 模块可用；部分页面简化 |
 | AI 客服 | DONE | 知识库关键词匹配 + 转人工 |
 | 婚姻报备 / 注销 | PARTIAL | 核心 Bug 已修；离异 proof/状态 UI 待完善 |
-| **外貌描述** | DONE（默认关） | 外貌文本 + LLM 标签预留已实现，LLM/匹配权重默认关 |
+| **外貌描述** | DONE | 外貌文本已进入“自述 vs 期待”契合分；LLM 标签仍默认关 |
 | **线下见面安全确认** | DONE | 报备 + LBS + 紧急联系人 + SOS；安全卡已撤 |
 | **配置化** | PARTIAL | 部分已集中在 constants |
 
@@ -101,10 +101,10 @@ database\import.bat
 
 # 或手动
 mysql -u root -p < database/init.sql
-mysql -u root -p < database/patch-002-partner-audit.sql
+# 再按文件名顺序追加 database/patch-00*.sql
 ```
 
-Schema 单一真源：`database/init.sql`（不要用 `server/migrations/001_schema.sql`）。
+Schema 基线：`database/init.sql`；后续字段/表在 `database/patch-00*.sql` 中追加（不要用 `server/migrations/001_schema.sql`）。
 
 ### 2. 后端
 
@@ -194,7 +194,7 @@ WeFinally婚恋小程序项目/
 
 ### 未完成的新需求
 
-7. 外貌 LLM、匹配订阅通知默认关闭，启用前需补齐资质/授权/模板/预算
+7. 外貌 LLM 标签、匹配订阅通知默认关闭，启用前需补齐资质/授权/模板/预算；外貌偏好本地契合分已开启
 8. 前端真机/微信开发者工具全链路仍需人工验收
 
 ---

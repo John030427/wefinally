@@ -24,8 +24,8 @@
      - 期待对方外貌
    - 保存时复用 `PUT /api/user/profile`，不新增表、不新增接口。
    - `match-detail` 新增“外貌匹配参考”卡片。
-   - 不展示对方外貌原文，不默认开启 LLM/外貌加权。
-   - 现有开关仍保持：`llmConfig.enabled=false`、`matchConfig.useAppearanceInMatch=false`。
+   - 不展示对方外貌原文；外貌按“自述 vs 期待”的偏好契合度计入匹配分，不做颜值评分。
+   - 现有开关：`llmConfig.enabled=false`，LLM 标签默认关；`matchConfig.useAppearanceInMatch=true`，本地关键词兜底计分。
 
 4. 线下见面安全确认 500 修复
    - 后端 `POST /api/meet/create` 对 `meet_time` 做标准化。
