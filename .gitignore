@@ -11,6 +11,8 @@ server/.env
 *.log
 npm-debug.log*
 logs/
+cloudbase-export/
+cloudbase-export-jsonl/
 
 # WeChat devtools
 project.private.config.json

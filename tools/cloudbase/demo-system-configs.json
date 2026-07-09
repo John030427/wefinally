@@ -1,0 +1,16 @@
+[
+  {
+    "_id": "cloud_demo_match_enabled",
+    "key": "cloud_demo_match_enabled",
+    "value": "true",
+    "enabled": true,
+    "description": "Demo only: show and allow manual match start in cloud experience version."
+  },
+  {
+    "_id": "cloud_demo_vip_grant_enabled",
+    "key": "cloud_demo_vip_grant_enabled",
+    "value": "true",
+    "enabled": true,
+    "description": "Demo only: grant VIP after tapping purchase when real WeChat Pay is not configured."
+  }
+]

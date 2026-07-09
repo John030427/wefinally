@@ -1,12 +1,8 @@
 const { STORAGE_KEYS } = require('./constants')
+const { requestByPath } = require('./cloudApi')
 
 function getAppInstance() {
   return getApp()
-}
-
-function getBaseUrl() {
-  const app = getAppInstance()
-  return (app && app.globalData && app.globalData.API_BASE_URL) || ''
 }
 
 function request(options) {
@@ -40,50 +36,29 @@ function request(options) {
           return
         }
 
-        wx.request({
-          url: getBaseUrl() + url,
-          method,
-          data,
-          header: {
-            'Content-Type': 'application/json',
-            Authorization: token ? `Bearer ${token}` : '',
-            ...header
-          },
-          success(res) {
-            if (showLoading) wx.hideLoading()
-            const statusCode = res.statusCode
-            if (statusCode >= 200 && statusCode < 300) {
-              const body = res.data
-              if (body && (body.code === 0 || body.code === 200 || body.success === true)) {
-                resolve(body.data !== undefined ? body.data : body)
-              } else if (body && body.code === 401) {
-                app && app.clearLoginState && app.clearLoginState()
-                wx.showToast({ title: '登录已过期，请重新登录', icon: 'none' })
-                setTimeout(() => {
-                  wx.reLaunch({ url: '/pages/login/login' })
-                }, 1500)
-                reject({ code: 401, message: '未授权', type: 'auth' })
-              } else {
-                const msg = (body && (body.message || body.msg)) || '请求失败'
-                if (showError) wx.showToast({ title: msg, icon: 'none' })
-                reject({ code: body && body.code, message: msg, type: 'api' })
-              }
-            } else if (statusCode === 401) {
+        requestByPath(method, url, {
+          ...data,
+          __token: token || '',
+          __headers: header || {}
+        }).then((body) => {
+          if (showLoading) wx.hideLoading()
+          resolve(body)
+        }).catch((err) => {
+          if (showLoading) wx.hideLoading()
+          if (err && err.code === 401) {
               app && app.clearLoginState && app.clearLoginState()
               wx.showToast({ title: '登录已过期', icon: 'none' })
               reject({ code: 401, message: '未授权', type: 'auth' })
-            } else {
-              const msg = `服务异常(${statusCode})`
-              if (showError) wx.showToast({ title: msg, icon: 'none' })
-              reject({ code: statusCode, message: msg, type: 'http' })
-            }
-          },
-          fail(err) {
-            if (showLoading) wx.hideLoading()
-            const msg = '网络请求失败，请稍后重试'
-            if (showError) wx.showToast({ title: msg, icon: 'none' })
-            reject({ code: -2, message: msg, type: 'network', detail: err })
+              return
           }
+          const msg = (err && err.message) || '服务暂时不可用，请稍后重试'
+          if (showError) wx.showToast({ title: msg, icon: 'none' })
+          reject({
+            code: (err && err.code) || -2,
+            message: msg,
+            type: (err && err.type) || 'cloud',
+            detail: err
+          })
         })
       },
       fail() {

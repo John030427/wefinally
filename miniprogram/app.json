@@ -1,7 +1,8 @@
 {
   "pages": [
-    "pages/welcome/welcome",
     "pages/login/login",
+    "pages/smoke/smoke",
+    "pages/welcome/welcome",
     "pages/agreement/agreement",
     "pages/register/register",
     "pages/divorce-review/divorce-review",
@@ -49,11 +50,10 @@
   },
   "style": "v2",
   "sitemapLocation": "sitemap.json",
-  "lazyCodeLoading": "requiredComponents",
   "permission": {
     "scope.userLocation": {
       "desc": "用于线下见面报备与一键呼救定位，仅在你主动操作时使用"
     }
   },
-  "requiredPrivateInfos": ["getLocation"]
+  "requiredPrivateInfos": ["getLocation", "startLocationUpdate", "onLocationChange"]
 }

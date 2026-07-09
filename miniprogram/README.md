@@ -10,8 +10,12 @@ miniprogram/
 ├── project.config.json
 ├── utils/
 │   ├── constants.js    # 常量、API 路径、枚举选项
-│   ├── request.js      # 网络请求封装
+│   ├── cloudApi.js     # 微信云函数调用封装
+│   ├── request.js      # 兼容旧 API 路径的云请求封装
 │   └── util.js         # 冷却倒计时、契合度配色等工具
+├── cloudfunctions/
+│   ├── login/          # 获取 openid
+│   └── api/            # 统一业务云函数
 └── pages/
     ├── welcome/          欢迎首页
     ├── login/            微信一键登录
@@ -34,9 +38,9 @@ miniprogram/
 
 1. 微信开发者工具导入本目录
 2. 修改 `project.config.json` → `appid`
-3. 修改 `app.js` → `globalData.API_BASE_URL` 为后端 API 地址
-4. 开发阶段可在开发者工具中勾选「不校验合法域名」
-5. 若暂无真实 `WX_SECRET`，可在后端 `server/.env` 临时设置 `DEV_WX_LOGIN_ENABLED=true` 后重启后端，用本地 dev openid 跑通登录/注册/页面流程；该开关默认关闭，生产环境无效。
+3. 确认云环境：`cloud1-d4gy8l52g08bba326`
+4. 右键上传部署 `cloudfunctions/login` 和 `cloudfunctions/api`，选择“云端安装依赖”
+5. 不再修改 `API_BASE_URL`，体验版不依赖本地 `3000`
 
 ## 页面说明
 
@@ -59,4 +63,4 @@ miniprogram/
 
 ## API 依赖
 
-前端通过 `utils/request.js` 调用后端 REST API，需后端提供对应接口。主要路径见 `utils/constants.js` → `API_PATHS`。
+前端页面仍通过 `utils/request.js` 调用 `API_PATHS`，但底层已经改成 `wx.cloud.callFunction`。云函数 `cloudfunctions/api` 会把旧 `/api/...` 路径适配到云数据库。
