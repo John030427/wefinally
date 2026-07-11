@@ -1,7 +1,7 @@
 const express = require('express');
 const pool = require('../config/db');
 const { userAuth } = require('../middleware/auth');
-const { requireActiveUser, blockDivorcedUser, debounceMiddleware } = require('../middleware/guard');
+const { requireActiveUser, requireApprovedMember, blockDivorcedUser, debounceMiddleware } = require('../middleware/guard');
 const { success, fail } = require('../utils/response');
 const { createVipOrder, markOrderPaid } = require('../services/orderService');
 const { buildJsapiPayment } = require('../services/wxpayService');
@@ -9,7 +9,7 @@ const { VIP_PRICE } = require('../config/constants');
 
 const router = express.Router();
 
-router.use(userAuth, requireActiveUser, blockDivorcedUser);
+router.use(userAuth, requireActiveUser, blockDivorcedUser, requireApprovedMember);
 
 function formatOrder(row) {
   return {

@@ -366,6 +366,7 @@ async function getActiveVipUsers(conn, options = {}) {
      FROM \`user\` u
      INNER JOIN user_match_setting ms ON ms.user_id = u.id
      WHERE u.status = ?
+       AND COALESCE(u.member_status, 'approved') = 'approved'
        AND (u.free_member = 1 OR (u.is_vip = 1 AND u.vip_expire_time > NOW()))
        AND u.marry_status != '离异'${scope.sql}${onlyUserSql}
      ORDER BY u.id ASC`,
@@ -386,6 +387,7 @@ async function getCandidates(conn, user, options = {}) {
      INNER JOIN user_match_setting ms ON ms.user_id = u.id
      WHERE u.id != ?
        AND u.status = ?
+       AND COALESCE(u.member_status, 'approved') = 'approved'
        AND u.gender = ?
        AND u.marry_status != '离异'${scope.sql}
      ORDER BY u.id ASC`,

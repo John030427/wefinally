@@ -166,6 +166,7 @@ router.post('/register', async (req, res, next) => {
       education,
       city,
       circle_id,
+      occupation_description,
       baby_plan,
       income,
       income_range,
@@ -204,17 +205,16 @@ router.post('/register', async (req, res, next) => {
     }
 
     const normalizedPromoteCode = String(promote_code || '').trim().toUpperCase();
+    if (!normalizedPromoteCode) return fail(res, '邀请制注册需要有效邀请码');
     let promotePartnerId = 0;
     let lockedPromoteCode = '';
-    if (normalizedPromoteCode) {
-      const [partners] = await conn.query(
-        'SELECT id, promote_code FROM `partner` WHERE promote_code = ? AND status = ?',
-        [normalizedPromoteCode, PARTNER_STATUS.ACTIVE]
-      );
-      if (partners.length === 0) return fail(res, '推广码无效或合伙人未激活');
-      promotePartnerId = partners[0].id;
-      lockedPromoteCode = partners[0].promote_code;
-    }
+    const [partners] = await conn.query(
+      'SELECT id, promote_code FROM `partner` WHERE promote_code = ? AND status = ?',
+      [normalizedPromoteCode, PARTNER_STATUS.ACTIVE]
+    );
+    if (partners.length === 0) return fail(res, '邀请码无效或合伙人未激活');
+    promotePartnerId = partners[0].id;
+    lockedPromoteCode = partners[0].promote_code;
 
     const parsedGender = parseGender(gender);
     if (!parsedGender) return fail(res, '请选择性别');
@@ -222,28 +222,34 @@ router.post('/register', async (req, res, next) => {
 
     const ms = marry_status || marriage_status || '未婚';
     if (ms === '离异') return fail(res, '离异用户无法自助注册', 403, 403);
+    const normalizedCircleId = Number(circle_id || 0);
+    const occupationDescription = String(occupation_description || '').trim().slice(0, 100);
+    if (normalizedCircleId === 0 && !occupationDescription) return fail(res, '选择其他职业时请填写具体职业');
 
     await conn.beginTransaction();
 
     const [result] = await conn.query(
       `INSERT INTO \`user\`
        (openid, gender, birth_year, height_range, education, circle_id, city,
-        marry_status, baby_plan, income_range, house_car, status,
+        marry_status, baby_plan, income_range, house_car, status, member_status, member_status_updated_at,
+        occupation_description,
         promote_partner_id, promote_code, appearance_description, appearance_want)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?, ?, ?, ?)`,
       [
         openid,
         parsedGender,
         Number(String(birth_year).replace(/\D/g, '')),
         normalizeHeightRange(height_range || height),
         education || '',
-        circle_id || 1,
+        normalizedCircleId,
         city || '深圳',
         ms,
         baby_plan || '待定',
         income_range || income || '',
         house_car || '',
-        USER_STATUS.PENDING,
+        USER_STATUS.NORMAL,
+        'pending_profile',
+        occupationDescription,
         promotePartnerId,
         lockedPromoteCode,
         appearance_description != null ? String(appearance_description).slice(0, 500) : null,

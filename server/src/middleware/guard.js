@@ -1,6 +1,7 @@
 const pool = require('../config/db');
 const { fail } = require('../utils/response');
 const { USER_STATUS } = require('../config/constants');
+const { MEMBER_STATUS, memberStatus } = require('../utils/memberPolicy');
 
 const debounceMap = new Map();
 const DEBOUNCE_MS = 800;
@@ -81,8 +82,25 @@ async function requireVip(req, res, next) {
   try {
     const user = req.user || (await loadUser(req.auth.id));
     if (!user) return fail(res, '用户不存在', 404, 404);
+    if (memberStatus(user) !== MEMBER_STATUS.APPROVED) {
+      return fail(res, '正式会员审核通过后才能进入匹配流程', 403, 403);
+    }
     if (!isVipActive(user)) {
       return fail(res, '请先开通VIP会员', 403, 403);
+    }
+    req.user = user;
+    next();
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function requireApprovedMember(req, res, next) {
+  try {
+    const user = req.user || (await loadUser(req.auth.id));
+    if (!user) return fail(res, '用户不存在', 404, 404);
+    if (memberStatus(user) !== MEMBER_STATUS.APPROVED) {
+      return fail(res, '正式会员审核通过后才能购买 VIP', 403, 403);
     }
     req.user = user;
     next();
@@ -97,6 +115,7 @@ module.exports = {
   requireActiveUser,
   blockDivorcedUser,
   requireVip,
+  requireApprovedMember,
   isVipActive,
   isDivorced,
   loadUser,

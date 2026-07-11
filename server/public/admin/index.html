@@ -91,6 +91,7 @@
         <button class="nav-item active" data-p="dashboard">数据看板</button>
         <button class="nav-item" data-p="service">客服工作台</button>
         <button class="nav-item" data-p="users">用户管理</button>
+        <button class="nav-item" data-p="members">会员审核</button>
         <button class="nav-item" data-p="matches">匹配记录</button>
         <button class="nav-item" data-p="partners">合伙人管理</button>
         <button class="nav-item" data-p="orders">订单对账</button>
@@ -118,9 +119,11 @@
   <script>
 (function () {
   const API = '/api';
+  const CLOUD_MEMBER_API = (window.WF_CLOUD_BACKOFFICE_API || new URLSearchParams(location.search).get('cloudApi') || '').replace(/\/$/, '');
   const TK = 'wf_admin_token';
+  const CLOUD_TK = 'wf_cloud_admin_token';
   const RK = 'wf_admin_role';
-  const TITLES = { dashboard:'数据看板', service:'客服工作台', users:'用户管理', matches:'匹配记录', partners:'合伙人管理', orders:'订单对账', withdrawals:'提现审核', marry:'婚姻报备', cancel:'注销/离异审核', stats:'公示数据配置', knowledge:'AI 知识库', chat:'客服会话', handoff:'奔现工单', privacy:'合规授权日志', whitelist:'单位白名单', export:'数据导出', logs:'系统日志' };
+  const TITLES = { dashboard:'数据看板', service:'客服工作台', users:'用户管理', members:'会员审核', matches:'匹配记录', partners:'合伙人管理', orders:'订单对账', withdrawals:'提现审核', marry:'婚姻报备', cancel:'注销/离异审核', stats:'公示数据配置', knowledge:'AI 知识库', chat:'客服会话', handoff:'奔现工单', privacy:'合规授权日志', whitelist:'单位白名单', export:'数据导出', logs:'系统日志' };
   const ROLE_PAGES = { customer_service: ['service', 'orders', 'chat', 'handoff'] };
   let page = 'dashboard', dashRange = 'today', cacheUsers = [], cacheOrders = [];
 
@@ -128,7 +131,9 @@
   function setToken(t) { localStorage.setItem(TK, t); }
   function adminRole() { return localStorage.getItem(RK) || 'super_admin'; }
   function setAdminRole(role) { localStorage.setItem(RK, role || 'super_admin'); }
-  function clearToken() { localStorage.removeItem(TK); localStorage.removeItem(RK); }
+  function clearToken() { localStorage.removeItem(TK); localStorage.removeItem(RK); localStorage.removeItem(CLOUD_TK); }
+  function cloudToken() { return localStorage.getItem(CLOUD_TK) || ''; }
+  function setCloudToken(value) { if (value) localStorage.setItem(CLOUD_TK, value); else localStorage.removeItem(CLOUD_TK); }
   function allowedPages() { return ROLE_PAGES[adminRole()] || null; }
   function isPageAllowed(p) { const list = allowedPages(); return !list || list.includes(p); }
   function defaultPage() { const list = allowedPages(); return list ? list[0] : 'dashboard'; }
@@ -167,6 +172,16 @@
     return j.data;
   }
 
+  async function memberApi(path, opt) {
+    if (!CLOUD_MEMBER_API) return api(path, opt);
+    opt = opt || {};
+    const h = { 'Content-Type': 'application/json', Authorization: 'Bearer ' + cloudToken() };
+    const r = await fetch(CLOUD_MEMBER_API + '/api' + path, { method: opt.method || 'GET', headers: h, body: opt.body ? JSON.stringify(opt.body) : undefined });
+    const j = await r.json().catch(() => ({ code: -1, message: '云端审核接口解析失败' }));
+    if (j.code !== 0) throw new Error(j.message || '云端审核接口失败');
+    return j.data;
+  }
+
   function showLogin() { document.getElementById('loginPage').classList.remove('hidden'); document.getElementById('appPage').classList.add('hidden'); }
   function showApp() { document.getElementById('loginPage').classList.add('hidden'); document.getElementById('appPage').classList.remove('hidden'); applyRoleNav(); }
 
@@ -199,6 +214,7 @@
       if (page === 'dashboard') await pgDashboard();
       else if (page === 'service') await pgService();
       else if (page === 'users') await pgUsers();
+      else if (page === 'members') await pgMembers();
       else if (page === 'matches') await pgMatches();
       else if (page === 'partners') await pgPartners();
       else if (page === 'orders') await pgOrders();
@@ -217,6 +233,53 @@
       document.getElementById('content').innerHTML = '<div class="error-box">' + esc(e.message) + '</div>';
     }
   }
+
+  async function pgMembers() {
+    const status = document.getElementById('memberStatusFilter')?.value || '';
+    const data = await memberApi('/admin/member-applications' + (status ? '?status=' + encodeURIComponent(status) : ''));
+    const names = { pending_review:'待审核', need_more_info:'补资料', approved:'已通过', rejected:'已拒绝', disabled:'已停用' };
+    let rows = '';
+    (data.list || []).forEach(a => {
+      let actions = '<button class="btn btn-outline btn-sm" onclick="adminReassign(' + a.id + ')">转交</button>';
+      if (a.status === 'pending_review') {
+        actions += ' <button class="btn btn-success btn-sm" onclick="adminReview(' + a.id + ',\'approve\')">通过</button>' +
+          ' <button class="btn btn-outline btn-sm" onclick="adminReview(' + a.id + ',\'need_more_info\')">补资料</button>' +
+          ' <button class="btn btn-danger btn-sm" onclick="adminReview(' + a.id + ',\'reject\')">拒绝</button>';
+      } else if (a.status === 'approved') {
+        actions += ' <button class="btn btn-danger btn-sm" onclick="adminReview(' + a.id + ',\'disable\')">停用</button>';
+      } else if (a.status === 'disabled') {
+        actions += ' <button class="btn btn-success btn-sm" onclick="adminReview(' + a.id + ',\'restore\')">恢复</button>';
+      }
+      rows += '<tr><td>' + a.id + '</td><td>' + a.user_id + '</td><td>' + esc(names[a.status] || a.status) + '</td><td>' + esc(a.partner_name || a.assigned_partner_id) + '</td><td>' + esc(a.occupation_description || '-') + '</td><td>' + esc(a.submitted_at || a.create_time) + '</td><td>' + actions + '</td></tr>';
+    });
+    if (!rows) rows = '<tr><td colspan="7" class="empty">暂无会员申请</td></tr>';
+    document.getElementById('content').innerHTML =
+      '<div class="toolbar"><select id="memberStatusFilter" onchange="pgMembers()"><option value="">全部状态</option><option value="pending_review">待审核</option><option value="need_more_info">补资料</option><option value="approved">已通过</option><option value="rejected">已拒绝</option><option value="disabled">已停用</option></select></div>' +
+      '<div class="card"><div class="card-hd">会员申请</div><div class="card-bd"><table><thead><tr><th>申请ID</th><th>用户ID</th><th>状态</th><th>审核合伙人</th><th>职业</th><th>提交时间</th><th>操作</th></tr></thead><tbody>' + rows + '</tbody></table></div></div>';
+    if (status) document.getElementById('memberStatusFilter').value = status;
+  }
+
+  window.adminReview = async function (id, action) {
+    const reason = prompt(action === 'approve' || action === 'restore' ? '审核意见（可选）' : '请输入审核意见');
+    if (reason === null) return;
+    try {
+      await memberApi('/admin/member-applications/' + id + '/review', { method:'PUT', body:{ action, reason } });
+      toast('审核状态已更新', true);
+      pgMembers();
+    } catch (e) { toast(e.message, false); }
+  };
+
+  window.adminReassign = async function (id) {
+    const partnerId = prompt('请输入接管合伙人ID');
+    if (!partnerId) return;
+    const reason = prompt('请输入转交原因');
+    if (!reason) return;
+    try {
+      await memberApi('/admin/member-applications/' + id + '/reassign', { method:'PUT', body:{ partner_id:Number(partnerId), reason } });
+      toast('已转交审核', true);
+      pgMembers();
+    } catch (e) { toast(e.message, false); }
+  };
 
   async function pgDashboard() {
     const [dash, users, orders, pub] = await Promise.all([
@@ -389,9 +452,9 @@
 
   async function pgPartners() {
     const st = document.getElementById('pSt')?.value ?? '';
-    const data = await api('/admin/partners' + (st !== '' ? '?status=' + st : ''));
+    const data = await memberApi('/admin/partners' + (st !== '' ? '?status=' + st : ''));
     let rows = data.list.length ? data.list.map(p =>
-      '<tr><td>' + p.id + '</td><td>' + esc(p.username) + '</td><td>' + esc(p.real_name || '-') + '</td><td>' + esc(p.promote_code) + '</td><td>' + statusBadge(p.status === 0 ? 0 : p.status === 1 ? 1 : 2) + '</td><td>¥' + Number(p.balance).toFixed(2) + '</td><td>' + esc(p.created_at) + '</td><td>' +
+      '<tr><td>' + p.id + '</td><td>' + esc(p.username || p.phone || '-') + '</td><td>' + esc(p.real_name || p.name || '-') + '</td><td>' + esc(p.promote_code) + '</td><td>' + statusBadge(p.status === 0 ? 0 : p.status === 1 ? 1 : 2) + '</td><td>¥' + Number(p.balance || 0).toFixed(2) + '</td><td>' + esc(p.created_at || p.create_time || '-') + '</td><td>' +
       (p.status === 0 ? '<button class="btn btn-sm btn-success" onclick="approveP(' + p.id + ',\'approve\')">激活</button> <button class="btn btn-sm btn-danger" onclick="approveP(' + p.id + ',\'reject\')">拒绝</button>' : '') +
       '</td></tr>'
     ).join('') : '<tr><td colspan="8" class="empty">暂无</td></tr>';
@@ -402,7 +465,12 @@
   }
   window.pgPartners = pgPartners;
   window.approveP = async function (id, action) {
-    try { await api('/admin/partners/' + id + '/approve', { method: 'POST', body: { action } }); toast(action === 'reject' ? '已拒绝' : '已激活', true); pgPartners(); } catch (e) { toast(e.message, false); }
+    try {
+      if (CLOUD_MEMBER_API) await memberApi('/admin/partners/' + id, { method: 'PUT', body: { status: action === 'reject' ? 2 : 1 } });
+      else await api('/admin/partners/' + id + '/approve', { method: 'POST', body: { action } });
+      toast(action === 'reject' ? '已拒绝' : '已激活', true);
+      pgPartners();
+    } catch (e) { toast(e.message, false); }
   };
 
   async function pgService() {
@@ -416,7 +484,7 @@
     const ticketRows = tickets.length ? tickets.map(t => {
       const status = encodeURIComponent(t.status || 'submitted');
       const note = encodeURIComponent(t.service_note || '');
-      return '<tr><td>' + t.id + '</td><td>' + esc(t.user_openid || t.user_id) + '</td><td>' + esc(t.match_user_openid || t.match_user_id) + '</td><td>' + esc(t.status_text || t.status) + '</td><td>' + esc(t.service_note || '-') + '</td><td><button class="btn btn-sm btn-outline" onclick="editHandoff(' + t.id + ',\\'' + status + '\\',\\'' + note + '\\')">处理</button> <button class="btn btn-sm btn-outline" onclick="replyChat(' + t.user_id + ')">回复申请人</button></td></tr>';
+      return '<tr><td>' + t.id + '</td><td>' + esc(t.user_openid || t.user_id) + '</td><td>' + esc(t.match_user_openid || t.match_user_id) + '</td><td>' + esc(t.status_text || t.status) + '</td><td>' + esc(t.service_note || '-') + '</td><td><button class="btn btn-sm btn-outline" onclick="editHandoff(' + t.id + ',\'' + status + '\',\'' + note + '\')">处理</button> <button class="btn btn-sm btn-outline" onclick="replyChat(' + t.user_id + ')">回复申请人</button></td></tr>';
     }).join('') : '<tr><td colspan="6" class="empty">暂无奔现工单</td></tr>';
     const orderRows = orders.length ? orders.map(o =>
       '<tr><td>' + esc(o.order_no) + '</td><td>' + o.user_id + '</td><td>¥' + Number(o.amount || 0).toFixed(2) + '</td><td>' + (Number(o.status) === 1 ? '已付' : '待付') + '</td><td>' + (o.settled ? '已结算' : '未结算') + '</td><td>' + esc(o.paid_at || o.created_at || '-') + '</td></tr>'
@@ -589,7 +657,7 @@
     let html = rows.length ? rows.map(t => {
       const status = encodeURIComponent(t.status || 'submitted');
       const note = encodeURIComponent(t.service_note || '');
-      return '<tr><td>' + t.id + '</td><td>' + t.match_log_id + '</td><td>' + esc(t.user_openid || t.user_id) + '</td><td>' + esc(t.match_user_openid || t.match_user_id) + '</td><td>' + esc(t.status_text || t.status) + '</td><td>' + esc(t.service_note || '-') + '</td><td>' + esc(t.update_time || '') + '</td><td><button class="btn btn-sm btn-outline" onclick="editHandoff(' + t.id + ',\\'' + status + '\\',\\'' + note + '\\')">处理</button> <button class="btn btn-sm btn-outline" onclick="replyChat(' + t.user_id + ')">回复申请人</button></td></tr>';
+      return '<tr><td>' + t.id + '</td><td>' + t.match_log_id + '</td><td>' + esc(t.user_openid || t.user_id) + '</td><td>' + esc(t.match_user_openid || t.match_user_id) + '</td><td>' + esc(t.status_text || t.status) + '</td><td>' + esc(t.service_note || '-') + '</td><td>' + esc(t.update_time || '') + '</td><td><button class="btn btn-sm btn-outline" onclick="editHandoff(' + t.id + ',\'' + status + '\',\'' + note + '\')">处理</button> <button class="btn btn-sm btn-outline" onclick="replyChat(' + t.user_id + ')">回复申请人</button></td></tr>';
     }).join('') : '<tr><td colspan="8" class="empty">暂无奔现工单</td></tr>';
     document.getElementById('content').innerHTML =
       '<div class="card"><div class="card-hd"><strong>官方奔现对接工单</strong></div><div class="card-bd"><table><thead><tr><th>工单ID</th><th>匹配ID</th><th>申请人</th><th>匹配对象</th><th>状态</th><th>客服备注</th><th>更新时间</th><th>操作</th></tr></thead><tbody>' + html + '</tbody></table></div></div>' +
@@ -711,7 +779,14 @@
     err.classList.add('hidden');
     btn.disabled = true;
     try {
-      const d = await api('/auth/admin-login', { method: 'POST', body: { username: document.getElementById('loginUser').value.trim(), password: document.getElementById('loginPass').value } });
+      const credentials = { username: document.getElementById('loginUser').value.trim(), password: document.getElementById('loginPass').value };
+      const d = await api('/auth/admin-login', { method: 'POST', body: credentials });
+      if (CLOUD_MEMBER_API) {
+        const cloudRes = await fetch(CLOUD_MEMBER_API + '/api/auth/admin-login', { method:'POST', headers:{ 'Content-Type':'application/json' }, body:JSON.stringify(credentials) });
+        const cloudJson = await cloudRes.json();
+        if (cloudJson.code !== 0) throw new Error(cloudJson.message || '云端会员审核登录失败');
+        setCloudToken(cloudJson.data.token);
+      }
       setToken(d.token);
       setAdminRole(d.admin.role || d.admin.admin_role || 'super_admin');
       document.getElementById('adminName').textContent = d.admin.username + ' · ' + roleText(adminRole());

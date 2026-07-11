@@ -20,7 +20,7 @@ set /p DB_PASS=MySQL 密码:
 
 set SCRIPT_DIR=%~dp0
 set INIT_SQL=%SCRIPT_DIR%init.sql
-set PATCHES=patch-002-partner-audit.sql patch-004-free-whitelist.sql patch-005-meet-report.sql patch-006-appearance-llm.sql patch-007-register-ux.sql patch-008-match-psych-report.sql patch-009-safety-whitelist-audit.sql patch-010-meet-safety-share.sql patch-011-match-handoff-ticket.sql patch-012-admin-service-role.sql
+set PATCHES=patch-002-partner-audit.sql patch-004-free-whitelist.sql patch-005-meet-report.sql patch-006-appearance-llm.sql patch-007-register-ux.sql patch-008-match-psych-report.sql patch-009-safety-whitelist-audit.sql patch-010-meet-safety-share.sql patch-011-match-handoff-ticket.sql patch-012-admin-service-role.sql patch-013-member-review.sql
 
 if not exist "%INIT_SQL%" (
   echo [错误] 找不到 init.sql: %INIT_SQL%

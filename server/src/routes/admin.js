@@ -3,6 +3,7 @@ const pool = require('../config/db');
 const { adminAuth } = require('../middleware/auth');
 const { success, fail, paginate } = require('../utils/response');
 const { hashPassword } = require('../utils/crypto');
+const { nextMemberStatus } = require('../utils/memberPolicy');
 const {
   USER_STATUS,
   PARTNER_STATUS,
@@ -402,6 +403,123 @@ router.get('/orders', async (req, res, next) => {
     return success(res, paginate(rows.map(formatter), count[0].total, page, pageSize));
   } catch (err) {
     next(err);
+  }
+});
+
+router.get('/member-applications', async (req, res, next) => {
+  try {
+    const status = String(req.query.status || '').trim();
+    const params = [];
+    let where = 'WHERE 1=1';
+    if (status) {
+      where += ' AND ma.status = ?';
+      params.push(status);
+    }
+    const [rows] = await pool.query(
+      `SELECT ma.*, u.city, u.gender, u.birth_year, u.education, u.occupation_description,
+              u.promote_partner_id, p.name AS partner_name
+       FROM member_application ma
+       JOIN \`user\` u ON u.id = ma.user_id
+       LEFT JOIN partner p ON p.id = ma.assigned_partner_id
+       ${where}
+       ORDER BY ma.id DESC LIMIT 200`,
+      params
+    );
+    return success(res, { list: rows });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.put('/member-applications/:id/review', async (req, res, next) => {
+  const conn = await pool.getConnection();
+  try {
+    const applicationId = Number(req.params.id);
+    const action = String(req.body.action || '');
+    const note = String(req.body.reason || req.body.note || '').trim().slice(0, 500);
+    const [rows] = await conn.query('SELECT * FROM member_application WHERE id = ?', [applicationId]);
+    if (!rows.length) return fail(res, '会员申请不存在', 404, 404);
+    const application = rows[0];
+    if (['need_more_info', 'reject', 'disable'].includes(action) && !note) return fail(res, '请填写审核意见');
+    let nextStatus;
+    try {
+      nextStatus = nextMemberStatus(application.status, action);
+    } catch (err) {
+      return fail(res, err.message);
+    }
+    await conn.beginTransaction();
+    await conn.query(
+      `UPDATE member_application SET status = ?, review_note = ?, reviewed_by_role = 'admin',
+       reviewed_by_id = ?, reviewed_at = NOW() WHERE id = ?`,
+      [nextStatus, note, req.auth.id, applicationId]
+    );
+    await conn.query(
+      'UPDATE `user` SET member_status = ?, member_status_updated_at = NOW() WHERE id = ?',
+      [nextStatus, application.user_id]
+    );
+    await conn.query(
+      `INSERT INTO partner_user_audit_log
+       (partner_id, user_id, application_id, actor_role, actor_id, action, from_status, to_status, reason)
+       VALUES (?, ?, ?, 'admin', ?, ?, ?, ?, ?)`,
+      [application.assigned_partner_id, application.user_id, applicationId, req.auth.id, action, application.status, nextStatus, note]
+    );
+    await conn.commit();
+    return success(res, { member_status: nextStatus }, '审核状态已更新');
+  } catch (err) {
+    await conn.rollback();
+    next(err);
+  } finally {
+    conn.release();
+  }
+});
+
+router.put('/member-applications/:id/reassign', async (req, res, next) => {
+  const conn = await pool.getConnection();
+  try {
+    const applicationId = Number(req.params.id);
+    const partnerId = Number(req.body.partner_id || 0);
+    const changeOwnership = req.body.change_ownership === true;
+    const reason = String(req.body.reason || '').trim().slice(0, 500);
+    if (!partnerId || !reason) return fail(res, '请选择接管合伙人并填写原因');
+    const [partners] = await conn.query('SELECT id FROM partner WHERE id = ? AND status = 1', [partnerId]);
+    if (!partners.length) return fail(res, '目标合伙人不存在或已停用');
+    const [apps] = await conn.query('SELECT * FROM member_application WHERE id = ?', [applicationId]);
+    if (!apps.length) return fail(res, '会员申请不存在', 404, 404);
+    const application = apps[0];
+    await conn.beginTransaction();
+    if (changeOwnership) {
+      const [[paid]] = await conn.query(
+        'SELECT COUNT(*) AS c FROM user_order WHERE user_id = ? AND pay_status = 1',
+        [application.user_id]
+      );
+      if (paid.c > 0 || application.status === 'approved') {
+        await conn.rollback();
+        return fail(res, '已批准或已有支付订单，只能转交审核，不能修改原始归属');
+      }
+      await conn.query(
+        'UPDATE `user` SET promote_partner_id = ? WHERE id = ?',
+        [partnerId, application.user_id]
+      );
+      await conn.query(
+        'UPDATE member_application SET inviter_partner_id = ?, assigned_partner_id = ? WHERE id = ?',
+        [partnerId, partnerId, applicationId]
+      );
+    } else {
+      await conn.query('UPDATE member_application SET assigned_partner_id = ? WHERE id = ?', [partnerId, applicationId]);
+    }
+    await conn.query(
+      `INSERT INTO partner_user_audit_log
+       (partner_id, user_id, application_id, actor_role, actor_id, action, from_status, to_status, reason)
+       VALUES (?, ?, ?, 'admin', ?, 'reassign', ?, ?, ?)`,
+      [partnerId, application.user_id, applicationId, req.auth.id, application.status, application.status, reason]
+    );
+    await conn.commit();
+    return success(res, { assigned_partner_id: partnerId }, '审核归属已更新');
+  } catch (err) {
+    await conn.rollback();
+    next(err);
+  } finally {
+    conn.release();
   }
 });
 

@@ -18,6 +18,7 @@ const {
 } = require('../config/constants');
 const { normalizePsychProfile } = require('../utils/psychMatch');
 const { runBatchMatch } = require('../services/matchService');
+const { MEMBER_STATUS, memberStatus } = require('../utils/memberPolicy');
 
 const router = express.Router();
 
@@ -302,6 +303,9 @@ router.use(userAuth, requireActiveUser);
 /** GET /api/match/setting/cooldown — 非 VIP 也可查看/设置择偶（匹配本身需 VIP） */
 router.get('/setting/cooldown', async (req, res, next) => {
   try {
+    if (memberStatus(req.user) !== MEMBER_STATUS.APPROVED) {
+      return success(res, { cooldown_remain_days: 0, can_update: true, cooldownEndTime: null });
+    }
     const [rows] = await pool.query(
       'SELECT last_edit_time FROM user_match_setting WHERE user_id = ?',
       [req.auth.id]
@@ -347,7 +351,8 @@ router.post(
       );
       const current = settingsRows[0];
 
-      if (current && daysSince(current.last_edit_time) < MATCH_COOLDOWN_DAYS) {
+      const approved = memberStatus(req.user) === MEMBER_STATUS.APPROVED;
+      if (approved && current && daysSince(current.last_edit_time) < MATCH_COOLDOWN_DAYS) {
         const remain = Math.ceil(MATCH_COOLDOWN_DAYS - daysSince(current.last_edit_time));
         return fail(res, `匹配设置冷却中，还需 ${remain} 天方可修改`);
       }
@@ -368,6 +373,7 @@ router.post(
       const ageRange = parseAgeRange(prefer_age);
       const heightRange = parseHeightRange(prefer_height);
       const psychProfileJson = JSON.stringify(normalizePsychProfile(psych_profile));
+      const cooldownAt = approved ? new Date() : null;
 
       if (current) {
         await pool.query(
@@ -375,14 +381,14 @@ router.post(
             age_min = ?, age_max = ?, height_min = ?, height_max = ?,
             min_education = ?, like_circle_ids = ?,
             like_marry_status = ?, like_baby_plan = ?,
-            self_view_text = ?, target_view_text = ?, psych_profile_json = ?, last_edit_time = NOW()
+            self_view_text = ?, target_view_text = ?, psych_profile_json = ?, last_edit_time = ?
            WHERE user_id = ?`,
           [
             ageRange.age_min, ageRange.age_max,
             heightRange.height_min, heightRange.height_max,
             prefer_education || null, '',
             like_marry_status || null, like_baby_plan || null,
-            myValues, expectValues, psychProfileJson,
+            myValues, expectValues, psychProfileJson, cooldownAt,
             req.auth.id,
           ]
         );
@@ -392,14 +398,14 @@ router.post(
            (user_id, age_min, age_max, height_min, height_max, min_education,
             like_circle_ids, like_marry_status, like_baby_plan,
             self_view_text, target_view_text, psych_profile_json, last_edit_time)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             req.auth.id,
             ageRange.age_min, ageRange.age_max,
             heightRange.height_min, heightRange.height_max,
             prefer_education || null, '',
             like_marry_status || null, like_baby_plan || null,
-            myValues, expectValues, psychProfileJson,
+            myValues, expectValues, psychProfileJson, cooldownAt,
           ]
         );
       }

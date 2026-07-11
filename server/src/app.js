@@ -26,6 +26,7 @@ const commonRoutes = require('./routes/common');
 const partnerRoutes = require('./routes/partner');
 const adminRoutes = require('./routes/admin');
 const wxpayRoutes = require('./routes/wxpay');
+const memberRoutes = require('./routes/member');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -72,6 +73,7 @@ app.use('/api/platform', commonRoutes);
 app.use('/api/partner', partnerRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/wxpay', wxpayRoutes);
+app.use('/api/member', memberRoutes);
 
 // ─── 404 ─────────────────────────────────────────────────────
 app.use('/api/*', (req, res) => {

@@ -21,6 +21,7 @@ router.get('/circles', async (req, res, next) => {
       `SELECT id, circle_name AS name, plate_name
        FROM occupation_circle WHERE status = 1 ORDER BY id ASC`
     );
+    rows.push({ id: 0, name: '其他', plate_name: '其他' });
     return success(res, rows);
   } catch (err) {
     next(err);

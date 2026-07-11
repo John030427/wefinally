@@ -46,7 +46,8 @@ const tableToCollection = {
   admin: 'admins',
   openid_blacklist: 'openid_blacklist',
   user_privacy_auth_log: 'user_privacy_auth_logs',
-  partner_user_audit_log: 'partner_user_audit_logs'
+  partner_user_audit_log: 'partner_user_audit_logs',
+  member_application: 'member_applications'
 };
 
 function toCloudValue(value) {
