@@ -1,6 +1,12 @@
 const { col, first, byId, addWithId, updateByDoc, authError, now } = require('../lib/db')
 const { tokenFor } = require('./auth')
 const { isVipActive } = require('../lib/format')
+const {
+  MEMBER_STATUS,
+  memberStatus,
+  normalizeOccupation,
+  resolveInvitation
+} = require('../lib/memberPolicy')
 
 async function currentUser(wxContext) {
   const openid = wxContext.OPENID
@@ -21,7 +27,8 @@ async function profilePayload(user) {
     circle_name: user.circle_name || await circleName(user.circle_id),
     is_vip: isVipActive(user) ? 1 : 0,
     isVip: isVipActive(user),
-    match_settings: setting || null
+    match_settings: setting || null,
+    member_status: memberStatus(user)
   })
 }
 
@@ -42,23 +49,34 @@ async function register(data, wxContext) {
     }
   }
 
+  const partner = await resolveInvitation(data.promote_code, first)
+  const occupation = normalizeOccupation({
+    circleId: data.circle_id,
+    description: data.occupation_description
+  })
+  const normalizedPromoteCode = String(partner.promote_code || data.promote_code).trim().toUpperCase()
+  const createdAt = now()
+
   const user = await addWithId('user', {
     openid,
     gender: parseGender(data.gender),
     birth_year: Number(data.birth_year),
     height_range: data.height_range || '',
     education: data.education || '',
-    circle_id: Number(data.circle_id || 0),
+    circle_id: occupation.circleId,
+    occupation_description: occupation.description,
     city: data.city || '深圳',
     marry_status: data.marry_status || '未婚',
     baby_plan: data.baby_plan || '',
     income_range: data.income_range || '',
     house_car: data.house_car || '',
     status: 1,
+    member_status: MEMBER_STATUS.PENDING_PROFILE,
+    member_status_updated_at: createdAt,
     is_vip: 0,
     vip_expire_time: null,
-    promote_partner_id: 0,
-    promote_code: data.promote_code || '',
+    promote_partner_id: Number(partner.id),
+    promote_code: normalizedPromoteCode,
     free_member: 0,
     free_source: '',
     appearance_description: data.appearance_description || '',
@@ -103,8 +121,10 @@ async function updateProfile(data, wxContext) {
   const patch = {}
   const allowed = [
     'city', 'education', 'income_range', 'house_car', 'baby_plan',
-    'height_range', 'appearance_description', 'appearance_want'
+    'height_range', 'appearance_description', 'appearance_want',
+    'circle_id', 'occupation_description'
   ]
+  if (memberStatus(user) !== MEMBER_STATUS.APPROVED) allowed.push('birth_year')
   allowed.forEach((key) => {
     if (data[key] !== undefined) patch[key] = data[key]
   })

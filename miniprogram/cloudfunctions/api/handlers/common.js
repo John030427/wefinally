@@ -15,12 +15,16 @@ const defaultCircles = [
 async function circles() {
   const rows = await list('occupation_circle', { status: 1 }, 100)
   const source = rows.length ? rows : defaultCircles
-  return source.map((row) => ({
+  const result = source.map((row) => ({
     id: row.id,
     name: row.name || row.circle_name,
     circle_name: row.circle_name || row.name,
     plate_name: row.plate_name || '其他'
   }))
+  if (!result.some((row) => Number(row.id) === 0)) {
+    result.push({ id: 0, name: '其他', circle_name: '其他', plate_name: '其他' })
+  }
+  return result
 }
 
 async function promoteCode(data) {

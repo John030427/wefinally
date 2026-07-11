@@ -1,0 +1,25 @@
+<view class="page">
+  <view wx:if="{{loading}}" class="state">加载中...</view>
+  <block wx:else>
+    <view class="status-band {{detail.member_status}}">
+      <view class="status-title">{{statusText}}</view>
+      <view class="status-desc" wx:if="{{detail.member_status === 'pending_review'}}">资料已经提交，请等待邀请你的合伙人审核。</view>
+      <view class="status-desc" wx:elif="{{detail.member_status === 'approved'}}">你已成为正式会员，可以购买 VIP 并进入匹配流程。</view>
+      <view class="status-desc" wx:elif="{{detail.member_status === 'rejected' && !detail.can_submit}}">{{detail.reapply_remaining_days}} 天后可以重新申请。</view>
+    </view>
+
+    <view class="section" wx:if="{{detail.review_note}}">
+      <view class="section-title">审核意见</view>
+      <view class="review-note">{{detail.review_note}}</view>
+    </view>
+
+    <view class="actions">
+      <button wx:if="{{detail.member_status === 'pending_profile' || detail.member_status === 'need_more_info'}}" class="primary" bindtap="goProfile">补充个人资料</button>
+      <button wx:if="{{detail.member_status === 'pending_profile' || detail.member_status === 'need_more_info'}}" class="secondary" bindtap="goComplete">补充匹配资料并提交</button>
+      <button wx:if="{{detail.member_status === 'need_more_info' && detail.can_submit}}" class="primary" loading="{{submitting}}" bindtap="resubmit">资料已补充，重新提交</button>
+      <button wx:if="{{detail.member_status === 'rejected' && detail.can_submit}}" class="primary" loading="{{submitting}}" bindtap="resubmit">重新提交申请</button>
+      <button wx:if="{{detail.member_status === 'approved'}}" class="primary" bindtap="goVip">购买 VIP</button>
+      <button class="secondary" bindtap="goService">联系平台客服</button>
+    </view>
+  </block>
+</view>

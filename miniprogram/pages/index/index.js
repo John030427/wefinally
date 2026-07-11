@@ -50,6 +50,10 @@ Page({
       const commonConfig = await get(API_PATHS.COMMON_CONFIG, {}, { showError: false }).catch(() => null)
       const demoFlags = commonConfig && commonConfig.demo ? commonConfig.demo : {}
       const profile = await get(API_PATHS.USER_PROFILE, {}, { showError: false })
+      if (profile.member_status && profile.member_status !== 'approved') {
+        wx.navigateTo({ url: '/pages/member-application/member-application' })
+        return
+      }
       const latest = await get(API_PATHS.MATCH_LATEST, {}, { showError: false }).catch(() => null)
 
       const isVip = profile && (profile.isVip || profile.is_vip === 1)

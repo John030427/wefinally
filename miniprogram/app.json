@@ -7,6 +7,7 @@
     "pages/register/register",
     "pages/divorce-review/divorce-review",
     "pages/match-setting/match-setting",
+    "pages/member-application/member-application",
     "pages/index/index",
     "pages/match-list/match-list",
     "pages/match-detail/match-detail",

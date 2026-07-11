@@ -1,4 +1,4 @@
-const { get, post } = require('../../utils/request')
+const { get, post, put } = require('../../utils/request')
 const {
   API_PATHS,
   STORAGE_KEYS,
@@ -16,6 +16,7 @@ const { parsePromoteCode } = require('../../utils/util')
 Page({
   data: {
     pageState: 'loading',
+    editMode: false,
     errorMsg: '',
     genderOptions: GENDER_OPTIONS,
     educationOptions: EDUCATION_OPTIONS,
@@ -52,6 +53,7 @@ Page({
       circleId: 0,
       circleIndex: -1,
       circleName: '',
+      occupationDescription: '',
       appearanceDescription: '',
       promote_code: ''
     },
@@ -70,6 +72,7 @@ Page({
       wx.redirectTo({ url: '/pages/agreement/agreement' })
       return
     }
+    this.setData({ editMode: Boolean(options && options.edit === '1') })
     this.initBirthYears()
     this.initHeights()
     this.parsePromoteCode(options)
@@ -131,12 +134,56 @@ Page({
         circleMatrix: circlePicker.matrix,
         pageState: 'success'
       })
+      if (this.data.editMode) {
+        const profile = await get(API_PATHS.USER_PROFILE, {}, { showError: false })
+        this.fillExistingProfile(profile, list, circlePicker.groups)
+      }
     } catch (err) {
       this.setData({
         pageState: 'error',
         errorMsg: (err && err.message) || '加载圈层失败'
       })
     }
+  },
+
+  fillExistingProfile(profile, list, groups) {
+    const circle = list.find((item) => Number(item.id) === Number(profile.circle_id))
+    const plateIndex = Math.max(0, groups.findIndex((group) => group.circles.some((item) => Number(item.id) === Number(profile.circle_id))))
+    const group = groups[plateIndex]
+    const circleIndex = Math.max(0, group ? group.circles.findIndex((item) => Number(item.id) === Number(profile.circle_id)) : 0)
+    const gender = Number(profile.gender) === 1 ? '男' : '女'
+    const birthYear = profile.birth_year ? `${profile.birth_year}年` : ''
+    const form = Object.assign({}, this.data.form, {
+      gender,
+      genderIndex: GENDER_OPTIONS.indexOf(gender),
+      birthYear,
+      birthYearIndex: this.data.birthYearOptions.indexOf(birthYear),
+      city: profile.city || '',
+      cityIndex: CITY_OPTIONS.indexOf(profile.city),
+      education: profile.education || '',
+      educationIndex: EDUCATION_OPTIONS.indexOf(profile.education),
+      marriage: profile.marry_status || '',
+      marriageIndex: MARRIAGE_OPTIONS.indexOf(profile.marry_status),
+      babyPlan: profile.baby_plan || '',
+      babyPlanIndex: BABY_PLAN_OPTIONS.indexOf(profile.baby_plan),
+      houseCar: profile.house_car || '',
+      houseCarIndex: HOUSE_CAR_OPTIONS.indexOf(profile.house_car),
+      height: profile.height_range || '',
+      heightIndex: HEIGHT_RANGE_OPTIONS.indexOf(profile.height_range),
+      circleId: Number(profile.circle_id || 0),
+      circleName: circle ? (circle.name || circle.circle_name) : '',
+      occupationDescription: profile.occupation_description || '',
+      appearanceDescription: profile.appearance_description || '',
+      promote_code: profile.promote_code || ''
+    })
+    this.setData({
+      form,
+      circleMultiIndex: [plateIndex, circleIndex],
+      circleMatrix: [this.data.circlePlates, group ? group.circles.map((item) => item.name || item.circle_name) : []],
+      appearanceDescriptionLen: form.appearanceDescription.length,
+      promoStatus: 'success',
+      promoMessage: '邀请归属已锁定'
+    })
   },
 
   buildCirclePicker(list) {
@@ -191,6 +238,7 @@ Page({
       circleMultiIndex: [plateIndex, circleIndex],
       'form.circleId': circle.id,
       'form.circleName': name,
+      'form.occupationDescription': Number(circle.id) === 0 ? this.data.form.occupationDescription : '',
       'form.circleIndex': this.data.circleOptions.findIndex((item) => item.id === circle.id)
     })
   },
@@ -272,6 +320,10 @@ Page({
     })
   },
 
+  onOccupationDescriptionInput(e) {
+    this.setData({ 'form.occupationDescription': e.detail.value || '' })
+  },
+
   async onPromoteBlur() {
     await this.checkPromoteCode({ silent: true })
   },
@@ -340,7 +392,7 @@ Page({
     if (!this.validateForm() || this.data.submitting) return
 
     const openid = wx.getStorageSync(STORAGE_KEYS.OPENID)
-    if (!openid) {
+    if (!this.data.editMode && !openid) {
       wx.showModal({
         title: '请先登录',
         content: '请返回登录页完成微信授权',
@@ -355,6 +407,14 @@ Page({
     if (!hasNetwork) {
       wx.showToast({ title: '网络不可用', icon: 'none' })
       return
+    }
+    if (Number(form.circleId) === 0 && !String(form.occupationDescription || '').trim()) {
+      wx.showToast({ title: '请填写具体职业', icon: 'none' })
+      return false
+    }
+    if (!String(form.promote_code || '').trim()) {
+      wx.showToast({ title: '邀请制注册需要邀请码', icon: 'none' })
+      return false
     }
 
     const { form } = this.data
@@ -375,6 +435,24 @@ Page({
     this.setData({ submitting: true })
 
     try {
+      if (this.data.editMode) {
+        const profile = await put(API_PATHS.USER_PROFILE_UPDATE, {
+          birth_year: form.birthYear.replace('年', ''),
+          city: form.city,
+          education: form.education,
+          baby_plan: form.babyPlan,
+          house_car: form.houseCar || '',
+          height_range: form.height,
+          circle_id: form.circleId,
+          occupation_description: String(form.occupationDescription || '').trim(),
+          appearance_description: form.appearanceDescription.trim()
+        }, { showLoading: true, loadingText: '保存中...' })
+        app.globalData.userInfo = profile
+        wx.setStorageSync(STORAGE_KEYS.USER_INFO, profile)
+        wx.showToast({ title: '资料已更新', icon: 'success' })
+        setTimeout(() => wx.navigateBack(), 800)
+        return
+      }
       const data = await post(API_PATHS.REGISTER, {
         openid,
         gender: form.gender,
@@ -388,6 +466,7 @@ Page({
         height_range: form.height,
         appearance_description: form.appearanceDescription.trim(),
         circle_id: form.circleId,
+        occupation_description: String(form.occupationDescription || '').trim(),
         promote_code: String(form.promote_code || '').trim().toUpperCase(),
         agreements: ['user_service', 'privacy', 'data_auth'],
         device_info: `${wx.getSystemInfoSync().model || ''} ${wx.getSystemInfoSync().system || ''}`

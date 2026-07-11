@@ -23,8 +23,8 @@
   </block>
 
   <block wx:else>
-    <view class="page-title">完善个人资料</view>
-    <view class="page-subtitle">所有信息通过下拉选择填写</view>
+    <view class="page-title">{{editMode ? '补充个人资料' : '完善个人资料'}}</view>
+    <view class="page-subtitle">请选择真实资料，职业不在列表时可填写其他</view>
 
     <view class="card">
       <view class="form-item">
@@ -60,6 +60,10 @@
         <picker mode="multiSelector" range="{{circleMatrix}}" value="{{circleMultiIndex}}" bindcolumnchange="onCircleColumnChange" bindchange="onCircleChange">
           <view class="picker-value {{form.circleName ? '' : 'placeholder'}}">{{form.circleName || '请选择职业板块和圈层'}}</view>
         </picker>
+      </view>
+      <view class="form-item" wx:if="{{form.circleName === '其他'}}">
+        <text class="form-label required">具体职业</text>
+        <input class="text-input" value="{{form.occupationDescription}}" placeholder="请输入你的职业，例如：工业设计师" maxlength="100" bindinput="onOccupationDescriptionInput" />
       </view>
 
       <view class="form-item">
@@ -111,17 +115,17 @@
       </view>
 
       <view class="form-item">
-        <text class="form-label">推广码（选填）</text>
+        <text class="form-label required">邀请码</text>
         <view class="promo-row">
-          <input class="promo-input" value="{{form.promote_code}}" placeholder="可不填；填写后绑定合伙人" maxlength="50" bindinput="onPromoteInput" bindblur="onPromoteBlur" />
-          <view wx:if="{{form.promote_code}}" class="promo-clear" bindtap="onPromoteClear">清空</view>
+          <input class="promo-input" value="{{form.promote_code}}" placeholder="请输入合伙人邀请码" maxlength="50" disabled="{{editMode}}" bindinput="onPromoteInput" bindblur="onPromoteBlur" />
+          <view wx:if="{{form.promote_code && !editMode}}" class="promo-clear" bindtap="onPromoteClear">清空</view>
         </view>
         <view wx:if="{{promoMessage || checkingPromo}}" class="promo-hint {{promoStatus}}">{{checkingPromo ? '校验中...' : promoMessage}}</view>
       </view>
     </view>
 
     <view class="safe-bottom">
-      <button class="btn-primary" bindtap="onSubmit" disabled="{{submitting}}" loading="{{submitting}}">提交资料</button>
+      <button class="btn-primary" bindtap="onSubmit" disabled="{{submitting}}" loading="{{submitting}}">{{editMode ? '保存修改' : '提交资料'}}</button>
     </view>
   </block>
 </view>

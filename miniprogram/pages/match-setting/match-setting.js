@@ -102,11 +102,17 @@ Page({
       if (settingData) this.fillForm(settingData)
       if (profileData) this.fillAppearance(profileData)
 
-      const cooldownEnd = (cooldownData && (cooldownData.cooldownEndTime || cooldownData.cooldown_end_time)) ||
+      const canEditWithoutCooldown = cooldownData && (
+        cooldownData.can_edit === true || cooldownData.canEdit === true || cooldownData.can_update === true
+      )
+      if (canEditWithoutCooldown) wx.removeStorageSync(STORAGE_KEYS.MATCH_SETTING_COOLDOWN)
+      const cooldownEnd = canEditWithoutCooldown ? null : (
+        (cooldownData && (cooldownData.cooldownEndTime || cooldownData.cooldown_end_time)) ||
         (cooldownData && cooldownData.cooldown_remain_days > 0
           ? Date.now() + cooldownData.cooldown_remain_days * 86400000
           : null) ||
         wx.getStorageSync(STORAGE_KEYS.MATCH_SETTING_COOLDOWN)
+      )
 
       if (cooldownEnd) this.startCooldownTimer(cooldownEnd)
       this.setData({ pageState: 'success' })
@@ -128,13 +134,19 @@ Page({
       form[key] = val
       form[idxKey] = idx >= 0 ? idx : -1
     }
-    pick(AGE_RANGE_OPTIONS, data.prefer_age || data.preferAge, 'preferAge', 'preferAgeIndex')
+    const ageRange = Number(data.age_min) === 45 && Number(data.age_max) === 65
+      ? '45岁以上'
+      : (data.age_min && data.age_max ? `${data.age_min}-${data.age_max}岁` : '')
+    const heightRange = Number(data.height_min) === 190 && Number(data.height_max) === 220
+      ? '190cm以上'
+      : (data.height_min && data.height_max ? `${data.height_min}-${data.height_max}cm` : '')
+    pick(AGE_RANGE_OPTIONS, data.prefer_age || data.preferAge || ageRange, 'preferAge', 'preferAgeIndex')
     pick(EDUCATION_OPTIONS, data.prefer_education || data.min_education, 'preferEducation', 'preferEducationIndex')
-    pick(HEIGHT_RANGE_OPTIONS, data.prefer_height, 'preferHeight', 'preferHeightIndex')
+    pick(HEIGHT_RANGE_OPTIONS, data.prefer_height || heightRange, 'preferHeight', 'preferHeightIndex')
     pick(LIKE_MARRY_OPTIONS, normalizeLikeMarryLabel(data.like_marry_status), 'likeMarry', 'likeMarryIndex')
     pick(LIKE_BABY_PLAN_OPTIONS, data.like_baby_plan, 'likeBabyPlan', 'likeBabyPlanIndex')
-    form.myValues = data.my_values || data.myValues || ''
-    form.expectValues = data.expect_values || data.expectValues || ''
+    form.myValues = data.my_values || data.myValues || data.self_view_text || ''
+    form.expectValues = data.expect_values || data.expectValues || data.target_view_text || ''
     this.setData({
       form,
       myValuesLen: form.myValues.length,
@@ -262,16 +274,16 @@ Page({
         my_values: form.myValues.trim(),
         expect_values: form.expectValues.trim()
       }, { showLoading: true, loadingText: '保存中...' })
-
-      const cooldownEnd = setCooldownEnd()
-      wx.setStorageSync(STORAGE_KEYS.MATCH_SETTING_COOLDOWN, cooldownEnd)
-      this.startCooldownTimer(cooldownEnd)
+      await post(API_PATHS.MEMBER_APPLICATION_SUBMIT, {}, {
+        showLoading: true,
+        loadingText: '提交审核中...'
+      })
       if (SUBSCRIBE_TMPL_IDS.length) {
         wx.requestSubscribeMessage({ tmplIds: SUBSCRIBE_TMPL_IDS, complete: () => {} })
       }
 
-      wx.showToast({ title: '保存成功', icon: 'success' })
-      setTimeout(() => wx.switchTab({ url: '/pages/index/index' }), 1000)
+      wx.showToast({ title: '申请已提交', icon: 'success' })
+      setTimeout(() => wx.redirectTo({ url: '/pages/member-application/member-application' }), 1000)
     } catch (err) {
       wx.showModal({
         title: '保存失败',

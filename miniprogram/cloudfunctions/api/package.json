@@ -3,6 +3,8 @@
   "version": "1.0.0",
   "main": "index.js",
   "dependencies": {
-    "wx-server-sdk": "latest"
+    "bcryptjs": "^2.4.3",
+    "ws": "^8.18.0",
+    "wx-server-sdk": "4.0.2"
   }
 }

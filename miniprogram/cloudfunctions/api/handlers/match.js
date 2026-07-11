@@ -3,6 +3,7 @@ const { currentUser } = require('./user')
 const { isVipActive, ageBand, dateOnly } = require('../lib/format')
 const { flagEnabled } = require('../lib/flags')
 const { generateMutualMatchReports } = require('../lib/minimax')
+const { MEMBER_STATUS, memberStatus, canUseMatching, normalizeMatchSettingInput } = require('../lib/memberPolicy')
 
 function parseJson(value) {
   if (!value) return null
@@ -154,7 +155,11 @@ async function getSetting(data, wxContext) {
 }
 
 async function cooldown(data, wxContext) {
-  const setting = await getSetting(data, wxContext)
+  const user = await currentUser(wxContext)
+  if (memberStatus(user) !== MEMBER_STATUS.APPROVED) {
+    return { can_edit: true, canEdit: true, last_edit_time: null, cooldown_days: 7 }
+  }
+  const setting = settingDefaults(await first('user_match_setting', { user_id: user.id }))
   const last = setting.last_edit_time ? new Date(setting.last_edit_time) : null
   const canEdit = !last || Date.now() - last.getTime() >= 7 * 86400000
   return {
@@ -168,22 +173,23 @@ async function cooldown(data, wxContext) {
 async function saveSetting(data, wxContext) {
   const user = await currentUser(wxContext)
   const existing = await first('user_match_setting', { user_id: user.id })
+  const normalized = normalizeMatchSettingInput(data)
   const payload = {
     user_id: user.id,
-    age_min: data.age_min || null,
-    age_max: data.age_max || null,
-    height_min: data.height_min || null,
-    height_max: data.height_max || null,
-    min_education: data.min_education || '',
+    age_min: normalized.age_min,
+    age_max: normalized.age_max,
+    height_min: normalized.height_min,
+    height_max: normalized.height_max,
+    min_education: normalized.min_education,
     like_circle_ids: Array.isArray(data.like_circle_ids) ? data.like_circle_ids.join(',') : (data.like_circle_ids || ''),
     like_marry_status: data.like_marry_status || '',
     like_baby_plan: data.like_baby_plan || '',
     like_income: data.like_income || '',
     like_house_car: data.like_house_car || '',
-    self_view_text: data.self_view_text || '',
-    target_view_text: data.target_view_text || '',
-    psych_profile_json: data.psych_profile_json || null,
-    last_edit_time: now()
+    self_view_text: normalized.self_view_text,
+    target_view_text: normalized.target_view_text,
+    psych_profile_json: data.psych_profile_json || data.psych_profile || null,
+    last_edit_time: memberStatus(user) === MEMBER_STATUS.APPROVED ? now() : null
   }
   if (existing) return updateByDoc('user_match_setting', existing, payload)
   return addWithId('user_match_setting', payload, 'match_setting')
@@ -262,7 +268,9 @@ async function detail(data, wxContext) {
 
 async function handoff(data, wxContext) {
   const user = await currentUser(wxContext)
-  if (!isVipActive(user)) throw authError('请先开通 VIP')
+  if (!canUseMatching({ member_status: memberStatus(user), vipActive: isVipActive(user) })) {
+    throw authError(memberStatus(user) === MEMBER_STATUS.APPROVED ? '请先开通 VIP' : '会员审核通过后才能申请奔现对接')
+  }
   const matchId = Number(data.match_log_id || data.matchLogId || data.id || 0)
   const matchUserId = Number(data.match_user_id || data.matchUserId || data.matched_user_id || 0)
   let row = matchId ? await byId('user_match_log', matchId) : null
@@ -283,7 +291,9 @@ async function handoff(data, wxContext) {
 
 async function generateReport(data, wxContext) {
   const user = await currentUser(wxContext)
-  if (!isVipActive(user)) throw authError('请先开通 VIP')
+  if (!canUseMatching({ member_status: memberStatus(user), vipActive: isVipActive(user) })) {
+    throw authError(memberStatus(user) === MEMBER_STATUS.APPROVED ? '请先开通 VIP' : '会员审核通过后才能生成 AI 报告')
+  }
   const matchId = Number(data.match_log_id || data.matchLogId || data.id || 0)
   const matchUserId = Number(data.match_user_id || data.matchUserId || data.matched_user_id || 0)
   let row = matchId ? await byId('user_match_log', matchId) : null
@@ -403,13 +413,16 @@ async function start(data, wxContext) {
     throw err
   }
   const user = await currentUser(wxContext)
-  if (!isVipActive(user)) throw authError('请先开通 VIP')
+  if (!canUseMatching({ member_status: memberStatus(user), vipActive: isVipActive(user) })) {
+    throw authError(memberStatus(user) === MEMBER_STATUS.APPROVED ? '请先开通 VIP' : '会员审核通过后才能进入匹配流程')
+  }
   const existingMatches = await list('user_match_log', { user_id: user.id }, 100)
   const seenPartnerIds = {}
   existingMatches.forEach((row) => {
     seenPartnerIds[Number(row.match_user_id)] = true
   })
-  const candidates = await list('user', { status: 1 }, 100)
+  const candidates = (await list('user', { status: 1 }, 100))
+    .filter((item) => memberStatus(item) === MEMBER_STATUS.APPROVED)
   let partner = candidates.find((item) => (
     Number(item.id) !== Number(user.id)
       && Number(item.gender) !== Number(user.gender)

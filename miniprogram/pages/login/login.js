@@ -71,6 +71,12 @@ Page({
 
         app.setLoginState(data.token, data.userInfo || data.user)
 
+        const user = data.userInfo || data.user || {}
+        if (user.member_status && user.member_status !== 'approved') {
+          wx.redirectTo({ url: '/pages/member-application/member-application' })
+          return
+        }
+
         wx.showToast({ title: '登录成功', icon: 'success' })
 
         setTimeout(() => {

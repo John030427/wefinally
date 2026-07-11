@@ -36,7 +36,9 @@ const API_PATHS = {
   MEET_SOS: '/api/meet/sos',
   PROMOTE_CODE_CHECK: '/api/common/promote-code',
   DIVORCE_REVIEW: '/api/user/divorce-review',
-  DIVORCE_REVIEW_STATUS: '/api/user/divorce-review/status'
+  DIVORCE_REVIEW_STATUS: '/api/user/divorce-review/status',
+  MEMBER_APPLICATION: '/api/member/application',
+  MEMBER_APPLICATION_SUBMIT: '/api/member/application/submit'
 }
 
 const GENDER_OPTIONS = ['男', '女']

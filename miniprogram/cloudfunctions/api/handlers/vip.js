@@ -1,4 +1,5 @@
 const { isVipActive } = require('../lib/format')
+const { memberStatus, canPurchaseVip } = require('../lib/memberPolicy')
 
 function defaultDeps() {
   const wechatpay = require('../lib/wechatpay')
@@ -46,6 +47,9 @@ function createVipHandlers(overrides = {}) {
 
   async function purchase(data, wxContext) {
     const user = await currentUser(wxContext)
+    if (!canPurchaseVip(memberStatus(user))) {
+      throw new Error('会员申请审核通过后才能购买 VIP')
+    }
     const config = readWechatPayConfig()
     const demoGrant = await flagEnabled('cloud_demo_vip_grant_enabled')
 

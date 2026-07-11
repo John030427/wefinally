@@ -44,7 +44,7 @@ async function handleHttp(event = {}) {
   if (method === 'POST' && /\/wxpay\/notify$/.test(path)) {
     return handleWechatPayNotify(event)
   }
-  return json(404, { code: 'NOT_FOUND', message: 'not found' })
+  return require('./backoffice').handleBackofficeHttp(event)
 }
 
 module.exports = {
