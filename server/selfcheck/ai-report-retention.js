@@ -1,0 +1,22 @@
+const assert = require('assert')
+const fs = require('fs')
+const path = require('path')
+const root = path.resolve(__dirname, '../..')
+const read = (file) => fs.readFileSync(path.join(root, file), 'utf8')
+
+const user = read('miniprogram/cloudfunctions/api/handlers/user.js')
+const task = read('miniprogram/cloudfunctions/api/handlers/reportTask.js')
+
+assert(task.includes('input_expires_at'))
+assert(task.includes('report_expires_at'))
+assert(user.includes("status: 'cancelled'"))
+assert(user.includes('reports: null'))
+assert(user.includes('input_snapshot: null'))
+assert(user.includes('delete_after'))
+assert(user.includes("ai_report_text: ''"))
+assert(user.includes("local_report_text: ''"))
+assert(task.includes('cleanupExpiredTasks'))
+assert(task.includes('STATUS.EXPIRED'))
+assert(task.includes('.remove()'))
+
+console.log('PASS ai report retention')

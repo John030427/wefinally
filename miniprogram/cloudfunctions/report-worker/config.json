@@ -1,0 +1,10 @@
+{
+  "timeout": 20,
+  "triggers": [
+    {
+      "name": "ai-report-worker-every-minute",
+      "type": "timer",
+      "config": "0 * * * * * *"
+    }
+  ]
+}

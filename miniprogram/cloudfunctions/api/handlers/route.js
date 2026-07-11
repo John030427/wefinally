@@ -6,6 +6,7 @@ const meet = require('./meet')
 const vip = require('./vip')
 const chat = require('./chat')
 const member = require('./member')
+const reportTask = require('./reportTask')
 
 function methodOf(value) {
   return String(value || 'GET').toUpperCase()
@@ -51,6 +52,9 @@ function route(method, path) {
     'GET /api/match/setting/cooldown': match.cooldown,
     'POST /api/match/start': match.start,
     'POST /api/match/report': match.generateReport,
+    'POST /api/match/report-tasks': reportTask.create,
+    'GET /api/match/report-tasks/status': reportTask.status,
+    'POST /api/match/report-tasks/retry': reportTask.retry,
     'GET /api/match/latest': match.latest,
     'GET /api/match/list': match.matchList,
     'GET /api/match/detail': match.detail,

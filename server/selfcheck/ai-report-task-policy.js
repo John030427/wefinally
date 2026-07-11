@@ -1,0 +1,28 @@
+const assert = require('assert')
+const {
+  STATUS,
+  taskId,
+  canUserRequest,
+  canRetry,
+  classifyError,
+  retentionDates
+} = require('../../miniprogram/cloudfunctions/api/lib/reportTaskPolicy')
+
+assert.strictEqual(taskId('pair_12', 1), 'match-report-pair_12-v1')
+assert.strictEqual(canUserRequest(STATUS.NOT_REQUESTED), true)
+assert.strictEqual(canUserRequest(STATUS.FAILED), true)
+assert.strictEqual(canUserRequest(STATUS.SUCCEEDED), false)
+assert.strictEqual(STATUS.EXPIRED, 'expired')
+assert.strictEqual(canUserRequest(STATUS.EXPIRED), false)
+assert.strictEqual(canRetry({ status: STATUS.FAILED, attempt_count: 2 }), true)
+assert.strictEqual(canRetry({ status: STATUS.FAILED, attempt_count: 3, manual_retry_count: 0 }), true)
+assert.strictEqual(canRetry({ status: STATUS.FAILED, manual_retry_count: 2 }), false)
+assert.strictEqual(classifyError(new Error('MiniMax HTTP 429')).retryable, true)
+assert.strictEqual(classifyError(new Error('report schema invalid')).retryable, false)
+
+const generatedAt = new Date('2026-07-11T00:00:00.000Z')
+const dates = retentionDates(generatedAt)
+assert.strictEqual(dates.input_expires_at.toISOString(), '2026-08-10T00:00:00.000Z')
+assert.strictEqual(dates.report_expires_at.toISOString(), '2027-07-11T00:00:00.000Z')
+
+console.log('PASS ai report task policy')

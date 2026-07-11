@@ -149,7 +149,35 @@ async function marryReport(data, wxContext) {
 
 async function cancel(data, wxContext) {
   const user = await currentUser(wxContext)
-  await updateByDoc('user', user, { status: 3 })
+  const cancelledAt = now()
+  const deleteAfter = new Date(cancelledAt.getTime() + 15 * 24 * 60 * 60 * 1000)
+  await updateByDoc('user', user, { status: 3, cancel_time: cancelledAt })
+  const taskRedaction = {
+    status: 'cancelled',
+    reports: null,
+    input_snapshot: null,
+    error_code: 'account_cancelled',
+    error_message: '',
+    cancelled_at: cancelledAt,
+    delete_after: deleteAfter,
+    update_time: cancelledAt
+  }
+  await Promise.all([
+    col('ai_report_task').where({ 'user_ids.a': Number(user.id) }).update({ data: taskRedaction }),
+    col('ai_report_task').where({ 'user_ids.b': Number(user.id) }).update({ data: taskRedaction }),
+    col('user_match_log').where({ user_id: Number(user.id) }).update({ data: {
+      ai_report_text: '',
+      local_report_text: '',
+      ai_report_error: '',
+      update_time: cancelledAt
+    } }),
+    col('user_match_log').where({ match_user_id: Number(user.id) }).update({ data: {
+      ai_report_text: '',
+      local_report_text: '',
+      ai_report_error: '',
+      update_time: cancelledAt
+    } })
+  ])
   return { submitted: true }
 }
 

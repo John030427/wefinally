@@ -32,43 +32,27 @@ function buildAppearanceText() {
 }
 
 function buildReportStatusText(status) {
-  const value = Number(status || 0)
-  if (value === 1) return '已生成'
-  if (value === 4) return '生成中'
-  if (value === 2) return '生成失败，可重试'
-  if (value === 3) return '未开启'
+  if (status === 'succeeded') return '已生成'
+  if (status === 'queued') return '排队中'
+  if (status === 'generating') return '生成中'
+  if (status === 'failed') return '生成失败，可重试'
+  if (status === 'disabled') return '未开启'
+  if (status === 'expired') return '已到期'
   return '待生成'
 }
 
-function isStaleRunningReport(value) {
-  if (!value) return false
-  const time = new Date(value).getTime()
-  if (!Number.isFinite(time)) return false
-  return Date.now() - time > 90 * 1000
-}
-
-function normalizeAiReportState(detail, aiReportText) {
-  const hasAiReportText = Boolean(String(aiReportText || '').trim())
-  let status = detail.ai_report_status !== null && detail.ai_report_status !== undefined
-    ? Number(detail.ai_report_status)
-    : (detail.aiReportStatus !== null && detail.aiReportStatus !== undefined ? Number(detail.aiReportStatus) : 0)
-  if (hasAiReportText) status = 1
+function normalizeAiReportState(detail) {
+  const status = String(detail.ai_report_status || detail.aiReportStatus || 'not_requested')
   const reportTime = detail.ai_report_time || detail.aiReportTime || detail.update_time || detail.updatedAt || ''
-  const runningStale = status === 4 && isStaleRunningReport(reportTime)
-  const canRefreshReport = status === 4 && !runningStale && !hasAiReportText
-  const canGenerateReport = !hasAiReportText && status !== 4
-  const canRegenerateReport = !hasAiReportText && (status === 2 || runningStale)
   return {
-    aiReportStatus: runningStale ? 2 : status,
+    aiReportStatus: status,
     aiReportTime: reportTime,
-    hasAiReportText,
-    canGenerateReport: canGenerateReport || canRegenerateReport,
-    canRefreshReport,
-    reportActionText: canRegenerateReport ? '重新生成AI报告' : '生成AI报告',
-    reportStatusText: buildReportStatusText(runningStale ? 2 : status),
-    reportHintText: runningStale
-      ? 'AI报告生成等待时间较长，可以刷新进度或重新生成；匹配结果不受影响。'
-      : ''
+    hasAiReportText: status === 'succeeded',
+    canGenerateReport: status === 'not_requested' || status === 'failed',
+    canRefreshReport: status === 'queued' || status === 'generating',
+    reportActionText: status === 'failed' ? '重试AI报告' : '生成AI报告',
+    reportStatusText: buildReportStatusText(status),
+    reportHintText: status === 'expired' ? 'AI报告已超过保存期限，相关内容已删除。' : ''
   }
 }
 
@@ -107,8 +91,28 @@ Page({
     this.loadDetail()
   },
 
-  async loadDetail() {
-    this.setData({ pageState: 'loading' })
+  onUnload() {
+    this.stopReportPolling()
+  },
+
+  startReportPolling() {
+    if (this.reportPollTimer) return
+    this.reportPollCount = 0
+    this.reportPollTimer = setInterval(() => {
+      this.reportPollCount += 1
+      if (this.reportPollCount > 20) return this.stopReportPolling()
+      this.loadDetail({ polling: true })
+    }, 3000)
+  },
+
+  stopReportPolling() {
+    if (this.reportPollTimer) clearInterval(this.reportPollTimer)
+    this.reportPollTimer = null
+    this.reportPollCount = 0
+  },
+
+  async loadDetail(options) {
+    if (!(options && options.polling)) this.setData({ pageState: 'loading' })
     const app = getApp()
     const hasNetwork = await app.checkNetwork()
     if (!hasNetwork) {
@@ -153,7 +157,7 @@ Page({
 
       const aiReportText = detail.ai_report_text || detail.aiReportText || ''
       const localReportText = detail.local_report_text || detail.localReportText || builtLocalReportText
-      const aiReportState = normalizeAiReportState(detail, aiReportText)
+      const aiReportState = normalizeAiReportState(detail)
 
       const normalized = {
         locked,
@@ -181,6 +185,7 @@ Page({
           ? (scoreDetail || {}).side.psych_score
           : null),
         aiReportText,
+        aiReport: detail.ai_report || detail.aiReport || null,
         localReportText,
         displayReportText: aiReportText,
         hasAiReportText: aiReportState.hasAiReportText,
@@ -199,10 +204,6 @@ Page({
       const numScore = hasScore ? Number(score) : 0
       const numTotalScore = hasTotalScore ? normalized.totalScore : 0
 
-      const shouldAutoReport = this.data.autoReportPending
-        && normalized.canGenerateReport
-        && !normalized.hasAiReportText
-
       this.setData({
         pageState: 'success',
         autoReportPending: false,
@@ -220,11 +221,8 @@ Page({
         progressColor: hasScore ? getCompatibilityColor(numScore) : 'progress-gray',
         tagClass: hasScore ? getCompatibilityTagClass(numScore) : 'tag-gray'
       })
-      if (shouldAutoReport) {
-        setTimeout(() => {
-          this.requestAiReport({ silentReport: true })
-        }, 200)
-      }
+      if (normalized.aiReportStatus === 'queued' || normalized.aiReportStatus === 'generating') this.startReportPolling()
+      else this.stopReportPolling()
     } catch (err) {
       this.setData({
         pageState: 'error',
@@ -279,7 +277,10 @@ Page({
       'detail.reportStatusText': '生成中'
     })
     try {
-      await post(API_PATHS.MATCH_REPORT, {
+      const path = this.data.detail.aiReportStatus === 'failed'
+        ? API_PATHS.MATCH_REPORT_TASK_RETRY
+        : API_PATHS.MATCH_REPORT_TASK
+      await post(path, {
         match_log_id: this.data.matchId,
         match_user_id: this.data.detail.matchedUserId
       }, { showLoading: !silentReport, loadingText: '正在生成AI报告...' })

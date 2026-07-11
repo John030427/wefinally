@@ -63,16 +63,28 @@
     <view class="report-card card" wx:if="{{!detail.locked}}">
       <view class="report-header">
         <view class="meet-title">AI匹配报告</view>
-        <view class="report-status {{detail.aiReportStatus === 1 ? 'ready' : (detail.aiReportStatus === 4 ? 'running' : '')}}">
+        <view class="report-status {{detail.aiReportStatus === 'succeeded' ? 'ready' : ((detail.aiReportStatus === 'queued' || detail.aiReportStatus === 'generating') ? 'running' : '')}}">
           {{detail.reportStatusText}}
         </view>
       </view>
-      <view wx:if="{{detail.aiReportText}}" class="report-text">{{detail.aiReportText}}</view>
+      <view wx:if="{{detail.aiReportStatus === 'succeeded' && detail.aiReport}}" class="structured-report">
+        <view class="report-text">{{detail.aiReport.summary}}</view>
+        <view wx:if="{{detail.aiReport.strengths.length}}" class="local-report-title">契合点</view>
+        <view wx:for="{{detail.aiReport.strengths}}" wx:key="evidence_key" class="compat-hint">{{item.title}}：{{item.detail}}</view>
+        <view wx:if="{{detail.aiReport.differences.length}}" class="local-report-title">需要磨合</view>
+        <view wx:for="{{detail.aiReport.differences}}" wx:key="evidence_key" class="compat-hint">{{item.title}}：{{item.detail}}</view>
+        <view wx:if="{{detail.aiReport.communication_suggestions.length}}" class="local-report-title">沟通建议</view>
+        <view wx:for="{{detail.aiReport.communication_suggestions}}" wx:key="*this" class="compat-hint">{{item}}</view>
+        <view wx:if="{{detail.aiReport.first_date_suggestions.length}}" class="local-report-title">初次见面建议</view>
+        <view wx:for="{{detail.aiReport.first_date_suggestions}}" wx:key="*this" class="compat-hint">{{item}}</view>
+        <view wx:if="{{detail.aiReport.data_limitations.length}}" class="local-report-title">报告局限</view>
+        <view wx:for="{{detail.aiReport.data_limitations}}" wx:key="*this" class="compat-hint">{{item}}</view>
+      </view>
       <block wx:else>
         <view wx:if="{{detail.reportHintText}}" class="compat-hint">{{detail.reportHintText}}</view>
-        <view wx:elif="{{detail.aiReportStatus === 4}}" class="compat-hint">AI报告生成中，请稍等后刷新进度；匹配结果已完成，不影响后续操作。</view>
-        <view wx:elif="{{detail.aiReportStatus === 2}}" class="compat-hint">AI报告暂未生成成功，可稍后重试；匹配结果不受影响。</view>
-        <view wx:elif="{{detail.aiReportStatus === 3}}" class="compat-hint">AI报告未开启，可手动生成。</view>
+        <view wx:elif="{{detail.aiReportStatus === 'queued' || detail.aiReportStatus === 'generating'}}" class="compat-hint">AI报告生成中，页面会自动刷新；匹配结果已完成，不影响后续操作。</view>
+        <view wx:elif="{{detail.aiReportStatus === 'failed'}}" class="compat-hint">AI报告暂未生成成功，可稍后重试；匹配结果不受影响。</view>
+        <view wx:elif="{{detail.aiReportStatus === 'disabled'}}" class="compat-hint">AI报告服务暂未开启。</view>
         <view wx:else class="compat-hint">匹配已完成，AI报告待手动生成。</view>
         <view wx:if="{{detail.localReportText}}" class="local-report-box">
           <view class="local-report-title">临时婚恋参考（非AI报告）</view>

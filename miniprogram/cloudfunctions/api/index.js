@@ -6,6 +6,7 @@ cloud.init({
 
 const { handleRoute } = require('./handlers/route')
 const { handleHttp } = require('./handlers/paymentNotify')
+const { processQueuedTasks } = require('./handlers/reportTask')
 
 const ENV_ID = 'cloud1-d4gy8l52g08bba326'
 
@@ -29,6 +30,11 @@ exports.main = async (event = {}) => {
         return {
           success: true,
           data: await handleRoute(payload, cloud.getWXContext())
+        }
+      case 'processReportTasks':
+        return {
+          success: true,
+          data: await processQueuedTasks(Number(payload.limit || 2))
         }
       default:
         return {

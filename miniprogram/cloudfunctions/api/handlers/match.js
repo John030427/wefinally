@@ -2,8 +2,8 @@ const { first, list, byId, addWithId, updateByDoc, authError, now } = require('.
 const { currentUser } = require('./user')
 const { isVipActive, ageBand, dateOnly } = require('../lib/format')
 const { flagEnabled } = require('../lib/flags')
-const { generateMutualMatchReports } = require('../lib/minimax')
 const { MEMBER_STATUS, memberStatus, canUseMatching, normalizeMatchSettingInput } = require('../lib/memberPolicy')
+const reportTask = require('./reportTask')
 
 function parseJson(value) {
   if (!value) return null
@@ -200,11 +200,28 @@ async function formatMatch(row, viewer) {
   const partner = await byId('user', row.match_user_id)
   const vip = isVipActive(viewer)
   if (!partner) return null
+  const canViewReport = canUseMatching({ member_status: memberStatus(viewer), vipActive: vip })
+  if (!canViewReport) {
+    return {
+      id: row.id,
+      matchId: row.id,
+      status: 'matched',
+      locked: true,
+      match_date: dateOnly(row.match_date),
+      match_type: row.match_type || '',
+      message: memberStatus(viewer) === MEMBER_STATUS.APPROVED
+        ? '请先开通 VIP 查看完整匹配详情'
+        : '会员审核通过后才能查看匹配详情'
+    }
+  }
   const scoreDetail = ensureScoreDetailDimensions(parseJson(row.score_detail_json), row, viewer, partner)
   const fallbackReportUsed = scoreDetail && scoreDetail.report_fallback_used === true
   const rowAiReportText = row.ai_report_text || ''
   const visibleAiReportText = fallbackReportUsed ? '' : rowAiReportText
   const localReportText = row.local_report_text || (fallbackReportUsed ? rowAiReportText : '')
+  const task = await reportTask.findTaskForMatch(row)
+  const taskSide = task && Number(task.user_ids.a) === Number(row.user_id) ? 'a' : 'b'
+  const taskView = reportTask.publicTask(task, taskSide)
   const base = {
     id: row.id,
     matchId: row.id,
@@ -216,10 +233,12 @@ async function formatMatch(row, viewer) {
     total_score: Number(row.total_score || 0),
     totalScore: Number(row.total_score || 0),
     score_detail: scoreDetail,
-    ai_report_text: visibleAiReportText,
-    ai_report_status: fallbackReportUsed ? 2 : (row.ai_report_status || 0),
-    ai_report_error: row.ai_report_error || '',
-    ai_report_time: row.ai_report_time || null,
+    ai_report_text: taskView.report ? taskView.report.summary : visibleAiReportText,
+    ai_report: taskView.report || null,
+    ai_report_status: taskView.status,
+    ai_report_error: taskView.error_message || '',
+    ai_report_time: taskView.generated_at || row.ai_report_time || null,
+    ai_report_task: taskView,
     local_report_text: localReportText,
     matched_user_id: row.match_user_id,
     match_user_id: row.match_user_id
@@ -260,6 +279,8 @@ async function detail(data, wxContext) {
   const user = await currentUser(wxContext)
   const row = await byId('user_match_log', data.id || data.matchId)
   if (!row || Number(row.user_id) !== Number(user.id)) throw new Error('匹配记录不存在')
+  const canViewReport = canUseMatching({ member_status: memberStatus(user), vipActive: isVipActive(user) })
+  if (canViewReport) await reportTask.ensureTaskForMatch(row, 'history_open')
   const item = await formatMatch(row, user)
   const ticket = await first('match_handoff_ticket', { match_log_id: row.id, user_id: user.id })
   item.handoff_ticket = ticket || null
@@ -290,73 +311,7 @@ async function handoff(data, wxContext) {
 }
 
 async function generateReport(data, wxContext) {
-  const user = await currentUser(wxContext)
-  if (!canUseMatching({ member_status: memberStatus(user), vipActive: isVipActive(user) })) {
-    throw authError(memberStatus(user) === MEMBER_STATUS.APPROVED ? '请先开通 VIP' : '会员审核通过后才能生成 AI 报告')
-  }
-  const matchId = Number(data.match_log_id || data.matchLogId || data.id || 0)
-  const matchUserId = Number(data.match_user_id || data.matchUserId || data.matched_user_id || 0)
-  let row = matchId ? await byId('user_match_log', matchId) : null
-  if (!row && matchUserId) {
-    row = await first('user_match_log', { user_id: user.id, match_user_id: matchUserId })
-  }
-  if (!row || Number(row.user_id) !== Number(user.id)) throw new Error('匹配记录不存在，请返回匹配记录页重新进入')
-  const rawScoreA = parseJson(row.score_detail_json) || {}
-  const fallbackReportUsed = rawScoreA.report_fallback_used === true
-  if (Number(row.ai_report_status) === 1 && row.ai_report_text && !fallbackReportUsed && !data.force) {
-    return formatMatch(row, user)
-  }
-
-  const partner = await byId('user', row.match_user_id)
-  if (!partner) throw new Error('匹配对象不存在')
-  const reverse = await first('user_match_log', { user_id: partner.id, match_user_id: user.id })
-  const scoreA = ensureScoreDetailDimensions(rawScoreA, row, user, partner)
-  const scoreB = reverse
-    ? ensureScoreDetailDimensions(parseJson(reverse.score_detail_json), reverse, partner, user)
-    : scoreA
-
-  await updateByDoc('user_match_log', row, {
-    ai_report_status: 4,
-    ai_report_error: '',
-    score_detail_json: JSON.stringify(withReportStatus(scoreA, 4, { provider: 'minimax' }))
-  })
-
-  const report = await generateMutualMatchReports(user, partner, scoreA, scoreB)
-  const reportStatus = Number(report.status || 2)
-  const fallbackA = fallbackMatchReportText(user, partner)
-  const fallbackB = fallbackMatchReportText(partner, user)
-  const generatedByAi = reportStatus === 1 && report.a && report.a.text && report.b && report.b.text
-  const finalStatus = generatedByAi ? 1 : 2
-  const reportTextA = generatedByAi ? report.a.text : fallbackA
-  const reportTextB = generatedByAi ? report.b.text : fallbackB
-  const reportErrorA = report.a && report.a.error ? report.a.error : ''
-  const reportErrorB = report.b && report.b.error ? report.b.error : ''
-  const detailReportA = Object.assign(withReportStatus(scoreA, finalStatus, report), {
-    report_fallback_used: !generatedByAi
-  })
-  const detailReportB = Object.assign(withReportStatus(scoreB, finalStatus, report), {
-    report_fallback_used: !generatedByAi
-  })
-
-  const updated = await updateByDoc('user_match_log', row, {
-    ai_report_text: generatedByAi ? reportTextA : '',
-    ai_report_status: finalStatus,
-    ai_report_error: generatedByAi ? '' : (reportErrorA || 'MiniMax 暂未返回AI报告，已保留临时参考，可稍后重试'),
-    ai_report_time: now(),
-    local_report_text: fallbackA,
-    score_detail_json: JSON.stringify(detailReportA)
-  })
-  if (reverse) {
-    await updateByDoc('user_match_log', reverse, {
-      ai_report_text: generatedByAi ? reportTextB : '',
-      ai_report_status: finalStatus,
-      ai_report_error: generatedByAi ? '' : (reportErrorB || 'MiniMax 暂未返回AI报告，已保留临时参考，可稍后重试'),
-      ai_report_time: now(),
-      local_report_text: fallbackB,
-      score_detail_json: JSON.stringify(detailReportB)
-    })
-  }
-  return formatMatch(updated, user)
+  return reportTask.create(data, wxContext)
 }
 
 async function seedDemoCandidate(user) {
@@ -450,7 +405,7 @@ async function start(data, wxContext) {
     match_date: today,
     match_type: '开发测试'
   }, 'match_log')
-  await addWithId('user_match_log', {
+  const logB = await addWithId('user_match_log', {
     user_id: partner.id,
     match_user_id: user.id,
     view_similarity: 88,
@@ -465,6 +420,7 @@ async function start(data, wxContext) {
     match_date: today,
     match_type: '开发测试'
   }, 'match_log')
+  await reportTask.ensureTaskForMatch(logA, 'auto')
   return { matched: 1, users: 2, match_id: logA.id, match_user_id: partner.id }
 }
 

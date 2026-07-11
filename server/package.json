@@ -10,6 +10,7 @@
     "selfcheck:cloudbase": "node selfcheck/cloudbase-migration.js",
     "selfcheck:member": "node selfcheck/member-review-policy.js && node selfcheck/invitation-binding.js && node selfcheck/member-application-cloud.js && node selfcheck/member-review-action.js && node selfcheck/server-member-policy.js && node selfcheck/backoffice-token.js",
     "selfcheck:cloudpay": "node selfcheck/cloudbase-wechatpay.js && node selfcheck/cloudbase-vip-payment.js && node selfcheck/cloudbase-wxpay-notify.js && node selfcheck/miniprogram-vip-payment.js",
+    "selfcheck:ai-report": "node selfcheck/ai-report-task-policy.js && node selfcheck/ai-report-cloud-task.js && node selfcheck/ai-report-ui-lifecycle.js && node selfcheck/ai-report-retention.js",
     "demo:match-seed": "node selfcheck/match-demo-seed.js",
     "demo:match-clear": "node selfcheck/match-demo-clear.js",
     "sample:match-clear": "node sample-data/matching-system/clear.js",

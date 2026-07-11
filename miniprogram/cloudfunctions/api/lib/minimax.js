@@ -1,7 +1,7 @@
 const https = require('https')
 const { first } = require('./db')
 
-const CLOUD_FUNCTION_SAFE_TIMEOUT_MS = 1800
+const CLOUD_FUNCTION_SAFE_TIMEOUT_MS = 12000
 
 function envValue(keys) {
   for (let i = 0; i < keys.length; i += 1) {
@@ -261,6 +261,119 @@ async function generateMutualMatchReports(userA, userB, scoreDetailA, scoreDetai
   }
 }
 
+function evidenceForSide(user, partner, score) {
+  const dimensions = compactScore(score)
+  const evidence = []
+  if (user.city && partner.city) evidence.push({ key: 'city', value: user.city === partner.city ? '同城' : '异地', shareable: true })
+  if (user.baby_plan && partner.baby_plan) evidence.push({ key: 'baby_plan', value: `本人:${user.baby_plan}; 对方:${partner.baby_plan}`, shareable: true })
+  if (user.education && partner.education) evidence.push({ key: 'education', value: `本人:${user.education}; 对方:${partner.education}`, shareable: true })
+  if (user.self_view_text) evidence.push({ key: 'self_view', value: String(user.self_view_text).slice(0, 300), shareable: false })
+  if (user.target_view_text) evidence.push({ key: 'target_view', value: String(user.target_view_text).slice(0, 300), shareable: false })
+  if (score && score.quality_gate) evidence.push({ key: 'quality_gate', value: score.quality_gate, shareable: true })
+  ;((dimensions && dimensions.dimensions) || []).forEach((item) => evidence.push({
+    key: `score_${item.key}`,
+    value: { score: item.score, max: item.max, explain: item.explain || '' },
+    shareable: true
+  }))
+  return evidence
+}
+
+function buildInputSnapshot(input) {
+  const userA = input.users.a
+  const userB = input.users.b
+  return {
+    algorithm: {
+      a: compactScore(input.scores.a),
+      b: compactScore(input.scores.b)
+    },
+    evidence: {
+      a: evidenceForSide(userA, userB, input.scores.a),
+      b: evidenceForSide(userB, userA, input.scores.b)
+    },
+    completeness: {
+      a: evidenceForSide(userA, userB, input.scores.a).length,
+      b: evidenceForSide(userB, userA, input.scores.b).length
+    }
+  }
+}
+
+function validateStructuredReport(report, allowedEvidenceKeys) {
+  if (!report || typeof report !== 'object' || Array.isArray(report)) throw new Error('report schema invalid')
+  const requiredArrays = ['strengths', 'differences', 'hard_condition_checks', 'communication_suggestions', 'first_date_suggestions', 'data_limitations']
+  if (!String(report.summary || '').trim()) throw new Error('report schema invalid: summary')
+  if (!['high', 'medium', 'low'].includes(report.confidence)) throw new Error('report schema invalid: confidence')
+  requiredArrays.forEach((key) => {
+    if (!Array.isArray(report[key])) throw new Error(`report schema invalid: ${key}`)
+    report[key] = report[key].slice(0, 6)
+  })
+  ;['strengths', 'differences'].forEach((key) => {
+    report[key].forEach((item) => {
+      if (!item || !allowedEvidenceKeys.has(item.evidence_key)) throw new Error('report schema invalid: evidence_key')
+    })
+  })
+  return report
+}
+
+async function generateStructuredMatchReports(input) {
+  const cfg = await getConfig()
+  if (!cfg.enabled || !cfg.apiKey) throw new Error(cfg.enabled ? 'missing MINIMAX_API_KEY' : 'MiniMax disabled')
+  const snapshot = buildInputSnapshot(input)
+  const schema = {
+    summary: 'string',
+    confidence: 'high|medium|low',
+    strengths: [{ evidence_key: 'string', title: 'string', detail: 'string' }],
+    differences: [{ evidence_key: 'string', title: 'string', detail: 'string', severity: 'low|medium|high' }],
+    hard_condition_checks: [{ key: 'string', passed: true, explanation: 'string' }],
+    communication_suggestions: ['string'],
+    first_date_suggestions: ['string'],
+    data_limitations: ['string']
+  }
+  async function generateSide(side) {
+    const sideSnapshot = {
+      algorithm: snapshot.algorithm[side],
+      evidence: snapshot.evidence[side],
+      completeness: snapshot.completeness[side]
+    }
+    const prompt = [
+      '你是 WeFinally 严肃婚恋平台的匹配报告助手。只解释后端证据，不能修改分数、硬条件或匹配结论。',
+      '这是仅面向当前用户的一份隔离报告。只能引用 evidence 中存在的 evidence_key，不能推断或补充未提供的信息。',
+      '内容要具体区分契合点、差异点、硬条件、沟通建议、初次见面建议和数据局限。禁止心理诊断、成功率承诺、联系方式、单位和精确收入。',
+      `报告Schema：${JSON.stringify(schema)}`,
+      '只输出一份合法JSON报告对象，不输出Markdown。',
+      `输入：${JSON.stringify(sideSnapshot).slice(0, 6000)}`
+    ].join('\n')
+    const data = await requestJson(endpointFor(cfg.baseURL), {
+      model: cfg.model,
+      system: '只输出合法 JSON，不输出 Markdown。',
+      messages: [{ role: 'user', content: [{ type: 'text', text: prompt }] }],
+      max_tokens: 1000,
+      temperature: 0.15,
+      thinking: { type: 'disabled' },
+      stream: false
+    }, { Authorization: `Bearer ${cfg.apiKey}` }, cfg.timeoutMs)
+    const parsed = extractJsonObject(textFromAnthropicResponse(data))
+    const keys = new Set(sideSnapshot.evidence.map((item) => item.key))
+    return { report: validateStructuredReport(parsed, keys), usage: data.usage || null }
+  }
+  const generated = await Promise.all([generateSide('a'), generateSide('b')])
+  return {
+    reports: {
+      a: Object.assign(generated[0].report, {
+        overall_score: Number(input.scores.a && input.scores.a.total || 0)
+      }),
+      b: Object.assign(generated[1].report, {
+        overall_score: Number(input.scores.b && input.scores.b.total || 0)
+      })
+    },
+    input_snapshot: snapshot,
+    model: cfg.model,
+    usage: { a: generated[0].usage, b: generated[1].usage }
+  }
+}
+
 module.exports = {
-  generateMutualMatchReports
+  generateMutualMatchReports,
+  generateStructuredMatchReports,
+  validateStructuredReport,
+  buildInputSnapshot
 }
