@@ -1,0 +1,64 @@
+.love-page {
+  padding-bottom: 64rpx;
+}
+
+.love-hero {
+  padding: 48rpx 36rpx;
+  background: #ff6b8a;
+  border-radius: 24rpx;
+  color: #fff;
+  margin-bottom: 36rpx;
+}
+
+.love-title {
+  font-size: 38rpx;
+  font-weight: 600;
+  margin-bottom: 14rpx;
+}
+
+.love-subtitle {
+  font-size: 26rpx;
+  line-height: 1.7;
+  opacity: .95;
+}
+
+.love-start {
+  width: 100%;
+  margin: 32rpx 0 0;
+  height: 80rpx;
+  line-height: 80rpx;
+  border-radius: 40rpx;
+  background: #fff;
+  color: #ff6b8a;
+  font-size: 28rpx;
+  font-weight: 600;
+}
+
+.love-start::after {
+  border: none;
+}
+
+.topic-card {
+  margin-bottom: 18rpx;
+}
+
+.topic-title {
+  font-size: 30rpx;
+  color: #333;
+  font-weight: 600;
+  margin-bottom: 10rpx;
+}
+
+.topic-desc,
+.knowledge-note {
+  font-size: 25rpx;
+  color: #777;
+  line-height: 1.7;
+}
+
+.knowledge-note {
+  padding: 22rpx 26rpx;
+  background: #fff4f6;
+  border-radius: 16rpx;
+  color: #9a5665;
+}

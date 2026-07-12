@@ -9,6 +9,7 @@
     "pages/match-setting/match-setting",
     "pages/member-application/member-application",
     "pages/index/index",
+    "pages/love-advisor/love-advisor",
     "pages/match-list/match-list",
     "pages/match-detail/match-detail",
     "pages/appearance/appearance",
@@ -18,6 +19,7 @@
     "pages/profile/profile",
     "pages/marry-stat/marry-stat",
     "pages/chat/chat",
+    "pages/date-coordination/date-coordination",
     "pages/marry-report/marry-report",
     "pages/account-cancel/account-cancel",
     "pages/rules/rules"

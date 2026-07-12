@@ -132,6 +132,37 @@
   justify-content: center;
 }
 
+.love-advisor-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border: 2rpx solid #ffe0e7;
+}
+
+.love-advisor-copy {
+  min-width: 0;
+}
+
+.love-advisor-title {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 8rpx;
+}
+
+.love-advisor-desc {
+  font-size: 24rpx;
+  color: #888;
+  line-height: 1.5;
+}
+
+.love-advisor-arrow {
+  flex: 0 0 auto;
+  color: #ff6b8a;
+  font-size: 44rpx;
+  line-height: 1;
+}
+
 .vip-badge {
   background: #fff0f3;
   color: #ff6b8a;

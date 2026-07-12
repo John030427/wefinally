@@ -30,6 +30,8 @@ const API_PATHS = {
   MARRY_REPORT: '/api/user/marry-report',
   CHAT_SEND: '/api/chat/send',
   CHAT_HISTORY: '/api/chat/history',
+  AGENT_SESSIONS: '/api/agent/sessions',
+  DATE_COORDINATIONS: '/api/date-coordinations',
   ACCOUNT_CANCEL: '/api/user/cancel',
   RULES: '/api/platform/rules',
   CIRCLES: '/api/common/circles',

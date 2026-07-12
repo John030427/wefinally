@@ -163,6 +163,7 @@
         当前状态：{{detail.handoffTicket.status_text || '已提交'}}
       </view>
       <view class="meet-actions">
+        <navigator wx:if="{{!detail.locked}}" url="/pages/date-coordination/date-coordination?matchUserId={{detail.matchedUserId}}&matchLogId={{matchId}}" class="meet-action-btn meet-action-primary">开启第一次约会</navigator>
         <navigator url="/pages/meet-safety/meet-safety?matchUserId={{detail.matchedUserId}}&matchLogId={{matchId}}" class="meet-action-btn meet-action-primary">线下见面安全确认</navigator>
         <button
           class="meet-action-btn"

@@ -51,6 +51,14 @@
       <view class="safety-call" catchtap="callPolice">110</view>
     </view>
 
+    <view class="love-advisor-card card" bindtap="goLoveAdvisor">
+      <view class="love-advisor-copy">
+        <view class="love-advisor-title">AI恋爱助手</view>
+        <view class="love-advisor-desc">聊聊沟通、边界和初次见面的准备</view>
+      </view>
+      <view class="love-advisor-arrow">›</view>
+    </view>
+
     <view class="section-header">
       <text class="section-title">最近匹配</text>
       <text class="section-link" bindtap="goMatchList">全部记录 ›</text>

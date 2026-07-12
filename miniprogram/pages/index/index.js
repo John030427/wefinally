@@ -123,6 +123,10 @@ Page({
     wx.navigateTo({ url: '/pages/meet-safety-list/meet-safety-list' })
   },
 
+  goLoveAdvisor() {
+    wx.navigateTo({ url: '/pages/love-advisor/love-advisor' })
+  },
+
   async devStartMatch() {
     if (this.data.devMatchStarting) return
     this.setData({ devMatchStarting: true })

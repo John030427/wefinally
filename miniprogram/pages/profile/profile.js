@@ -16,7 +16,7 @@ Page({
       { icon: '🛡️', title: '见面安全记录', url: '/pages/meet-safety-list/meet-safety-list' },
       { icon: '💒', title: '领证数据公示', url: '/pages/marry-stat/marry-stat' },
       { icon: '📋', title: '婚姻报备', url: '/pages/marry-report/marry-report' },
-      { icon: '💬', title: 'AI 智能客服', url: '/pages/chat/chat' },
+      { icon: '💬', title: '平台AI客服', url: '/pages/chat/chat?agentType=platform_service' },
       { icon: '📜', title: '平台规则', url: '/pages/rules/rules' },
       { icon: '❌', title: '账号注销', url: '/pages/account-cancel/account-cancel' }
     ]

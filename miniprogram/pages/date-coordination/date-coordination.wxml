@@ -1,0 +1,116 @@
+<view class="date-page container">
+  <block wx:if="{{pageState === 'loading'}}">
+    <view class="state-wrap"><view class="state-text">正在准备约会协调...</view></view>
+  </block>
+
+  <block wx:elif="{{pageState === 'no-network'}}">
+    <view class="state-wrap"><view class="state-text">网络不可用</view><view class="state-btn" bindtap="onRetry">重试</view></view>
+  </block>
+
+  <block wx:elif="{{pageState === 'error'}}">
+    <view class="state-wrap"><view class="state-text">{{errorMsg}}</view><view class="state-btn" bindtap="onRetry">重试</view></view>
+  </block>
+
+  <block wx:elif="{{pageState === 'expired'}}">
+    <view class="state-wrap"><view class="state-text">协调邀请已过期</view><view class="state-btn" bindtap="goService">联系平台客服</view></view>
+  </block>
+
+  <block wx:else>
+    <view class="date-head card">
+      <view class="date-title">第一次约会协调</view>
+      <view class="date-desc">由双方分别填写偏好，系统只展示必要的约会信息。</view>
+      <view class="status-pill">{{coordination.status_text || coordination.status || '协调中'}}</view>
+    </view>
+
+    <view class="progress-card card">
+      <view class="section-title">进度</view>
+      <view class="progress-row"><text>1. 邀请确认</text><text>{{coordination.invitation_status_text || '进行中'}}</text></view>
+      <view class="progress-row"><text>2. 填写偏好</text><text>{{coordination.application_status_text || '等待填写'}}</text></view>
+      <view class="progress-row"><text>3. 方案确认</text><text>{{coordination.confirmation_status_text || '等待方案'}}</text></view>
+    </view>
+
+    <view class="invite-card card" wx:if="{{coordination.status === 'inviting_partner'}}">
+      <view class="section-title">约会邀请</view>
+      <view class="invite-text">对方希望和你一起协调一次轻松、安全的初次见面。</view>
+      <view class="action-row" wx:if="{{coordination.can_respond_invitation}}">
+        <button class="outline-btn" bindtap="respondInvitation" data-accepted="false" loading="{{responding}}">暂不参与</button>
+        <button class="primary-btn" bindtap="respondInvitation" data-accepted="true" loading="{{responding}}">接受邀请</button>
+      </view>
+      <view class="muted" wx:else>邀请已发出，等待对方确认。</view>
+    </view>
+
+    <view class="form-card card" wx:if="{{coordination.can_submit_application || coordination.status === 'collecting_preferences' || coordination.status === 'replanning'}}">
+      <view class="section-title">填写我的偏好</view>
+      <view class="form-item">
+        <view class="form-label required">可约时间</view>
+        <picker mode="date" start="{{dateMin}}" end="{{dateMax}}" value="{{selectedDate}}" bindchange="onDateChange">
+          <view class="picker-value">未来14天内选择日期</view>
+        </picker>
+        <view class="date-choice" wx:for="{{form.availability}}" wx:for-item="dateItem" wx:key="date">
+          <view class="date-choice-head">
+            <text>{{dateItem.date}}</text>
+            <text class="remove-date" bindtap="removeAvailability" data-value="{{dateItem.date}}">移除</text>
+          </view>
+          <view class="form-label">可约时间段</view>
+          <view class="choice-list">
+            <text class="choice-tag" wx:for="{{periodOptions}}" wx:for-item="periodItem" wx:key="value" bindtap="togglePeriod" data-date="{{dateItem.date}}" data-period="{{periodItem.value}}">{{periodItem.label}}</text>
+          </view>
+          <view class="selected-periods">已选择：{{dateItem.periods}}</view>
+        </view>
+      </view>
+      <view class="form-item">
+        <view class="form-label required">偏好区域</view>
+        <input class="input" placeholder="如南山区、福田区，可用顿号分隔" value="{{areaText}}" bindinput="onAreasInput" />
+      </view>
+      <view class="form-item">
+        <view class="form-label required">活动偏好（最多3项）</view>
+        <view class="choice-list">
+          <text class="choice-tag" wx:for="{{activityOptions}}" wx:key="*this" bindtap="toggleActivity" data-value="{{item}}">{{item}}</text>
+        </view>
+        <view class="selected-periods">已选择：{{form.activities}}</view>
+      </view>
+      <view class="form-item">
+        <view class="form-label required">人均预算</view>
+        <view class="choice-list"><text class="choice-tag" wx:for="{{budgetOptions}}" wx:key="value" bindtap="selectOption" data-key="budget" data-value="{{item.value}}">{{item.label}}</text></view>
+      </view>
+      <view class="form-item">
+        <view class="form-label required">费用方式</view>
+        <view class="choice-list"><text class="choice-tag" wx:for="{{paymentOptions}}" wx:key="value" bindtap="selectOption" data-key="payment_preference" data-value="{{item.value}}">{{item.label}}</text></view>
+      </view>
+      <view class="form-item">
+        <view class="form-label required">可接受时长</view>
+        <view class="choice-list"><text class="choice-tag" wx:for="{{durationOptions}}" wx:key="value" bindtap="selectOption" data-key="duration" data-value="{{item.value}}">{{item.label}}</text></view>
+      </view>
+      <view class="form-item"><view class="form-label">出行限制</view><input class="input" placeholder="如步行距离或无障碍需求" value="{{form.transport_constraints}}" data-key="transport_constraints" bindinput="onInput" /></view>
+      <view class="form-item"><view class="form-label">其他要求</view><textarea class="textarea" maxlength="100" placeholder="选填，告诉平台你在意的安排" value="{{form.other_requirements}}" data-key="other_requirements" bindinput="onInput"></textarea></view>
+      <view class="form-item"><view class="form-label">对方可见内容</view><textarea class="textarea" maxlength="100" placeholder="选填，简短友善地说明期待" value="{{form.share_message}}" data-key="share_message" bindinput="onInput"></textarea></view>
+      <view class="share-preview">
+        <view class="preview-label">对方可见内容</view>
+        <view>{{form.share_message || '尚未填写'}}</view>
+      </view>
+      <view class="public-note">建议选择白天、公共场所，尊重彼此的边界和节奏。</view>
+      <button class="primary-btn full-btn" bindtap="submitApplication" loading="{{submitting}}" disabled="{{submitting}}">提交我的偏好</button>
+    </view>
+
+    <view class="proposal-card card" wx:if="{{proposal}}">
+      <view class="section-title">推荐方案</view>
+      <view class="proposal-line">时间：{{proposal.date || '待确认'}} {{proposal.period || ''}}</view>
+      <view class="proposal-line">区域：{{proposal.area || proposal.areas || '待确认'}}</view>
+      <view class="proposal-line">活动：{{proposal.activity || proposal.activities || '待确认'}}</view>
+      <view class="public-note">方案仅在双方确认后生效。</view>
+      <button class="primary-btn full-btn" bindtap="confirmProposal" loading="{{submitting}}" disabled="{{submitting || coordination.confirmed_by_me}}">{{coordination.confirmed_by_me ? '已确认，等待对方' : '确认这个方案'}}</button>
+    </view>
+
+    <view class="proposal-card card" wx:if="{{coordination.status === 'no_overlap'}}">
+      <view class="section-title">暂时没有完整交集</view>
+      <view class="public-note">系统只会提示需要调整的维度，不会透露是谁设置了限制。你可以更新偏好再试一次。</view>
+      <button class="primary-btn full-btn" bindtap="recoordinate" loading="{{submitting}}">重新协调</button>
+    </view>
+
+    <view class="contact-card card">
+      <view>想了解当前协调进度？</view>
+      <view class="contact-link" bindtap="goCoordinator">询问AI协调员</view>
+    </view>
+    <view class="contact-card card"><view>需要人工协助？</view><view class="contact-link" bindtap="goService">联系平台客服</view></view>
+  </block>
+</view>

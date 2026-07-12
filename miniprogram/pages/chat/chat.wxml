@@ -16,7 +16,7 @@
 
   <block wx:else>
     <scroll-view class="chat-scroll" scroll-y scroll-into-view="{{scrollToView}}" scroll-with-animation>
-      <view class="chat-tip">AI 客服优先处理业务咨询，无效闲聊将被拦截</view>
+      <view class="chat-tip">{{agentType === 'love_advisor' ? '温和陪伴，信息有限时会明确说明知识不足' : (agentType === 'date_coordinator' ? '只说明共同进度，不展示对方原始回答' : '优先处理平台业务咨询')}}</view>
       <view
         id="msg-{{item.id}}"
         class="msg-row {{item.isBot ? 'msg-bot' : 'msg-user'}}"
