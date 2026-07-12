@@ -474,6 +474,7 @@
   };
 
   async function pgService() {
+    if (CLOUD_MEMBER_API) return pgCloudAgentService();
     const data = await api('/admin/service/workbench');
     const sessions = data.chat_sessions || [];
     const tickets = data.handoff_tickets || [];
@@ -497,6 +498,46 @@
       '<p style="font-size:.8125rem;color:var(--muted)">客服账号仅处理客服会话、奔现工单和订单状态查询，不开放用户修改、导出、白名单导入等高权限操作。</p>';
   }
   window.pgService = pgService;
+
+  async function pgCloudAgentService() {
+    const results = await Promise.all([
+      memberApi('/admin/agent/tickets'),
+      memberApi('/admin/date-coordinations')
+    ]);
+    const tickets = results[0].list || [];
+    const coordinations = results[1].list || [];
+    const ticketRows = tickets.length ? tickets.map(t =>
+      '<tr><td>' + esc(t.ticket_ref) + '</td><td>' + esc(t.user_ref) + '</td><td>' + esc(t.priority) + '</td><td>' + esc(t.category) + '</td><td>' + esc(t.summary) + '</td><td>' + esc(t.status) + '</td><td><button class="btn btn-sm btn-outline" onclick="cloudAgentReply(' + t.id + ')">回复</button> <button class="btn btn-sm btn-success" onclick="cloudAgentClose(' + t.id + ')">关闭</button></td></tr>'
+    ).join('') : '<tr><td colspan="7" class="empty">暂无Agent人工工单</td></tr>';
+    const coordinationRows = coordinations.length ? coordinations.map(c =>
+      '<tr><td>' + esc(c.coordination_ref) + '</td><td>' + esc((c.participant_refs || []).join(' / ')) + '</td><td>' + esc(c.status) + '</td><td>' + c.coordination_version + '</td><td>' + c.recoordination_count + '</td><td>' + esc((c.missing_dimensions || []).join('、') || '-') + '</td></tr>'
+    ).join('') : '<tr><td colspan="6" class="empty">暂无约会协调任务</td></tr>';
+    document.getElementById('content').innerHTML =
+      '<div class="stats-grid">' + sc('待处理Agent工单', tickets.filter(t => t.status !== 'closed').length) + sc('约会协调任务', coordinations.length) + sc('需人工协调', coordinations.filter(c => c.status === 'manual_handoff').length) + '</div>' +
+      '<div class="card"><div class="card-hd"><strong>Agent人工工单</strong><button class="btn btn-sm btn-outline" onclick="pgService()">刷新</button></div><div class="card-bd"><table><thead><tr><th>工单</th><th>用户</th><th>优先级</th><th>类别</th><th>摘要</th><th>状态</th><th>操作</th></tr></thead><tbody>' + ticketRows + '</tbody></table></div></div>' +
+      '<div class="card"><div class="card-hd"><strong>第一次约会协调队列</strong></div><div class="card-bd"><table><thead><tr><th>协调任务</th><th>参与者</th><th>状态</th><th>版本</th><th>重试轮次</th><th>待调整维度</th></tr></thead><tbody>' + coordinationRows + '</tbody></table></div></div>' +
+      '<p style="font-size:.8125rem;color:var(--muted)">后台仅显示脱敏编号与必要状态，不展示双方原始申请或聊天内容。</p>';
+  }
+
+  window.cloudAgentReply = function (id) {
+    modal('回复Agent工单',
+      '<div class="form-group"><label>人工回复</label><textarea id="cloudAgentReplyText" rows="4" maxlength="1000"></textarea></div>',
+      '<button class="btn btn-outline" onclick="closeM()">取消</button><button class="btn btn-primary" onclick="sendCloudAgentReply(' + id + ')">发送</button>');
+  };
+  window.sendCloudAgentReply = async function (id) {
+    try {
+      await memberApi('/admin/agent/tickets/' + id + '/reply', { method:'POST', body:{ content:document.getElementById('cloudAgentReplyText').value } });
+      closeM(); toast('人工回复已发送', true); pgService();
+    } catch (e) { toast(e.message, false); }
+  };
+  window.cloudAgentClose = async function (id) {
+    const resume = confirm('关闭工单后恢复AI自动服务？');
+    const note = prompt('请输入处理结果备注') || '';
+    try {
+      await memberApi('/admin/agent/tickets/' + id + '/close', { method:'POST', body:{ resume_agent:resume, note } });
+      toast('工单已关闭', true); pgService();
+    } catch (e) { toast(e.message, false); }
+  };
 
   async function pgOrders() {
     const data = await api('/admin/orders?pageSize=50');
@@ -589,6 +630,7 @@
   };
 
   async function pgKnowledge() {
+    if (CLOUD_MEMBER_API) return pgCloudKnowledge();
     const rows = await api('/admin/knowledge');
     let html = rows.length ? rows.map(k =>
       '<tr><td>' + k.id + '</td><td>' + esc(k.question) + '</td><td style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(k.answer) + '</td><td>' + (k.status ? '启用' : '禁用') + '</td><td><button class="btn btn-sm btn-outline" onclick="editK(' + k.id + ')">编辑</button> <button class="btn btn-sm btn-danger" onclick="delK(' + k.id + ')">删</button></td></tr>'
@@ -597,6 +639,56 @@
       '<div class="toolbar"><button class="btn btn-primary btn-sm" onclick="addK()">新增 FAQ</button></div>' +
       '<div class="card"><div class="card-bd"><table><thead><tr><th>ID</th><th>问题</th><th>回答</th><th>状态</th><th>操作</th></tr></thead><tbody>' + html + '</tbody></table></div></div>';
   }
+
+  async function pgCloudKnowledge() {
+    const data = await memberApi('/admin/knowledge-articles');
+    const rows = data.list || [];
+    const html = rows.length ? rows.map(k =>
+      '<tr><td>' + k.id + '</td><td>' + esc(k.category) + '</td><td>' + esc(k.title) + '</td><td>' + esc(k.status) + '</td><td>v' + k.version + '</td><td><button class="btn btn-sm btn-outline" onclick="editCloudKnowledge(' + k.id + ')">编辑</button> ' +
+      (k.status === 'published' ? '<button class="btn btn-sm btn-danger" onclick="offlineCloudKnowledge(' + k.id + ')">下线</button>' : '<button class="btn btn-sm btn-success" onclick="publishCloudKnowledge(' + k.id + ')">审核发布</button>') + '</td></tr>'
+    ).join('') : '<tr><td colspan="6" class="empty">暂无云端知识文章</td></tr>';
+    window.cloudKnowledgeCache = rows;
+    document.getElementById('content').innerHTML =
+      '<div class="toolbar"><button class="btn btn-primary btn-sm" onclick="addCloudKnowledge()">新增知识草稿</button></div>' +
+      '<div class="card"><div class="card-bd"><table><thead><tr><th>ID</th><th>分类</th><th>标题</th><th>状态</th><th>版本</th><th>操作</th></tr></thead><tbody>' + html + '</tbody></table></div></div>' +
+      '<p style="font-size:.8125rem;color:var(--muted)">客服可编辑草稿；仅超级管理员或审核角色可以发布与下线。</p>';
+  }
+
+  function cloudKnowledgeForm(item) {
+    item = item || {};
+    const categories = ['platform_faq','platform_rules','member_vip','matching','dating_safety','first_date','communication','relationship_boundaries','original_articles'];
+    return '<div class="form-group"><label>分类</label><select id="cloudKCategory">' + categories.map(v => '<option value="' + v + '">' + v + '</option>').join('') + '</select></div>' +
+      '<div class="form-group"><label>标题</label><input id="cloudKTitle" maxlength="160" value="' + esc(item.title || '') + '" /></div>' +
+      '<div class="form-group"><label>正文</label><textarea id="cloudKContent" rows="8">' + esc(item.content || '') + '</textarea></div>' +
+      '<div class="form-group"><label>标签（逗号分隔）</label><input id="cloudKTags" value="' + esc((item.tags || []).join(',')) + '" /></div>';
+  }
+  window.addCloudKnowledge = function () {
+    modal('新增知识草稿', cloudKnowledgeForm(), '<button class="btn btn-outline" onclick="closeM()">取消</button><button class="btn btn-primary" onclick="saveCloudKnowledge()">保存草稿</button>');
+  };
+  window.editCloudKnowledge = function (id) {
+    const item = (window.cloudKnowledgeCache || []).find(k => Number(k.id) === Number(id));
+    if (!item) return;
+    modal('编辑知识 #' + id, cloudKnowledgeForm(item), '<button class="btn btn-outline" onclick="closeM()">取消</button><button class="btn btn-primary" onclick="saveCloudKnowledge(' + id + ')">保存新版本</button>');
+    document.getElementById('cloudKCategory').value = item.category;
+  };
+  window.saveCloudKnowledge = async function (id) {
+    const body = {
+      category: document.getElementById('cloudKCategory').value,
+      title: document.getElementById('cloudKTitle').value,
+      content: document.getElementById('cloudKContent').value,
+      tags: document.getElementById('cloudKTags').value.split(',').map(v => v.trim()).filter(Boolean)
+    };
+    try {
+      await memberApi('/admin/knowledge-articles' + (id ? '/' + id : ''), { method:id ? 'PUT' : 'POST', body });
+      closeM(); toast('知识草稿已保存', true); pgKnowledge();
+    } catch (e) { toast(e.message, false); }
+  };
+  window.publishCloudKnowledge = async function (id) {
+    try { await memberApi('/admin/knowledge-articles/' + id + '/publish', { method:'POST' }); toast('知识已发布', true); pgKnowledge(); } catch (e) { toast(e.message, false); }
+  };
+  window.offlineCloudKnowledge = async function (id) {
+    try { await memberApi('/admin/knowledge-articles/' + id + '/offline', { method:'POST' }); toast('知识已下线', true); pgKnowledge(); } catch (e) { toast(e.message, false); }
+  };
 
   window.addK = function () {
     modal('新增知识库',
