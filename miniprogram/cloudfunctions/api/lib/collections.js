@@ -29,6 +29,7 @@ module.exports = {
   agent_tool_audit: 'agent_tool_calls',
   agent_tool_call: 'agent_tool_calls',
   agent_human_ticket: 'agent_human_tickets',
+  agent_notification_job: 'agent_notification_jobs',
   knowledge_article: 'knowledge_articles',
   user_agent_memory: 'user_agent_memories',
   date_coordination: 'date_coordinations',

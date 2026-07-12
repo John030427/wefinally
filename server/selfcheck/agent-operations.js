@@ -1,0 +1,15 @@
+const assert = require('assert')
+const { createReminderJob, classifyJob } = require('../../miniprogram/cloudfunctions/api/agent/notificationJobs')
+const { retentionDays, cutoffDates, isExpiredMemory } = require('../../miniprogram/cloudfunctions/api/agent/retentionPolicy')
+
+const now = new Date('2026-07-12T00:00:00Z')
+const job = createReminderJob({ coordinationId: 9, userId: 2, stage: 'invitation', deadlineAt: '2026-07-14T00:00:00Z', now })
+assert.equal(job.idempotency_key, 'date:9:2:invitation')
+assert.equal(job.scheduled_at.toISOString(), '2026-07-13T00:00:00.000Z')
+assert.equal(classifyJob(job, new Date('2026-07-13T01:00:00Z')), 'send')
+assert.equal(classifyJob(job, new Date('2026-07-14T00:00:00Z')), 'expired')
+
+assert.deepEqual(retentionDays({ AGENT_MESSAGE_RETENTION_DAYS: '30' }), { messages: 30, toolCalls: 365, memories: 365 })
+assert.equal(cutoffDates(now, { AGENT_MEMORY_RETENTION_DAYS: '10' }).user_agent_memory.toISOString(), '2026-07-02T00:00:00.000Z')
+assert.equal(isExpiredMemory({ expires_at: '2026-07-11T00:00:00Z' }, now), true)
+console.log('PASS agent notification and retention policies')
