@@ -7,6 +7,8 @@ const vip = require('./vip')
 const chat = require('./chat')
 const member = require('./member')
 const reportTask = require('./reportTask')
+const agent = require('./agent')
+const dateCoordination = require('./dateCoordination')
 
 function methodOf(value) {
   return String(value || 'GET').toUpperCase()
@@ -64,6 +66,9 @@ function route(method, path) {
     'GET /api/order/status': vip.status,
     'GET /api/chat/history': chat.history,
     'POST /api/chat/send': chat.send,
+    'POST /api/agent/sessions': agent.createSession,
+    'POST /api/agent/human-tickets': agent.createHumanTicket,
+    'POST /api/date-coordinations': dateCoordination.create,
     'POST /api/meet/create': meet.create,
     'POST /api/meet/sos': meet.homeSos,
     'GET /api/meet/existing': meet.existing,
@@ -71,7 +76,23 @@ function route(method, path) {
   }
   if (map[exact]) return map[exact]
 
-  let m = path.match(/^\/api\/meet\/share\/([^/]+)$/)
+  let m = path.match(/^\/api\/agent\/sessions\/(\d+)\/messages$/)
+  if (method === 'GET' && m) return withParams(agent.messages, { id: Number(m[1]), session_id: Number(m[1]) })
+  if (method === 'POST' && m) return withParams(agent.send, { id: Number(m[1]), session_id: Number(m[1]) })
+  m = path.match(/^\/api\/date-coordinations\/(\d+)$/)
+  if (method === 'GET' && m) return withParams(dateCoordination.detail, { id: Number(m[1]), coordination_id: Number(m[1]) })
+  m = path.match(/^\/api\/date-coordinations\/(\d+)\/invitation-response$/)
+  if (method === 'POST' && m) return withParams(dateCoordination.respondInvitation, { coordination_id: Number(m[1]) })
+  m = path.match(/^\/api\/date-coordinations\/(\d+)\/application$/)
+  if (method === 'PUT' && m) return withParams(dateCoordination.saveApplication, { coordination_id: Number(m[1]) })
+  m = path.match(/^\/api\/date-coordinations\/(\d+)\/proposals\/(\d+)\/confirm$/)
+  if (method === 'POST' && m) return withParams(dateCoordination.confirmProposal, {
+    coordination_id: Number(m[1]),
+    proposal_id: Number(m[2])
+  })
+  m = path.match(/^\/api\/date-coordinations\/(\d+)\/recoordinate$/)
+  if (method === 'POST' && m) return withParams(dateCoordination.recoordinate, { coordination_id: Number(m[1]) })
+  m = path.match(/^\/api\/meet\/share\/([^/]+)$/)
   if (method === 'GET' && m) return withParams(meet.shareDetail, { token: m[1] })
   m = path.match(/^\/api\/meet\/(\d+)$/)
   if (method === 'GET' && m) return withParams(meet.detail, { id: Number(m[1]) })

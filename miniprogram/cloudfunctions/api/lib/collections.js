@@ -24,6 +24,16 @@ module.exports = {
   member_application: 'member_applications',
   ai_report_task: 'ai_report_tasks',
   agent_session: 'agent_sessions',
+  agent_message: 'agent_messages',
   agent_run: 'agent_runs',
-  agent_tool_audit: 'agent_tool_audits'
+  agent_tool_audit: 'agent_tool_calls',
+  agent_tool_call: 'agent_tool_calls',
+  agent_human_ticket: 'agent_human_tickets',
+  knowledge_article: 'knowledge_articles',
+  user_agent_memory: 'user_agent_memories',
+  date_coordination: 'date_coordinations',
+  date_participant: 'date_participants',
+  date_coordination_application: 'date_applications',
+  date_coordination_proposal: 'date_proposals',
+  date_coordination_confirmation: 'date_confirmations'
 }

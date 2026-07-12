@@ -8,17 +8,20 @@ function reviewed(record) {
 }
 
 function queryTerms(query) {
-  return String(query || '')
+  const text = String(query || '')
     .trim()
     .toLowerCase()
-    .split(/\s+/)
+  const words = text.split(/\s+/)
     .filter(Boolean)
-    .slice(0, 8)
+  const chinese = text.match(/[\u4e00-\u9fff]{2,}/g) || []
+  const pairs = chinese.flatMap((item) => Array.from({ length: Math.max(0, item.length - 1) }, (_, index) => item.slice(index, index + 2)))
+  return Array.from(new Set(words.concat(pairs))).slice(0, 30)
 }
 
 function score(record, terms) {
   const searchable = [record.title, record.content]
     .concat(Array.isArray(record.keywords) ? record.keywords : [])
+    .concat(Array.isArray(record.tags) ? record.tags : [])
     .join(' ')
     .toLowerCase()
   return terms.reduce((total, term) => total + (searchable.includes(term) ? 1 : 0), 0)
