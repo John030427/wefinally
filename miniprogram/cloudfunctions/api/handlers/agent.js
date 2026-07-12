@@ -93,13 +93,24 @@ function createAgentHandlers(overrides = {}) {
     const user = await dep('currentUser')(wxContext)
     const agentType = String(data.agent_type || data.agentType || AGENT_TYPES.PLATFORM_SERVICE)
     if (!isAgentType(agentType)) throw new Error('不支持的AI助手类型')
-    if (agentType === AGENT_TYPES.DATE_COORDINATOR && !Number(data.coordination_id || data.coordinationId || 0)) {
-      throw new Error('约会协调会话缺少协调任务')
+    const coordinationId = Number(data.coordination_id || data.coordinationId || 0)
+    if (agentType === AGENT_TYPES.DATE_COORDINATOR) {
+      if (!coordinationId) throw new Error('约会协调会话缺少协调任务')
+      const coordination = await dep('byId')('date_coordination', coordinationId)
+      if (!coordination || ![Number(coordination.user_a_id), Number(coordination.user_b_id)].includes(Number(user.id))) {
+        throw new Error('无权进入该约会协调会话')
+      }
     }
+    const sessions = await dep('list')('agent_session', { user_id: user.id, agent_type: agentType }, 100)
+    const reusable = sessions
+      .filter((row) => !['closed', 'cancelled'].includes(row.status))
+      .filter((row) => agentType !== AGENT_TYPES.DATE_COORDINATOR || Number(row.coordination_id) === coordinationId)
+      .sort((a, b) => Number(b.id || 0) - Number(a.id || 0))[0]
+    if (reusable) return publicSession(reusable)
     const row = await dep('addWithId')('agent_session', {
       user_id: user.id,
       agent_type: agentType,
-      coordination_id: Number(data.coordination_id || data.coordinationId || 0),
+      coordination_id: coordinationId,
       status: 'active',
       summary: '',
       unresolved_count: 0
@@ -199,6 +210,34 @@ function createAgentHandlers(overrides = {}) {
       const reply = riskReply(risk.category)
       await saveMessage(session, user, 'assistant', reply, { risk_level: risk.category })
       return { session_id: session.id, agent_type: session.agent_type, reply, risk_level: risk.category, manual_pending: risk.category === RISK.HIGH_RISK }
+    }
+
+    if (session.agent_type === AGENT_TYPES.DATE_COORDINATOR) {
+      const coordination = await dep('byId')('date_coordination', Number(session.coordination_id || 0))
+      if (!coordination || ![Number(coordination.user_a_id), Number(coordination.user_b_id)].includes(Number(user.id))) {
+        throw new Error('无权读取该约会协调任务')
+      }
+      const statusText = {
+        inviting_partner: '正在等待对方确认是否参与协调',
+        collecting_preferences: '正在分别填写约会偏好',
+        computing_overlap: '正在计算双方条件交集',
+        waiting_confirmations: '已有候选方案，正在等待双方确认同一个方案',
+        no_overlap: '暂时没有完整交集，可以调整偏好重新协调',
+        replanning: '正在进行新一轮偏好协调',
+        arranged: '双方已确认同一个方案，约会安排已经形成',
+        manual_handoff: '自动协调已暂停，正在等待人工客服协助',
+        expired: '当前协调已过期'
+      }[coordination.status] || '协调任务正在处理中'
+      const reply = `当前进度：${statusText}。我只会说明共同进度，不会展示对方的原始回答。`
+      await recordTool(session, user, TOOL_NAMES.DATE_COORDINATION, 'completed')
+      await saveMessage(session, user, 'assistant', reply)
+      return {
+        session_id: session.id,
+        agent_type: session.agent_type,
+        reply,
+        tool: TOOL_NAMES.DATE_COORDINATION,
+        risk_level: 'safe'
+      }
     }
 
     const tool = session.agent_type === AGENT_TYPES.PLATFORM_SERVICE ? inferTool(content) : ''

@@ -6,7 +6,8 @@ function fakeDeps() {
   const tables = {
     user: [
       { id: 1, openid: 'user-a', member_status: 'approved', is_vip: 0, status: 1 },
-      { id: 2, openid: 'user-b', member_status: 'pending_review', is_vip: 1, status: 1 }
+      { id: 2, openid: 'user-b', member_status: 'pending_review', is_vip: 1, status: 1 },
+      { id: 3, openid: 'user-c', member_status: 'approved', is_vip: 1, status: 1 }
     ],
     agent_session: [],
     agent_message: [],
@@ -22,7 +23,7 @@ function fakeDeps() {
       tags: ['约会', '尴尬']
     }],
     user_match_log: [{ id: 10, user_id: 1, match_user_id: 2, status: 'matched' }],
-    date_coordination: []
+    date_coordination: [{ id: 50, user_a_id: 1, user_b_id: 2, status: 'collecting_preferences', coordination_version: 1 }]
   }
   let id = 100
   const match = (row, query) => Object.keys(query || {}).every((key) => row[key] === query[key])
@@ -71,15 +72,28 @@ async function main() {
   const handlers = createAgentHandlers(deps)
   const contextA = { OPENID: 'user-a' }
   const contextB = { OPENID: 'user-b' }
+  const contextC = { OPENID: 'user-c' }
 
   const platform = await handlers.createSession({ agent_type: AGENT_TYPES.PLATFORM_SERVICE }, contextA)
+  const platformAgain = await handlers.createSession({ agent_type: AGENT_TYPES.PLATFORM_SERVICE }, contextA)
   const love = await handlers.createSession({ agent_type: AGENT_TYPES.LOVE_ADVISOR }, contextA)
+  const coordinator = await handlers.createSession({ agent_type: AGENT_TYPES.DATE_COORDINATOR, coordination_id: 50 }, contextA)
+  assert.strictEqual(platformAgain.id, platform.id)
   assert.notStrictEqual(platform.id, love.id)
+  assert.strictEqual(coordinator.coordination_id, 50)
+  await assert.rejects(
+    () => handlers.createSession({ agent_type: AGENT_TYPES.DATE_COORDINATOR, coordination_id: 50 }, contextC),
+    /无权进入/
+  )
+  const coordinatorReply = await handlers.send({ session_id: coordinator.id, message: '现在协调到哪一步了？' }, contextA)
+  assert(coordinatorReply.reply.includes('填写约会偏好'))
+  assert.strictEqual(coordinatorReply.tool, 'get_date_coordination_status')
+  assert.strictEqual(JSON.stringify(coordinatorReply).includes('user_a_id'), false)
 
   const statusReply = await handlers.send({ session_id: platform.id, message: '我的会员审核状态怎么样？' }, contextA)
   assert(statusReply.reply.includes('审核通过'))
   assert.strictEqual(statusReply.tool, 'get_member_review_status')
-  assert.strictEqual(deps.tables.agent_tool_call.length, 1)
+  assert.strictEqual(deps.tables.agent_tool_call.filter((row) => row.tool_name === 'get_member_review_status').length, 1)
   assert.strictEqual(Object.prototype.hasOwnProperty.call(statusReply, 'raw'), false)
 
   const platformHistory = await handlers.messages({ id: platform.id }, contextA)
@@ -105,6 +119,7 @@ async function main() {
   const manualReply = await handlers.send({ session_id: platform.id, message: '还有人在吗？' }, contextA)
   assert(manualReply.reply.includes('已转人工'))
 
+  deps.tables.agent_session.find((row) => row.id === love.id).status = 'closed'
   const quotaSession = await handlers.createSession({ agent_type: AGENT_TYPES.LOVE_ADVISOR }, contextA)
   for (let index = 0; index < 5; index += 1) {
     await deps.addWithId('agent_message', {
