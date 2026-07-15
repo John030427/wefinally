@@ -11,6 +11,7 @@ function defaultDeps() {
     flagEnabled: flags.flagEnabled,
     readWechatPayConfig: wechatpay.readWechatPayConfig,
     requestJsapiPrepay: wechatpay.requestJsapiPrepay,
+    requestTransactionByOrderNo: wechatpay.requestTransactionByOrderNo,
     buildMiniProgramPayParams: wechatpay.buildMiniProgramPayParams,
     orderService: createVipOrderService()
   }
@@ -27,6 +28,7 @@ function createVipHandlers(overrides = {}) {
   const flagEnabled = dep('flagEnabled')
   const readWechatPayConfig = dep('readWechatPayConfig')
   const requestJsapiPrepay = dep('requestJsapiPrepay')
+  const requestTransactionByOrderNo = dep('requestTransactionByOrderNo')
   const buildMiniProgramPayParams = dep('buildMiniProgramPayParams')
   const orderService = dep('orderService')
 
@@ -105,7 +107,24 @@ function createVipHandlers(overrides = {}) {
     const user = await currentUser(wxContext)
     const orderNo = String(data.order_no || data.orderNo || '').trim()
     if (!orderNo) throw new Error('缺少订单号')
-    return orderService.getStatusForUser(user, orderNo)
+    const localStatus = await orderService.getStatusForUser(user, orderNo)
+    if (localStatus.is_paid) return localStatus
+
+    const config = readWechatPayConfig()
+    if (!config.ready) return localStatus
+    try {
+      const transaction = await requestTransactionByOrderNo({ config, orderNo })
+      if (!transaction || transaction.trade_state !== 'SUCCESS') {
+        return Object.assign({}, localStatus, {
+          trade_state: (transaction && transaction.trade_state) || localStatus.trade_state
+        })
+      }
+      await orderService.finalizePaidVipOrder(transaction, config)
+      return orderService.getStatusForUser(user, orderNo)
+    } catch (err) {
+      console.error('[wxpay query]', (err && err.message) || err)
+      return localStatus
+    }
   }
 
   return { info, purchase, status }

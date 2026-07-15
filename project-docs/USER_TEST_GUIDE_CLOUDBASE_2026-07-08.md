@@ -192,16 +192,25 @@ WXPAY_ENABLED=true
 WXPAY_APP_ID=wx91c6559ea4490a29
 WXPAY_MCH_ID=1747991634
 WXPAY_NOTIFY_URL=<CloudBase HTTP 访问里的 /wxpay/notify 公网 HTTPS 地址>
-WXPAY_MERCHANT_SERIAL_NO=<商户 API 证书序列号>
+WXPAY_MERCHANT_SERIAL_NO=3AF25390241003BF601241DFBC51C659070061D7
 WXPAY_MERCHANT_PRIVATE_KEY_BASE64=<apiclient_key.pem 的 base64 文本>
 WXPAY_API_V3_KEY=<32 位 APIv3 密钥>
-WXPAY_PUBLIC_KEY_ID=<微信支付公钥 ID>
+WXPAY_PUBLIC_KEY_ID=PUB_KEY_ID_0117479916342026071000291646004203
 WXPAY_PUBLIC_KEY_BASE64=<微信支付公钥 PEM 的 base64 文本>
-PAYMENT_STAGE=production
+PAYMENT_STAGE=test
 PAYMENT_TEST_AMOUNT_FEN=1
 ```
 
-生产环境 `PAYMENT_STAGE=production` 时固定收取 188 元。只有 `PAYMENT_STAGE=test` 才会读取 `PAYMENT_TEST_AMOUNT_FEN`。
+本机可用以下命令检查证书，或把某一项安全复制到剪贴板；脚本不会在终端显示私钥内容：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools/cloudbase/copy-wechatpay-env.ps1 -Check
+powershell -ExecutionPolicy Bypass -File tools/cloudbase/copy-wechatpay-env.ps1 -Name WXPAY_MERCHANT_PRIVATE_KEY_BASE64
+```
+
+首次内部真机测试使用 `PAYMENT_STAGE=test` 和 `PAYMENT_TEST_AMOUNT_FEN=1`，实际扣款 1 分。正式发布前必须改成 `PAYMENT_STAGE=production`，此时服务端固定收取 188 元并忽略测试金额。
+
+支付请求会携带微信支付公钥 ID 并校验微信 API 应答签名。客户端确认付款后，服务端除了等待支付通知，还会主动查单；回调延迟时也能确认真实付款并幂等开通 VIP。
 
 没有补齐以上密钥前，可以完成代码部署和自检，但不能做真实收款测试。
 

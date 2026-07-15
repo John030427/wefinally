@@ -89,13 +89,58 @@ function verifyWechatPaySignature({ headers, body, publicKeyPem, expectedSerial 
   const signature = headerValue(headers, 'wechatpay-signature')
   const serial = headerValue(headers, 'wechatpay-serial')
   if (!timestamp || !nonceStr || !signature || !publicKeyPem) return false
-  if (expectedSerial && serial && serial !== expectedSerial) return false
+  if (expectedSerial && serial !== expectedSerial) return false
   const message = `${timestamp}\n${nonceStr}\n${body || ''}\n`
   try {
     return crypto.verify('RSA-SHA256', Buffer.from(message), publicKeyPem, Buffer.from(signature, 'base64'))
   } catch (err) {
     return false
   }
+}
+
+function buildWechatPayRequest({ method, urlPath, body, config, timestamp, nonce: nonceValue }) {
+  const payload = body === undefined || body === null ? '' : JSON.stringify(body)
+  const requestTimestamp = String(timestamp || Math.floor(Date.now() / 1000))
+  const requestNonce = nonceValue || nonce(32)
+  const auth = buildAuthorization({
+    method,
+    urlPath,
+    timestamp: requestTimestamp,
+    nonce: requestNonce,
+    body: payload,
+    mchId: config.mchId,
+    serialNo: config.merchantSerialNo,
+    privateKeyPem: config.merchantPrivateKeyPem
+  })
+  const headers = {
+    Authorization: auth.header,
+    Accept: 'application/json',
+    'Wechatpay-Serial': config.wechatPayPublicKeyId
+  }
+  if (payload) {
+    headers['Content-Type'] = 'application/json'
+    headers['Content-Length'] = Buffer.byteLength(payload)
+  }
+  return {
+    payload,
+    options: {
+      hostname: 'api.mch.weixin.qq.com',
+      path: urlPath,
+      method: String(method).toUpperCase(),
+      headers
+    }
+  }
+}
+
+function assertWechatPayResponseSignature({ headers, body, config }) {
+  const valid = verifyWechatPaySignature({
+    headers,
+    body,
+    publicKeyPem: config.wechatPayPublicKeyPem,
+    expectedSerial: config.wechatPayPublicKeyId
+  })
+  if (!valid) throw new Error('微信支付应答签名验证失败')
+  return true
 }
 
 function decryptResource(resource, apiV3Key) {
@@ -111,36 +156,19 @@ function decryptResource(resource, apiV3Key) {
   return JSON.parse(plain)
 }
 
-function postJson(urlPath, body, config) {
-  const payload = JSON.stringify(body)
-  const timestamp = String(Math.floor(Date.now() / 1000))
-  const nonceStr = nonce(32)
-  const auth = buildAuthorization({
-    method: 'POST',
-    urlPath,
-    timestamp,
-    nonce: nonceStr,
-    body: payload,
-    mchId: config.mchId,
-    serialNo: config.merchantSerialNo,
-    privateKeyPem: config.merchantPrivateKeyPem
-  })
+function requestWechatPayJson({ method, urlPath, body, config }) {
+  const request = buildWechatPayRequest({ method, urlPath, body, config })
   return new Promise((resolve, reject) => {
-    const req = https.request({
-      hostname: 'api.mch.weixin.qq.com',
-      path: urlPath,
-      method: 'POST',
-      headers: {
-        Authorization: auth.header,
-        Accept: 'application/json',
-        'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(payload)
-      }
-    }, (res) => {
+    const req = https.request(request.options, (res) => {
       let text = ''
       res.setEncoding('utf8')
       res.on('data', (chunk) => { text += chunk })
       res.on('end', () => {
+        try {
+          assertWechatPayResponseSignature({ headers: res.headers, body: text, config })
+        } catch (err) {
+          return reject(err)
+        }
         let json = {}
         try {
           json = text ? JSON.parse(text) : {}
@@ -152,9 +180,13 @@ function postJson(urlPath, body, config) {
       })
     })
     req.on('error', reject)
-    req.write(payload)
+    if (request.payload) req.write(request.payload)
     req.end()
   })
+}
+
+function postJson(urlPath, body, config) {
+  return requestWechatPayJson({ method: 'POST', urlPath, body, config })
 }
 
 async function requestJsapiPrepay({ config, openid, orderNo, amountTotal, description = 'WeFinally VIP会员', post = postJson }) {
@@ -170,13 +202,28 @@ async function requestJsapiPrepay({ config, openid, orderNo, amountTotal, descri
   return post('/v3/pay/transactions/jsapi', body, config)
 }
 
+function requestTransactionByOrderNo({ config, orderNo, request = requestWechatPayJson }) {
+  const encodedOrderNo = encodeURIComponent(String(orderNo || '').trim())
+  const encodedMchId = encodeURIComponent(config.mchId)
+  if (!encodedOrderNo) throw new Error('缺少微信支付订单号')
+  return request({
+    method: 'GET',
+    urlPath: `/v3/pay/transactions/out-trade-no/${encodedOrderNo}?mchid=${encodedMchId}`,
+    config
+  })
+}
+
 module.exports = {
   readWechatPayConfig,
   vipAmountFen,
   buildAuthorization,
   buildMiniProgramPayParams,
   verifyWechatPaySignature,
+  buildWechatPayRequest,
+  assertWechatPayResponseSignature,
   decryptResource,
   requestJsapiPrepay,
+  requestTransactionByOrderNo,
+  requestWechatPayJson,
   postJson
 }

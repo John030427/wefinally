@@ -67,6 +67,17 @@ async function main() {
   assert(auth.header.includes('serial_no="MERCHANT_SERIAL"'))
   assert.strictEqual(verifyRsa(publicPem, auth.signatureMessage, auth.signature), true)
 
+  const apiRequest = wechatpay.buildWechatPayRequest({
+    method: 'POST',
+    urlPath: '/v3/pay/transactions/jsapi',
+    body: { appid: config.appId, mchid: config.mchId },
+    config,
+    timestamp: '1234567890',
+    nonce: 'request-nonce'
+  })
+  assert.strictEqual(apiRequest.options.headers['Wechatpay-Serial'], 'PUB_KEY_ID_TEST')
+  assert.strictEqual(apiRequest.options.method, 'POST')
+
   const miniPay = wechatpay.buildMiniProgramPayParams({
     appId: config.appId,
     prepayId: 'wx_pre_pay_id',
@@ -125,6 +136,48 @@ async function main() {
     publicKeyPem: config.wechatPayPublicKeyPem,
     expectedSerial: 'PUB_KEY_ID_TEST'
   }), false)
+
+  assert.strictEqual(wechatpay.verifyWechatPaySignature({
+    headers: {
+      'wechatpay-timestamp': timestamp,
+      'wechatpay-nonce': nonce,
+      'wechatpay-signature': signature
+    },
+    body: notifyBody,
+    publicKeyPem: config.wechatPayPublicKeyPem,
+    expectedSerial: 'PUB_KEY_ID_TEST'
+  }), false)
+
+  const queryBody = JSON.stringify(transaction)
+  const queryHeaders = {
+    'wechatpay-timestamp': timestamp,
+    'wechatpay-nonce': nonce,
+    'wechatpay-signature': signCallback(privateKey, timestamp, nonce, queryBody),
+    'wechatpay-serial': 'PUB_KEY_ID_TEST'
+  }
+  assert.strictEqual(wechatpay.assertWechatPayResponseSignature({
+    headers: queryHeaders,
+    body: queryBody,
+    config
+  }), true)
+  assert.throws(() => wechatpay.assertWechatPayResponseSignature({
+    headers: queryHeaders,
+    body: `${queryBody} `,
+    config
+  }), /签名/)
+
+  let queryRequest = null
+  const queried = await wechatpay.requestTransactionByOrderNo({
+    config,
+    orderNo: 'WF_TEST_1',
+    request: async (input) => {
+      queryRequest = input
+      return transaction
+    }
+  })
+  assert.strictEqual(queryRequest.method, 'GET')
+  assert.strictEqual(queryRequest.urlPath, '/v3/pay/transactions/out-trade-no/WF_TEST_1?mchid=1747991634')
+  assert.strictEqual(queried.trade_state, 'SUCCESS')
 
   console.log('PASS - cloudbase wechatpay utility')
 }

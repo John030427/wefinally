@@ -155,6 +155,9 @@ async function main() {
       assert.strictEqual(amountTotal, 18800)
       return { prepay_id: 'wx_prepay_2' }
     },
+    requestTransactionByOrderNo: async () => {
+      throw new Error('paid status must not query WeChat Pay')
+    },
     buildMiniProgramPayParams: () => ({
       timeStamp: '123',
       nonceStr: 'nonce',
@@ -183,6 +186,45 @@ async function main() {
   assert.strictEqual(purchase.demo_granted, false)
   const routeStatus = await handlers.status({ order_no: 'WF_TEST_ORDER_2' }, {})
   assert.strictEqual(routeStatus.is_paid, true)
+
+  let statusReads = 0
+  let queriedOrderNo = ''
+  let finalizedTransaction = null
+  const recoveryHandlers = createVipHandlers({
+    currentUser: async () => fakeUser,
+    flagEnabled: async () => false,
+    readWechatPayConfig: () => Object.assign({}, config, { enabled: true, ready: true }),
+    requestJsapiPrepay: async () => ({ prepay_id: 'unused' }),
+    buildMiniProgramPayParams: () => ({}),
+    requestTransactionByOrderNo: async ({ orderNo }) => {
+      queriedOrderNo = orderNo
+      return {
+        appid: config.appId,
+        mchid: config.mchId,
+        out_trade_no: orderNo,
+        transaction_id: 'TX_QUERY_1',
+        trade_state: 'SUCCESS',
+        amount: { total: 18800, currency: 'CNY' }
+      }
+    },
+    orderService: {
+      getStatusForUser: async () => {
+        statusReads += 1
+        return statusReads === 1
+          ? { order_no: 'WF_QUERY_1', pay_status: 0, is_paid: false }
+          : { order_no: 'WF_QUERY_1', pay_status: 1, is_paid: true }
+      },
+      finalizePaidVipOrder: async (transaction) => {
+        finalizedTransaction = transaction
+        return { paid: true }
+      }
+    }
+  })
+  const recoveredStatus = await recoveryHandlers.status({ order_no: 'WF_QUERY_1' }, {})
+  assert.strictEqual(queriedOrderNo, 'WF_QUERY_1')
+  assert.strictEqual(finalizedTransaction.transaction_id, 'TX_QUERY_1')
+  assert.strictEqual(recoveredStatus.is_paid, true)
+  assert.strictEqual(statusReads, 2)
 
   console.log('PASS - cloudbase vip payment order service')
 }
