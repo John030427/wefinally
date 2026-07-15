@@ -19,5 +19,11 @@ assert(!/if\s*\(this\.data\.isVip\)\s*\{[\s\S]{0,160}您已是 VIP 会员/.test(
 assert(vipJs.includes("this.data.isVip ? '确认续费' : '确认开通'"))
 assert(vipWxml.includes("disabled=\"{{purchasing}}\""))
 assert(vipWxml.includes("isVip ? '续费 VIP ¥' + vipPrice"))
+assert(vipJs.includes('演示模式'))
+const demoStart = vipJs.indexOf('if (result && result.demo_granted)')
+const demoEnd = vipJs.indexOf("title: '支付暂未开启'", demoStart)
+const demoBlock = vipJs.slice(demoStart, demoEnd)
+assert(demoBlock.includes('wx.showModal'))
+assert(!demoBlock.includes('wx.showToast'))
 
 console.log('PASS - miniprogram vip payment confirmation')

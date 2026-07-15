@@ -133,7 +133,13 @@ Page({
           }
 
           if (result && result.demo_granted) {
-            wx.showToast({ title: `${purchaseAction}成功`, icon: 'success' })
+            wx.showModal({
+              title: '演示模式',
+              content: result.message
+                ? `${result.message}。当前为演示模式，未发起微信支付，也不会扣款。`
+                : '当前为演示模式，未发起微信支付，也不会扣款。',
+              showCancel: false
+            })
             this.loadVipInfo()
             return
           }
