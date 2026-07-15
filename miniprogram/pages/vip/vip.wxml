@@ -54,9 +54,9 @@
       <button
         class="btn-primary"
         bindtap="onPurchase"
-        disabled="{{purchasing || isVip}}"
+        disabled="{{purchasing}}"
         loading="{{purchasing}}"
-      >{{isVip ? '已是 VIP 会员' : '立即开通 ¥' + vipPrice}}</button>
+      >{{isVip ? '续费 VIP ¥' + vipPrice : '立即开通 ¥' + vipPrice}}</button>
     </view>
   </block>
 </view>

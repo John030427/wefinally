@@ -83,10 +83,7 @@ Page({
 
   async onPurchase() {
     if (this.data.purchasing) return
-    if (this.data.isVip) {
-      wx.showToast({ title: '您已是 VIP 会员', icon: 'none' })
-      return
-    }
+    const purchaseAction = this.data.isVip ? '续费' : '开通'
 
     const app = getApp()
     const hasNetwork = await app.checkNetwork()
@@ -96,8 +93,8 @@ Page({
     }
 
     wx.showModal({
-      title: '确认开通',
-      content: `支付 ${this.data.vipPrice} 元开通 ${this.data.vipDays} 天 VIP，不自动续费`,
+      title: this.data.isVip ? '确认续费' : '确认开通',
+      content: `支付 ${this.data.vipPrice} 元${purchaseAction} ${this.data.vipDays} 天 VIP，不自动续费`,
       success: async (res) => {
         if (!res.confirm) return
         this.setData({ purchasing: true })
@@ -126,7 +123,7 @@ Page({
             const paid = await this.pollOrderStatus(result.order_no, 5)
             this.setData({ paymentProcessing: false, processingText: '' })
             if (paid && paid.is_paid) {
-              wx.showToast({ title: '开通成功', icon: 'success' })
+              wx.showToast({ title: `${purchaseAction}成功`, icon: 'success' })
               this.loadVipInfo()
               return
             }
@@ -136,7 +133,7 @@ Page({
           }
 
           if (result && result.demo_granted) {
-            wx.showToast({ title: '开通成功', icon: 'success' })
+            wx.showToast({ title: `${purchaseAction}成功`, icon: 'success' })
             this.loadVipInfo()
             return
           }
