@@ -1212,3 +1212,7 @@ Bug 验证 / 云端只读审计 / 测试夹具 / 隐私加固
 - 六组总自检全部通过；归档 CloudBase 交付报告后产生的旧路径断言已同步到 `project-docs/archive/audits/`。
 - `server/selfcheck/partner-dashboard.js` 语法检查和 `git diff --check` 通过。
 - 首次基线使用独立临时 Git 仓库生成，不改写当前 `feature/ai-agent-system` 的 90 个旧提交和脏工作树。
+- 安全基线已推送到私有仓库 `John030427/wefinally` 的 `main`，提交为 `7d8d7549b5a5e5e4cd8905c44a7b47906e3d614e`，远端与本地快照 SHA 一致。
+- `Todou-er` 已接受邀请并具有 `write` 权限。
+- `main` 已要求 PR、1 人审批、对话解决和线性历史，禁止强推/删除并对管理员生效；仅允许 Squash 合并，合并后自动删除分支。
+- 已启用漏洞提醒和自动安全修复。
