@@ -1,0 +1,38 @@
+<view class="welcome-page">
+  <view class="brand-row">
+    <view class="brand-mark">WF</view>
+    <view class="brand-name">WeFinally</view>
+    <view class="skip-action" bindtap="onSkip">稍后了解</view>
+  </view>
+
+  <swiper class="trust-swiper" current="{{current}}" bindchange="onSwiperChange">
+    <swiper-item wx:for="{{slides}}" wx:key="step">
+      <view class="trust-slide">
+        <view class="visual-stage visual-{{item.visual}}">
+          <view class="visual-orbit orbit-one"></view>
+          <view class="visual-orbit orbit-two"></view>
+          <view class="visual-core">
+            <view class="visual-symbol">{{item.visual === 'shield' ? '✓' : (item.visual === 'privacy' ? '•••' : '↔')}}</view>
+          </view>
+          <view class="visual-chip chip-left">{{item.step}}</view>
+          <view class="visual-chip chip-right">可信</view>
+        </view>
+
+        <view class="slide-copy">
+          <view class="slide-kicker">{{item.kicker}}</view>
+          <view class="slide-title">{{item.title}}</view>
+          <view class="slide-description">{{item.description}}</view>
+          <view class="trust-badge">{{item.badge}}</view>
+        </view>
+      </view>
+    </swiper-item>
+  </swiper>
+
+  <view class="welcome-footer">
+    <view class="dots">
+      <view class="dot {{current === index ? 'active' : ''}}" wx:for="{{slides}}" wx:key="step"></view>
+    </view>
+    <button class="welcome-primary" bindtap="onNext">{{current === slides.length - 1 ? '开始认真认识' : '继续了解'}}</button>
+    <view class="welcome-note">不催你做决定，只帮你把重要的事看清楚</view>
+  </view>
+</view>

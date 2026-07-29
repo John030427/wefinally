@@ -1,0 +1,13 @@
+.page { min-height: 100vh; padding: 32rpx; background: #f7f7f8; box-sizing: border-box; }
+.state { padding: 120rpx 0; text-align: center; color: #888; }
+.status-band { padding: 36rpx 32rpx; background: #fff; border-left: 8rpx solid #f0a020; }
+.status-band.approved { border-left-color: #2f9d62; }
+.status-band.rejected, .status-band.disabled { border-left-color: #d94a4a; }
+.status-title { font-size: 36rpx; font-weight: 600; color: #222; }
+.status-desc { margin-top: 16rpx; color: #666; line-height: 1.6; }
+.section { margin-top: 24rpx; padding: 28rpx; background: #fff; }
+.section-title { font-weight: 600; margin-bottom: 16rpx; }
+.review-note { color: #555; line-height: 1.7; white-space: pre-wrap; }
+.actions { margin-top: 36rpx; display: flex; flex-direction: column; gap: 20rpx; }
+.primary { background: #ff6b8a; color: #fff; border-radius: 8rpx; }
+.secondary { background: #fff; color: #555; border: 1rpx solid #ddd; border-radius: 8rpx; }

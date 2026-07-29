@@ -1,0 +1,41 @@
+<view class="login-page">
+  <image class="login-cover-image" src="/assets/wefinally-cover-branded.jpg" mode="aspectFill" />
+  <view class="login-cover-shade"></view>
+
+  <block wx:if="{{pageState === 'loading'}}">
+    <view class="state-wrap">
+      <view class="state-icon">⏳</view>
+      <view class="state-text">正在加载...</view>
+    </view>
+  </block>
+
+  <block wx:elif="{{pageState === 'no-network'}}">
+    <view class="state-wrap">
+      <view class="state-icon">📡</view>
+      <view class="state-text">网络不可用，请检查网络连接</view>
+      <view class="state-btn" bindtap="onRetry">重新加载</view>
+    </view>
+  </block>
+
+  <block wx:elif="{{pageState === 'error'}}">
+    <view class="state-wrap">
+      <view class="state-icon">⚠️</view>
+      <view class="state-text">{{errorMsg || '加载失败'}}</view>
+      <view class="state-btn" bindtap="onRetry">重试</view>
+    </view>
+  </block>
+
+  <block wx:else>
+    <view class="login-content">
+      <view class="login-panel">
+        <view
+          class="login-primary login-btn {{logging ? 'is-disabled' : ''}}"
+          bindtap="onWxLogin"
+          hover-class="login-primary-hover"
+        >{{logging ? '登录中...' : '微信一键登录'}}</view>
+        <view class="login-secondary" bindtap="goRules">查看平台规则</view>
+        <view class="login-tip">登录即表示同意服务协议、隐私授权与婚恋真实性承诺</view>
+      </view>
+    </view>
+  </block>
+</view>

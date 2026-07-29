@@ -1,0 +1,27 @@
+# dependencies
+node_modules/
+server/node_modules/
+
+# env / secrets
+.env
+server/.env
+*.env.local
+
+# logs
+*.log
+npm-debug.log*
+logs/
+.deploy/
+cloudbase-export/
+cloudbase-export-jsonl/
+server/sample-data/matching-system/latest-run.json
+
+# WeChat devtools
+project.private.config.json
+miniprogram/miniprogram_npm/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

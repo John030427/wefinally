@@ -1,0 +1,16 @@
+<view class="love-page container">
+  <view class="love-hero">
+    <view class="love-title">把关系聊得更清楚一点</view>
+    <view class="love-subtitle">温和、尊重地陪你梳理当下的感受和选择。</view>
+    <view class="love-subtitle">健康恋爱，从尊重、坦诚和边界开始。</view>
+    <button class="love-start" bindtap="openConversation">开始聊聊</button>
+  </view>
+
+  <view class="section-title">恋爱小知识</view>
+  <view class="topic-card card" wx:for="{{topics}}" wx:key="title" bindtap="askTopic" data-topic="{{item.title}}">
+    <view class="topic-title">{{item.title}}</view>
+    <view class="topic-desc">{{item.desc}}</view>
+  </view>
+
+  <view class="knowledge-note">信息有限时，我会明确说明知识不足，不把猜测当成建议。</view>
+</view>

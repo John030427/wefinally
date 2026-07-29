@@ -1,0 +1,280 @@
+page {
+  background-color: #f8f4f5;
+  color: #333333;
+  font-size: 28rpx;
+  line-height: 1.5;
+  box-sizing: border-box;
+}
+
+.container {
+  min-height: 100vh;
+  padding: 32rpx;
+  box-sizing: border-box;
+}
+
+.page-title {
+  font-size: 40rpx;
+  font-weight: 600;
+  color: #222222;
+  margin-bottom: 16rpx;
+}
+
+.page-subtitle {
+  font-size: 26rpx;
+  color: #888888;
+  margin-bottom: 32rpx;
+}
+
+.card {
+  background: #ffffff;
+  border-radius: 16rpx;
+  padding: 32rpx;
+  margin-bottom: 24rpx;
+  box-shadow: 0 4rpx 16rpx rgba(0, 0, 0, 0.04);
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, #ff6b8a, #ff8fa3);
+  color: #ffffff;
+  border-radius: 48rpx;
+  font-size: 30rpx;
+  font-weight: 500;
+  border: none;
+  line-height: 88rpx;
+  height: 88rpx;
+  padding: 0 48rpx;
+}
+
+.btn-primary::after {
+  border: none;
+}
+
+.btn-primary[disabled] {
+  background: #cccccc;
+  color: #ffffff;
+}
+
+.btn-secondary {
+  background: #ffffff;
+  color: #ff6b8a;
+  border: 2rpx solid #ff6b8a;
+  border-radius: 48rpx;
+  font-size: 30rpx;
+  line-height: 84rpx;
+  height: 88rpx;
+  padding: 0 48rpx;
+}
+
+.btn-secondary::after {
+  border: none;
+}
+
+.btn-secondary[disabled] {
+  color: #cccccc;
+  border-color: #cccccc;
+}
+
+.form-label {
+  font-size: 28rpx;
+  color: #555555;
+  margin-bottom: 12rpx;
+  display: block;
+}
+
+.form-item {
+  margin-bottom: 28rpx;
+}
+
+.picker-value {
+  background: #f5f5f5;
+  border-radius: 12rpx;
+  padding: 24rpx 32rpx;
+  color: #333333;
+  font-size: 28rpx;
+}
+
+.picker-value.placeholder {
+  color: #bbbbbb;
+}
+
+.textarea-input {
+  width: 100%;
+  min-height: 200rpx;
+  background: #f5f5f5;
+  border-radius: 12rpx;
+  padding: 24rpx;
+  font-size: 28rpx;
+  box-sizing: border-box;
+}
+
+.char-counter {
+  text-align: right;
+  font-size: 24rpx;
+  color: #999999;
+  margin-top: 8rpx;
+}
+
+.char-counter.warn {
+  color: #ff6b8a;
+}
+
+.state-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 120rpx 48rpx;
+  text-align: center;
+}
+
+.state-icon {
+  font-size: 80rpx;
+  margin-bottom: 24rpx;
+}
+
+.state-text {
+  font-size: 28rpx;
+  color: #888888;
+  margin-bottom: 32rpx;
+}
+
+.state-btn {
+  font-size: 28rpx;
+  color: #ff6b8a;
+  padding: 16rpx 48rpx;
+  border: 2rpx solid #ff6b8a;
+  border-radius: 48rpx;
+}
+
+.tag {
+  display: inline-block;
+  padding: 6rpx 16rpx;
+  border-radius: 8rpx;
+  font-size: 22rpx;
+  margin-right: 12rpx;
+  margin-bottom: 8rpx;
+}
+
+.tag-pink {
+  background: #fff0f3;
+  color: #ff6b8a;
+}
+
+.tag-gray {
+  background: #f0f0f0;
+  color: #888888;
+}
+
+.tag-green {
+  background: #e8f8ef;
+  color: #2ecc71;
+}
+
+.tag-orange {
+  background: #fff3e0;
+  color: #ff9800;
+}
+
+.progress-bar {
+  height: 16rpx;
+  background: #eeeeee;
+  border-radius: 8rpx;
+  overflow: hidden;
+  margin: 16rpx 0;
+}
+
+.progress-fill {
+  height: 100%;
+  border-radius: 8rpx;
+  transition: width 0.3s;
+}
+
+.progress-green {
+  background: #2ecc71;
+}
+
+.progress-gray {
+  background: #bbbbbb;
+}
+
+.progress-orange {
+  background: #ff9800;
+}
+
+.form-label.required::after {
+  content: ' *';
+  color: #ff6b8a;
+}
+
+.picker-value.readonly {
+  background: #fafafa;
+  color: #888;
+}
+
+.section-title {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 20rpx;
+}
+
+.agreement-list {
+  padding: 16rpx 0;
+}
+
+.agreement-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 24rpx 0;
+  border-bottom: 1rpx solid #f5f5f5;
+}
+
+.agreement-item:last-child {
+  border-bottom: none;
+}
+
+.checkbox-wrap {
+  display: flex;
+  align-items: center;
+  flex: 1;
+}
+
+.checkbox {
+  width: 40rpx;
+  height: 40rpx;
+  border: 2rpx solid #ccc;
+  border-radius: 8rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 16rpx;
+  font-size: 24rpx;
+  color: #fff;
+  flex-shrink: 0;
+}
+
+.checkbox.checked {
+  background: #ff6b8a;
+  border-color: #ff6b8a;
+}
+
+.agreement-label {
+  font-size: 26rpx;
+  color: #333;
+  line-height: 1.5;
+}
+
+.cooldown-banner {
+  background: #fff3e0;
+  color: #e65100;
+  padding: 20rpx 32rpx;
+  border-radius: 12rpx;
+  font-size: 26rpx;
+  margin-bottom: 24rpx;
+  text-align: center;
+}
+
+.safe-bottom {
+  padding-bottom: calc(32rpx + env(safe-area-inset-bottom));
+}

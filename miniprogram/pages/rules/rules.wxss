@@ -1,0 +1,13 @@
+.rules-title {
+  font-size: 36rpx;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 32rpx;
+}
+
+.rules-content {
+  font-size: 28rpx;
+  color: #555;
+  line-height: 1.8;
+  white-space: pre-wrap;
+}

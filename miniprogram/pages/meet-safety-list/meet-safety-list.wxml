@@ -1,0 +1,39 @@
+<view class="meet-safety-list-page container">
+  <block wx:if="{{pageState === 'loading'}}">
+    <view class="state-wrap">
+      <view class="state-icon">⏳</view>
+      <view class="state-text">正在加载...</view>
+    </view>
+  </block>
+
+  <block wx:elif="{{pageState === 'error'}}">
+    <view class="state-wrap">
+      <view class="state-icon">⚠️</view>
+      <view class="state-text">{{errorMsg}}</view>
+      <view class="state-btn" bindtap="onRetry">重试</view>
+    </view>
+  </block>
+
+  <block wx:elif="{{pageState === 'empty'}}">
+    <view class="state-wrap">
+      <view class="state-icon">📋</view>
+      <view class="state-text">暂无见面安全记录</view>
+      <view class="state-btn" bindtap="goCreate">新建记录</view>
+    </view>
+  </block>
+
+  <block wx:else>
+    <view class="list-item card" wx:for="{{list}}" wx:key="id" bindtap="goDetail" data-id="{{item.id}}">
+      <view class="item-header">
+        <text class="item-tag">{{item.statusText}}</text>
+        <text class="item-date">{{item.create_time}}</text>
+      </view>
+      <view class="item-body">{{item.meet_place || '未填写地点'}}</view>
+      <view class="item-score">
+        <text class="tag tag-gray">{{item.meet_time || '未填写时间'}}</text>
+      </view>
+      <view class="item-arrow">›</view>
+    </view>
+    <button class="btn-primary create-btn" bindtap="goCreate">新建记录</button>
+  </block>
+</view>

@@ -1,0 +1,107 @@
+.login-page {
+  min-height: 100%;
+  position: relative;
+  overflow: visible;
+  background: #f7edf7;
+}
+
+.login-cover-image {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.login-cover-shade {
+  position: fixed;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.04) 0%, rgba(255, 244, 249, 0.12) 48%, rgba(248, 229, 242, 0.92) 100%);
+}
+
+.login-content {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2;
+  padding: 0 44rpx calc(48rpx + env(safe-area-inset-bottom));
+  box-sizing: border-box;
+}
+
+.login-panel {
+  width: 100%;
+}
+
+.login-primary {
+  width: 100%;
+  height: 92rpx;
+  border-radius: 46rpx;
+  background: #151515;
+  color: #ffffff;
+  font-size: 30rpx;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  padding: 0;
+  text-align: center;
+  box-shadow: 0 18rpx 42rpx rgba(18, 18, 18, 0.18);
+}
+
+.login-primary-hover {
+  background: #2a252d;
+}
+
+.login-primary.is-disabled {
+  background: #4a454d;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.login-secondary {
+  width: 100%;
+  height: 88rpx;
+  margin-top: 22rpx;
+  border-radius: 44rpx;
+  color: #252029;
+  font-size: 28rpx;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  text-align: center;
+  background: rgba(255, 255, 255, 0.76);
+  border: 1rpx solid rgba(255, 255, 255, 0.86);
+  box-shadow: 0 14rpx 36rpx rgba(124, 86, 138, 0.12);
+}
+
+.login-tip {
+  margin-top: 22rpx;
+  padding: 20rpx 24rpx;
+  border-radius: 16rpx;
+  color: #8d7891;
+  font-size: 22rpx;
+  line-height: 1.45;
+  text-align: center;
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.login-btn {
+  width: 100%;
+}
+
+.login-page .state-wrap {
+  position: fixed;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2;
+  box-sizing: border-box;
+  background: rgba(255, 255, 255, 0.58);
+}

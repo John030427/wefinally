@@ -1,0 +1,17 @@
+.notice-card {
+  background: #fff8f0;
+}
+
+.notice-title {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #e65100;
+  margin-bottom: 16rpx;
+}
+
+.notice-item {
+  display: block;
+  font-size: 24rpx;
+  color: #666;
+  line-height: 1.8;
+}

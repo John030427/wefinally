@@ -1,0 +1,57 @@
+.agreement-list {
+  padding: 16rpx 32rpx;
+}
+
+.agreement-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 28rpx 0;
+  border-bottom: 1rpx solid #f0f0f0;
+}
+
+.agreement-item:last-child {
+  border-bottom: none;
+}
+
+.checkbox-wrap {
+  display: flex;
+  align-items: center;
+  flex: 1;
+}
+
+.checkbox {
+  width: 40rpx;
+  height: 40rpx;
+  border: 2rpx solid #cccccc;
+  border-radius: 8rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 16rpx;
+  font-size: 24rpx;
+  color: #ffffff;
+  flex-shrink: 0;
+}
+
+.checkbox.checked {
+  background: #ff6b8a;
+  border-color: #ff6b8a;
+}
+
+.agreement-label {
+  font-size: 28rpx;
+  color: #333333;
+}
+
+.view-link {
+  font-size: 26rpx;
+  color: #ff6b8a;
+  flex-shrink: 0;
+  margin-left: 16rpx;
+}
+
+.agreement-page .btn-primary {
+  width: 100%;
+  margin-top: 48rpx;
+}

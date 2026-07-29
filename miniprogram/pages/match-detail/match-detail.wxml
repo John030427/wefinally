@@ -1,0 +1,245 @@
+<view class="match-detail-page container">
+  <block wx:if="{{pageState === 'loading'}}">
+    <view class="state-wrap">
+      <view class="state-icon">⏳</view>
+      <view class="state-text">正在加载...</view>
+    </view>
+  </block>
+
+  <block wx:elif="{{pageState === 'no-network'}}">
+    <view class="state-wrap">
+      <view class="state-icon">📡</view>
+      <view class="state-text">网络不可用</view>
+      <view class="state-btn" bindtap="onRetry">重新加载</view>
+    </view>
+  </block>
+
+  <block wx:elif="{{pageState === 'error'}}">
+    <view class="state-wrap">
+      <view class="state-icon">⚠️</view>
+      <view class="state-text">{{errorMsg}}</view>
+      <view class="state-btn" bindtap="onRetry">重试</view>
+    </view>
+  </block>
+
+  <block wx:elif="{{pageState === 'empty'}}">
+    <view class="state-wrap">
+      <view class="state-icon">📋</view>
+      <view class="state-text">未找到匹配记录</view>
+    </view>
+  </block>
+
+  <block wx:else>
+    <view class="meta-card card">
+      <view class="meta-header">
+        <text class="meta-title">匹配对象</text>
+        <text class="meta-tag" wx:if="{{detail.matchType}}">{{detail.matchType}}</text>
+      </view>
+      <view class="meta-date" wx:if="{{detail.matchDate}}">匹配日期：{{detail.matchDate}}</view>
+      <view class="profile-tags" wx:if="{{!detail.locked}}">
+        <text class="tag tag-gray">{{detail.ageBand}}</text>
+        <text class="tag tag-gray" wx:if="{{detail.height}}">{{detail.height}}</text>
+        <text class="tag tag-gray">{{detail.education}}</text>
+        <text class="tag tag-pink">{{detail.circleName}}</text>
+        <text class="tag tag-gray">{{detail.babyPlan}}</text>
+      </view>
+      <view class="lock-hint" wx:else>
+        <text>{{detail.lockMsg}}</text>
+        <navigator url="/pages/vip/vip" class="btn-primary btn-sm">开通 VIP</navigator>
+      </view>
+    </view>
+
+    <view class="summary-card card" wx:if="{{!detail.locked && matchSummary}}">
+      <view class="summary-kicker">先看结论，再决定是否深入</view>
+      <view class="summary-title">为什么值得了解</view>
+      <view class="summary-group">
+        <view class="summary-label good">匹配理由</view>
+        <view class="summary-line" wx:for="{{matchSummary.strengths}}" wx:key="*this">
+          <text class="summary-dot good"></text><text>{{item}}</text>
+        </view>
+      </view>
+      <view class="summary-group">
+        <view class="summary-label caution">需要确认</view>
+        <view class="summary-line" wx:for="{{matchSummary.confirmations}}" wx:key="*this">
+          <text class="summary-dot caution"></text><text>{{item}}</text>
+        </view>
+      </view>
+      <view class="summary-group limitation">
+        <view class="summary-label">数据限制</view>
+        <view class="summary-line" wx:for="{{matchSummary.limitations}}" wx:key="*this">
+          <text class="summary-dot"></text><text>{{item}}</text>
+        </view>
+      </view>
+    </view>
+
+    <view class="feedback-card card" wx:if="{{!detail.locked}}">
+      <view class="feedback-head">
+        <view>
+          <view class="feedback-kicker">帮助平台校准匹配</view>
+          <view class="feedback-title">这份结果符合你的实际感受吗？</view>
+        </view>
+        <view class="saved-pill" wx:if="{{matchFeedback}}">已保存</view>
+      </view>
+      <view class="feedback-options">
+        <view
+          class="feedback-option {{feedbackVerdict === item.value ? 'selected' : ''}}"
+          wx:for="{{feedbackVerdictOptions}}"
+          wx:key="value"
+          data-value="{{item.value}}"
+          bindtap="selectFeedbackVerdict"
+        >{{item.label}}</view>
+      </view>
+      <block wx:if="{{feedbackVerdict}}">
+        <view class="feedback-subtitle">哪些方面影响了你的判断？</view>
+        <view class="feedback-reasons">
+          <view
+            class="reason-chip {{feedbackReasonSelection[item.value] ? 'selected' : ''}}"
+            wx:for="{{feedbackReasonOptions}}"
+            wx:key="value"
+            data-value="{{item.value}}"
+            bindtap="toggleFeedbackReason"
+          >{{item.label}}</view>
+        </view>
+        <textarea class="feedback-note" maxlength="200" value="{{feedbackNote}}" bindinput="onFeedbackNoteInput" placeholder="选填：补充不含联系方式的说明"></textarea>
+        <label class="review-row">
+          <checkbox-group bindchange="onFeedbackReviewChange">
+            <label><checkbox value="review" checked="{{feedbackReview}}" color="#FF6B8A" />希望人工复核这次匹配</label>
+          </checkbox-group>
+        </label>
+        <button class="feedback-submit" loading="{{feedbackSubmitting}}" disabled="{{feedbackSubmitting}}" bindtap="submitMatchFeedback">保存反馈</button>
+      </block>
+    </view>
+
+    <view class="algorithm-toggle card" wx:if="{{!detail.locked}}" bindtap="toggleAlgorithmDetails">
+      <view>
+        <view class="algorithm-title">算法与报告细节</view>
+        <view class="algorithm-desc">综合分、字段拆解和 AI 报告仅作辅助参考</view>
+      </view>
+      <view class="algorithm-action">{{showAlgorithmDetails ? '收起' : '展开'}} ›</view>
+    </view>
+
+    <block wx:if="{{showAlgorithmDetails}}">
+    <view class="compat-card card" wx:if="{{hasTotalScore}}">
+      <view class="compat-title">综合匹配参考</view>
+      <view class="compat-score-row">
+        <text class="compat-score-num compat-score-text">{{totalScoreText}}</text>
+      </view>
+      <view class="progress-bar progress-lg">
+        <view class="progress-fill progress-pink" style="width: {{totalScorePercent}}%"></view>
+      </view>
+      <view class="compat-hint">基于资料、择偶条件、三观文本和关系偏好测算，仅作优先了解参考</view>
+    </view>
+
+    <view class="report-card card" wx:if="{{!detail.locked}}">
+      <view class="report-header">
+        <view class="meet-title">AI匹配报告</view>
+        <view class="report-status {{detail.aiReportStatus === 'succeeded' ? 'ready' : ((detail.aiReportStatus === 'queued' || detail.aiReportStatus === 'generating') ? 'running' : '')}}">
+          {{detail.reportStatusText}}
+        </view>
+      </view>
+      <view wx:if="{{detail.aiReportStatus === 'succeeded' && detail.aiReport}}" class="structured-report">
+        <view class="report-text">{{detail.aiReport.summary}}</view>
+        <view wx:if="{{detail.aiReport.strengths.length}}" class="local-report-title">契合点</view>
+        <view wx:for="{{detail.aiReport.strengths}}" wx:key="evidence_key" class="compat-hint">{{item.title}}：{{item.detail}}</view>
+        <view wx:if="{{detail.aiReport.differences.length}}" class="local-report-title">需要磨合</view>
+        <view wx:for="{{detail.aiReport.differences}}" wx:key="evidence_key" class="compat-hint">{{item.title}}：{{item.detail}}</view>
+        <view wx:if="{{detail.aiReport.communication_suggestions.length}}" class="local-report-title">沟通建议</view>
+        <view wx:for="{{detail.aiReport.communication_suggestions}}" wx:key="*this" class="compat-hint">{{item}}</view>
+        <view wx:if="{{detail.aiReport.first_date_suggestions.length}}" class="local-report-title">初次见面建议</view>
+        <view wx:for="{{detail.aiReport.first_date_suggestions}}" wx:key="*this" class="compat-hint">{{item}}</view>
+        <view wx:if="{{detail.aiReport.data_limitations.length}}" class="local-report-title">报告局限</view>
+        <view wx:for="{{detail.aiReport.data_limitations}}" wx:key="*this" class="compat-hint">{{item}}</view>
+      </view>
+      <block wx:else>
+        <view wx:if="{{detail.reportHintText}}" class="compat-hint">{{detail.reportHintText}}</view>
+        <view wx:elif="{{detail.aiReportStatus === 'queued' || detail.aiReportStatus === 'generating'}}" class="compat-hint">AI报告生成中，页面会自动刷新；匹配结果已完成，不影响后续操作。</view>
+        <view wx:elif="{{detail.aiReportStatus === 'failed'}}" class="compat-hint">AI报告暂未生成成功，可稍后重试；匹配结果不受影响。</view>
+        <view wx:if="{{detail.aiReportErrorText}}" class="report-error-text">失败原因：{{detail.aiReportErrorText}}</view>
+        <view wx:elif="{{detail.aiReportStatus === 'disabled'}}" class="compat-hint">AI报告服务暂未开启。</view>
+        <view wx:else class="compat-hint">匹配已完成，AI报告待手动生成。</view>
+        <view wx:if="{{detail.localReportText}}" class="local-report-box">
+          <view class="local-report-title">临时婚恋参考（非AI报告）</view>
+          <view class="report-text">{{detail.localReportText}}</view>
+        </view>
+      </block>
+      <view class="report-actions">
+        <button
+          wx:if="{{detail.canGenerateReport}}"
+          class="report-action-btn"
+          loading="{{reportGenerating}}"
+          disabled="{{reportGenerating}}"
+          bindtap="requestAiReport"
+        >{{detail.reportActionText}}</button>
+        <button
+          wx:if="{{detail.canRefreshReport}}"
+          class="report-action-btn"
+          loading="{{reportGenerating}}"
+          disabled="{{reportGenerating}}"
+          bindtap="onRetry"
+        >刷新进度</button>
+      </view>
+    </view>
+
+    <view class="breakdown-card card" wx:if="{{detail.scoreBreakdown && detail.scoreBreakdown.length}}">
+      <view class="compat-title">字段拆解</view>
+      <view class="breakdown-row" wx:for="{{detail.scoreBreakdown}}" wx:key="key" bindtap="onToggleFieldExplain" data-key="{{item.key}}">
+        <view class="breakdown-head">
+          <text class="breakdown-label">{{item.label}}</text>
+          <view class="breakdown-value">
+            <text class="breakdown-score">{{item.scoreText}}/{{item.max}}</text>
+            <text class="breakdown-arrow">{{item.expanded ? '收起' : '解释'}}</text>
+          </view>
+        </view>
+        <view class="progress-bar breakdown-bar">
+          <view class="progress-fill progress-pink" style="width: {{item.percent}}%"></view>
+        </view>
+        <view class="breakdown-note" wx:if="{{item.expanded}}">{{item.explain}}</view>
+      </view>
+      <view class="quality-line" wx:if="{{detail.qualityText}}">{{detail.qualityText}}</view>
+      <view class="quality-line" wx:if="{{psychText}}">{{psychText}}</view>
+    </view>
+
+    <view class="compat-card card" wx:if="{{!detail.locked}}">
+      <view class="compat-title">外貌匹配参考</view>
+      <view class="compat-hint">{{detail.appearanceText}}</view>
+      <navigator url="/pages/match-setting/match-setting" class="meet-link">完善外貌描述与期待 ›</navigator>
+    </view>
+
+    <view class="compat-card card">
+      <view class="compat-title">三观契合度</view>
+
+      <block wx:if="{{hasScore}}">
+        <view class="compat-score-row">
+          <text class="compat-score-num compat-score-text">{{compatibilityText}}</text>
+          <text class="compat-level tag {{tagClass}}">{{compatibilityLevel}}</text>
+        </view>
+        <view class="progress-bar progress-lg">
+          <view class="progress-fill {{progressColor}}" style="width: {{compatibilityPercent}}%"></view>
+        </view>
+        <view class="compat-hint">基于双方三观文本语义分析，仅作资料契合参考，不代表线下相处保证</view>
+      </block>
+
+      <block wx:else>
+        <view class="compat-empty">
+          <view class="compat-empty-icon">💭</view>
+          <view class="compat-empty-text">对方暂未完善三观理念，暂无契合度评估</view>
+        </view>
+      </block>
+    </view>
+    </block>
+
+    <view class="meet-card card">
+      <view class="meet-title">官方第一次约会</view>
+      <view class="meet-desc">匹配成功后，由平台协助双方分别填写偏好、生成共同方案并确认。双方不开放私聊，也不会展示对方原始回答。</view>
+      <view class="meet-actions">
+        <navigator wx:if="{{!detail.locked}}" url="/pages/date-coordination/date-coordination?matchUserId={{detail.matchedUserId}}&matchLogId={{matchId}}" class="meet-action-btn meet-action-primary">开始约会协调</navigator>
+        <view wx:if="{{dateFeedbackEligibility && dateFeedbackEligibility.can_submit}}" class="meet-action-btn date-feedback-action" bindtap="goDateFeedback">填写约会后反馈</view>
+        <navigator url="/pages/meet-safety/meet-safety?matchUserId={{detail.matchedUserId}}&matchLogId={{matchId}}" class="meet-action-btn meet-action-primary">线下见面安全确认</navigator>
+      </view>
+    </view>
+
+    <view class="privacy-note">
+      为保护隐私，不展示双方完整三观原文
+    </view>
+  </block>
+</view>

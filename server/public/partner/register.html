@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WeFinally 合伙人注册</title>
+  <style>
+    :root { --primary: #e91e63; --primary-dark: #c2185b; --bg: #f5f5f7; --card: #fff; --text: #333; --muted: #888; --border: #e8e8e8; --danger: #f44336; --success: #4caf50; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif; background: linear-gradient(135deg, #fce4ec, #f3e5f5); min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 1rem; color: var(--text); }
+    .card { background: var(--card); border-radius: 12px; padding: 2rem; width: 100%; max-width: 440px; box-shadow: 0 8px 32px rgba(0,0,0,.08); }
+    h1 { color: var(--primary); font-size: 1.4rem; margin-bottom: .25rem; }
+    .sub { color: var(--muted); font-size: .875rem; margin-bottom: 1.5rem; line-height: 1.6; }
+    .form-group { margin-bottom: 1rem; }
+    label { display: block; font-size: .875rem; color: var(--muted); margin-bottom: .35rem; }
+    input, select { width: 100%; padding: .65rem .75rem; border: 1px solid var(--border); border-radius: 8px; font-size: .9375rem; }
+    input:focus, select:focus { outline: none; border-color: var(--primary); }
+    .btn { width: 100%; padding: .75rem; border: none; border-radius: 8px; background: var(--primary); color: #fff; font-size: 1rem; cursor: pointer; margin-top: .5rem; }
+    .btn:disabled { opacity: .55; cursor: not-allowed; }
+    .btn:hover:not(:disabled) { background: var(--primary-dark); }
+    .link { text-align: center; margin-top: 1rem; font-size: .875rem; }
+    .link a { color: var(--primary); text-decoration: none; }
+    .error { background: #ffebee; color: #c62828; padding: .75rem; border-radius: 8px; font-size: .875rem; margin-bottom: 1rem; display: none; }
+    .success { background: #e8f5e9; color: #2e7d32; padding: .75rem; border-radius: 8px; font-size: .875rem; margin-bottom: 1rem; display: none; }
+    .notice { background: #fff8e1; color: #f57f17; padding: .75rem; border-radius: 8px; font-size: .8125rem; margin-bottom: 1rem; line-height: 1.6; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>合伙人注册</h1>
+    <p class="sub">注册后默认冻结，需超级管理员审核激活后方可推广分润。<br/>此页面不对普通用户开放。</p>
+    <div class="notice">每位合伙人绑定唯一职业圈层，注册前请确认圈层未被认领。</div>
+    <div id="errBox" class="error"></div>
+    <div id="okBox" class="success"></div>
+    <form id="regForm">
+      <div class="form-group">
+        <label>绑定职业圈层 *</label>
+        <select id="circleId" required>
+          <option value="">加载中...</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>姓名 *</label>
+        <input type="text" id="name" required maxlength="50" placeholder="真实姓名" />
+      </div>
+      <div class="form-group">
+        <label>手机号 *</label>
+        <input type="tel" id="phone" required maxlength="11" placeholder="用于登录" />
+      </div>
+      <div class="form-group">
+        <label>登录密码 *</label>
+        <input type="password" id="password" required minlength="6" placeholder="至少6位" />
+      </div>
+      <button type="submit" class="btn" id="submitBtn">提交注册</button>
+    </form>
+    <div class="link"><a href="index.html">已有账号？去登录</a></div>
+  </div>
+  <script>
+    const API = '/api';
+    const errBox = document.getElementById('errBox');
+    const okBox = document.getElementById('okBox');
+    const circleSel = document.getElementById('circleId');
+
+    function showErr(msg) {
+      errBox.textContent = msg;
+      errBox.style.display = 'block';
+      okBox.style.display = 'none';
+    }
+    function showOk(msg) {
+      okBox.textContent = msg;
+      okBox.style.display = 'block';
+      errBox.style.display = 'none';
+    }
+
+    async function loadCircles() {
+      try {
+        const res = await fetch(API + '/common/circles');
+        const json = await res.json();
+        const list = (json.data || json) || [];
+        circleSel.innerHTML = '<option value="">请选择圈层</option>' +
+          list.map(c => '<option value="' + c.id + '">' + (c.name || c.circle_name) + '</option>').join('');
+      } catch (e) {
+        circleSel.innerHTML = '<option value="">加载失败，请刷新</option>';
+      }
+    }
+
+    document.getElementById('regForm').addEventListener('submit', async function (e) {
+      e.preventDefault();
+      const btn = document.getElementById('submitBtn');
+      btn.disabled = true;
+      btn.textContent = '提交中...';
+      errBox.style.display = 'none';
+      try {
+        const res = await fetch(API + '/auth/partner-register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            circle_id: Number(circleSel.value),
+            name: document.getElementById('name').value.trim(),
+            phone: document.getElementById('phone').value.trim(),
+            password: document.getElementById('password').value
+          })
+        });
+        const json = await res.json();
+        if (json.code !== 0 && json.code !== 200) throw new Error(json.message || '注册失败');
+        const data = json.data || {};
+        showOk('注册成功！推广码：' + (data.promote_code || '--') + '。请等待管理员审核激活后登录。');
+        document.getElementById('regForm').reset();
+      } catch (err) {
+        showErr(err.message || '注册失败');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '提交注册';
+      }
+    });
+
+    loadCircles();
+  </script>
+</body>
+</html>

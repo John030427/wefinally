@@ -1,0 +1,80 @@
+<view class="profile-page container">
+  <block wx:if="{{pageState === 'loading'}}">
+    <view class="state-wrap">
+      <view class="state-icon">⏳</view>
+      <view class="state-text">正在加载...</view>
+    </view>
+  </block>
+
+  <block wx:elif="{{pageState === 'no-network'}}">
+    <view class="state-wrap">
+      <view class="state-icon">📡</view>
+      <view class="state-text">网络不可用</view>
+      <view class="state-btn" bindtap="onRetry">重新加载</view>
+    </view>
+  </block>
+
+  <block wx:elif="{{pageState === 'error'}}">
+    <view class="state-wrap">
+      <view class="state-icon">⚠️</view>
+      <view class="state-text">{{errorMsg}}</view>
+      <view class="state-btn" bindtap="onRetry">重试</view>
+    </view>
+  </block>
+
+  <block wx:else>
+    <view class="user-card card">
+      <view class="user-header">
+        <view class="user-avatar-text">{{userInfo.display.gender || '用'}}</view>
+        <view class="user-info">
+          <view class="user-tags">
+            <text class="tag tag-pink">{{userInfo.display.gender}}</text>
+            <text class="tag tag-gray">{{userInfo.display.age}}岁</text>
+            <text class="tag tag-vip" wx:if="{{isVip}}">VIP</text>
+            <text class="tag tag-vip" wx:if="{{userInfo.free_member}}">已激活</text>
+          </view>
+          <view class="user-meta">{{userInfo.display.city}} · {{userInfo.display.education}}</view>
+          <view class="user-meta">{{userInfo.display.circleName}} · {{userInfo.display.babyPlan}}</view>
+        </view>
+      </view>
+    </view>
+
+    <view class="readiness-card card" wx:if="{{readiness}}">
+      <view class="readiness-head">
+        <view>
+          <view class="readiness-kicker">匹配资料就绪度</view>
+          <view class="readiness-title">{{readiness.isComplete ? '资料已就绪' : readiness.hint}}</view>
+        </view>
+        <view class="readiness-score">{{readiness.percent}}%</view>
+      </view>
+      <view class="readiness-track">
+        <view class="readiness-fill" style="width: {{readiness.percent}}%"></view>
+      </view>
+      <view class="readiness-missing" wx:if="{{!readiness.isComplete}}">
+        缺失：{{readiness.missingText}}
+      </view>
+      <view class="readiness-actions" wx:if="{{!readiness.isComplete}}">
+        <view class="readiness-action" bindtap="editBaseProfile">完善基本资料</view>
+        <view class="readiness-action secondary" bindtap="editMatchProfile">完善择偶与价值观</view>
+      </view>
+      <view class="readiness-ready" wx:else>资料会用于硬性筛选和双向评分，你可以随时更新。</view>
+    </view>
+
+    <view class="menu-card card">
+      <view
+        class="menu-item"
+        wx:for="{{menuList}}"
+        wx:key="title"
+        bindtap="onMenuTap"
+        data-url="{{item.url}}"
+        data-action="{{item.action}}"
+      >
+        <text class="menu-icon">{{item.icon}}</text>
+        <text class="menu-title">{{item.title}}</text>
+        <text class="menu-arrow">›</text>
+      </view>
+    </view>
+
+    <button class="btn-secondary logout-btn" bindtap="onLogout">退出登录</button>
+  </block>
+</view>

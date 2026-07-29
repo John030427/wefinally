@@ -1,0 +1,63 @@
+<view class="meet-safety-page container">
+  <view class="card form-card" wx:if="{{!created}}">
+    <view class="form-item">
+      <view class="form-label">见面时间</view>
+      <view class="datetime-row">
+        <picker class="datetime-picker" mode="date" value="{{meetDate}}" bindchange="onMeetDateChange">
+          <view class="picker-like {{meetDate ? '' : 'placeholder'}}">{{meetDate || '选择日期'}}</view>
+        </picker>
+        <picker class="datetime-picker" mode="time" value="{{meetClock}}" bindchange="onMeetClockChange">
+          <view class="picker-like {{meetClock ? '' : 'placeholder'}}">{{meetClock || '选择时间'}}</view>
+        </picker>
+      </view>
+    </view>
+    <view class="form-item">
+      <view class="form-label">见面地点</view>
+      <button class="map-picker-btn" bindtap="chooseMeetLocation">📍 {{form.meet_place ? '重新选择地点' : '在地图中选择地点'}}</button>
+      <view class="selected-location" wx:if="{{form.meet_place}}" bindtap="openMeetLocation">
+        <view class="location-main">
+          <view class="location-name">{{form.meet_place}}</view>
+          <view class="location-address">{{form.meet_address || '已获取地图坐标'}}</view>
+        </view>
+        <view class="location-open">地图查看 ›</view>
+      </view>
+      <view class="location-help">可在微信地图中搜索具体咖啡店、商场或其他公共场所</view>
+    </view>
+    <view class="form-item">
+      <view class="form-label">见面说明</view>
+      <textarea class="textarea" maxlength="500" placeholder="选填，写下约见背景或备注" value="{{form.meet_note}}" data-k="meet_note" bindinput="onInput"></textarea>
+    </view>
+    <view class="form-item">
+      <view class="form-label">紧急联系人</view>
+      <input class="input" type="number" maxlength="11" placeholder="亲友手机号" value="{{form.emergency_contact}}" data-k="emergency_contact" bindinput="onInput" />
+    </view>
+    <view class="ack-row" bindtap="toggleAck">
+      <text class="checkbox">{{ack ? '✓' : ''}}</text>
+      <text>{{safetyTips}}</text>
+    </view>
+    <button class="btn-primary submit-btn" bindtap="submit">提交安全确认</button>
+  </view>
+
+  <view class="card safety-card" wx:else>
+    <view class="card-title">{{shareMode ? '亲友分享的见面安全确认' : '已提交见面安全确认'}}</view>
+    <view class="info-row"><text>预计时间</text><text>{{form.meet_time || '未填写'}}</text></view>
+    <view class="info-row map-info-row" bindtap="openMeetLocation">
+      <text>预计地点</text>
+      <view class="saved-location"><text>{{form.meet_place || '未填写'}}</text><text wx:if="{{form.meet_address}}">{{form.meet_address}}</text><text wx:if="{{form.lat && form.lng}}" class="map-link">地图查看 ›</text></view>
+    </view>
+    <view class="info-row"><text>安全提示</text><text>{{safetyTips}}</text></view>
+    <view class="note">{{form.meet_note || safetyTips}}</view>
+    <view class="guard-status {{guarding ? 'active' : ''}}">
+      {{shareMode ? '这是亲友只读分享卡，可查看报备信息与前台守护轨迹条数' : (guarding ? '前台安全守护已开启：页面保持打开时会记录定位轨迹' : '安全守护未开启：当前仅保留报备信息和最近一次定位')}}
+    </view>
+    <view class="guard-evidence">
+      <text>前台守护轨迹：{{locationCount}} 条</text>
+      <text wx:if="{{latestLocationText}}">最近记录：{{latestLocationText}}</text>
+    </view>
+    <button wx:if="{{!shareMode}}" class="share-btn" open-type="share">发送安全确认给对方或亲友</button>
+    <button wx:if="{{!shareMode}}" class="guard-btn {{guarding ? 'active' : ''}}" bindtap="toggleGuard">
+      {{guarding ? '结束安全守护' : '开启安全守护'}}
+    </button>
+    <view wx:if="{{!shareMode}}" class="sos-btn" catchtap="sos">一键呼救 110</view>
+  </view>
+</view>

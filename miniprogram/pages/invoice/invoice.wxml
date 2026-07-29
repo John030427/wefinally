@@ -1,0 +1,33 @@
+<view class="invoice-page container">
+  <view class="invoice-heading">
+    <view class="invoice-title">申请电子发票</view>
+    <view class="invoice-subtitle">仅支持已支付的会员订单</view>
+  </view>
+
+  <view class="invoice-card card">
+    <view class="order-label">订单号</view>
+    <view class="order-no" selectable>{{orderNo}}</view>
+  </view>
+
+  <view class="invoice-card card">
+    <view class="field-label">发票类型</view>
+    <radio-group class="type-options" bindchange="onTypeChange">
+      <label class="type-option"><radio value="personal" checked="{{invoice_type === 'personal'}}" color="#f5688c" />个人</label>
+      <label class="type-option"><radio value="company" checked="{{invoice_type === 'company'}}" color="#f5688c" />企业</label>
+    </radio-group>
+
+    <view class="field-label">发票抬头</view>
+    <input class="field-input" value="{{title}}" maxlength="100" placeholder="请输入个人姓名或企业名称" data-field="title" bindinput="onFieldInput" />
+
+    <block wx:if="{{invoice_type === 'company'}}">
+      <view class="field-label">纳税人识别号</view>
+      <input class="field-input" value="{{tax_no}}" maxlength="20" placeholder="请输入15–20位税号" data-field="tax_no" bindinput="onFieldInput" />
+    </block>
+
+    <view class="field-label">接收邮箱</view>
+    <input class="field-input" value="{{email}}" maxlength="120" type="text" placeholder="电子发票将发送至该邮箱" data-field="email" bindinput="onFieldInput" />
+  </view>
+
+  <view class="privacy-note">开票信息仅用于处理本次发票申请，请确认无误后提交。</view>
+  <button class="submit-btn" bindtap="onSubmit" loading="{{submitting}}" disabled="{{submitting}}">提交开票申请</button>
+</view>

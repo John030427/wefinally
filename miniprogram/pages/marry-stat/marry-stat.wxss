@@ -1,0 +1,28 @@
+.stat-hero {
+  text-align: center;
+  padding: 64rpx 32rpx;
+}
+
+.stat-icon {
+  font-size: 80rpx;
+  margin-bottom: 24rpx;
+}
+
+.stat-num {
+  font-size: 96rpx;
+  font-weight: 700;
+  color: #ff6b8a;
+  line-height: 1;
+  margin-bottom: 16rpx;
+}
+
+.stat-label {
+  font-size: 32rpx;
+  color: #333;
+  margin-bottom: 12rpx;
+}
+
+.stat-note {
+  font-size: 24rpx;
+  color: #999;
+}

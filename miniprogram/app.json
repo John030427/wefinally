@@ -1,0 +1,65 @@
+{
+  "pages": [
+    "pages/welcome/welcome",
+    "pages/login/login",
+    "pages/smoke/smoke",
+    "pages/agreement/agreement",
+    "pages/register/register",
+    "pages/divorce-review/divorce-review",
+    "pages/match-setting/match-setting",
+    "pages/member-application/member-application",
+    "pages/index/index",
+    "pages/love-advisor/love-advisor",
+    "pages/match-list/match-list",
+    "pages/match-detail/match-detail",
+    "pages/appearance/appearance",
+    "pages/meet-safety/meet-safety",
+    "pages/meet-safety-list/meet-safety-list",
+    "pages/vip/vip",
+    "pages/orders/orders",
+    "pages/invoice/invoice",
+    "pages/profile/profile",
+    "pages/marry-stat/marry-stat",
+    "pages/chat/chat",
+    "pages/date-coordination/date-coordination",
+    "pages/date-feedback/date-feedback",
+    "pages/marry-report/marry-report",
+    "pages/account-cancel/account-cancel",
+    "pages/rules/rules"
+  ],
+  "window": {
+    "navigationBarBackgroundColor": "#FF6B8A",
+    "navigationBarTitleText": "WeFinally",
+    "navigationBarTextStyle": "white",
+    "backgroundColor": "#F8F4F5",
+    "backgroundTextStyle": "dark"
+  },
+  "tabBar": {
+    "color": "#999999",
+    "selectedColor": "#FF6B8A",
+    "backgroundColor": "#FFFFFF",
+    "borderStyle": "black",
+    "list": [
+      {
+        "pagePath": "pages/index/index",
+        "text": "匹配"
+      },
+      {
+        "pagePath": "pages/match-list/match-list",
+        "text": "记录"
+      },
+      {
+        "pagePath": "pages/profile/profile",
+        "text": "我的"
+      }
+    ]
+  },
+  "style": "v2",
+  "sitemapLocation": "sitemap.json",
+  "permission": {
+    "scope.userLocation": {
+      "desc": "用于线下见面报备与一键呼救定位，仅在你主动操作时使用"
+    }
+  },
+  "requiredPrivateInfos": ["chooseLocation", "getLocation", "startLocationUpdate", "onLocationChange"]
+}

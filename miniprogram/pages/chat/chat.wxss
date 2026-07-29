@@ -1,0 +1,225 @@
+.chat-page {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: #f8f4f5;
+}
+
+.chat-scroll {
+  flex: 1;
+  padding: 24rpx 32rpx;
+  box-sizing: border-box;
+}
+
+.chat-tip {
+  text-align: center;
+  font-size: 22rpx;
+  color: #999;
+  padding: 16rpx;
+  margin-bottom: 16rpx;
+}
+
+.msg-row {
+  display: flex;
+  margin-bottom: 24rpx;
+}
+
+.msg-user {
+  justify-content: flex-end;
+}
+
+.msg-bot {
+  justify-content: flex-start;
+}
+
+.msg-bubble {
+  max-width: 75%;
+  padding: 20rpx 24rpx;
+  border-radius: 16rpx;
+  position: relative;
+}
+
+.msg-user .msg-bubble {
+  background: linear-gradient(135deg, #ff6b8a, #ff8fa3);
+  color: #fff;
+  border-bottom-right-radius: 4rpx;
+}
+
+.msg-bot .msg-bubble {
+  background: #fff;
+  color: #333;
+  border-bottom-left-radius: 4rpx;
+  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.04);
+}
+
+.msg-text {
+  font-size: 28rpx;
+  line-height: 1.6;
+  word-break: break-all;
+}
+
+.msg-time {
+  display: block;
+  font-size: 20rpx;
+  opacity: 0.6;
+  margin-top: 8rpx;
+  text-align: right;
+}
+
+.patch-preview-card {
+  width: 100%;
+  max-width: 540rpx;
+  box-sizing: border-box;
+  margin-top: 12rpx;
+  padding: 22rpx;
+  background: #fff0f4;
+  border: 1rpx solid #ffd4df;
+  border-radius: 8rpx;
+  color: #6b3b49;
+}
+
+.patch-preview-title {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #d95c7a;
+  margin-bottom: 14rpx;
+}
+
+.patch-change {
+  padding: 14rpx 0;
+  border-top: 1rpx solid #ffdbe4;
+}
+
+.patch-field {
+  font-size: 24rpx;
+  color: #9b586c;
+  margin-bottom: 8rpx;
+}
+
+.patch-value-row {
+  display: flex;
+  align-items: flex-start;
+  padding: 4rpx 0;
+  font-size: 24rpx;
+  line-height: 1.5;
+}
+
+.patch-value-label {
+  flex: none;
+  width: 86rpx;
+  color: #a77986;
+}
+
+.patch-value {
+  flex: 1;
+  word-break: break-all;
+}
+
+.patch-value.before {
+  color: #8d7480;
+  text-decoration: line-through;
+}
+
+.patch-value.after {
+  color: #d95677;
+  font-weight: 600;
+}
+
+.patch-notice {
+  margin-top: 10rpx;
+  font-size: 22rpx;
+  line-height: 1.5;
+  color: #a85d73;
+}
+
+.patch-actions {
+  display: flex;
+  gap: 14rpx;
+  margin-top: 18rpx;
+}
+
+.patch-confirm,
+.patch-cancel {
+  flex: 1;
+  margin: 0 !important;
+  padding: 0 !important;
+  height: 62rpx;
+  line-height: 62rpx;
+  border-radius: 8rpx;
+  font-size: 24rpx;
+}
+
+.patch-confirm {
+  background: #ef7894 !important;
+  color: #fff !important;
+}
+
+.patch-cancel {
+  background: #fff !important;
+  color: #bd657d !important;
+  border: 1rpx solid #f3b6c6 !important;
+}
+
+.patch-confirm::after,
+.patch-cancel::after {
+  border: none;
+}
+
+.patch-status {
+  margin-top: 16rpx;
+  font-size: 24rpx;
+  color: #b96b80;
+}
+
+.human-service-btn {
+  width: 100%;
+  height: 72rpx;
+  margin: 14rpx 0 0;
+  padding: 0 24rpx;
+  border: 2rpx solid #ff6b8a;
+  border-radius: 8rpx;
+  background: #fff;
+  color: #ff557a;
+  font-size: 26rpx;
+  line-height: 68rpx;
+}
+
+.human-service-btn::after {
+  border: none;
+}
+
+.chat-input-bar {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  padding: 16rpx 24rpx;
+  background: #fff;
+  border-top: 1rpx solid #eee;
+}
+
+.chat-input {
+  flex: 1;
+  background: #f5f5f5;
+  border-radius: 40rpx;
+  padding: 16rpx 28rpx;
+  font-size: 28rpx;
+}
+
+.send-btn {
+  background: #ff6b8a !important;
+  color: #fff !important;
+  font-size: 26rpx !important;
+  line-height: 64rpx !important;
+  height: 64rpx !important;
+  padding: 0 28rpx !important;
+  border-radius: 32rpx !important;
+  margin: 0 !important;
+}
+
+.send-btn::after {
+  border: none;
+}
+
+.send-btn[disabled] {
+  background: #ccc !important;
+}

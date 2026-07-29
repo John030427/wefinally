@@ -1,0 +1,92 @@
+.status-card {
+  background: #ffffff;
+}
+
+.status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24rpx;
+  margin-bottom: 20rpx;
+}
+
+.status-label {
+  font-size: 28rpx;
+  color: #555555;
+}
+
+.status-pill {
+  flex: 0 0 auto;
+  border-radius: 8rpx;
+  padding: 8rpx 18rpx;
+  font-size: 24rpx;
+  background: #f2f2f2;
+  color: #666666;
+}
+
+.status-pill.pending {
+  background: #fff8e1;
+  color: #b26a00;
+}
+
+.status-pill.approved {
+  background: #e9f7ef;
+  color: #2f9d62;
+}
+
+.status-pill.rejected {
+  background: #fff0f3;
+  color: #ff6b8a;
+}
+
+.status-message {
+  font-size: 26rpx;
+  color: #666666;
+  line-height: 1.7;
+}
+
+.reject-reason {
+  margin-top: 16rpx;
+  font-size: 24rpx;
+  color: #ff6b8a;
+  line-height: 1.6;
+}
+
+.notice-card {
+  background: #fff8f0;
+}
+
+.notice-title {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #e65100;
+  margin-bottom: 16rpx;
+}
+
+.notice-item {
+  display: block;
+  font-size: 24rpx;
+  color: #666666;
+  line-height: 1.8;
+}
+
+.text-input {
+  width: 100%;
+  height: 88rpx;
+  background: #f5f5f5;
+  border-radius: 12rpx;
+  padding: 0 24rpx;
+  font-size: 28rpx;
+  box-sizing: border-box;
+}
+
+.form-label.required::after {
+  content: ' *';
+  color: #ff6b8a;
+}
+
+.action-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 20rpx;
+}

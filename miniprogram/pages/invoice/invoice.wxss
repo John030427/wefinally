@@ -1,0 +1,80 @@
+.invoice-heading {
+  padding: 8rpx 4rpx 26rpx;
+}
+
+.invoice-title {
+  color: #352e31;
+  font-size: 38rpx;
+  font-weight: 650;
+}
+
+.invoice-subtitle {
+  margin-top: 8rpx;
+  color: #a18f95;
+  font-size: 24rpx;
+}
+
+.invoice-card {
+  border: 1rpx solid #f6e7ec;
+  box-shadow: 0 8rpx 24rpx rgba(113, 66, 82, 0.05);
+}
+
+.order-label,
+.field-label {
+  margin: 24rpx 0 12rpx;
+  color: #65595e;
+  font-size: 25rpx;
+  font-weight: 600;
+}
+
+.order-label {
+  margin-top: 0;
+}
+
+.order-no {
+  color: #8e7d83;
+  font-size: 23rpx;
+  word-break: break-all;
+}
+
+.type-options {
+  display: flex;
+  gap: 56rpx;
+  padding: 12rpx 0;
+}
+
+.type-option {
+  color: #51474b;
+  font-size: 26rpx;
+}
+
+.field-input {
+  height: 82rpx;
+  padding: 0 24rpx;
+  border: 1rpx solid #f0dfe5;
+  border-radius: 18rpx;
+  color: #3f3639;
+  background: #fffafb;
+  font-size: 25rpx;
+}
+
+.privacy-note {
+  padding: 8rpx 6rpx 24rpx;
+  color: #ac9da2;
+  font-size: 22rpx;
+  line-height: 1.6;
+}
+
+.submit-btn {
+  height: 88rpx;
+  border-radius: 44rpx;
+  color: #fff;
+  background: linear-gradient(135deg, #ff7698, #f35f84);
+  font-size: 28rpx;
+  font-weight: 600;
+  line-height: 88rpx;
+}
+
+.submit-btn::after {
+  border: 0;
+}

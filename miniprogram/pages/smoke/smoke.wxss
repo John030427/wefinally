@@ -1,0 +1,20 @@
+.smoke-page {
+  min-height: 100vh;
+  padding: 120rpx 40rpx;
+  box-sizing: border-box;
+  background: #fff6fa;
+}
+
+.smoke-title {
+  color: #151515;
+  font-size: 38rpx;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.smoke-text {
+  margin-top: 28rpx;
+  color: #5c5260;
+  font-size: 28rpx;
+  line-height: 1.6;
+}

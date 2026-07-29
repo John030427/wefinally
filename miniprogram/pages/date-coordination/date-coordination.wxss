@@ -1,0 +1,272 @@
+.date-page {
+  padding-bottom: 64rpx;
+}
+
+.date-head {
+  background: #fff7f8;
+  border: 2rpx solid #ffe1e8;
+}
+
+.date-title {
+  color: #333;
+  font-size: 36rpx;
+  font-weight: 600;
+  margin-bottom: 12rpx;
+}
+
+.date-desc,
+.invite-text,
+.form-hint,
+.muted,
+.public-note {
+  color: #777;
+  font-size: 25rpx;
+  line-height: 1.7;
+}
+
+.form-hint {
+  margin: 0 0 20rpx;
+}
+
+.status-pill {
+  display: inline-block;
+  margin-top: 20rpx;
+  padding: 8rpx 18rpx;
+  border-radius: 24rpx;
+  color: #ff6b8a;
+  background: #fff;
+  font-size: 23rpx;
+}
+
+.progress-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16rpx;
+  padding: 16rpx 0;
+  border-bottom: 1rpx solid #f5e8eb;
+  color: #666;
+  font-size: 25rpx;
+}
+
+.progress-row:last-child {
+  border-bottom: none;
+}
+
+.choice-list,
+.action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14rpx;
+  margin-top: 16rpx;
+}
+
+.choice-tag {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 66rpx;
+  padding: 8rpx 20rpx;
+  border: 2rpx solid #f1ecee;
+  border-radius: 30rpx;
+  background: #f8f8f8;
+  color: #666;
+  font-size: 24rpx;
+  line-height: 1.25;
+  box-sizing: border-box;
+}
+
+.choice-tag.selected {
+  border-color: #ff6688;
+  background: #ff6688;
+  color: #fff;
+  font-weight: 600;
+  box-shadow: 0 6rpx 14rpx rgba(255, 102, 136, 0.2);
+}
+
+.choice-tag-pressed {
+  opacity: 0.78;
+  transform: scale(0.97);
+}
+
+.date-choice {
+  margin-top: 18rpx;
+  padding: 20rpx;
+  border-radius: 18rpx;
+  background: #fff7f8;
+}
+
+.date-choice-head {
+  display: flex;
+  justify-content: space-between;
+  color: #444;
+  font-size: 26rpx;
+  font-weight: 600;
+}
+
+.remove-date {
+  color: #ff6b8a;
+  font-weight: 400;
+}
+
+.selected-periods {
+  margin-top: 12rpx;
+  color: #999;
+  font-size: 22rpx;
+}
+
+.input,
+.textarea {
+  width: 100%;
+  background: #fafafa;
+  border-radius: 14rpx;
+  padding: 20rpx;
+  box-sizing: border-box;
+  color: #333;
+  font-size: 26rpx;
+}
+
+.field-input {
+  height: 88rpx;
+  min-height: 88rpx;
+  border: 2rpx solid #f5dce3;
+  background: #fffafb;
+  line-height: 44rpx;
+}
+
+.field-input:focus {
+  border-color: #ff8ca4;
+  background: #fff;
+}
+
+.field-help {
+  margin-top: 10rpx;
+  color: #a58f95;
+  font-size: 22rpx;
+  line-height: 1.5;
+}
+
+.textarea {
+  min-height: 130rpx;
+}
+
+.share-preview {
+  padding: 22rpx;
+  border-radius: 16rpx;
+  background: #fff4f6;
+  color: #75404c;
+  font-size: 25rpx;
+  line-height: 1.6;
+  margin-bottom: 20rpx;
+}
+
+.preview-label {
+  font-weight: 600;
+  margin-bottom: 8rpx;
+}
+
+.public-note {
+  padding: 16rpx 0 22rpx;
+}
+
+.primary-btn,
+.outline-btn {
+  flex: 1;
+  min-width: 200rpx;
+  height: 78rpx;
+  line-height: 78rpx;
+  margin: 0;
+  padding: 0 20rpx;
+  border-radius: 39rpx;
+  font-size: 27rpx;
+}
+
+.primary-btn {
+  background: #ff6b8a;
+  color: #fff;
+}
+
+.outline-btn {
+  background: #fff;
+  color: #ff6b8a;
+  border: 2rpx solid #ff6b8a;
+}
+
+.primary-btn::after,
+.outline-btn::after {
+  border: none;
+}
+
+.full-btn {
+  width: 100%;
+}
+
+.proposal-line {
+  color: #555;
+  font-size: 26rpx;
+  line-height: 1.8;
+}
+
+.support-card {
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
+  min-height: 132rpx;
+  margin: 24rpx 0 0;
+  padding: 24rpx 26rpx;
+  border: 2rpx solid #ffdce5;
+  border-radius: 20rpx;
+  box-sizing: border-box;
+  box-shadow: 0 8rpx 22rpx rgba(92, 51, 62, 0.07);
+}
+
+.support-card-ai {
+  background: #fff2f6;
+}
+
+.support-card-human {
+  background: #fff;
+}
+
+.support-card-pressed {
+  opacity: 0.82;
+  transform: scale(0.99);
+}
+
+.support-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 74rpx;
+  width: 74rpx;
+  height: 74rpx;
+  border-radius: 50%;
+  background: #fff;
+  font-size: 36rpx;
+  box-shadow: 0 4rpx 12rpx rgba(255, 102, 136, 0.12);
+}
+
+.support-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.support-title {
+  color: #4b3c40;
+  font-size: 29rpx;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.support-desc {
+  margin-top: 7rpx;
+  color: #8b7c80;
+  font-size: 23rpx;
+  line-height: 1.5;
+}
+
+.support-arrow {
+  flex: 0 0 auto;
+  color: #ff6688;
+  font-size: 46rpx;
+  line-height: 1;
+}

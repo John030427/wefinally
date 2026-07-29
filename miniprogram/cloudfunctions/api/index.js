@@ -1,0 +1,62 @@
+const cloud = require('wx-server-sdk')
+
+cloud.init({
+  env: cloud.DYNAMIC_CURRENT_ENV
+})
+
+const { handleRoute } = require('./handlers/route')
+const { handleHttp } = require('./handlers/paymentNotify')
+const { processQueuedTasks } = require('./handlers/reportTask')
+const { processNotificationJobs } = require('./agent/notificationJobs')
+const { processCoordinationDeadlines } = require('./handlers/dateCoordination')
+
+const ENV_ID = 'cloud1-d4gy8l52g08bba326'
+
+exports.main = async (event = {}) => {
+  if (event.httpMethod || event.requestContext) {
+    return handleHttp(event)
+  }
+  const action = event.action
+  const payload = event.payload || {}
+  try {
+    switch (action) {
+      case 'ping':
+        return {
+          success: true,
+          data: {
+            message: 'pong',
+            env: ENV_ID
+          }
+        }
+      case 'request':
+        return {
+          success: true,
+          data: await handleRoute(payload, cloud.getWXContext())
+        }
+      case 'processReportTasks':
+        return {
+          success: true,
+          data: await processQueuedTasks(Number(payload.limit || 2))
+        }
+      case 'processWorkerTasks': {
+        const [reports, notifications, coordinations] = await Promise.all([
+          processQueuedTasks(Number(payload.report_limit || 2)),
+          processNotificationJobs({ limit: Number(payload.notification_limit || 10) }),
+          processCoordinationDeadlines({ limit: Number(payload.coordination_limit || 50) })
+        ])
+        return { success: true, data: { reports, notifications, coordinations } }
+      }
+      default:
+        return {
+          success: false,
+          error: `Unknown action: ${action}`
+        }
+    }
+  } catch (err) {
+    return {
+      success: false,
+      code: err && err.code,
+      error: (err && err.message) || 'server error'
+    }
+  }
+}

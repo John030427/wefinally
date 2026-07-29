@@ -1,0 +1,13 @@
+<view class="rules-page container">
+  <block wx:if="{{pageState === 'loading'}}">
+    <view class="state-wrap">
+      <view class="state-icon">⏳</view>
+      <view class="state-text">正在加载...</view>
+    </view>
+  </block>
+
+  <block wx:else>
+    <view class="rules-title">{{title}}</view>
+    <view class="rules-content">{{content}}</view>
+  </block>
+</view>

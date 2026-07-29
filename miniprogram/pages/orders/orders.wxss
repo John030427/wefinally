@@ -1,0 +1,165 @@
+.orders-intro {
+  padding: 8rpx 4rpx 28rpx;
+}
+
+.orders-title {
+  color: #2f2a2c;
+  font-size: 38rpx;
+  font-weight: 650;
+}
+
+.orders-subtitle {
+  margin-top: 8rpx;
+  color: #9a8c91;
+  font-size: 24rpx;
+}
+
+.empty-card {
+  padding: 64rpx 32rpx;
+  text-align: center;
+}
+
+.empty-icon {
+  margin-bottom: 16rpx;
+  font-size: 58rpx;
+}
+
+.empty-title {
+  color: #443b3e;
+  font-size: 30rpx;
+  font-weight: 600;
+}
+
+.empty-desc {
+  margin-top: 10rpx;
+  color: #9b9094;
+  font-size: 24rpx;
+}
+
+.order-card {
+  border: 1rpx solid #f6e9ed;
+  box-shadow: 0 8rpx 24rpx rgba(106, 63, 78, 0.05);
+}
+
+.order-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20rpx;
+}
+
+.order-product {
+  color: #3f3639;
+  font-size: 28rpx;
+  font-weight: 600;
+}
+
+.order-created {
+  margin-top: 6rpx;
+  color: #aaa0a3;
+  font-size: 21rpx;
+}
+
+.order-status {
+  flex-shrink: 0;
+  padding: 7rpx 16rpx;
+  border-radius: 999rpx;
+  font-size: 21rpx;
+}
+
+.order-status.paid {
+  color: #278c58;
+  background: #eaf8f0;
+}
+
+.order-status.pending {
+  color: #ad6c17;
+  background: #fff4df;
+}
+
+.order-amount {
+  margin: 28rpx 0;
+  color: #d95378;
+  font-size: 48rpx;
+  font-weight: 700;
+}
+
+.currency {
+  margin-right: 4rpx;
+  font-size: 26rpx;
+}
+
+.order-meta {
+  display: flex;
+  align-items: flex-start;
+  gap: 20rpx;
+  padding: 8rpx 0;
+  color: #74696d;
+  font-size: 22rpx;
+  line-height: 1.55;
+}
+
+.order-meta-label {
+  flex-shrink: 0;
+  width: 100rpx;
+  color: #a09398;
+}
+
+.order-no {
+  word-break: break-all;
+}
+
+.order-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 16rpx;
+  margin-top: 24rpx;
+  padding-top: 22rpx;
+  border-top: 1rpx solid #f5ecef;
+}
+
+.order-btn {
+  width: auto;
+  min-width: 190rpx;
+  height: 68rpx;
+  margin: 0;
+  padding: 0 28rpx;
+  border-radius: 34rpx;
+  font-size: 24rpx;
+  line-height: 68rpx;
+}
+
+.order-btn::after {
+  border: 0;
+}
+
+.order-btn.secondary {
+  color: #d45c7d;
+  background: #fff1f5;
+}
+
+.order-btn.invoice {
+  color: #fff;
+  background: linear-gradient(135deg, #ff7698, #f35f84);
+}
+
+.invoice-state {
+  padding: 14rpx 8rpx;
+  color: #9a777f;
+  font-size: 23rpx;
+}
+
+.invoice-state.issued {
+  color: #278c58;
+}
+
+.invoice-state.rejected {
+  color: #b65d62;
+}
+
+.orders-note {
+  padding: 12rpx 0 44rpx;
+  color: #b4aaad;
+  font-size: 21rpx;
+  text-align: center;
+}
