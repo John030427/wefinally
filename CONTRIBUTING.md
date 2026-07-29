@@ -7,7 +7,7 @@
 - 每个人使用自己的 GitHub 账号和分支，不共享 Token，不共同开发同一条分支。
 - 生产密钥只放 GitHub Environments/Secrets 或 CloudBase 密钥配置，不放仓库。
 
-私有仓库为 `John030427/wefinally`，本地 remote 名称为 `origin`。当前远端为空，而且历史提交曾包含本地测试凭据；第一次推送前必须先完成历史策略确认。
+私有仓库为 `John030427/wefinally`，默认分支为受保护的 `main`。远端使用经过 Gitleaks 审计的无旧历史基线；禁止把本机旧分支、旧标签或旧提交推到该远端。
 
 ## 2. 分支命名
 
