@@ -107,3 +107,15 @@ test('rejects unsafe thread identifiers and can delete one thread', async () => 
   await saver.deleteThread('wf_thread_persist_001')
   assert.equal(collection.documents.size, 0)
 })
+
+test('does not restore expired checkpoints while CloudBase TTL cleanup is pending', async () => {
+  const collection = new MemoryCollection()
+  let now = 1_000
+  const saver = new CloudBaseCheckpointSaver(collection, { retentionDays: 1, now: () => now })
+  const graph = buildCustomerServiceGraph({ model: complaintModel, checkpointer: saver })
+  await graph.invoke(input(), { configurable: { thread_id: 'wf_thread_persist_001' } })
+  assert.ok(await saver.getTuple({ configurable: { thread_id: 'wf_thread_persist_001' } }))
+
+  now += 86_400_001
+  assert.equal(await saver.getTuple({ configurable: { thread_id: 'wf_thread_persist_001' } }), undefined)
+})

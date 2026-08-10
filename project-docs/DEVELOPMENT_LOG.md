@@ -1265,3 +1265,29 @@ Bug 验证 / 云端只读审计 / 测试夹具 / 隐私加固
 - [x] `npm --prefix server run selfcheck:cloudbase-partner`
 - [x] 管理员与合伙人登录页浏览器验证，控制台无警告或错误。
 - 未上传小程序客户端、未修改生产数据库、未提交 Git、未提交真实后台账号密码。
+
+## 2026-08-11 — LangGraph 客服与双向约会协调本地候选
+
+### 类型
+AI 编排 / 人工介入 / 安全边界 / 本地发布候选
+
+### 实现
+- 新增独立 `Nodejs20.19` TypeScript `agent-graph` 函数源码，固定使用 `@langchain/langgraph@1.4.9`。
+- 客服图支持普通咨询、投诉/支付争议转人工、提示词注入拦截、`interrupt()` 暂停及跨图实例恢复。
+- 双向约会图以确定性代码计算时间、行政区、场所类型、时长和预算交集；任一方修改后版本递增，旧 proposal 和双方旧确认立即失效。
+- 新增 CloudBase collection 抽象的 checkpoint saver：文档键不可猜测，write 幂等，限定 `wf_thread_`，保存过期时间，并可在新实例恢复。
+- API 侧新增 HMAC actor/thread 标识、严格结果 DTO、超时/不可用回退、shadow mode 和 8 项精确工具白名单。平台客服可通过默认关闭的开关接入；模型和图节点不直接访问业务数据库。
+
+### 安全与验证
+- 图函数 30 项测试通过（包括读取层主动忽略已过期 checkpoint），TypeScript 严格构建通过，生产依赖 `npm audit --omit=dev` 为 0。
+- `selfcheck:langgraph` 以及 Agent、安全、AI 报告、支付、会员、匹配六组基线全部通过。
+- 对抗测试覆盖伪造 actor/thread、任意工具、跨协调任务、旧版本、重复恢复、坏 checkpoint、手机号/OpenID/密钥泄漏、函数超时和不可用回退。
+- 最终验证时已临时启动 `localhost:3000`，总入口通过健康检查和纯逻辑匹配断言，随后因本机没有监听 `127.0.0.1:3306` 的 MySQL 服务，在 `match-psych-report` 清理步骤以 `ECONNREFUSED` 停止；逐组代码自检没有失败。
+- 变更扫描只命中测试中的明确假手机号/OpenID/密钥/私钥标记夹具，未发现真实凭据。
+
+### 部署边界
+- 当前未部署 `agent-graph`、未更新线上 `api`、未上传小程序客户端、未写生产数据库。
+- `LANGGRAPH_ENABLED` 默认关闭；`LANGGRAPH_SHADOW_MODE` 不执行工具。
+- 约会协调图已实现并测试，但 API 暂不切流，直到旧 `date_coordination_application` 字段到新偏好 schema 的无损映射有独立测试。
+- 未将 `wx-server-sdk@4.0.2` 加入新图函数，因为它固定的 CloudBase SDK 依赖链仍包含审计为高危的旧依赖。部署前必须确定安全的运行时数据库适配方式，并完成 collection、TTL/index、环境变量和真实云函数恢复验证。
+- `api` 云函数部署与小程序客户端上传是两个独立发布动作，必须分别验证和授权。

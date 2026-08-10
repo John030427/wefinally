@@ -112,7 +112,8 @@ export class CloudBaseCheckpointSaver extends BaseCheckpointSaver {
       .filter((candidate): candidate is Extract<CheckpointDocument, { kind: 'write' }> =>
         candidate.kind === 'write' &&
         candidate.checkpointNamespace === document.checkpointNamespace &&
-        candidate.checkpointId === document.checkpointId
+        candidate.checkpointId === document.checkpointId &&
+        candidate.expireAt > this.now()
       )
       .sort((left, right) => left.writeIndex - right.writeIndex)
     const pendingWrites: CheckpointPendingWrite[] = await Promise.all(writes.map(async (write) => [
@@ -151,12 +152,12 @@ export class CloudBaseCheckpointSaver extends BaseCheckpointSaver {
     let checkpoint: Extract<CheckpointDocument, { kind: 'checkpoint' }> | undefined
     if (requestedId) {
       const found = await this.collection.get(documentId(['checkpoint', threadId, namespace, requestedId]))
-      if (found?.kind === 'checkpoint') checkpoint = found
+      if (found?.kind === 'checkpoint' && found.expireAt > this.now()) checkpoint = found
     } else {
       const all = await this.collection.query(threadId)
       checkpoint = all
         .filter((candidate): candidate is Extract<CheckpointDocument, { kind: 'checkpoint' }> =>
-          candidate.kind === 'checkpoint' && candidate.checkpointNamespace === namespace
+          candidate.kind === 'checkpoint' && candidate.checkpointNamespace === namespace && candidate.expireAt > this.now()
         )
         .sort((left, right) => right.checkpointId.localeCompare(left.checkpointId))[0]
     }
@@ -174,6 +175,7 @@ export class CloudBaseCheckpointSaver extends BaseCheckpointSaver {
       .filter((candidate): candidate is Extract<CheckpointDocument, { kind: 'checkpoint' }> =>
         candidate.kind === 'checkpoint' &&
         candidate.checkpointNamespace === namespace &&
+        candidate.expireAt > this.now() &&
         (!requestedId || candidate.checkpointId === requestedId) &&
         (!beforeId || candidate.checkpointId < beforeId)
       )
