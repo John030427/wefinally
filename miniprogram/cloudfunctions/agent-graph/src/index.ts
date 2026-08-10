@@ -89,7 +89,12 @@ export function createAgentGraphMain(dependencies: MainDependencies) {
 
       const resumeInput = GraphResumeInputSchema.safeParse(event)
       if (!resumeInput.success) return { success: false, code: 'invalid_request' }
-      const checkpointState = await loadCheckpointState(dependencies.checkpointer, resumeInput.data.threadId)
+      let checkpointState: Record<string, unknown> | undefined
+      try {
+        checkpointState = await loadCheckpointState(dependencies.checkpointer, resumeInput.data.threadId)
+      } catch {
+        return { success: false, code: 'invalid_checkpoint' }
+      }
       if (!checkpointState) return { success: false, code: 'thread_not_found' }
       if (checkpointState.actorRef !== resumeInput.data.actorRef) return { success: false, code: 'actor_mismatch' }
       const state = await resumeGraph(resumeInput.data, checkpointState, dependencies)

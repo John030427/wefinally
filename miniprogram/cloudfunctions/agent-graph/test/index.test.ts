@@ -102,3 +102,22 @@ test('date coordination returns awaiting confirmation until both current-version
   assert.equal(result.success, true)
   assert.equal(result.data?.status, 'awaiting_confirmation')
 })
+
+test('malformed checkpoint storage returns a stable error without exposing the storage exception', async () => {
+  class CorruptSaver extends MemorySaver {
+    override async getTuple(): Promise<never> {
+      throw new Error('raw corrupted document with secret internals')
+    }
+  }
+  const main = createAgentGraphMain({
+    checkpointer: new CorruptSaver(),
+    model: { decide: async () => { throw new Error('not_called') } }
+  })
+  const result = await main({
+    operation: 'resume_tool',
+    threadId: 'wf_thread_corrupt_001',
+    actorRef: 'usr_4f52c3d8a9b071ce',
+    toolResult: { ok: true }
+  })
+  assert.deepEqual(result, { success: false, code: 'invalid_checkpoint' })
+})

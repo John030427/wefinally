@@ -40,25 +40,51 @@ function safeToolResult(tool, raw) {
   if (plainObject(value.data)) {
     const allowed = GRAPH_TOOL_ALLOWLIST[tool]
     result.data = allowed.reduce((output, key) => {
-      if (value.data[key] !== undefined) output[key] = value.data[key]
+      if (value.data[key] !== undefined) output[key] = sanitizeSafeValue(value.data[key])
       return output
     }, {})
   }
   return result
 }
 
+function sanitizeSafeValue(value, depth = 0) {
+  if (depth > 5) return null
+  if (typeof value === 'string') {
+    return value
+      .replace(/\b1[3-9]\d{9}\b/g, '[已隐藏手机号]')
+      .replace(/\b(?:openid|open_id)\s*[:：]?\s*[A-Za-z0-9_-]{6,}\b/gi, '[已隐藏标识]')
+      .replace(/\bo[A-Za-z0-9_-]{20,}\b/g, '[已隐藏标识]')
+      .replace(/\b(?:sk|api)[-_][A-Za-z0-9_-]{8,}\b/gi, '[已隐藏密钥]')
+      .slice(0, 500)
+  }
+  if (Array.isArray(value)) return value.slice(0, 20).map((item) => sanitizeSafeValue(item, depth + 1))
+  if (plainObject(value)) {
+    return Object.entries(value).reduce((output, [key, item]) => {
+      if (!/(?:phone|mobile|openid|open_id|secret|api.?key|private.?key)/i.test(key)) {
+        output[key] = sanitizeSafeValue(item, depth + 1)
+      }
+      return output
+    }, {})
+  }
+  return typeof value === 'number' || typeof value === 'boolean' || value === null ? value : null
+}
+
 async function executeGraphTool(request, context, services) {
   if (!plainObject(request)) throw new Error('graph_tool_request_invalid')
   const tool = String(request.type || '')
-  if (!Object.prototype.hasOwnProperty.call(GRAPH_TOOL_ALLOWLIST, tool)) throw new Error('graph_tool_not_allowed')
+  if (!Object.prototype.hasOwnProperty.call(GRAPH_TOOL_ALLOWLIST, tool)) throw new Error('tool_not_allowed')
   const args = request.arguments || {}
   assertSafeObject(args)
   if (!plainObject(context) || !Number.isInteger(context.userId) || !Number.isInteger(context.sessionId)) {
     throw new Error('graph_tool_context_invalid')
   }
   if (COORDINATION_TOOLS.has(tool)) {
-    if (Number(args.coordinationId) !== Number(context.coordinationId)) throw new Error('coordination_scope_mismatch')
+    if (Number(args.coordinationId) !== Number(context.coordinationId)) throw new Error('ownership_mismatch')
     if (Number(args.coordinationVersion) !== Number(context.coordinationVersion)) throw new Error('stale_coordination_version')
+  }
+  if (typeof context.claimIdempotency === 'function') {
+    const claimed = await context.claimIdempotency(String(context.idempotencyKey || `${context.sessionId}:${tool}`))
+    if (!claimed) throw new Error('duplicate_resume')
   }
   const service = services && services[tool]
   if (typeof service !== 'function') throw new Error('graph_tool_service_missing')

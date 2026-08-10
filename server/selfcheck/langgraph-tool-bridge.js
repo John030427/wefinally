@@ -33,7 +33,7 @@ async function main() {
   assert.deepStrictEqual(result, { ok: true, data: { previewId: 'preview_1', status: 'pending' } })
   assert.strictEqual(calls, 1)
 
-  await assert.rejects(() => executeGraphTool({ type: 'drop_database', arguments: {} }, context, services), /graph_tool_not_allowed/)
+  await assert.rejects(() => executeGraphTool({ type: 'drop_database', arguments: {} }, context, services), /tool_not_allowed/)
   await assert.rejects(() => executeGraphTool({
     type: 'create_date_application_preview',
     arguments: { coordinationId: 716, coordinationVersion: 2, proposal: {} }
@@ -43,7 +43,7 @@ async function main() {
   await assert.rejects(() => executeGraphTool({
     type: 'create_date_application_preview',
     arguments: { coordinationId: 999, coordinationVersion: 3, proposal: {} }
-  }, context, services), /coordination_scope_mismatch/)
+  }, context, services), /ownership_mismatch/)
   assert.strictEqual(calls, 1)
 
   console.log('PASS langgraph tool bridge')

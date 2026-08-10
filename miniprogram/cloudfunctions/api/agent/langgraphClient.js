@@ -94,11 +94,19 @@ function safePayload(input) {
   return payload
 }
 
+function hasSafeIdentifiers(input) {
+  return /^wf_thread_[A-Za-z0-9_-]{10,80}$/.test(String(input.threadId || ''))
+    && /^usr_[a-f0-9]{16,64}$/.test(String(input.actorRef || ''))
+    && (!input.operation || ['run', 'resume_tool', 'resume_confirmation'].includes(input.operation))
+    && (input.operation && input.operation !== 'run' ? true : ['customer_service', 'date_coordination'].includes(input.mode))
+}
+
 async function invokeLangGraph(input, deps = {}) {
   const config = readLangGraphConfig(deps.env || process.env)
-  if (!config.enabled) return { kind: 'disabled' }
+  if (!config.enabled) return { kind: 'disabled', code: 'graph_disabled' }
   if (!config.actorSecret) return { kind: 'fallback', code: 'graph_config_invalid' }
   if (typeof deps.invokeFunction !== 'function') return { kind: 'fallback', code: 'graph_invoker_missing' }
+  if (!hasSafeIdentifiers(input)) return { kind: 'fallback', code: 'unsafe_context' }
 
   let timer
   try {

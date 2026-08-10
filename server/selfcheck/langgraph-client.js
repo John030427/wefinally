@@ -26,7 +26,7 @@ async function main() {
     env: {},
     invokeFunction: async () => { invoked += 1 }
   })
-  assert.strictEqual(disabled.kind, 'disabled')
+  assert.deepStrictEqual(disabled, { kind: 'disabled', code: 'graph_disabled' })
   assert.strictEqual(invoked, 0)
 
   const normalized = await invokeLangGraph({ threadId: 'wf_thread_aaaaaaaaaaaaaaaa', actorRef, mode: 'customer_service', userText: '手机号13800138000', safeSummary: '' }, {
