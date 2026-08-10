@@ -66,6 +66,8 @@ export const GraphStateSchema = GraphRunInputSchema.extend({
   lastResult: SafeToolResultSchema.optional(),
   confirmationA: z.boolean().default(false),
   confirmationB: z.boolean().default(false),
+  confirmationVersionA: z.number().int().positive().optional(),
+  confirmationVersionB: z.number().int().positive().optional(),
   proposal: z.record(z.string(), z.unknown()).nullable().default(null),
   errorCode: z.string().max(80).optional()
 }).strict()
