@@ -9,6 +9,8 @@ const { createDateApplicationPatchHandlers, claimPendingPatch } = require('./dat
 const { createDateCoordinationHandlers } = require('./dateCoordination')
 const { PATCH_TOOL } = require('../lib/dateApplicationPatchPolicy')
 const { readHumanServiceConfig, buildHumanServiceHandoff } = require('../agent/humanService')
+const { readLangGraphConfig, createActorRef, createThreadId, runLangGraphStep } = require('../agent/langgraphClient')
+const { executeGraphTool } = require('../agent/langgraphToolBridge')
 
 const FREE_DAILY_LIMIT = 5
 const VIP_DAILY_LIMIT = 30
@@ -33,6 +35,7 @@ function guardUnverifiedSuccessClaim(reply) {
 
 function defaultDeps() {
   const db = require('../lib/db')
+  const cloud = require('wx-server-sdk')
   return {
     currentUser: require('./user').currentUser,
     first: db.first,
@@ -42,7 +45,9 @@ function defaultDeps() {
     updateByDoc: db.updateByDoc,
     claimPendingPatch,
     now: db.now,
-    generateDecision
+    generateDecision,
+    env: process.env,
+    invokeGraphFunction: (name, payload) => cloud.callFunction({ name, data: payload })
   }
 }
 
@@ -270,6 +275,71 @@ function createAgentHandlers(overrides = {}) {
       const reply = riskReply(risk.category)
       await saveMessage(session, user, 'assistant', reply, { risk_level: risk.category })
       return { session_id: session.id, agent_type: session.agent_type, reply, risk_level: risk.category, manual_pending: risk.category === RISK.HIGH_RISK }
+    }
+
+    const graphConfig = readLangGraphConfig(dep('env'))
+    if (session.agent_type === AGENT_TYPES.PLATFORM_SERVICE && graphConfig.enabled) {
+      try {
+        const actorSecret = graphConfig.actorSecret
+        const graphStep = await runLangGraphStep({
+          threadId: createThreadId(session.id, actorSecret),
+          actorRef: createActorRef(user.id, actorSecret),
+          mode: 'customer_service',
+          userText: content,
+          safeSummary: String(session.summary || '').slice(0, 800)
+        }, {
+          env: dep('env'),
+          invokeFunction: dep('invokeGraphFunction'),
+          executeTool: (action) => executeGraphTool(action, {
+            userId: Number(user.id),
+            sessionId: Number(session.id),
+            coordinationId: 0,
+            coordinationVersion: 0
+          }, {
+            create_human_ticket: async (args) => {
+              const ticket = await createTicketFor(session, user, {
+                priority: args.priority || 'P1',
+                category: args.category || 'graph_manual_review',
+                summary: args.summary || 'AI 客服转人工核查'
+              })
+              return {
+                ok: true,
+                data: {
+                  ticketId: String(ticket.id || ''),
+                  status: ticket.status || 'open',
+                  priority: ticket.priority || args.priority || 'P1'
+                }
+              }
+            }
+          })
+        })
+        if (graphStep.kind === 'result') {
+          const graphResult = graphStep.result
+          const reply = graphResult.replyDraft || (graphResult.status === 'manual_pending'
+            ? '已转人工客服核查，请耐心等待工作人员回复。'
+            : '我已收到你的问题。')
+          await dep('addWithId')('agent_run', {
+            session_id: session.id,
+            user_id: user.id,
+            agent_type: session.agent_type,
+            status: graphResult.status,
+            provider: 'langgraph',
+            risk_level: 'safe',
+            error_code: graphResult.errorCode || ''
+          }, 'agent_run')
+          await saveMessage(session, user, 'assistant', reply, { graph_phase: graphResult.phase })
+          return {
+            session_id: session.id,
+            agent_type: session.agent_type,
+            reply,
+            provider: 'langgraph',
+            manual_pending: graphResult.status === 'manual_pending',
+            risk_level: 'safe'
+          }
+        }
+      } catch (_) {
+        // A typed graph/config/tool failure deliberately falls through to the legacy path.
+      }
     }
 
     if (session.agent_type === AGENT_TYPES.DATE_COORDINATOR) {

@@ -54,6 +54,10 @@ function fakeDeps() {
   const match = (row, query) => Object.keys(query || {}).every((key) => row[key] === query[key])
   const deps = {
     tables,
+    env: {},
+    async invokeGraphFunction() {
+      throw new Error('graph should be disabled by default')
+    },
     now: () => new Date('2026-07-12T10:00:00.000Z'),
     async currentUser(wxContext) {
       return tables.user.find((row) => row.openid === wxContext.OPENID)
@@ -279,6 +283,31 @@ async function main() {
   deps.tables.knowledge_article = []
   const platformNoKnowledge = await handlers.send({ session_id: platform.id, message: '平台收费说明' }, contextA)
   assert.strictEqual(platformNoKnowledge.knowledge_limited, true)
+
+  deps.env.LANGGRAPH_ENABLED = 'true'
+  deps.env.LANGGRAPH_ACTOR_SECRET = 'selfcheck-secret'
+  deps.invokeGraphFunction = async (name, payload) => {
+    assert.strictEqual(name, 'agent-graph')
+    assert.strictEqual(payload.mode, 'customer_service')
+    assert.match(payload.actorRef, /^usr_[a-f0-9]{32}$/)
+    assert.match(payload.threadId, /^wf_thread_[a-f0-9]{32}$/)
+    return {
+      result: {
+        success: true,
+        data: {
+          status: 'completed',
+          threadId: payload.threadId,
+          phase: 'completed',
+          replyDraft: '这是 LangGraph 客服回复。',
+          pendingAction: null
+        }
+      }
+    }
+  }
+  const graphReply = await handlers.send({ session_id: platform.id, message: '介绍一下平台规则' }, contextA)
+  assert.strictEqual(graphReply.provider, 'langgraph')
+  assert.strictEqual(graphReply.reply, '这是 LangGraph 客服回复。')
+  deps.env.LANGGRAPH_ENABLED = 'false'
 
   const loveReply = await handlers.send({ session_id: love.id, message: '想聊聊初次见面' }, contextA)
   assert(loveReply.reply.includes('轻松话题'))
