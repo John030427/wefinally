@@ -26,7 +26,7 @@
 
 ## 3. 技术方案
 
-新增独立的 TypeScript `agent-graph` 云函数，使用 Node.js 18 运行时和 `@langchain/langgraph`。现有 Node.js 16 `api` 云函数继续承担原有业务，避免原地升级造成中断。
+新增独立的 TypeScript `agent-graph` 云函数，使用 CloudBase 推荐的 `Nodejs20.19` 运行时和 `@langchain/langgraph`。当前 LangGraph 依赖链要求 Node.js 20；现有 Node.js 16 `api` 云函数继续承担原有业务，避免原地升级造成中断。
 
 小程序仍调用统一请求层。Agent 请求在功能开关开启时进入 `agent-graph`；关闭或图执行失败时，回退到当前确定性 Agent 流程。
 
