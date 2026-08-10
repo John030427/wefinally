@@ -36,5 +36,9 @@ module.exports = {
   date_participant: 'date_participants',
   date_coordination_application: 'date_applications',
   date_coordination_proposal: 'date_proposals',
-  date_coordination_confirmation: 'date_confirmations'
+  date_coordination_confirmation: 'date_confirmations',
+  date_application_patch: 'date_application_patches',
+  date_coordination_event: 'date_coordination_events',
+  match_experience_feedback: 'match_experience_feedback',
+  date_experience_feedback: 'date_experience_feedback'
 }

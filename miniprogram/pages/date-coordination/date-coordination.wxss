@@ -16,11 +16,16 @@
 
 .date-desc,
 .invite-text,
+.form-hint,
 .muted,
 .public-note {
   color: #777;
   font-size: 25rpx;
   line-height: 1.7;
+}
+
+.form-hint {
+  margin: 0 0 20rpx;
 }
 
 .status-pill {
@@ -33,8 +38,7 @@
   font-size: 23rpx;
 }
 
-.progress-row,
-.contact-card {
+.progress-row {
   display: flex;
   justify-content: space-between;
   gap: 16rpx;
@@ -44,8 +48,7 @@
   font-size: 25rpx;
 }
 
-.progress-row:last-child,
-.contact-card {
+.progress-row:last-child {
   border-bottom: none;
 }
 
@@ -58,16 +61,31 @@
 }
 
 .choice-tag {
-  padding: 12rpx 18rpx;
-  border-radius: 24rpx;
-  background: #f7f7f7;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 66rpx;
+  padding: 8rpx 20rpx;
+  border: 2rpx solid #f1ecee;
+  border-radius: 30rpx;
+  background: #f8f8f8;
   color: #666;
   font-size: 24rpx;
+  line-height: 1.25;
+  box-sizing: border-box;
 }
 
 .choice-tag.selected {
-  background: #ff6b8a;
+  border-color: #ff6688;
+  background: #ff6688;
   color: #fff;
+  font-weight: 600;
+  box-shadow: 0 6rpx 14rpx rgba(255, 102, 136, 0.2);
+}
+
+.choice-tag-pressed {
+  opacity: 0.78;
+  transform: scale(0.97);
 }
 
 .date-choice {
@@ -105,6 +123,26 @@
   box-sizing: border-box;
   color: #333;
   font-size: 26rpx;
+}
+
+.field-input {
+  height: 88rpx;
+  min-height: 88rpx;
+  border: 2rpx solid #f5dce3;
+  background: #fffafb;
+  line-height: 44rpx;
+}
+
+.field-input:focus {
+  border-color: #ff8ca4;
+  background: #fff;
+}
+
+.field-help {
+  margin-top: 10rpx;
+  color: #a58f95;
+  font-size: 22rpx;
+  line-height: 1.5;
 }
 
 .textarea {
@@ -168,11 +206,67 @@
   line-height: 1.8;
 }
 
-.contact-card {
+.support-card {
+  display: flex;
   align-items: center;
+  gap: 20rpx;
+  min-height: 132rpx;
+  margin: 24rpx 0 0;
+  padding: 24rpx 26rpx;
+  border: 2rpx solid #ffdce5;
+  border-radius: 20rpx;
+  box-sizing: border-box;
+  box-shadow: 0 8rpx 22rpx rgba(92, 51, 62, 0.07);
 }
 
-.contact-link {
-  color: #ff6b8a;
+.support-card-ai {
+  background: #fff2f6;
+}
+
+.support-card-human {
+  background: #fff;
+}
+
+.support-card-pressed {
+  opacity: 0.82;
+  transform: scale(0.99);
+}
+
+.support-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 74rpx;
+  width: 74rpx;
+  height: 74rpx;
+  border-radius: 50%;
+  background: #fff;
+  font-size: 36rpx;
+  box-shadow: 0 4rpx 12rpx rgba(255, 102, 136, 0.12);
+}
+
+.support-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.support-title {
+  color: #4b3c40;
+  font-size: 29rpx;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.support-desc {
+  margin-top: 7rpx;
+  color: #8b7c80;
+  font-size: 23rpx;
+  line-height: 1.5;
+}
+
+.support-arrow {
   flex: 0 0 auto;
+  color: #ff6688;
+  font-size: 46rpx;
+  line-height: 1;
 }

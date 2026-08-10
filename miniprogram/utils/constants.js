@@ -4,7 +4,8 @@ const STORAGE_KEYS = {
   OPENID: 'wf_openid',
   AGREEMENT_ACCEPTED: 'wf_agreement_accepted',
   MATCH_SETTING_COOLDOWN: 'wf_match_setting_cooldown',
-  PROMOTE_CODE: 'wf_promote_code'
+  PROMOTE_CODE: 'wf_promote_code',
+  TRUST_ONBOARDING: 'wf_trust_onboarding_v1'
 }
 
 const API_PATHS = {
@@ -18,6 +19,7 @@ const API_PATHS = {
   MATCH_LIST: '/api/match/list',
   MATCH_DETAIL: '/api/match/detail',
   MATCH_HANDOFF: '/api/match/handoff',
+  MATCH_FEEDBACK: '/api/match/feedback',
   MATCH_REPORT: '/api/match/report',
   MATCH_REPORT_TASK: '/api/match/report-tasks',
   MATCH_REPORT_TASK_STATUS: '/api/match/report-tasks/status',
@@ -26,12 +28,15 @@ const API_PATHS = {
   VIP_INFO: '/api/vip/info',
   VIP_PURCHASE: '/api/vip/purchase',
   ORDER_STATUS: '/api/order/status',
+  ORDER_LIST: '/api/order/list',
+  ORDER_INVOICE: '/api/order/invoice',
   MARRY_STAT: '/api/platform/marry-stat',
   MARRY_REPORT: '/api/user/marry-report',
   CHAT_SEND: '/api/chat/send',
   CHAT_HISTORY: '/api/chat/history',
   AGENT_SESSIONS: '/api/agent/sessions',
   DATE_COORDINATIONS: '/api/date-coordinations',
+  DATE_FEEDBACK: '/api/date-feedback',
   ACCOUNT_CANCEL: '/api/user/cancel',
   RULES: '/api/platform/rules',
   CIRCLES: '/api/common/circles',

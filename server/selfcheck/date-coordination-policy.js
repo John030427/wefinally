@@ -73,6 +73,8 @@ const noOverlap = computeOverlap(applicationA, {
 assert.strictEqual(noOverlap.proposals.length, 0)
 assert.deepStrictEqual(noOverlap.missing_dimensions, ['time', 'area', 'activity'])
 
+assert.strictEqual(STATUS.COLLECTING_INITIATOR, 'collecting_initiator')
+assert.strictEqual(nextStatus(STATUS.COLLECTING_INITIATOR, 'initiator_submitted'), STATUS.INVITING_PARTNER)
 assert.strictEqual(nextStatus(STATUS.INVITING_PARTNER, 'accept_invitation'), STATUS.COLLECTING_PREFERENCES)
 assert.strictEqual(nextStatus(STATUS.INVITING_PARTNER, 'decline_invitation'), STATUS.INVITATION_DECLINED)
 assert.strictEqual(nextStatus(STATUS.COLLECTING_PREFERENCES, 'applications_complete'), STATUS.COMPUTING_OVERLAP)

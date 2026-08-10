@@ -1,5 +1,8 @@
 # WeFinally 婚恋小程序 — 项目总交接文档
 
+> ⚠️ 本文是 2026-06-29 的历史总览，不再作为当前交接入口。
+> 当前状态请读仓库根目录的 [`PROJECT_HANDOFF.md`](../PROJECT_HANDOFF.md)，协作规则见 [`CONTRIBUTING.md`](../CONTRIBUTING.md)。
+
 > 最后更新：2026-06-29  
 > 维护者：开发 Agent + John
 

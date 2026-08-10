@@ -127,7 +127,19 @@ function createVipHandlers(overrides = {}) {
     }
   }
 
-  return { info, purchase, status }
+  async function list(data, wxContext) {
+    const user = await currentUser(wxContext)
+    return orderService.listForUser(user, Number(data.limit || 20))
+  }
+
+  async function invoice(data, wxContext) {
+    const user = await currentUser(wxContext)
+    const orderNo = String(data.order_no || data.orderNo || '').trim()
+    if (!orderNo) throw new Error('缺少订单号')
+    return orderService.requestInvoiceForUser(user, orderNo, data)
+  }
+
+  return { info, purchase, status, list, invoice }
 }
 
 const handlers = {}
@@ -147,9 +159,21 @@ async function status(data, wxContext) {
   return handlers.instance.status(data, wxContext)
 }
 
+async function list(data, wxContext) {
+  if (!handlers.instance) handlers.instance = createVipHandlers()
+  return handlers.instance.list(data, wxContext)
+}
+
+async function invoice(data, wxContext) {
+  if (!handlers.instance) handlers.instance = createVipHandlers()
+  return handlers.instance.invoice(data, wxContext)
+}
+
 module.exports = {
   info,
   purchase,
   status,
+  list,
+  invoice,
   createVipHandlers
 }

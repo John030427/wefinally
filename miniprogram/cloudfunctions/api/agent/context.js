@@ -21,7 +21,7 @@ function normalizeTurn(turn) {
 function charCount(context) {
   const turnChars = context.recentTurns.reduce((total, turn) => total + turn.user.length + turn.assistant.length, 0)
   const knowledgeChars = context.knowledge.reduce((total, item) => total + item.title.length + item.content.length, 0)
-  return context.summary.length + turnChars + knowledgeChars + JSON.stringify(context.businessState).length + JSON.stringify(context.coordinationState).length
+  return context.summary.length + turnChars + knowledgeChars + JSON.stringify(context.businessState).length + JSON.stringify(context.coordinationState).length + JSON.stringify(context.ownApplication).length
 }
 
 function pick(source, keys) {
@@ -52,9 +52,14 @@ function buildContext(input) {
   ])
   remaining -= Math.min(remaining, JSON.stringify(businessState).length)
   const coordinationState = pick(source.coordinationState, [
-    'status', 'coordination_version', 'own_application_status', 'partner_progress', 'deadline_type'
+    'status', 'business_state', 'coordination_version', 'own_application_status', 'partner_progress', 'deadline_type', 'missing_dimensions'
   ])
   remaining -= Math.min(remaining, JSON.stringify(coordinationState).length)
+  const ownApplication = pick(source.ownApplication, [
+    'availability', 'areas', 'activities', 'budget', 'payment_preference', 'duration',
+    'transport_constraints', 'other_requirements', 'share_message'
+  ])
+  remaining -= Math.min(remaining, JSON.stringify(ownApplication).length)
   const knowledge = (Array.isArray(source.knowledge) ? source.knowledge : [])
     .slice(0, MAX_KNOWLEDGE_ITEMS)
     .map((item) => {
@@ -64,7 +69,7 @@ function buildContext(input) {
       remaining -= content.length
       return { id: item && (item.id || item._id) ? String(item.id || item._id) : '', title, content }
     })
-  const context = { summary, recentTurns, businessState, coordinationState, knowledge }
+  const context = { summary, recentTurns, businessState, coordinationState, ownApplication, knowledge }
   return Object.assign(context, { charCount: charCount(context) })
 }
 

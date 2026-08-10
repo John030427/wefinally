@@ -31,7 +31,8 @@
   background: #fff;
   color: #ff6b8a;
   font-size: 28rpx;
-  font-weight: 600;
+  font-family: inherit;
+  font-weight: 500;
 }
 
 .love-start::after {

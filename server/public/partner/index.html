@@ -88,8 +88,8 @@
   <div id="loginPage" class="login-wrap">
     <div class="login-card">
       <h1>WeFinally 合伙人后台</h1>
-      <p>独立登录入口 · 与用户小程序完全隔离</p>
-      <p style="margin-bottom:1rem"><a href="register.html" style="color:var(--primary);font-size:.875rem">合伙人注册（待管理员激活）→</a></p>
+      <p id="loginSubtitle">独立登录入口 · 与用户小程序完全隔离</p>
+      <p id="partnerRegisterEntry" style="margin-bottom:1rem"><a href="register.html" style="color:var(--primary);font-size:.875rem">合伙人注册（待管理员激活）→</a></p>
       <div id="loginError" class="error-box hidden"></div>
       <form id="loginForm">
         <div class="form-group">
@@ -138,8 +138,11 @@
 
   <script>
 (function () {
-  const API = '/api';
-  const CLOUD_MEMBER_API = (window.WF_CLOUD_BACKOFFICE_API || new URLSearchParams(location.search).get('cloudApi') || '').replace(/\/$/, '');
+  const DEFAULT_CLOUD_MEMBER_API = 'https://cloud1-d4gy8l52g08bba326.service.tcloudbase.com';
+  const CLOUD_MEMBER_API = (window.WF_CLOUD_BACKOFFICE_API || new URLSearchParams(location.search).get('cloudApi') || DEFAULT_CLOUD_MEMBER_API).replace(/\/$/, '');
+  const CLOUD_ONLY = window.WF_CLOUD_ONLY === true || new URLSearchParams(location.search).get('cloudOnly') === '1';
+  const API = CLOUD_ONLY ? CLOUD_MEMBER_API + '/api' : '/api';
+  const CLOUD_ONLY_PAGES = ['audit', 'promote'];
   const TOKEN_KEY = 'wf_partner_token';
   const CLOUD_TOKEN_KEY = 'wf_cloud_partner_token';
   const TITLES = { dashboard:'数据看板', audit:'用户审核', users:'推广用户', orders:'分润订单', promote:'推广工具', withdraw:'资金提现', profile:'账号设置' };
@@ -150,11 +153,12 @@
 
   let state = { page: 'dashboard', loading: false, partner: null };
 
-  function getToken() { return localStorage.getItem(TOKEN_KEY); }
-  function setToken(t) { localStorage.setItem(TOKEN_KEY, t); }
-  function clearToken() { localStorage.removeItem(TOKEN_KEY); localStorage.removeItem(CLOUD_TOKEN_KEY); }
-  function cloudToken() { return localStorage.getItem(CLOUD_TOKEN_KEY) || ''; }
-  function setCloudToken(value) { if (value) localStorage.setItem(CLOUD_TOKEN_KEY, value); else localStorage.removeItem(CLOUD_TOKEN_KEY); }
+  const tokenStore = CLOUD_ONLY ? sessionStorage : localStorage;
+  function getToken() { return tokenStore.getItem(TOKEN_KEY); }
+  function setToken(t) { tokenStore.setItem(TOKEN_KEY, t); }
+  function clearToken() { tokenStore.removeItem(TOKEN_KEY); tokenStore.removeItem(CLOUD_TOKEN_KEY); }
+  function cloudToken() { return tokenStore.getItem(CLOUD_TOKEN_KEY) || ''; }
+  function setCloudToken(value) { if (value) tokenStore.setItem(CLOUD_TOKEN_KEY, value); else tokenStore.removeItem(CLOUD_TOKEN_KEY); }
 
   function toast(msg, type) {
     const el = document.createElement('div');
@@ -179,6 +183,7 @@
     const res = await fetch(API + path, { method: opts.method || 'GET', headers, body: opts.body ? JSON.stringify(opts.body) : undefined });
     const json = await res.json().catch(() => ({ code: -1, message: '响应解析失败' }));
     if (json.code === 401) { clearToken(); showLogin(); throw new Error(json.message || '登录已过期'); }
+    if (CLOUD_ONLY && json.code === 404) throw new Error('云端 api 版本较旧，尚未包含当前合伙人后台所需接口');
     if (json.code !== 0) throw new Error(json.message || '请求失败');
     return json.data;
   }
@@ -210,6 +215,15 @@
   function showApp() {
     document.getElementById('loginPage').classList.add('hidden');
     document.getElementById('appPage').classList.remove('hidden');
+  }
+
+  function prepareCloudOnlyUi() {
+    if (!CLOUD_ONLY) return;
+    document.getElementById('loginSubtitle').textContent = 'CloudBase 真实环境 · 合伙人专用';
+    document.getElementById('partnerRegisterEntry').classList.add('hidden');
+    document.querySelectorAll('.nav-item').forEach(function (item) {
+      if (!CLOUD_ONLY_PAGES.includes(item.dataset.page)) item.remove();
+    });
   }
 
   function navigate(page) {
@@ -432,7 +446,9 @@
         method: 'POST',
         body: credentials
       });
-      if (CLOUD_MEMBER_API) {
+      if (CLOUD_ONLY) {
+        setCloudToken(data.token);
+      } else if (CLOUD_MEMBER_API) {
         const cloudRes = await fetch(CLOUD_MEMBER_API + '/api/auth/partner-login', { method:'POST', headers:{ 'Content-Type':'application/json' }, body:JSON.stringify(credentials) });
         const cloudJson = await cloudRes.json();
         if (cloudJson.code !== 0) throw new Error(cloudJson.message || '云端会员审核登录失败');
@@ -440,7 +456,7 @@
       }
       setToken(data.token);
       showApp();
-      navigate('dashboard');
+      navigate(CLOUD_ONLY ? CLOUD_ONLY_PAGES[0] : 'dashboard');
       toast('登录成功', 'success');
     } catch (err) {
       errEl.textContent = err.message;
@@ -462,7 +478,8 @@
     if (btn) navigate(btn.dataset.page);
   });
 
-  if (getToken()) { showApp(); navigate('dashboard'); }
+  prepareCloudOnlyUi();
+  if (getToken()) { showApp(); navigate(CLOUD_ONLY ? CLOUD_ONLY_PAGES[0] : 'dashboard'); }
   else { showLogin(); }
 })();
   </script>

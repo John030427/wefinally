@@ -2,6 +2,12 @@
 
 纯结婚导向严肃婚恋微信小程序，依托 50 大职业圈层合伙人风控、AI 定时精准匹配、三观文本语义契合度，仅支持官方一对一私密奔现。无头像、无用户私聊、无社交动态。
 
+## 接手与协作入口
+
+- 当前交接状态：[`PROJECT_HANDOFF.md`](PROJECT_HANDOFF.md)
+- GitHub 双人协作规范：[`CONTRIBUTING.md`](CONTRIBUTING.md)
+- 执行边界：[`AGENTS.md`](AGENTS.md)
+
 ---
 
 ## 项目结构

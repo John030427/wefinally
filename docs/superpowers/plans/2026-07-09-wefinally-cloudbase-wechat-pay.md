@@ -253,7 +253,7 @@ function readWechatPayConfig(env = process.env) {
     notifyUrl: env.WXPAY_NOTIFY_URL || '',
     merchantSerialNo: env.WXPAY_MERCHANT_SERIAL_NO || '',
     merchantPrivateKeyPem: decodeBase64Text(env.WXPAY_MERCHANT_PRIVATE_KEY_BASE64),
-    apiV3Key: env.WXPAY_API_V3_KEY || '',
+    apiV3Key: env.WXPAY_API_V3_KEY || '', // gitleaks:allow -- runtime environment reference, not a literal secret
     wechatPayPublicKeyId: env.WXPAY_PUBLIC_KEY_ID || '',
     wechatPayPublicKeyPem: decodeBase64Text(env.WXPAY_PUBLIC_KEY_BASE64),
     amountTotal: vipAmountFen(env),

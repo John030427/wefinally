@@ -46,7 +46,7 @@ const indexJs = read('miniprogram/pages/index/index.js');
 const matchDetailJs = read('miniprogram/pages/match-detail/match-detail.js');
 const matchDetailWxml = read('miniprogram/pages/match-detail/match-detail.wxml');
 const meetSafetyJs = read('miniprogram/pages/meet-safety/meet-safety.js');
-const minimaxHardcodedKeySymbol = ['DEMO', 'MINIMAX', 'API', 'KEY'].join('_');
+const deepseekHardcodedKeySymbol = ['DEMO', 'DEEPSEEK', 'API', 'KEY'].join('_');
 const matchStartBody = cloudMatchJs.split('async function start')[1]
   ? cloudMatchJs.split('async function start')[1].split('module.exports')[0]
   : cloudMatchJs;
@@ -66,12 +66,15 @@ ok('cloud id generator falls back when counters collection is missing', cloudDbJ
 ok('cloud manual match is guarded by demo flag', cloudMatchJs.includes('cloud_demo_match_enabled') && cloudMatchJs.includes('测试匹配未开启'));
 ok('cloud demo match can seed a candidate under demo flag', cloudMatchJs.includes('dev_seed_current_user_candidates') && cloudMatchJs.includes('cloud_demo_candidate_'));
 ok('cloud manual match avoids repeated partners', cloudMatchJs.includes('seenPartnerIds') && cloudMatchJs.includes('暂无新的可用候选'));
-ok('cloud MiniMax report helper exists', exists('miniprogram/cloudfunctions/api/lib/minimax.js'));
+ok('cloud manual match uses bilateral ranking policy', matchStartBody.includes('rankCandidates') && matchStartBody.includes('quality.pass'));
+ok('cloud manual match does not persist a fixed demo score', !matchStartBody.includes('total_score: 88') && !matchStartBody.includes('view_similarity: 88'));
+ok('cloud manual match refuses quality fallback', matchStartBody.includes('本轮暂无通过严格质量门槛的匹配'));
+ok('cloud DeepSeek report helper exists', exists('miniprogram/cloudfunctions/api/lib/deepseek.js'));
 ok('cloud match report uses durable async task', cloudMatchJs.includes("require('./reportTask')") && cloudMatchJs.includes("ensureTaskForMatch(logA, 'auto')"));
-ok('cloud MiniMax key can be read from safe runtime config', read('miniprogram/cloudfunctions/api/lib/minimax.js').includes("systemValue('minimax_api_key')"));
-ok('cloud MiniMax has no hardcoded key fallback', !read('miniprogram/cloudfunctions/api/lib/minimax.js').includes(minimaxHardcodedKeySymbol));
-ok('cloud MiniMax request timeout stays below worker function limit', read('miniprogram/cloudfunctions/api/lib/minimax.js').includes('CLOUD_FUNCTION_SAFE_TIMEOUT_MS'));
-ok('cloud manual match no longer waits for MiniMax report', !matchStartBody.includes('generateMutualMatchReports'));
+ok('cloud DeepSeek key can be read from safe runtime config', read('miniprogram/cloudfunctions/api/lib/deepseek.js').includes("systemValue('deepseek_api_key')"));
+ok('cloud DeepSeek has no hardcoded key fallback', !read('miniprogram/cloudfunctions/api/lib/deepseek.js').includes(deepseekHardcodedKeySymbol));
+ok('cloud DeepSeek request timeout stays below worker function limit', read('miniprogram/cloudfunctions/api/lib/deepseek.js').includes('CLOUD_FUNCTION_SAFE_TIMEOUT_MS'));
+ok('cloud manual match no longer waits for DeepSeek report', !matchStartBody.includes('generateMutualMatchReports'));
 ok('cloud match detail keeps field breakdown scores', cloudMatchJs.includes('ensureScoreDetailDimensions') && cloudMatchJs.includes('buildDemoScoreDetail'));
 ok('cloud exposes manual AI report generation endpoint', cloudMatchJs.includes('async function generateReport') && cloudRouteJs.includes('POST /api/match/report'));
 ok('manual AI report endpoint only creates or returns task', cloudMatchJs.includes('return reportTask.create(data, wxContext)'));
@@ -95,7 +98,10 @@ ok('cloud common config exposes demo flags', cloudCommonJs.includes('demoFlags')
 ok('cloud registration does not fail when privacy log collection is missing', cloudUserJs.includes('privacy auth log skipped'));
 ok('mysql to cloud json export script exists', exists('tools/cloudbase/export-mysql-to-cloud-json.js'));
 ok('cloudbase migration guide exists', exists('project-docs/CLOUDBASE_MIGRATION_GUIDE_2026-07-08.md'));
-ok('cloudbase delivery guide exists', exists('project-docs/CLOUDBASE_DELIVERY_2026-07-08.md'));
+ok(
+  'archived cloudbase delivery guide exists',
+  exists('project-docs/archive/audits/CLOUDBASE_DELIVERY_2026-07-08.md')
+);
 
 if (exists('miniprogram/cloudfunctions/api/index.js')) {
   const apiIndex = read('miniprogram/cloudfunctions/api/index.js');

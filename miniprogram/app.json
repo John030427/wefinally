@@ -1,8 +1,8 @@
 {
   "pages": [
+    "pages/welcome/welcome",
     "pages/login/login",
     "pages/smoke/smoke",
-    "pages/welcome/welcome",
     "pages/agreement/agreement",
     "pages/register/register",
     "pages/divorce-review/divorce-review",
@@ -16,10 +16,13 @@
     "pages/meet-safety/meet-safety",
     "pages/meet-safety-list/meet-safety-list",
     "pages/vip/vip",
+    "pages/orders/orders",
+    "pages/invoice/invoice",
     "pages/profile/profile",
     "pages/marry-stat/marry-stat",
     "pages/chat/chat",
     "pages/date-coordination/date-coordination",
+    "pages/date-feedback/date-feedback",
     "pages/marry-report/marry-report",
     "pages/account-cancel/account-cancel",
     "pages/rules/rules"
@@ -58,5 +61,5 @@
       "desc": "用于线下见面报备与一键呼救定位，仅在你主动操作时使用"
     }
   },
-  "requiredPrivateInfos": ["getLocation", "startLocationUpdate", "onLocationChange"]
+  "requiredPrivateInfos": ["chooseLocation", "getLocation", "startLocationUpdate", "onLocationChange"]
 }

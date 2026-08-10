@@ -41,8 +41,45 @@ function isUpdated(res) {
   return Number(res && res.stats && res.stats.updated) > 0
 }
 
+function normalizeInvoiceInput(input = {}) {
+  const invoiceType = String(input.invoice_type || '').trim().toLowerCase()
+  const title = String(input.title || '').trim()
+  const email = String(input.email || '').trim().toLowerCase()
+  const taxNo = String(input.tax_no || '').replace(/\s+/g, '').toUpperCase()
+  if (!['personal', 'company'].includes(invoiceType)) throw new Error('请选择发票类型')
+  if (!title || title.length > 100) throw new Error('请填写正确的发票抬头')
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 120) throw new Error('请填写正确的接收邮箱')
+  if (invoiceType === 'company' && !/^[0-9A-Z]{15,20}$/.test(taxNo)) throw new Error('请填写正确的纳税人识别号')
+  return {
+    invoice_type: invoiceType,
+    invoice_title: title,
+    invoice_tax_no: invoiceType === 'company' ? taxNo : '',
+    invoice_email: email
+  }
+}
+
+function publicOrder(order) {
+  const payStatus = Number(order && order.pay_status || 0)
+  const invoiceStatus = String(order && order.invoice_status || '')
+  return {
+    order_no: String(order && order.order_no || ''),
+    price: Number(order && order.price || VIP_PRICE_YUAN),
+    amount_total: Number(order && order.amount_total || 0),
+    currency: String(order && order.currency || 'CNY'),
+    vip_days: Number(order && order.vip_days || VIP_DAYS),
+    pay_status: payStatus,
+    is_paid: payStatus === 1,
+    trade_state: String(order && order.trade_state || ''),
+    pay_time: order && order.pay_time || null,
+    create_time: order && order.create_time || null,
+    invoice_status: invoiceStatus,
+    invoice_requested_at: order && order.invoice_requested_at || null,
+    invoice_eligible: payStatus === 1 && !['pending', 'issued'].includes(invoiceStatus)
+  }
+}
+
 function createVipOrderService(deps = cloudDeps()) {
-  const { first, addWithId, updateByDoc, col, _, now } = deps
+  const { first, list, addWithId, updateByDoc, col, _, now } = deps
 
   async function createPendingVipOrder(user, options = {}) {
     return addWithId('user_order', {
@@ -99,6 +136,48 @@ function createVipOrderService(deps = cloudDeps()) {
     }
   }
 
+  async function listForUser(user, limit = 20) {
+    const rows = await list('user_order', { user_id: Number(user.id) }, Math.max(1, Math.min(Number(limit || 20), 50)))
+    return rows
+      .slice()
+      .sort((a, b) => new Date(b.create_time || 0).getTime() - new Date(a.create_time || 0).getTime())
+      .map(publicOrder)
+  }
+
+  async function requestInvoiceForUser(user, orderNoValue, input) {
+    const order = await first('user_order', {
+      order_no: String(orderNoValue || '').trim(),
+      user_id: Number(user.id)
+    })
+    if (!order) throw new Error('订单不存在')
+    if (Number(order.pay_status || 0) !== 1) throw new Error('订单支付成功后才能申请发票')
+    const currentStatus = String(order.invoice_status || '')
+    if (['pending', 'issued'].includes(currentStatus)) {
+      return {
+        order_no: order.order_no,
+        invoice_status: currentStatus,
+        invoice_type: order.invoice_type || '',
+        invoice_requested_at: order.invoice_requested_at || null,
+        idempotent: true
+      }
+    }
+    const normalized = normalizeInvoiceInput(input)
+    const requestedAt = now()
+    await updateByDoc('user_order', order, Object.assign({}, normalized, {
+      invoice_status: 'pending',
+      invoice_requested_at: requestedAt,
+      invoice_issued_at: null,
+      invoice_reject_reason: ''
+    }))
+    return {
+      order_no: order.order_no,
+      invoice_status: 'pending',
+      invoice_type: normalized.invoice_type,
+      invoice_requested_at: requestedAt,
+      idempotent: false
+    }
+  }
+
   async function finalizePaidVipOrder(transaction, config) {
     const order = await first('user_order', { order_no: transaction.out_trade_no })
     validatePaidTransaction(order, transaction, config)
@@ -151,6 +230,8 @@ function createVipOrderService(deps = cloudDeps()) {
     savePrepay,
     grantDemoVip,
     getStatusForUser,
+    listForUser,
+    requestInvoiceForUser,
     finalizePaidVipOrder
   }
 }
@@ -158,5 +239,7 @@ function createVipOrderService(deps = cloudDeps()) {
 module.exports = {
   createVipOrderService,
   nextVipExpire,
-  validatePaidTransaction
+  validatePaidTransaction,
+  publicOrder,
+  normalizeInvoiceInput
 }

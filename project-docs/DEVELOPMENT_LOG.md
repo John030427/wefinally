@@ -1027,3 +1027,241 @@ Bug修复 / 测试工具
 
 ### 备注
 ```
+
+---
+
+## 2026-07-16 — AI 客服协调边界与集合自初始化补强
+
+### 类型
+Bug修复 / 安全加固 / 自检
+
+### 修改目的
+依据 AI 客服交接文档做定向审查，修复约会协调 session 历史读取缺少参与者复核、MiniMax 失败被知识库内容伪装、云数据库非原地更新导致修改确认响应返回旧状态的问题；为 Agent/约会白名单集合增加缺失时创建并重试的受限策略。
+
+### 涉及文件
+- `miniprogram/cloudfunctions/api/handlers/agent.js`
+- `miniprogram/cloudfunctions/api/handlers/dateApplicationPatch.js`
+- `miniprogram/cloudfunctions/api/lib/db.js`
+- `miniprogram/cloudfunctions/api/lib/collectionBootstrapPolicy.js`
+- `server/selfcheck/agent-chat.js`
+- `server/selfcheck/date-application-patch.js`
+- `server/selfcheck/agent-route-contract.js`
+
+### 测试
+- [x] 两条 Agent 回归先红后绿：协调 session 越权读取、供应商失败命中知识库
+- [x] 约会修改云数据库返回语义先红后绿：patch 状态与无交集协调状态
+- [x] `git diff --check` 与受影响文件 `node --check`
+- [x] `npm --prefix server run selfcheck:agent`
+- [x] `npm --prefix server run selfcheck:safety`
+- [x] `npm --prefix server run selfcheck:ai-report`
+- [x] `npm --prefix server run selfcheck:cloudpay`
+
+### 备注
+未提交 Git、未部署云函数、未输出任何密钥。云端 `api` 仍需从当前工作树部署后确认微信支付 `User-Agent` 和本轮 Agent 代码实际生效。
+
+---
+
+## 2026-07-16 — 霞姐/Benson 生产约会协调实测
+
+### 类型
+Bug修复 / 云端部署 / 生产流程验证
+
+### 修改目的
+按真实协调任务验证“发起方表单 → 受邀方接受并提交表单 → 计算交集 → 通知发起方”。实测前发现候选方案生成后未给另一方排队通知，先补失败回归，再增加幂等的 `proposal_generated` 通知。
+
+### 涉及文件
+- `miniprogram/cloudfunctions/api/agent/notificationJobs.js`
+- `miniprogram/cloudfunctions/api/handlers/dateCoordination.js`
+- `server/selfcheck/date-coordination-cloud.js`
+
+### 生产验证
+- [x] 从当前工作树生成部署 bundle 并更新云函数 `api`；状态恢复 `Active`，`ping` 成功。
+- [x] 真实任务进入 `waiting_confirmations / proposal_generated`。
+- [x] 生成候选：2026-07-18 下午、福田区、咖啡、AA、约 1 小时。
+- [x] 发起方 `proposal_generated` 通知任务已幂等入队。
+- [x] 脱敏候选摘要已直投霞姐自己的约会协调 session，通知状态为 `sent`；未包含 Benson 原始表单或私密留言。
+- [x] 临时受限测试入口已撤下；复测返回 `Unknown action`。
+- [x] 下载云端函数确认 Agent/确认逻辑、`proposal_generated`、集合自初始化和微信支付 `User-Agent` 存在。
+- [x] Agent、Safety、AI Report、CloudPay 四项最终自检通过。
+- [x] Benson 建立独立约会协调 session，状态工具返回成功；其 session ID 与霞姐 session 不同。
+- [x] Benson 侧真实 MiniMax 回复成功，`provider=minimax` 且未使用 fallback。
+- [x] A、B 依次确认同一候选方案，生产状态进入 `arranged / completed`，`final_proposal_id` 已写入。
+
+### 备注
+未修改任何用户 `openid`，未提交 Git，未输出任何密钥。微信订阅消息等站外推送与 1 分钱真机支付仍需分别验证。
+
+---
+
+## 2026-07-16 — AI 报告永久“生成中”修复
+
+### 根因与修复
+- 生产任务 `match-report-1784101279665635-1784101279812835-v1` 自 2026-07-15 15:42（台北时间）停在 `generating`，`attempt_count=1`。
+- 云函数执行被中断时无法进入业务 `catch`；原 worker 只扫描 `queued`，没有回收过期的 `generating` 租约。
+- 新增 2 分钟生成租约判断；worker 每轮先回收中断任务，未耗尽次数则重新排队，达到 3 次则明确失败并允许人工重试。
+- 按 TDD 先新增失败回归，再实现最小修复；`selfcheck:ai-report` 转绿。
+
+### 生产验证
+- [x] 从当前工作树重新生成单文件 bundle 并部署 `api`，健康检查通过。
+- [x] 卡住任务被自动回收，`attempt_count` 从 1 变为 2，随后于 2026-07-16 23:52:11（台北时间）进入 `succeeded`。
+- [x] Agent、Safety、AI Report、CloudPay 四项最终自检通过。
+- [ ] 微信开发者工具部署未同步 `config.json` 超时；线上 `api` 仍为 20 秒，源码期望 60 秒。需在云控制台或完成 CloudBase CLI 授权后单独更新。
+
+### 备注
+未提交 Git，未打印任何密钥。线上 20 秒本次足以完成模型调用，但仍应提高到 60 秒以降低慢响应再次触发回收的概率。
+
+---
+
+## 2026-07-17 — 会员订单查询与发票申请入口
+
+### 类型
+会员功能 / 支付订单可见性 / 客服适配
+
+### 修改目的
+- 在“我的”页面将“我的订单”作为与“VIP 会员”并列的菜单，紧接在 VIP 入口下方。
+- 新增会员订单列表，只返回当前登录会员自己的订单及必要展示字段。
+- 待支付订单支持主动刷新微信支付状态；已支付订单显示“申请开发票”。
+- 发票入口升级为独立申请页：填写个人/企业抬头、企业税号和接收邮箱；后端验证订单归属与支付状态后记录 `pending`，重复提交幂等，并为人工审核及后续电子发票平台回写 `issued/rejected` 状态保留数据位。
+
+### 涉及文件
+- `miniprogram/cloudfunctions/api/lib/vipOrder.js`
+- `miniprogram/cloudfunctions/api/handlers/vip.js`
+- `miniprogram/cloudfunctions/api/handlers/route.js`
+- `miniprogram/utils/constants.js`
+- `miniprogram/app.json`
+- `miniprogram/pages/profile/profile.js`
+- `miniprogram/pages/orders/*`
+- `miniprogram/pages/invoice/*`
+- `server/selfcheck/cloudbase-vip-payment.js`
+- `server/selfcheck/miniprogram-vip-payment.js`
+
+### 测试与部署
+- [x] 订单归属隔离、倒序展示、发票资格和云函数 handler 回归通过。
+- [x] 小程序路由、菜单、订单状态刷新、发票表单和状态展示回归通过。
+- [x] Agent、Safety、AI Report、CloudPay 四项自检通过。
+- [x] `git diff --check` 与受影响 JavaScript 语法检查通过。
+- [ ] 从当前工作树部署云函数 `api`：微信开发者工具云 API 鉴权连续返回 `41002 system error`，尚未上传；需恢复开发者工具登录/云环境授权后重试并真机验证。
+
+### 备注
+未提交 Git，未修改支付回调、结算或 VIP 发放逻辑，未输出任何密钥。
+
+---
+
+## 2026-07-26 — 综合分归一化、A/B 实证与 Agent 重排隐私收口
+
+### 类型
+Bug 验证 / 云端只读审计 / 测试夹具 / 隐私加固
+
+### 修改目的
+- 验证匹配详情按 `normalized_total`、`normalizedTotal`、`total/max_total`、历史 `total_score` 的顺序解析百分比，避免把 128 分制原始总分误当百分制。
+- 只读核对已完成 A/B 测试的真实分项与 AI 报告状态，并确认一次性 B 已通过后台业务流程清理。
+- 审计 `high_fit`、`medium_fit`、`edge_pass`、`hard_reject`、`missing_data` 五类离线夹具。
+- 防止离线 `evaluationId` 被误带入模型 JSON；该标识改为与内部候选映射相同的不可序列化后端元数据。
+
+### 涉及文件
+- `miniprogram/utils/matchScore.js`
+- `miniprogram/utils/util.js`
+- `miniprogram/pages/match-detail/match-detail.js`
+- `miniprogram/cloudfunctions/api/lib/matchAgentRerankPolicy.js`
+- `server/selfcheck/match-detail-score-normalization.js`
+- `server/selfcheck/fixtures/match-scenarios.js`
+- `server/selfcheck/match-scenario-fixtures.js`
+- `server/selfcheck/match-agent-rerank-policy.js`
+- `project-docs/MATCH_SCENARIO_FIXTURES_2026-07-26.md`
+- `project-docs/MATCH_AGENT_TOPK_RERANK_2026-07-26.md`
+
+### 测试与证据
+- [x] 交接第 8 节六组 selfcheck 全部通过。
+- [x] `total=100 / max_total=128` 显示为 `78%`，等级文案按归一化百分比计算。
+- [x] 云端脱敏快照确认 A 侧关系偏好 `0/18`、外貌偏好 `0/10`、原始总分 `100/128`；B 侧原始总分 `105/128`。
+- [x] A 的 `psych_profile_json` 实际为空；外貌字段已填写但未命中当前关键词交集。
+- [x] AI 报告任务状态 `succeeded`，生成耗时约 14.4 秒。
+- [x] 后台审计记录确认一次性 B、偏好和双向 2 条匹配日志已由业务流程清理，当前无活动夹具。
+- [x] `evaluationId` 不进入模型请求的新增断言先红后绿。
+- [x] `node --check miniprogram/cloudfunctions/api/lib/matchAgentRerankPolicy.js`
+- [x] `npm --prefix server run selfcheck:cloud-match`
+- [x] 微信开发者工具从当前 `miniprogram/` 工作树本地编译成功，模拟器进入登录页，问题面板为 0；现有 4 条为基础库/弃用类警告。
+
+### 备注
+未直接修改或批量迁移生产数据库，未重复执行清理，未调用真实重排模型，未将重排接入生产匹配链路，未部署云函数或上传小程序客户端，未提交 Git。
+
+## 2026-07-29 — 仓库清理与 GitHub 协作入口
+
+### 类型
+工程整理 / 文档治理 / 凭据风险收口
+
+### 修改目的
+- 删除不应进入版本库的 `.deploy/` 生成副本和两张完全重复的设计预览图。
+- 将旧交接、已完成计划和一次性审计报告移入 `project-docs/archive/`，降低新协作者误读旧方案的风险。
+- 在根目录建立 `PROJECT_HANDOFF.md`、`CONTRIBUTING.md` 和更新后的 `AGENTS.md`。
+- 删除活跃执行说明中的明文本地凭据，并明确现有 Git 历史在推送前需要专项处理。
+
+### 结果
+- `.deploy/` 共 9,281 个文件已移入系统回收站，并加入 `.gitignore`。
+- 6 份旧交接、8 份历史计划、6 份一次性审计报告已归档。
+- 已创建空的私有 GitHub 仓库 `John030427/wefinally` 并绑定本地 `origin`；因历史凭据风险和巨大未提交工作树，尚未推送任何提交。
+- 未提交、未推送、未部署、未上传客户端、未修改生产数据库。
+
+## 2026-07-29 — GitHub 首次安全基线审计
+
+### 类型
+凭据审计 / 自检 / 发布准备
+
+### 结果
+- 从当前工作树生成 409 文件、约 4.3 MB 的独立无历史候选快照；`.env`、`.deploy/`、依赖目录和 Git 历史未进入候选。
+- 使用 Gitleaks 8.30.1 扫描：首次发现 3 项候选；其中 2 项为运行时环境变量引用误报，已显式标注，1 项自检硬编码密码已改为每次运行随机生成；复扫为 0 项。
+- 六组总自检全部通过；归档 CloudBase 交付报告后产生的旧路径断言已同步到 `project-docs/archive/audits/`。
+- `server/selfcheck/partner-dashboard.js` 语法检查和 `git diff --check` 通过。
+- 首次基线使用独立临时 Git 仓库生成，不改写当前 `feature/ai-agent-system` 的 90 个旧提交和脏工作树。
+- 安全基线已推送到私有仓库 `John030427/wefinally` 的 `main`，提交为 `7d8d7549b5a5e5e4cd8905c44a7b47906e3d614e`，远端与本地快照 SHA 一致。
+- `Todou-er` 已接受邀请并具有 `write` 权限。
+- `main` 已要求 PR、1 人审批、对话解决和线性历史，禁止强推/删除并对管理员生效；仅允许 Squash 合并，合并后自动删除分支。
+- 已启用漏洞提醒和自动安全修复。
+
+## 2026-08-10 — 本地管理后台连接 CloudBase
+
+### 类型
+后台接入 / 鉴权隔离 / 云端版本核对
+
+### 修改目的
+- 为本地管理后台增加仅连接 CloudBase 的运行模式，避免本地夹具与真实云端数据混用。
+- 复用 CloudBase 现有管理员登录和业务 API，不在浏览器保存云端密钥，不让前端直接访问数据库。
+- 保留原有本地开发模式，便于继续使用脱敏夹具做界面和流程开发。
+
+### 结果
+- 新增 `npm run admin:cloudbase`，服务仅监听 `127.0.0.1`，并将后台请求指向已绑定环境的 CloudBase HTTP 访问服务。
+- CloudBase 模式只开放已迁移页面，登录态改用 `sessionStorage`，退出浏览器会话后自动失效。
+- 登录页、顶部环境标识和云端接口过旧提示已区分本地模式与真实环境。
+- CORS 预检通过；浏览器打开 `http://127.0.0.1:3107/admin` 正常，控制台无警告或错误；未提交真实管理员密码。
+- 只读核对发现线上 `api` 云函数尚缺少当前客服工作台所需的会话列表、会话详情、统一时间线和人工回复接口，因此连接层已完成，但完整客服功能需要在明确授权后部署当前云函数版本。
+
+### 测试与边界
+- [x] `npm run selfcheck:cloudbase-admin`
+- [x] 后台内联脚本语法检查
+- [x] `npm run selfcheck:agent`
+- [x] `npm run selfcheck:safety`
+- [x] `git diff --check`
+- 未部署云函数、未写入生产数据库、未提交 Git、未保存管理员口令。
+
+## 2026-08-10 — 管理员与合伙人后台 CloudBase 接入上线
+
+### 类型
+云函数部署 / 后台接入 / 角色权限隔离
+
+### 修改目的
+- 在用户明确授权后，将当前 `api` 云函数代码部署到既有 CloudBase 环境。
+- 让管理员后台与合伙人后台使用同一个云端业务 API，同时保持 `admin` / `partner` 的服务端权限边界。
+- 修复 CloudBase 服务地址重复拼接 `/api` 导致请求落到 `/api/api/...` 的连接错误。
+
+### 结果
+- `api` Event 云函数已更新，运行时仍为 `Nodejs16.13`，环境变量、网关和支付配置未改动。
+- 部署后函数状态为 `Active`，只读 `ping` 返回目标环境 `cloud1-d4gy8l52g08bba326`。
+- 管理员会话与合伙人申请接口的无凭据请求均返回 `401 后台Token无效`，确认新路由和角色鉴权已生效且未返回业务数据。
+- 本地连接器同时提供 `http://127.0.0.1:3107/admin` 与 `http://127.0.0.1:3107/partner`。
+- 合伙人 CloudBase 专用模式使用 `sessionStorage`，复用单次云端登录 Token，仅开放已迁移的“用户审核、推广工具”。看板、订单、提现仍依赖旧本地 MySQL，暂未暴露；提现迁移需要单独设计事务与幂等控制。
+
+### 测试与边界
+- [x] 交接第 8 节六组 selfcheck 全部通过。
+- [x] `npm --prefix server run selfcheck:cloudbase-admin`
+- [x] `npm --prefix server run selfcheck:cloudbase-partner`
+- [x] 管理员与合伙人登录页浏览器验证，控制台无警告或错误。
+- 未上传小程序客户端、未修改生产数据库、未提交 Git、未提交真实后台账号密码。

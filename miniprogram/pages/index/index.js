@@ -1,6 +1,7 @@
 const { get, post } = require('../../utils/request')
 const { API_PATHS, MATCH_SCHEDULE, GUANGDONG_110_DEFAULT } = require('../../utils/constants')
 const { formatDateOnly, getNextMatchTime, genderText, calcAge, getCompatibilityDisplayText } = require('../../utils/util')
+const { buildProfileReadiness, buildJourneyState } = require('../../utils/productExperience')
 
 Page({
   data: {
@@ -13,7 +14,9 @@ Page({
     latestMatch: null,
     hasLatest: false,
     devMatchStartEnabled: false,
-    devMatchStarting: false
+    devMatchStarting: false,
+    readiness: null,
+    journeyState: null
   },
 
   onShow() {
@@ -50,10 +53,6 @@ Page({
       const commonConfig = await get(API_PATHS.COMMON_CONFIG, {}, { showError: false }).catch(() => null)
       const demoFlags = commonConfig && commonConfig.demo ? commonConfig.demo : {}
       const profile = await get(API_PATHS.USER_PROFILE, {}, { showError: false })
-      if (profile.member_status && profile.member_status !== 'approved') {
-        wx.navigateTo({ url: '/pages/member-application/member-application' })
-        return
-      }
       const latest = await get(API_PATHS.MATCH_LATEST, {}, { showError: false }).catch(() => null)
 
       const isVip = profile && (profile.isVip || profile.is_vip === 1)
@@ -75,6 +74,14 @@ Page({
         }
       }
 
+      const readiness = buildProfileReadiness(profile)
+      const journeyState = buildJourneyState({
+        readiness,
+        memberStatus: profile.member_status || '',
+        isVip,
+        latestMatch,
+        nextMatchText: next ? next.text : ''
+      })
       this.setData({
         pageState: 'success',
         isVip,
@@ -83,6 +90,8 @@ Page({
           : '',
         latestMatch,
         hasLatest: !!latestMatch,
+        readiness,
+        journeyState,
         devMatchStartEnabled: Boolean(app.globalData.DEV_MATCH_BUTTON_ENABLED || localApi || demoFlags.matchStartEnabled)
       })
     } catch (err) {
@@ -121,6 +130,12 @@ Page({
 
   goMeetSafety() {
     wx.navigateTo({ url: '/pages/meet-safety-list/meet-safety-list' })
+  },
+
+  onJourneyAction() {
+    const state = this.data.journeyState
+    if (!state || !state.url) return
+    wx.navigateTo({ url: state.url })
   },
 
   goLoveAdvisor() {

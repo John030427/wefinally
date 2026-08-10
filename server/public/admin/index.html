@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>WeFinally 超级管理后台</title>
+  <link rel="icon" href="data:," />
   <style>
     :root { --primary: #e91e63; --primary-dark: #c2185b; --bg: #f0f2f5; --card: #fff; --text: #333; --muted: #888; --border: #e8e8e8; --sidebar: #001529; --success: #52c41a; --warn: #faad14; --danger: #ff4d4f; }
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -66,8 +67,92 @@
     .modal-hd { padding: .875rem 1rem; border-bottom: 1px solid var(--border); font-weight: 600; }
     .modal-bd { padding: 1rem; }
     .modal-ft { padding: .875rem 1rem; border-top: 1px solid var(--border); text-align: right; display: flex; gap: .5rem; justify-content: flex-end; }
+    .modal.modal-wide { max-width: 780px; }
+    .member-detail-section { margin-bottom: 1rem; }
+    .member-detail-section:last-child { margin-bottom: 0; }
+    .member-detail-title { color: var(--primary-dark); font-size: .875rem; font-weight: 600; margin-bottom: .5rem; padding-bottom: .35rem; border-bottom: 1px solid var(--border); }
+    .member-detail-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .5rem .75rem; }
+    .member-detail-item { display: grid; grid-template-columns: 5.5rem minmax(0, 1fr); gap: .5rem; align-items: start; padding: .45rem .55rem; background: #fafafa; border-radius: 6px; }
+    .member-detail-item.wide { grid-column: 1 / -1; }
+    .member-detail-label { color: var(--muted); font-size: .75rem; }
+    .member-detail-value { color: var(--text); font-size: .8125rem; line-height: 1.65; word-break: break-word; white-space: pre-wrap; }
+    .service-workbench { --svc-bg: #f5f1ea; --svc-ink: #202522; --svc-green: #2f6b57; --svc-orange: #d97732; --svc-red: #b6403a; --svc-line: #dcd5ca; margin: -1.25rem; min-height: calc(100vh - 54px); background: var(--svc-bg); color: var(--svc-ink); font-family: "Noto Sans SC", "Microsoft YaHei", sans-serif; display: flex; flex-direction: column; }
+    .service-topbar { min-height: 72px; padding: .8rem 1rem; border-bottom: 1px solid var(--svc-line); background: rgba(250,248,243,.96); display: grid; grid-template-columns: minmax(240px, 1fr) auto; gap: 1rem; align-items: center; }
+    .service-search { position: relative; max-width: 640px; }
+    .service-search input { width: 100%; border: 1px solid var(--svc-line); background: #fffdfa; color: var(--svc-ink); border-radius: 8px; padding: .7rem .85rem; font-size: .875rem; outline: none; }
+    .service-search input:focus { border-color: var(--svc-green); box-shadow: 0 0 0 3px rgba(47,107,87,.1); }
+    .service-metrics { display: flex; gap: .45rem; flex-wrap: wrap; justify-content: flex-end; }
+    .service-metric { min-width: 92px; border-left: 3px solid var(--svc-green); background: #fffdfa; padding: .45rem .65rem; }
+    .service-metric.urgent { border-color: var(--svc-red); }
+    .service-metric strong { display: block; font: 600 1rem/1.1 "IBM Plex Mono", "JetBrains Mono", monospace; }
+    .service-metric span { color: #716d66; font-size: .7rem; }
+    .service-columns { flex: 1; min-height: 0; display: grid; grid-template-columns: 300px minmax(420px, 1fr) 360px; }
+    .service-queue, .service-context { min-width: 0; background: #faf8f3; overflow-y: auto; }
+    .service-queue { border-right: 1px solid var(--svc-line); }
+    .service-context { border-left: 1px solid var(--svc-line); }
+    .service-pane-head { position: sticky; top: 0; z-index: 2; background: rgba(250,248,243,.96); backdrop-filter: blur(10px); padding: .9rem 1rem .75rem; border-bottom: 1px solid var(--svc-line); }
+    .service-pane-head strong { display: block; font-size: .9rem; }
+    .service-pane-head small { color: #777168; font-size: .7rem; }
+    .service-filters { display: flex; gap: .35rem; padding: .7rem .75rem; overflow-x: auto; border-bottom: 1px solid var(--svc-line); }
+    .service-mode-switch { display: grid; grid-template-columns: 1fr 1fr; gap: .35rem; padding: .65rem .75rem; border-bottom: 1px solid var(--svc-line); background: #f3eee5; }
+    .service-mode { border: 1px solid var(--svc-line); background: #fffdfa; color: #625e57; border-radius: 6px; padding: .45rem .5rem; font-size: .75rem; cursor: pointer; }
+    .service-mode.active { background: var(--svc-ink); border-color: var(--svc-ink); color: #fff; }
+    .service-readonly { border-top: 1px solid var(--svc-line); background: #f0ebe2; color: #625e57; padding: .65rem 1rem; font-size: .72rem; }
+    .service-filter { white-space: nowrap; border: 1px solid var(--svc-line); background: transparent; color: #625e57; border-radius: 999px; padding: .3rem .55rem; font-size: .72rem; cursor: pointer; }
+    .service-filter.active { background: var(--svc-ink); border-color: var(--svc-ink); color: #fff; }
+    .service-ticket { width: 100%; border: 0; border-bottom: 1px solid var(--svc-line); background: transparent; text-align: left; padding: .8rem .85rem; cursor: pointer; color: inherit; }
+    .service-ticket:hover { background: #f0ebe2; }
+    .service-ticket.active { background: #e9efe9; box-shadow: inset 4px 0 var(--svc-green); }
+    .service-ticket-line { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
+    .service-ticket-ref { font: 600 .75rem/1.2 "IBM Plex Mono", "JetBrains Mono", monospace; }
+    .service-priority { border: 1px solid currentColor; border-radius: 4px; padding: .08rem .32rem; font: 600 .65rem/1.3 "IBM Plex Mono", "JetBrains Mono", monospace; }
+    .service-priority.p0 { color: var(--svc-red); background: #fff1ef; }
+    .service-priority.p1 { color: var(--svc-orange); background: #fff6e9; }
+    .service-priority.p2 { color: var(--svc-green); background: #eef5f1; }
+    .service-ticket-summary { margin: .45rem 0; font-size: .8rem; line-height: 1.5; color: #343833; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+    .service-ticket-meta { display: flex; justify-content: space-between; gap: .5rem; color: #817b71; font-size: .68rem; }
+    .service-sla.overdue { color: var(--svc-red); font-weight: 600; }
+    .service-conversation { min-width: 0; background: #fffdfa; display: flex; flex-direction: column; }
+    .service-conversation-head { min-height: 76px; border-bottom: 1px solid var(--svc-line); padding: .85rem 1rem; display: flex; justify-content: space-between; gap: 1rem; align-items: center; }
+    .service-conversation-title { font: 600 .92rem/1.2 "IBM Plex Mono", "JetBrains Mono", monospace; }
+    .service-conversation-sub { margin-top: .3rem; color: #756f66; font-size: .72rem; }
+    .service-status { display: inline-flex; align-items: center; border-radius: 999px; padding: .25rem .5rem; background: #eef5f1; color: var(--svc-green); font-size: .7rem; }
+    .service-status.closed { background: #eeeae3; color: #777168; }
+    .service-messages { flex: 1; min-height: 300px; overflow-y: auto; padding: 1rem clamp(1rem, 4vw, 3.5rem); background-image: linear-gradient(rgba(47,107,87,.035) 1px, transparent 1px); background-size: 100% 32px; }
+    .service-message { display: flex; margin-bottom: .85rem; }
+    .service-message.user { justify-content: flex-start; }
+    .service-message.agent, .service-message.human_agent { justify-content: flex-end; }
+    .service-message.system { justify-content: center; }
+    .service-bubble { max-width: min(76%, 620px); border: 1px solid var(--svc-line); background: #fff; padding: .65rem .75rem; border-radius: 4px 14px 14px 14px; box-shadow: 0 4px 14px rgba(46,48,43,.05); }
+    .service-message.agent .service-bubble { background: #edf4ef; border-color: #cddbd2; border-radius: 14px 4px 14px 14px; }
+    .service-message.human_agent .service-bubble { background: var(--svc-ink); border-color: var(--svc-ink); color: #fff; border-radius: 14px 4px 14px 14px; }
+    .service-message.system .service-bubble { border: 0; box-shadow: none; background: #eeeae3; color: #6e685f; border-radius: 999px; font-size: .72rem; }
+    .service-message-label { margin-bottom: .28rem; color: #827b70; font-size: .65rem; }
+    .service-message.human_agent .service-message-label { color: rgba(255,255,255,.62); }
+    .service-message-content { white-space: pre-wrap; word-break: break-word; font-size: .84rem; line-height: 1.65; }
+    .service-composer { border-top: 1px solid var(--svc-line); background: #faf8f3; padding: .75rem 1rem; }
+    .service-composer textarea { width: 100%; resize: vertical; min-height: 74px; max-height: 180px; border: 1px solid var(--svc-line); border-radius: 8px; background: #fff; color: var(--svc-ink); padding: .7rem .8rem; font: .84rem/1.55 "Noto Sans SC", "Microsoft YaHei", sans-serif; }
+    .service-composer textarea:focus { outline: none; border-color: var(--svc-green); box-shadow: 0 0 0 3px rgba(47,107,87,.1); }
+    .service-composer-actions { display: flex; justify-content: space-between; align-items: center; gap: .75rem; margin-top: .55rem; }
+    .service-composer-actions small { color: #79736a; font-size: .68rem; }
+    .service-action-group { display: flex; gap: .45rem; }
+    .service-btn { border: 1px solid var(--svc-line); background: #fff; color: var(--svc-ink); border-radius: 6px; padding: .45rem .75rem; cursor: pointer; font-size: .76rem; }
+    .service-btn.primary { background: var(--svc-green); border-color: var(--svc-green); color: #fff; }
+    .service-btn.danger { color: var(--svc-red); border-color: #dfb4ad; }
+    .service-btn:disabled { opacity: .5; cursor: not-allowed; }
+    .service-context-section { padding: .9rem 1rem; border-bottom: 1px solid var(--svc-line); }
+    .service-context-section h4 { margin-bottom: .65rem; color: #555149; font-size: .72rem; letter-spacing: .08em; text-transform: uppercase; }
+    .service-context-grid { display: grid; grid-template-columns: 104px minmax(0, 1fr); gap: .5rem .7rem; font-size: .76rem; }
+    .service-context-grid dt { color: #837c72; }
+    .service-context-grid dd { min-width: 0; color: var(--svc-ink); word-break: break-word; font-family: "IBM Plex Mono", "JetBrains Mono", monospace; }
+    .service-summary { padding: .7rem; background: #f0ebe2; border-left: 3px solid var(--svc-orange); color: #3f423d; font-size: .78rem; line-height: 1.65; white-space: pre-wrap; word-break: break-word; }
+    .service-event { display: grid; grid-template-columns: 1fr auto; gap: .25rem .5rem; padding: .45rem 0; border-bottom: 1px dashed var(--svc-line); font-size: .72rem; }
+    .service-event:last-child { border-bottom: 0; }
+    .service-event span:last-child { color: #7e776d; font-family: "IBM Plex Mono", "JetBrains Mono", monospace; }
+    .service-empty-pane { min-height: 280px; display: grid; place-items: center; padding: 2rem; color: #817b72; text-align: center; font-size: .82rem; }
     .pagination { display: flex; gap: .35rem; margin-top: .75rem; align-items: center; font-size: .8125rem; }
-    @media (max-width: 768px) { .layout { flex-direction: column; } .sidebar { width: 100%; } }
+    @media (max-width: 1180px) { .service-columns { grid-template-columns: 280px minmax(400px, 1fr); } .service-context { grid-column: 1 / -1; border-left: 0; border-top: 1px solid var(--svc-line); display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); } .service-context .service-pane-head { grid-column: 1 / -1; } }
+    @media (max-width: 768px) { .layout { flex-direction: column; } .sidebar { width: 100%; } .member-detail-grid { grid-template-columns: 1fr; } .service-workbench { margin: -.75rem; } .service-topbar { grid-template-columns: 1fr; } .service-metrics { justify-content: flex-start; } .service-columns { display: block; } .service-queue, .service-context { max-height: none; border: 0; } .service-conversation { min-height: 620px; border-top: 1px solid var(--svc-line); border-bottom: 1px solid var(--svc-line); } .service-context { display: block; } }
   </style>
 </head>
 <body>
@@ -77,8 +162,8 @@
       <p>系统管理员专用 · 与用户/合伙人完全隔离</p>
       <div id="loginErr" class="error-box hidden"></div>
       <form id="loginForm">
-        <div class="form-group"><label>管理员账号</label><input id="loginUser" required placeholder="admin" autocomplete="username" /></div>
-        <div class="form-group"><label>密码</label><input id="loginPass" type="password" required autocomplete="current-password" /></div>
+        <div class="form-group"><label for="loginUser">管理员账号</label><input id="loginUser" required placeholder="grace" autocomplete="username" /></div>
+        <div class="form-group"><label for="loginPass">密码</label><input id="loginPass" type="password" required autocomplete="current-password" /></div>
         <button type="submit" class="btn btn-primary btn-block" id="loginBtn">登录</button>
       </form>
     </div>
@@ -118,23 +203,34 @@
 
   <script>
 (function () {
-  const API = '/api';
-  const CLOUD_MEMBER_API = (window.WF_CLOUD_BACKOFFICE_API || new URLSearchParams(location.search).get('cloudApi') || '').replace(/\/$/, '');
+  const DEFAULT_CLOUD_MEMBER_API = 'https://cloud1-d4gy8l52g08bba326.service.tcloudbase.com';
+  const CLOUD_MEMBER_API = (window.WF_CLOUD_BACKOFFICE_API || new URLSearchParams(location.search).get('cloudApi') || DEFAULT_CLOUD_MEMBER_API).replace(/\/$/, '');
+  const CLOUD_ONLY = window.WF_CLOUD_ONLY === true || new URLSearchParams(location.search).get('cloudOnly') === '1';
+  const API = CLOUD_ONLY ? CLOUD_MEMBER_API + '/api' : '/api';
   const TK = 'wf_admin_token';
   const CLOUD_TK = 'wf_cloud_admin_token';
   const RK = 'wf_admin_role';
   const TITLES = { dashboard:'数据看板', service:'客服工作台', users:'用户管理', members:'会员审核', matches:'匹配记录', partners:'合伙人管理', orders:'订单对账', withdrawals:'提现审核', marry:'婚姻报备', cancel:'注销/离异审核', stats:'公示数据配置', knowledge:'AI 知识库', chat:'客服会话', handoff:'奔现工单', privacy:'合规授权日志', whitelist:'单位白名单', export:'数据导出', logs:'系统日志' };
   const ROLE_PAGES = { customer_service: ['service', 'orders', 'chat', 'handoff'] };
+  const CLOUD_ONLY_PAGES = ['service', 'members', 'partners', 'knowledge'];
   let page = 'dashboard', dashRange = 'today', cacheUsers = [], cacheOrders = [];
+  let serviceTickets = [], serviceCoordinations = [], serviceSelectedTicketId = 0, serviceTicketDetail = null;
+  let serviceConversations = [], serviceSelectedConversationId = 0, serviceConversationDetail = null, serviceAuditQuery = '';
+  let serviceFilter = 'active', serviceQuery = '';
 
-  function token() { return localStorage.getItem(TK); }
-  function setToken(t) { localStorage.setItem(TK, t); }
-  function adminRole() { return localStorage.getItem(RK) || 'super_admin'; }
-  function setAdminRole(role) { localStorage.setItem(RK, role || 'super_admin'); }
-  function clearToken() { localStorage.removeItem(TK); localStorage.removeItem(RK); localStorage.removeItem(CLOUD_TK); }
-  function cloudToken() { return localStorage.getItem(CLOUD_TK) || ''; }
-  function setCloudToken(value) { if (value) localStorage.setItem(CLOUD_TK, value); else localStorage.removeItem(CLOUD_TK); }
-  function allowedPages() { return ROLE_PAGES[adminRole()] || null; }
+  function authStorage() { return CLOUD_ONLY ? sessionStorage : localStorage; }
+  function token() { return authStorage().getItem(TK); }
+  function setToken(t) { authStorage().setItem(TK, t); }
+  function adminRole() { return authStorage().getItem(RK) || 'super_admin'; }
+  function setAdminRole(role) { authStorage().setItem(RK, role || 'super_admin'); }
+  function clearToken() { const store = authStorage(); store.removeItem(TK); store.removeItem(RK); store.removeItem(CLOUD_TK); }
+  function cloudToken() { return authStorage().getItem(CLOUD_TK) || ''; }
+  function setCloudToken(value) { if (value) authStorage().setItem(CLOUD_TK, value); else authStorage().removeItem(CLOUD_TK); }
+  function allowedPages() {
+    const rolePages = ROLE_PAGES[adminRole()] || null;
+    if (!CLOUD_ONLY) return rolePages;
+    return (rolePages || CLOUD_ONLY_PAGES).filter(p => CLOUD_ONLY_PAGES.includes(p));
+  }
   function isPageAllowed(p) { const list = allowedPages(); return !list || list.includes(p); }
   function defaultPage() { const list = allowedPages(); return list ? list[0] : 'dashboard'; }
   function roleText(role) { return role === 'customer_service' ? '客服' : role === 'finance' ? '财务' : role === 'auditor' ? '审核' : '超级管理员'; }
@@ -178,6 +274,8 @@
     const h = { 'Content-Type': 'application/json', Authorization: 'Bearer ' + cloudToken() };
     const r = await fetch(CLOUD_MEMBER_API + '/api' + path, { method: opt.method || 'GET', headers: h, body: opt.body ? JSON.stringify(opt.body) : undefined });
     const j = await r.json().catch(() => ({ code: -1, message: '云端审核接口解析失败' }));
+    if (j.code === 401) { clearToken(); showLogin(); throw new Error(j.message || '云端登录已过期'); }
+    if (CLOUD_ONLY && j.code === 404) throw new Error('云端 api 版本较旧，尚未包含当前后台所需接口');
     if (j.code !== 0) throw new Error(j.message || '云端审核接口失败');
     return j.data;
   }
@@ -240,17 +338,37 @@
     const names = { pending_review:'待审核', need_more_info:'补资料', approved:'已通过', rejected:'已拒绝', disabled:'已停用' };
     let rows = '';
     (data.list || []).forEach(a => {
-      let actions = '<button class="btn btn-outline btn-sm" onclick="adminReassign(' + a.id + ')">转交</button>';
+      const memberUser = a.user || {};
+      const internalTestActive = memberUser.vip_source === 'internal_test'
+        && Number(memberUser.is_vip || 0) === 1
+        && (!memberUser.vip_expire_time || new Date(memberUser.vip_expire_time) > new Date());
+      let actions = '<button class="btn btn-primary btn-sm" onclick="adminViewMember(' + a.id + ')">查看资料</button> ' +
+        '<button class="btn btn-outline btn-sm" onclick="adminReassign(' + a.id + ')">转交</button>';
       if (a.status === 'pending_review') {
         actions += ' <button class="btn btn-success btn-sm" onclick="adminReview(' + a.id + ',\'approve\')">通过</button>' +
           ' <button class="btn btn-outline btn-sm" onclick="adminReview(' + a.id + ',\'need_more_info\')">补资料</button>' +
           ' <button class="btn btn-danger btn-sm" onclick="adminReview(' + a.id + ',\'reject\')">拒绝</button>';
       } else if (a.status === 'approved') {
         actions += ' <button class="btn btn-danger btn-sm" onclick="adminReview(' + a.id + ',\'disable\')">停用</button>';
+        if (adminRole() === 'super_admin') {
+          if (internalTestActive) {
+            actions += ' <button class="btn btn-outline btn-sm" onclick="adminTestVip(' + a.user_id + ',\'revoke\')">撤销测试VIP</button>';
+            if (a.ab_test_fixture && a.ab_test_fixture.run_id) {
+              actions += ' <button class="btn btn-danger btn-sm" onclick="adminAbMatchFixture(' + a.user_id + ',\'cleanup\',\'' + esc(a.ab_test_fixture.run_id) + '\')">清理A/B测试</button>';
+            } else {
+              actions += ' <button class="btn btn-primary btn-sm" onclick="adminAbMatchFixture(' + a.user_id + ',\'prepare\',\'\')">准备A/B测试</button>';
+            }
+          } else if (!Number(memberUser.is_vip || 0) || memberUser.vip_source === 'internal_test') {
+            actions += ' <button class="btn btn-outline btn-sm" onclick="adminTestVip(' + a.user_id + ',\'grant\')">授权测试VIP</button>';
+          } else {
+            actions += ' <span class="badge b-ok">正式VIP</span>';
+          }
+        }
       } else if (a.status === 'disabled') {
         actions += ' <button class="btn btn-success btn-sm" onclick="adminReview(' + a.id + ',\'restore\')">恢复</button>';
       }
-      rows += '<tr><td>' + a.id + '</td><td>' + a.user_id + '</td><td>' + esc(names[a.status] || a.status) + '</td><td>' + esc(a.partner_name || a.assigned_partner_id) + '</td><td>' + esc(a.occupation_description || '-') + '</td><td>' + esc(a.submitted_at || a.create_time) + '</td><td>' + actions + '</td></tr>';
+      const occupation = a.occupation_description || (a.user && a.user.occupation_description) || '-';
+      rows += '<tr><td>' + a.id + '</td><td>' + a.user_id + '</td><td>' + esc(names[a.status] || a.status) + '</td><td>' + esc(a.partner_name || a.assigned_partner_id) + '</td><td>' + esc(occupation) + '</td><td>' + esc(a.submitted_at || a.create_time) + '</td><td>' + actions + '</td></tr>';
     });
     if (!rows) rows = '<tr><td colspan="7" class="empty">暂无会员申请</td></tr>';
     document.getElementById('content').innerHTML =
@@ -259,26 +377,216 @@
     if (status) document.getElementById('memberStatusFilter').value = status;
   }
 
-  window.adminReview = async function (id, action) {
-    const reason = prompt(action === 'approve' || action === 'restore' ? '审核意见（可选）' : '请输入审核意见');
-    if (reason === null) return;
+  function parseMemberSnapshot(value) {
+    if (value && typeof value === 'object') return value;
+    if (!value) return {};
+    try { return JSON.parse(value); } catch (e) { return {}; }
+  }
+
+  function memberDetailItem(label, value, wide) {
+    const display = value === undefined || value === null || value === '' ? '-' : value;
+    return '<div class="member-detail-item' + (wide ? ' wide' : '') + '">' +
+      '<div class="member-detail-label">' + esc(label) + '</div>' +
+      '<div class="member-detail-value">' + esc(display) + '</div></div>';
+  }
+
+  function memberDetailSection(title, items) {
+    return '<section class="member-detail-section"><div class="member-detail-title">' + esc(title) + '</div>' +
+      '<div class="member-detail-grid">' + items.join('') + '</div></section>';
+  }
+
+  window.adminViewMember = async function (id) {
+    modal('会员申请 #' + id, '<div class="loading">正在加载完整资料...</div>');
     try {
-      await memberApi('/admin/member-applications/' + id + '/review', { method:'PUT', body:{ action, reason } });
-      toast('审核状态已更新', true);
-      pgMembers();
-    } catch (e) { toast(e.message, false); }
+      const data = await memberApi('/admin/member-applications/' + id);
+      const application = data.application || {};
+      const user = data.user || {};
+      const snapshot = parseMemberSnapshot(application.profile_snapshot_json);
+      const profile = Object.assign({}, user, snapshot.profile || {});
+      const setting = snapshot.match_setting || {};
+      const gender = Number(profile.gender) === 1 ? '男' : (Number(profile.gender) === 2 ? '女' : profile.gender);
+      const ageRange = setting.age_min || setting.age_max
+        ? (setting.age_min || '-') + ' - ' + (setting.age_max || '-') + ' 岁'
+        : '-';
+      const heightRange = setting.height_min || setting.height_max
+        ? (setting.height_min || '-') + ' - ' + (setting.height_max || '-') + ' cm'
+        : '-';
+      const body =
+        memberDetailSection('申请信息', [
+          memberDetailItem('申请 ID', application.id),
+          memberDetailItem('用户 ID', application.user_id),
+          memberDetailItem('申请状态', application.status),
+          memberDetailItem('审核合伙人', application.assigned_partner_id),
+          memberDetailItem('提交时间', application.submitted_at || application.create_time),
+          memberDetailItem('审核意见', application.review_note || '-', true)
+        ]) +
+        memberDetailSection('基础资料', [
+          memberDetailItem('性别', gender),
+          memberDetailItem('出生年份', profile.birth_year),
+          memberDetailItem('城市', profile.city),
+          memberDetailItem('身高', profile.height_range),
+          memberDetailItem('学历', profile.education),
+          memberDetailItem('职业圈层', profile.circle_name || profile.circle_id),
+          memberDetailItem('具体职业', profile.occupation_description),
+          memberDetailItem('收入范围', profile.income_range),
+          memberDetailItem('婚姻状态', profile.marry_status),
+          memberDetailItem('生育计划', profile.baby_plan),
+          memberDetailItem('房车情况', profile.house_car),
+          memberDetailItem('本人外貌描述', profile.appearance_description, true)
+        ]) +
+        memberDetailSection('择偶条件', [
+          memberDetailItem('期望年龄', ageRange),
+          memberDetailItem('期望身高', heightRange),
+          memberDetailItem('最低学历', setting.min_education),
+          memberDetailItem('婚史接受度', setting.like_marry_status),
+          memberDetailItem('婚育节奏', setting.like_baby_plan),
+          memberDetailItem('期待对方外貌', profile.appearance_want || setting.appearance_want, true)
+        ]) +
+        memberDetailSection('三观资料', [
+          memberDetailItem('我的三观自述', setting.self_view_text, true),
+          memberDetailItem('期待对方三观', setting.target_view_text, true)
+        ]);
+      modal('会员申请 #' + id + ' · 完整资料', body);
+      const currentModal = document.querySelector('.modal');
+      if (currentModal) currentModal.classList.add('modal-wide');
+    } catch (e) {
+      closeM();
+      toast(e.message || '资料加载失败', false);
+    }
   };
 
-  window.adminReassign = async function (id) {
-    const partnerId = prompt('请输入接管合伙人ID');
-    if (!partnerId) return;
-    const reason = prompt('请输入转交原因');
-    if (!reason) return;
+  window.adminReview = function (id, action) {
+    const config = {
+      approve: { title:'确认通过会员申请', label:'审核备注（可选）', button:'确认通过', cls:'btn-success', help:'通过后，该用户将成为正式会员并可使用会员匹配功能。' },
+      need_more_info: { title:'要求补充资料', label:'需要补充的资料', button:'发送补资料要求', cls:'btn-primary', help:'用户将看到审核意见，可修改资料后重新提交审核。' },
+      reject: { title:'确认拒绝会员申请', label:'拒绝原因', button:'确认拒绝', cls:'btn-danger', help:'拒绝原因会向用户展示；拒绝后需等待30天才能重新申请。' },
+      disable: { title:'确认停用会员', label:'停用原因', button:'确认停用', cls:'btn-danger', help:'停用后，该用户将不能继续使用会员匹配功能。' },
+      restore: { title:'确认恢复会员', label:'恢复备注（可选）', button:'确认恢复', cls:'btn-success', help:'恢复后，该用户重新成为已通过会员。' }
+    }[action];
+    if (!config) return toast('不支持的审核操作', false);
+    const required = !['approve', 'restore'].includes(action);
+    modal(config.title,
+      '<div class="form-group"><label for="adminReviewReason">' + config.label + '</label>' +
+      '<textarea id="adminReviewReason" rows="4" maxlength="500" placeholder="' + (required ? '请填写具体原因' : '可填写内部审核备注') + '"></textarea></div>' +
+      '<p>' + config.help + '</p>',
+      '<button class="btn btn-outline" onclick="closeM()">取消</button>' +
+      '<button id="adminReviewSubmit" class="btn ' + config.cls + '" onclick="submitAdminReview(' + id + ',\'' + action + '\')">' + config.button + '</button>');
+  };
+
+  window.submitAdminReview = async function (id, action) {
+    const reason = (document.getElementById('adminReviewReason')?.value || '').trim();
+    if (!['approve', 'restore'].includes(action) && !reason) return toast('请填写审核意见', false);
+    const button = document.getElementById('adminReviewSubmit');
+    if (button) button.disabled = true;
     try {
-      await memberApi('/admin/member-applications/' + id + '/reassign', { method:'PUT', body:{ partner_id:Number(partnerId), reason } });
+      await memberApi('/admin/member-applications/' + id + '/review', { method:'PUT', body:{ action, reason } });
+      closeM();
+      toast('审核状态已更新', true);
+      await pgMembers();
+    } catch (e) {
+      if (button) button.disabled = false;
+      toast(e.message, false);
+    }
+  };
+
+  window.adminTestVip = function (userId, action) {
+    const grant = action === 'grant';
+    modal(grant ? '授权内测 VIP' : '撤销内测 VIP',
+      (grant
+        ? '<div class="form-group"><label for="adminTestVipDays">有效期（1–14天）</label><input id="adminTestVipDays" type="number" min="1" max="14" value="7" /></div>'
+        : '') +
+      '<div class="form-group"><label for="adminTestVipReason">' + (grant ? '授权原因' : '撤销原因') + '</label>' +
+      '<textarea id="adminTestVipReason" rows="3" maxlength="500" placeholder="例如：A/B 内测匹配验证"></textarea></div>' +
+      '<p>A/B 内测结束后请及时撤销；该操作不会生成支付订单，也不能覆盖正式付费会员权益。</p>',
+      '<button class="btn btn-outline" onclick="closeM()">取消</button>' +
+      '<button id="adminTestVipSubmit" class="btn ' + (grant ? 'btn-primary' : 'btn-danger') + '" onclick="submitAdminTestVip(' + userId + ',\'' + action + '\')">' +
+      (grant ? '确认授权' : '确认撤销') + '</button>');
+  };
+
+  window.submitAdminTestVip = async function (userId, action) {
+    const reason = (document.getElementById('adminTestVipReason')?.value || '').trim();
+    const days = action === 'grant' ? Number(document.getElementById('adminTestVipDays')?.value || 0) : 0;
+    if (!reason) return toast(action === 'grant' ? '请填写授权原因' : '请填写撤销原因', false);
+    if (action === 'grant' && (!Number.isInteger(days) || days < 1 || days > 14)) return toast('有效期必须为1至14天', false);
+    const button = document.getElementById('adminTestVipSubmit');
+    if (button) button.disabled = true;
+    const randomPart = crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + '_' + Math.random().toString(16).slice(2);
+    const requestId = 'test_vip_' + action + '_' + userId + '_' + randomPart;
+    try {
+      await memberApi('/admin/users/' + userId + '/test-vip', {
+        method:'POST',
+        body:{ action, days, reason, request_id:requestId }
+      });
+      closeM();
+      toast(action === 'grant' ? '内测 VIP 已授权' : '内测 VIP 已撤销', true);
+      await pgMembers();
+    } catch (e) {
+      if (button) button.disabled = false;
+      toast(e.message, false);
+    }
+  };
+
+  window.adminAbMatchFixture = function (userId, action, runId) {
+    const prepare = action === 'prepare';
+    modal(prepare ? '准备 A/B 匹配测试' : '清理 A/B 匹配测试',
+      (prepare
+        ? '<p>系统将创建一个与 A 双向条件有交集的一次性 B 测试候选，不会修改霞姐或其他真实会员资料。</p>'
+        : '<p>只会清理测试编号 <code>' + esc(runId) + '</code> 对应的候选、偏好和测试匹配记录，审计记录保留。</p>') +
+      '<div class="form-group"><label for="adminAbMatchReason">' + (prepare ? '测试原因' : '清理原因') + '</label>' +
+      '<textarea id="adminAbMatchReason" rows="3" maxlength="500" placeholder="' + (prepare ? '例如：验证成功匹配双向链路' : '例如：A/B 测试已完成') + '"></textarea></div>',
+      '<button class="btn btn-outline" onclick="closeM()">取消</button>' +
+      '<button id="adminAbMatchSubmit" class="btn ' + (prepare ? 'btn-primary' : 'btn-danger') + '" onclick="submitAdminAbMatchFixture(' + userId + ',\'' + action + '\',\'' + esc(runId) + '\')">' +
+      (prepare ? '创建测试 B' : '确认清理') + '</button>');
+  };
+
+  window.submitAdminAbMatchFixture = async function (userId, action, runId) {
+    const reason = (document.getElementById('adminAbMatchReason')?.value || '').trim();
+    if (!reason) return toast(action === 'prepare' ? '请填写测试原因' : '请填写清理原因', false);
+    const button = document.getElementById('adminAbMatchSubmit');
+    if (button) button.disabled = true;
+    const randomPart = crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + '_' + Math.random().toString(16).slice(2);
+    const requestId = 'ab_fixture_' + action + '_' + userId + '_' + randomPart;
+    try {
+      const result = await memberApi('/admin/users/' + userId + '/ab-match-fixture', {
+        method:'POST',
+        body:{ action, reason, request_id:requestId, run_id:runId || '' }
+      });
+      closeM();
+      toast(action === 'prepare'
+        ? '测试 B 已准备，用户ID ' + result.candidate.id
+        : 'A/B 测试数据已安全清理', true);
+      await pgMembers();
+    } catch (e) {
+      if (button) button.disabled = false;
+      toast(e.message, false);
+    }
+  };
+
+  window.adminReassign = function (id) {
+    modal('转交会员审核',
+      '<div class="form-group"><label for="adminReassignPartnerId">接管合伙人 ID</label><input id="adminReassignPartnerId" inputmode="numeric" placeholder="请输入有效合伙人 ID" /></div>' +
+      '<div class="form-group"><label for="adminReassignReason">转交原因</label><textarea id="adminReassignReason" rows="3" maxlength="500" placeholder="请填写转交原因"></textarea></div>' +
+      '<p>转交后，只有新的接管合伙人或管理员可以继续审核该申请。</p>',
+      '<button class="btn btn-outline" onclick="closeM()">取消</button>' +
+      '<button id="adminReassignSubmit" class="btn btn-primary" onclick="submitAdminReassign(' + id + ')">确认转交</button>');
+  };
+
+  window.submitAdminReassign = async function (id) {
+    const partnerId = Number((document.getElementById('adminReassignPartnerId')?.value || '').trim());
+    const reason = (document.getElementById('adminReassignReason')?.value || '').trim();
+    if (!Number.isSafeInteger(partnerId) || partnerId <= 0) return toast('请输入有效的接管合伙人 ID', false);
+    if (!reason) return toast('请填写转交原因', false);
+    const button = document.getElementById('adminReassignSubmit');
+    if (button) button.disabled = true;
+    try {
+      await memberApi('/admin/member-applications/' + id + '/reassign', { method:'PUT', body:{ partner_id:partnerId, reason } });
+      closeM();
       toast('已转交审核', true);
-      pgMembers();
-    } catch (e) { toast(e.message, false); }
+      await pgMembers();
+    } catch (e) {
+      if (button) button.disabled = false;
+      toast(e.message, false);
+    }
   };
 
   async function pgDashboard() {
@@ -504,20 +812,237 @@
       memberApi('/admin/agent/tickets'),
       memberApi('/admin/date-coordinations')
     ]);
-    const tickets = results[0].list || [];
-    const coordinations = results[1].list || [];
-    const ticketRows = tickets.length ? tickets.map(t =>
-      '<tr><td>' + esc(t.ticket_ref) + '</td><td>' + esc(t.user_ref) + '</td><td>' + esc(t.priority) + '</td><td>' + esc(t.category) + '</td><td>' + esc(t.summary) + '</td><td>' + esc(t.status) + '</td><td><button class="btn btn-sm btn-outline" onclick="cloudAgentReply(' + t.id + ')">回复</button> <button class="btn btn-sm btn-success" onclick="cloudAgentClose(' + t.id + ')">关闭</button></td></tr>'
-    ).join('') : '<tr><td colspan="7" class="empty">暂无Agent人工工单</td></tr>';
-    const coordinationRows = coordinations.length ? coordinations.map(c =>
-      '<tr><td>' + esc(c.coordination_ref) + '</td><td>' + esc((c.participant_refs || []).join(' / ')) + '</td><td>' + esc(c.status) + '</td><td>' + c.coordination_version + '</td><td>' + c.recoordination_count + '</td><td>' + esc((c.missing_dimensions || []).join('、') || '-') + '</td></tr>'
-    ).join('') : '<tr><td colspan="6" class="empty">暂无约会协调任务</td></tr>';
-    document.getElementById('content').innerHTML =
-      '<div class="stats-grid">' + sc('待处理Agent工单', tickets.filter(t => t.status !== 'closed').length) + sc('约会协调任务', coordinations.length) + sc('需人工协调', coordinations.filter(c => c.status === 'manual_handoff').length) + '</div>' +
-      '<div class="card"><div class="card-hd"><strong>Agent人工工单</strong><button class="btn btn-sm btn-outline" onclick="pgService()">刷新</button></div><div class="card-bd"><table><thead><tr><th>工单</th><th>用户</th><th>优先级</th><th>类别</th><th>摘要</th><th>状态</th><th>操作</th></tr></thead><tbody>' + ticketRows + '</tbody></table></div></div>' +
-      '<div class="card"><div class="card-hd"><strong>第一次约会协调队列</strong></div><div class="card-bd"><table><thead><tr><th>协调任务</th><th>参与者</th><th>状态</th><th>版本</th><th>重试轮次</th><th>待调整维度</th></tr></thead><tbody>' + coordinationRows + '</tbody></table></div></div>' +
-      '<p style="font-size:.8125rem;color:var(--muted)">后台仅显示脱敏编号与必要状态，不展示双方原始申请或聊天内容。</p>';
+    serviceTickets = results[0].list || [];
+    serviceCoordinations = results[1].list || [];
+    renderCloudServiceWorkbench();
+    await searchCloudConversations();
   }
+
+  function serviceDateValue(value) {
+    if (!value) return null;
+    const raw = value && typeof value === 'object' && value.$date !== undefined ? value.$date : value;
+    const date = new Date(typeof raw === 'string' && /^\d+$/.test(raw) ? Number(raw) : raw);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+
+  function serviceTimeText(value) {
+    const date = serviceDateValue(value);
+    if (!date) return '-';
+    return date.toLocaleString('zh-CN', { month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', hour12:false });
+  }
+
+  function serviceStatusText(value) {
+    return ({ open:'待领取', assigned:'已分配', processing:'处理中', waiting_user:'等待用户', waiting_system:'等待系统', resolved:'已解决', closed:'已关闭', reopened:'重新打开' })[value] || value || '待处理';
+  }
+
+  function serviceCategoryText(value) {
+    return ({ privacy:'隐私投诉', payment:'支付争议', refund:'退款', user_request:'请求人工', safety:'安全风险', match:'匹配申诉', date_coordination:'约会协调', general:'一般问题' })[value] || value || '一般问题';
+  }
+
+  function servicePriorityClass(priority) {
+    const normalized = String(priority || 'P2').toLowerCase();
+    return ['p0', 'p1', 'p2'].includes(normalized) ? normalized : 'p2';
+  }
+
+  function serviceSlaInfo(ticket) {
+    if (ticket.status === 'closed') return { text:'已关闭', overdue:false };
+    if (ticket.last_reply_at || ['processing', 'waiting_user', 'waiting_system', 'resolved'].includes(ticket.status)) {
+      return { text:'已首响', overdue:false };
+    }
+    const created = serviceDateValue(ticket.create_time);
+    if (!created) return { text:'待响应', overdue:false };
+    const targetMinutes = String(ticket.priority).toUpperCase() === 'P0' ? 5 : (String(ticket.priority).toUpperCase() === 'P1' ? 15 : 120);
+    const remaining = targetMinutes - Math.floor((Date.now() - created.getTime()) / 60000);
+    if (remaining < 0) return { text:'超时 ' + Math.abs(remaining) + ' 分钟', overdue:true };
+    return { text:'剩余 ' + remaining + ' 分钟', overdue:false };
+  }
+
+  function visibleServiceTickets() {
+    const query = serviceQuery.trim().toLowerCase();
+    return serviceTickets.filter(ticket => {
+      const statusMatch = serviceFilter === 'all'
+        || (serviceFilter === 'active' && ticket.status !== 'closed')
+        || ticket.status === serviceFilter
+        || (serviceFilter === 'urgent' && ['P0', 'P1'].includes(String(ticket.priority).toUpperCase()));
+      const haystack = [ticket.ticket_ref, ticket.user_ref, ticket.summary, ticket.category, serviceCategoryText(ticket.category), ticket.status, serviceStatusText(ticket.status)].join(' ').toLowerCase();
+      return statusMatch && (!query || haystack.includes(query));
+    });
+  }
+
+  function serviceQueueHtml() {
+    const tickets = visibleServiceTickets();
+    if (!tickets.length) return '<div class="service-empty-pane">当前筛选下没有工单</div>';
+    return tickets.map(ticket => {
+      const sla = serviceSlaInfo(ticket);
+      const active = Number(ticket.id) === Number(serviceSelectedTicketId) ? ' active' : '';
+      return '<button class="service-ticket' + active + '" onclick="selectCloudServiceTicket(' + Number(ticket.id) + ')">' +
+        '<span class="service-ticket-line"><span class="service-ticket-ref">' + esc(ticket.ticket_ref) + '</span><span class="service-priority ' + servicePriorityClass(ticket.priority) + '">' + esc(ticket.priority || 'P2') + '</span></span>' +
+        '<span class="service-ticket-summary">' + esc(ticket.summary || '用户请求人工协助') + '</span>' +
+        '<span class="service-ticket-meta"><span>' + esc(ticket.user_ref) + ' · ' + esc(serviceCategoryText(ticket.category)) + '</span><span class="service-sla' + (sla.overdue ? ' overdue' : '') + '">' + esc(sla.text) + '</span></span>' +
+        '</button>';
+    }).join('');
+  }
+
+  function serviceConversationQueueHtml() {
+    if (!serviceConversations.length) return '<div class="service-empty-pane">输入会话、用户或协调编号查询<br>也可以查看最近会话</div>';
+    return serviceConversations.map(session => {
+      const active = Number(session.id) === Number(serviceSelectedConversationId) ? ' active' : '';
+      const ticket = serviceTickets.find(item => item.session_ref === session.session_ref && item.status !== 'closed') || serviceTickets.find(item => item.session_ref === session.session_ref);
+      return '<button class="service-ticket' + active + '" onclick="selectCloudConversation(' + Number(session.id) + ')">' +
+        '<span class="service-ticket-line"><span class="service-ticket-ref">' + esc(session.session_ref) + '</span><span class="service-status' + (ticket?.status === 'closed' ? ' closed' : '') + '">' + esc(ticket ? serviceStatusText(ticket.status) : '未建工单') + '</span></span>' +
+        '<span class="service-ticket-summary">' + esc(session.summary || session.agent_type || '用户与 AI 会话') + '</span>' +
+        '<span class="service-ticket-meta"><span>' + esc(session.user_ref) + '</span><span>' + esc(session.coordination_ref || '未关联协调') + '</span></span>' +
+        '</button>';
+    }).join('');
+  }
+
+  function serviceMessagesHtml(detail) {
+    const messages = detail?.timeline || detail?.messages || [];
+    if (!messages.length) return '<div class="service-empty-pane">暂无会话或自动通知记录<br>可以根据工单摘要先联系用户核实问题</div>';
+    const labels = { user:'用户', agent:'AI客服', human_agent:'人工客服', system:'系统事件' };
+    return messages.map(message => {
+      const sender = ['user', 'agent', 'human_agent', 'system'].includes(message.sender_type) ? message.sender_type : 'agent';
+      const label = message.source_type === 'notification' ? '自动通知' : (message.source_type === 'coordination_event' ? '业务事件' : labels[sender]);
+      return '<div class="service-message ' + sender + '"><div class="service-bubble">' +
+        '<div class="service-message-label">' + esc(label) + ' · ' + esc(serviceTimeText(message.create_time)) + '</div>' +
+        '<div class="service-message-content">' + esc(message.content) + '</div></div></div>';
+    }).join('');
+  }
+
+  function serviceEventsHtml(items, type) {
+    if (!items || !items.length) return '<div class="service-event"><span>暂无记录</span><span>-</span></div>';
+    return items.slice(0, 6).map(item => {
+      const title = type === 'run'
+        ? ((item.provider || 'AI') + ' · ' + (item.status || '-'))
+        : ((item.stage || '通知任务') + ' · ' + (item.status || '-'));
+      const detail = type === 'run' ? item.run_ref : item.job_ref;
+      return '<div class="service-event"><span>' + esc(title) + (item.error_code ? ' · ' + esc(item.error_code) : '') + '</span><span>' + esc(detail || '-') + '</span></div>';
+    }).join('');
+  }
+
+  function serviceContextHtml(detail) {
+    if (!detail) return '<div class="service-empty-pane">选择记录后查看用户和业务上下文</div>';
+    const ticket = detail.ticket || {};
+    const session = detail.session || {};
+    const coordination = detail.coordination;
+    return '<div class="service-pane-head"><strong>业务上下文</strong><small>仅展示脱敏编号与必要状态</small></div>' +
+      '<section class="service-context-section"><h4>用户与会话</h4><dl class="service-context-grid">' +
+      '<dt>用户编号</dt><dd>' + esc(ticket.user_ref || session.user_ref || '-') + '</dd>' +
+      '<dt>会话编号</dt><dd>' + esc(session.session_ref || ticket.session_ref || '-') + '</dd>' +
+      '<dt>Agent类型</dt><dd>' + esc(session.agent_type || '-') + '</dd>' +
+      '<dt>会话状态</dt><dd>' + esc(session.status || '-') + '</dd>' +
+      '<dt>处理工单</dt><dd>' + esc(ticket.ticket_ref ? (ticket.ticket_ref + ' · ' + serviceStatusText(ticket.status)) : '首次回复时自动建立') + '</dd>' +
+      '<dt>接管客服</dt><dd>' + esc(ticket.assigned_admin_ref || '尚未领取') + '</dd></dl></section>' +
+      '<section class="service-context-section"><h4>AI摘要</h4><div class="service-summary">' + esc(ticket.summary || session.summary || '暂无摘要') + '</div></section>' +
+      '<section class="service-context-section"><h4>约会协调</h4>' + (coordination
+        ? '<dl class="service-context-grid"><dt>协调编号</dt><dd>' + esc(coordination.coordination_ref) + '</dd><dt>参与者</dt><dd>' + esc((coordination.participant_refs || []).join(' / ')) + '</dd><dt>当前状态</dt><dd>' + esc(coordination.status) + '</dd><dt>业务版本</dt><dd>v' + Number(coordination.coordination_version || 1) + '</dd><dt>缺失信息</dt><dd>' + esc((coordination.missing_dimensions || []).join('、') || '-') + '</dd></dl>'
+        : '<div class="service-event"><span>未关联约会协调任务</span><span>-</span></div>') + '</section>' +
+      '<section class="service-context-section"><h4>模型运行</h4>' + serviceEventsHtml(detail.runs, 'run') + '</section>' +
+      '<section class="service-context-section"><h4>通知任务</h4>' + serviceEventsHtml(detail.notification_jobs, 'job') + '</section>';
+  }
+
+  function renderCloudServiceWorkbench() {
+    const openCount = serviceTickets.filter(t => t.status !== 'closed').length;
+    const urgentCount = serviceTickets.filter(t => t.status !== 'closed' && ['P0', 'P1'].includes(String(t.priority).toUpperCase())).length;
+    const manualCount = serviceCoordinations.filter(c => c.status === 'manual_handoff').length;
+    const selectedConversation = serviceConversations.find(item => Number(item.id) === Number(serviceSelectedConversationId));
+    const conversationDetail = serviceConversationDetail && Number(serviceConversationDetail.session?.id) === Number(serviceSelectedConversationId) ? serviceConversationDetail : null;
+    const linkedTicket = selectedConversation
+      ? (serviceTickets.find(item => item.session_ref === selectedConversation.session_ref && item.status !== 'closed') || serviceTickets.find(item => item.session_ref === selectedConversation.session_ref))
+      : null;
+    if (conversationDetail) conversationDetail.ticket = linkedTicket || null;
+    const conversation = selectedConversation
+      ? '<div class="service-conversation-head"><div><div class="service-conversation-title">' + esc(selectedConversation.session_ref) + '</div><div class="service-conversation-sub">' + esc(selectedConversation.user_ref) + ' · ' + esc(selectedConversation.agent_type || 'Agent会话') + '</div></div><span class="service-status' + (linkedTicket?.status === 'closed' ? ' closed' : '') + '">' + esc(linkedTicket ? serviceStatusText(linkedTicket.status) : '未建工单') + '</span></div>' +
+        '<div class="service-messages" id="serviceMessages">' + (conversationDetail ? serviceMessagesHtml(conversationDetail) : '<div class="service-empty-pane">正在读取完整时间线...</div>') + '</div>' +
+        '<div class="service-composer"><textarea id="serviceConversationReplyText" aria-label="人工客服回复" maxlength="1000" placeholder="以人工客服身份回复；没有工单时会自动建立"></textarea><div class="service-composer-actions"><small>查看行为自动审计；发送回复会建立或更新处理工单</small><div class="service-action-group">' + (linkedTicket && linkedTicket.status !== 'closed' ? '<button class="service-btn danger" onclick="cloudAgentClose(' + Number(linkedTicket.id) + ')">关闭工单</button>' : '') + '<button id="serviceConversationReplyButton" class="service-btn primary" onclick="sendCloudConversationReply(' + Number(selectedConversation.id) + ')">' + (linkedTicket && linkedTicket.status !== 'closed' ? '发送回复' : '建工单并回复') + '</button></div></div></div>'
+      : '<div class="service-empty-pane">选择左侧会话后查看真实用户—AI聊天</div>';
+    const search = '<div class="service-search"><input id="serviceAuditSearch" aria-label="搜索会话与工单" value="' + esc(serviceAuditQuery) + '" onkeydown="if(event.key===\'Enter\')searchCloudConversations()" placeholder="搜索会话、用户、协调编号或摘要" /></div>';
+    const queueBody = '<div class="service-pane-head"><strong>会话与工单</strong><small>' + serviceConversations.length + ' 个会话 · ' + openCount + ' 个待处理工单</small></div><div class="service-filters"><button class="service-filter active" onclick="searchCloudConversations()">查询</button><button class="service-filter" onclick="clearCloudConversationSearch()">最近会话</button></div><div id="serviceTicketQueue">' + serviceConversationQueueHtml() + '</div>';
+    document.getElementById('content').innerHTML = '<div class="service-workbench">' +
+      '<div class="service-topbar">' + search + '<div class="service-metrics">' +
+      '<div class="service-metric urgent"><strong>' + urgentCount + '</strong><span>紧急 P0/P1</span></div><div class="service-metric"><strong>' + openCount + '</strong><span>待处理工单</span></div><div class="service-metric"><strong>' + manualCount + '</strong><span>人工协调</span></div></div></div>' +
+      '<div class="service-columns"><aside class="service-queue">' + queueBody + '</aside>' +
+      '<main class="service-conversation">' + conversation + '</main><aside class="service-context">' + serviceContextHtml(conversationDetail) + '</aside></div></div>';
+    if (conversationDetail) setTimeout(() => { const box = document.getElementById('serviceMessages'); if (box) box.scrollTop = box.scrollHeight; }, 0);
+  }
+  window.searchCloudConversations = async function () {
+    const input = document.getElementById('serviceAuditSearch');
+    serviceAuditQuery = String(input?.value ?? serviceAuditQuery).trim();
+    const params = new URLSearchParams();
+    if (/^WF-D-/i.test(serviceAuditQuery)) params.set('coordination_ref', serviceAuditQuery);
+    else if (/^WF-U-/i.test(serviceAuditQuery)) params.set('user_ref', serviceAuditQuery);
+    else if (/^WF-S-/i.test(serviceAuditQuery)) params.set('session_ref', serviceAuditQuery);
+    else if (serviceAuditQuery) params.set('query', serviceAuditQuery);
+    try {
+      const data = await memberApi('/admin/agent/conversations' + (params.toString() ? '?' + params.toString() : ''));
+      serviceConversations = data.list || [];
+      serviceSelectedConversationId = serviceConversations[0]?.id || 0;
+      serviceConversationDetail = null;
+      renderCloudServiceWorkbench();
+      if (serviceSelectedConversationId) await loadCloudConversation(serviceSelectedConversationId);
+    } catch (e) { toast(e.message || '会话查询失败', false); }
+  };
+  window.clearCloudConversationSearch = async function () {
+    serviceAuditQuery = '';
+    const input = document.getElementById('serviceAuditSearch');
+    if (input) input.value = '';
+    await searchCloudConversations();
+  };
+  window.selectCloudConversation = async function (id) {
+    serviceSelectedConversationId = Number(id);
+    serviceConversationDetail = null;
+    renderCloudServiceWorkbench();
+    await loadCloudConversation(id);
+  };
+  window.loadCloudConversation = async function (id) {
+    try {
+      const detail = await memberApi('/admin/agent/conversations/' + Number(id));
+      if (Number(serviceSelectedConversationId) !== Number(id)) return;
+      serviceConversationDetail = detail;
+      renderCloudServiceWorkbench();
+    } catch (e) { toast(e.message || '真实聊天加载失败', false); }
+  };
+  window.sendCloudConversationReply = async function (id) {
+    const input = document.getElementById('serviceConversationReplyText');
+    const button = document.getElementById('serviceConversationReplyButton');
+    const content = String(input?.value || '').trim();
+    if (!content) return toast('请输入人工回复内容', false);
+    if (button) button.disabled = true;
+    try {
+      const result = await memberApi('/admin/agent/conversations/' + Number(id) + '/reply', { method:'POST', body:{ content } });
+      toast(result.created ? '工单已建立，人工回复已发送' : '人工回复已发送', true);
+      const selectedId = Number(id);
+      await pgCloudAgentService();
+      if (serviceConversations.some(item => Number(item.id) === selectedId)) {
+        serviceSelectedConversationId = selectedId;
+        await loadCloudConversation(selectedId);
+      }
+    } catch (e) {
+      if (button) button.disabled = false;
+      toast(e.message || '人工回复发送失败', false);
+    }
+  };
+
+  window.setCloudServiceFilter = function (value) { serviceFilter = value; renderCloudServiceWorkbench(); };
+  window.setCloudServiceQuery = function (value) { serviceQuery = value; const queue = document.getElementById('serviceTicketQueue'); if (queue) queue.innerHTML = serviceQueueHtml(); };
+  window.selectCloudServiceTicket = async function (id) {
+    serviceSelectedTicketId = Number(id);
+    serviceTicketDetail = null;
+    renderCloudServiceWorkbench();
+    await loadCloudServiceTicket(id);
+  };
+  window.loadCloudServiceTicket = async function (id) {
+    try {
+      const detail = await memberApi('/admin/agent/tickets/' + Number(id));
+      if (Number(serviceSelectedTicketId) !== Number(id)) return;
+      serviceTicketDetail = detail;
+      renderCloudServiceWorkbench();
+    } catch (e) {
+      if (Number(serviceSelectedTicketId) === Number(id)) serviceTicketDetail = null;
+      toast(e.message || '工单详情加载失败', false);
+      renderCloudServiceWorkbench();
+    }
+  };
 
   window.cloudAgentReply = function (id) {
     modal('回复Agent工单',
@@ -530,13 +1055,41 @@
       closeM(); toast('人工回复已发送', true); pgService();
     } catch (e) { toast(e.message, false); }
   };
-  window.cloudAgentClose = async function (id) {
-    const resume = confirm('关闭工单后恢复AI自动服务？');
-    const note = prompt('请输入处理结果备注') || '';
+  window.sendCloudAgentReplyFromWorkbench = async function (id) {
+    const input = document.getElementById('serviceReplyText');
+    const button = document.getElementById('serviceReplyButton');
+    const content = String(input?.value || '').trim();
+    if (!content) return toast('请输入人工回复内容', false);
+    if (button) button.disabled = true;
+    try {
+      await memberApi('/admin/agent/tickets/' + id + '/reply', { method:'POST', body:{ content } });
+      toast('人工回复已发送', true);
+      await pgCloudAgentService();
+    } catch (e) {
+      if (button) button.disabled = false;
+      toast(e.message, false);
+    }
+  };
+  window.cloudAgentClose = function (id) {
+    modal('关闭人工工单',
+      '<div class="form-group"><label for="cloudAgentResolutionNote">处理结果</label><textarea id="cloudAgentResolutionNote" rows="4" maxlength="500" placeholder="请记录问题原因和处理结果"></textarea></div>' +
+      '<label style="display:flex;align-items:center;gap:.5rem;font-size:.8125rem"><input id="cloudAgentResume" type="checkbox" /> 关闭后恢复 AI 自动服务</label>' +
+      '<p style="margin-top:.75rem;color:var(--muted);font-size:.75rem">涉及支付、隐私或安全问题时，建议确认处理完成后再恢复 AI。</p>',
+      '<button class="btn btn-outline" onclick="closeM()">取消</button><button id="cloudAgentCloseButton" class="btn btn-danger" onclick="submitCloudAgentClose(' + id + ')">确认关闭</button>');
+  };
+  window.submitCloudAgentClose = async function (id) {
+    const note = String(document.getElementById('cloudAgentResolutionNote')?.value || '').trim();
+    const resume = document.getElementById('cloudAgentResume')?.checked === true;
+    const button = document.getElementById('cloudAgentCloseButton');
+    if (!note) return toast('请填写处理结果', false);
+    if (button) button.disabled = true;
     try {
       await memberApi('/admin/agent/tickets/' + id + '/close', { method:'POST', body:{ resume_agent:resume, note } });
-      toast('工单已关闭', true); pgService();
-    } catch (e) { toast(e.message, false); }
+      closeM(); toast('工单已关闭', true); await pgCloudAgentService();
+    } catch (e) {
+      if (button) button.disabled = false;
+      toast(e.message, false);
+    }
   };
 
   async function pgOrders() {
@@ -873,7 +1426,9 @@
     try {
       const credentials = { username: document.getElementById('loginUser').value.trim(), password: document.getElementById('loginPass').value };
       const d = await api('/auth/admin-login', { method: 'POST', body: credentials });
-      if (CLOUD_MEMBER_API) {
+      if (CLOUD_ONLY) {
+        setCloudToken(d.token);
+      } else if (CLOUD_MEMBER_API) {
         const cloudRes = await fetch(CLOUD_MEMBER_API + '/api/auth/admin-login', { method:'POST', headers:{ 'Content-Type':'application/json' }, body:JSON.stringify(credentials) });
         const cloudJson = await cloudRes.json();
         if (cloudJson.code !== 0) throw new Error(cloudJson.message || '云端会员审核登录失败');
@@ -890,8 +1445,12 @@
   document.getElementById('logoutBtn').addEventListener('click', function () { clearToken(); showLogin(); });
   document.getElementById('nav').addEventListener('click', function (e) { const b = e.target.closest('.nav-item'); if (b) navTo(b.dataset.p); });
 
+  if (CLOUD_ONLY) {
+    document.querySelector('.login-card p').textContent = 'CloudBase 真实环境 · 管理员专用';
+  }
+
   if (token()) {
-    document.getElementById('adminName').textContent = roleText(adminRole());
+    document.getElementById('adminName').textContent = (CLOUD_ONLY ? 'CloudBase · ' : '') + roleText(adminRole());
     showApp(); navTo(defaultPage());
   } else showLogin();
 })();

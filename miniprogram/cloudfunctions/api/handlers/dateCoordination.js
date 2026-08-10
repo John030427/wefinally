@@ -1,4 +1,51 @@
 const { STATUS, normalizeApplication, computeOverlap, nextStatus, applyConfirmation } = require('../lib/dateCoordinationPolicy')
+const { MEMBER_STATUS, memberStatus } = require('../lib/memberPolicy')
+const { createReminderJob, deliverProposalNotification } = require('../agent/notificationJobs')
+
+async function upsertConfirmation(existing, data) {
+  const db = require('../lib/db')
+  if (existing) return db.updateByDoc('date_coordination_confirmation', existing, data)
+  const docId = `date-confirmation-${data.coordination_id}-${data.user_id}-v${data.coordination_version}`
+  const timestamp = db.now()
+  const row = Object.assign({ _id: docId, create_time: timestamp, update_time: timestamp }, data)
+  const writeData = Object.assign({}, row)
+  delete writeData._id
+  await db.col('date_coordination_confirmation').doc(docId).set({ data: writeData })
+  return row
+}
+
+async function updateConfirmationState(coordination, result) {
+  const db = require('../lib/db')
+  const data = {
+    status: result.coordination.status,
+    business_state: result.coordination.status === STATUS.ARRANGED ? 'completed' : 'waiting_confirm',
+    final_proposal_id: Number(result.coordination.final_proposal_id || 0)
+  }
+  if (result.coordination.status === STATUS.ARRANGED) {
+    return db.updateByDoc('date_coordination', coordination, data)
+  }
+  const update = await db.col('date_coordination').where({
+    _id: coordination._id,
+    status: db._.neq(STATUS.ARRANGED)
+  }).update({ data: Object.assign({}, data, { update_time: db.now() }) })
+  if (!update.stats || !update.stats.updated) return db.byId('date_coordination', coordination.id)
+  return Object.assign({}, coordination, data)
+}
+
+async function expireCoordinationIfCurrent(coordination) {
+  const db = require('../lib/db')
+  const update = await db.col('date_coordination').where({
+    _id: coordination._id,
+    status: coordination.status
+  }).update({
+    data: {
+      status: STATUS.EXPIRED,
+      business_state: 'expired',
+      update_time: db.now()
+    }
+  })
+  return Boolean(update.stats && update.stats.updated)
+}
 
 function defaultDeps() {
   const db = require('../lib/db')
@@ -9,6 +56,9 @@ function defaultDeps() {
     byId: db.byId,
     addWithId: db.addWithId,
     updateByDoc: db.updateByDoc,
+    upsertConfirmation,
+    updateConfirmationState,
+    expireIfCurrent: expireCoordinationIfCurrent,
     now: db.now
   }
 }
@@ -18,7 +68,7 @@ function pairKey(userAId, userBId) {
 }
 
 function isEligible(user, now) {
-  if (!user || user.member_status !== 'approved') return false
+  if (!user || memberStatus(user) !== MEMBER_STATUS.APPROVED) return false
   if (Number(user.free_member || 0) === 1) return true
   return Number(user.is_vip || 0) === 1
     && Boolean(user.vip_expire_time)
@@ -41,6 +91,28 @@ function deadlinePassed(value, now) {
   return Boolean(value) && new Date(value).getTime() < new Date(now).getTime()
 }
 
+async function processCoordinationDeadlines({ deps = defaultDeps(), now = new Date(), limit = 50 } = {}) {
+  const deadlineFields = {
+    collecting_initiator: 'application_deadline_at',
+    inviting_partner: 'invitation_deadline_at',
+    collecting_preferences: 'application_deadline_at',
+    waiting_confirmations: 'confirmation_deadline_at'
+  }
+  const boundedLimit = Math.max(1, Math.min(Number(limit || 50), 100))
+  const perStatusLimit = Math.max(1, Math.ceil(boundedLimit / Object.keys(deadlineFields).length))
+  const rows = []
+  for (const status of Object.keys(deadlineFields)) {
+    rows.push(...await deps.list('date_coordination', { status }, perStatusLimit))
+  }
+  let expired = 0
+  for (const row of rows) {
+    const field = deadlineFields[row.status]
+    if (!field || !deadlinePassed(row[field], now)) continue
+    if (await deps.expireIfCurrent(row)) expired += 1
+  }
+  return { scanned: rows.length, expired }
+}
+
 function createDateCoordinationHandlers(overrides = {}) {
   let defaults = null
   function dep(name) {
@@ -51,7 +123,12 @@ function createDateCoordinationHandlers(overrides = {}) {
 
   async function create(data, wxContext) {
     const user = await dep('currentUser')(wxContext)
-    const partnerId = Number(data.match_user_id || data.matchUserId || 0)
+    const matchLogId = Number(data.match_log_id || data.matchLogId || 0)
+    let match = matchLogId ? await dep('byId')('user_match_log', matchLogId) : null
+    if (matchLogId && (!match || Number(match.user_id) !== Number(user.id))) {
+      throw new Error('仅可从自己的匹配记录发起约会协调')
+    }
+    const partnerId = Number((match && match.match_user_id) || data.match_user_id || data.matchUserId || 0)
     if (!partnerId || partnerId === Number(user.id)) throw new Error('请选择有效的匹配对象')
     const now = dep('now')()
     if (!isEligible(user, now)) throw new Error('需审核通过且为有效 VIP 才能发起日期协调')
@@ -60,7 +137,7 @@ function createDateCoordinationHandlers(overrides = {}) {
     const existing = await dep('first')('date_coordination', { pair_key: key })
     if (existing) return detailFor(existing, user)
 
-    const match = await dep('first')('user_match_log', {
+    if (!match) match = await dep('first')('user_match_log', {
       user_id: Number(user.id),
       match_user_id: partnerId
     })
@@ -72,11 +149,12 @@ function createDateCoordinationHandlers(overrides = {}) {
       pair_key: key,
       user_a_id: Number(user.id),
       user_b_id: partnerId,
-      status: STATUS.INVITING_PARTNER,
+      status: STATUS.COLLECTING_INITIATOR,
+      business_state: 'created',
       coordination_version: 1,
       recoordination_count: 0,
-      invitation_deadline_at: addHours(now, 48),
-      application_deadline_at: null,
+      invitation_deadline_at: null,
+      application_deadline_at: addHours(now, 72),
       confirmation_deadline_at: null,
       final_proposal_id: 0
     }, 'date_coordination')
@@ -102,6 +180,7 @@ function createDateCoordinationHandlers(overrides = {}) {
     const now = dep('now')()
     const update = {
       status: nextStatus(coordination.status, event),
+      business_state: event === 'accept_invitation' ? 'coordinating' : 'cancelled',
       invitation_responded_at: now
     }
     if (event === 'accept_invitation') update.application_deadline_at = addHours(now, 72)
@@ -111,10 +190,18 @@ function createDateCoordinationHandlers(overrides = {}) {
 
   async function saveApplication(data, wxContext) {
     const user = await dep('currentUser')(wxContext)
+    return saveApplicationForUser(data, user)
+  }
+
+  async function saveApplicationForUser(data, user) {
     const coordination = await dep('byId')('date_coordination', coordinationId(data))
     if (!coordination) throw new Error('日期协调不存在')
     if (!participant(coordination, user.id)) throw new Error('无权操作该日期协调')
-    if (![STATUS.COLLECTING_PREFERENCES, STATUS.REPLANNING].includes(coordination.status)) {
+    const isInitiatorDraft = coordination.status === STATUS.COLLECTING_INITIATOR
+    if (isInitiatorDraft && Number(coordination.user_a_id) !== Number(user.id)) {
+      throw new Error('请等待发起方填写约会偏好并发出邀请')
+    }
+    if (![STATUS.COLLECTING_INITIATOR, STATUS.COLLECTING_PREFERENCES, STATUS.REPLANNING].includes(coordination.status)) {
       throw new Error('当前状态不能提交日期申请')
     }
     const now = dep('now')()
@@ -138,6 +225,28 @@ function createDateCoordinationHandlers(overrides = {}) {
       }), 'date_coordination_application')
     }
 
+    if (isInitiatorDraft) {
+      const invitationDeadline = addHours(now, 48)
+      const updated = await dep('updateByDoc')('date_coordination', coordination, {
+        status: nextStatus(coordination.status, 'initiator_submitted'),
+        business_state: 'waiting_partner',
+        invitation_deadline_at: invitationDeadline,
+        application_deadline_at: null
+      })
+      const notification = createReminderJob({
+        coordinationId: coordination.id,
+        userId: coordination.user_b_id,
+        stage: 'invitation_created',
+        deadlineAt: invitationDeadline,
+        now
+      })
+      const queued = await dep('first')('agent_notification_job', {
+        idempotency_key: notification.idempotency_key
+      })
+      if (!queued) await dep('addWithId')('agent_notification_job', notification, 'agent_notification_job')
+      return detailFor(updated, user)
+    }
+
     const applications = await dep('list')('date_coordination_application', {
       coordination_id: Number(coordination.id),
       coordination_version: version
@@ -151,6 +260,7 @@ function createDateCoordinationHandlers(overrides = {}) {
     if (!overlap.proposals.length) {
       const updated = await dep('updateByDoc')('date_coordination', coordination, {
         status: nextStatus(nextStatus(coordination.status, 'applications_complete'), 'no_overlap'),
+        business_state: 'waiting_partner',
         missing_dimensions: overlap.missing_dimensions,
         confirmation_deadline_at: null
       })
@@ -164,8 +274,33 @@ function createDateCoordinationHandlers(overrides = {}) {
     }
     const updated = await dep('updateByDoc')('date_coordination', coordination, {
       status: nextStatus(nextStatus(coordination.status, 'applications_complete'), 'proposals_created'),
+      business_state: 'proposal_generated',
       missing_dimensions: [],
       confirmation_deadline_at: addHours(now, 24)
+    })
+    const recipientId = Number(coordination.user_a_id) === Number(user.id)
+      ? Number(coordination.user_b_id)
+      : Number(coordination.user_a_id)
+    const notification = createReminderJob({
+      coordinationId: coordination.id,
+      userId: recipientId,
+      stage: 'proposal_generated',
+      deadlineAt: updated.confirmation_deadline_at,
+      now
+    })
+    const queued = await dep('first')('agent_notification_job', {
+      idempotency_key: notification.idempotency_key
+    })
+    const job = queued || await dep('addWithId')('agent_notification_job', notification, 'agent_notification_job')
+    await deliverProposalNotification({
+      deps: {
+        first: dep('first'),
+        addWithId: dep('addWithId'),
+        updateByDoc: dep('updateByDoc')
+      },
+      job,
+      proposal: overlap.proposals[0],
+      now
     })
     return detailFor(updated, user)
   }
@@ -177,6 +312,16 @@ function createDateCoordinationHandlers(overrides = {}) {
       coordination_id: Number(coordination.id),
       coordination_version: version
     }, 10)
+    if (coordination.status === STATUS.INVITING_PARTNER
+      && !coordination.invitation_responded_at
+      && applications.length === 0) {
+      coordination = await dep('updateByDoc')('date_coordination', coordination, {
+        status: STATUS.COLLECTING_INITIATOR,
+        business_state: 'created',
+        invitation_deadline_at: null,
+        application_deadline_at: addHours(dep('now')(), 72)
+      })
+    }
     const confirmations = await dep('list')('date_coordination_confirmation', {
       coordination_id: Number(coordination.id),
       coordination_version: version
@@ -195,6 +340,15 @@ function createDateCoordinationHandlers(overrides = {}) {
     return {
       id: Number(coordination.id),
       status: coordination.status,
+      business_state: coordination.business_state || ({
+        [STATUS.COLLECTING_INITIATOR]: 'created',
+        [STATUS.INVITING_PARTNER]: 'waiting_partner',
+        [STATUS.COLLECTING_PREFERENCES]: 'coordinating',
+        [STATUS.WAITING_CONFIRMATIONS]: 'proposal_generated',
+        [STATUS.ARRANGED]: 'completed',
+        [STATUS.CANCELLED]: 'cancelled',
+        [STATUS.INVITATION_DECLINED]: 'cancelled'
+      }[coordination.status] || 'coordinating'),
       coordination_version: version,
       recoordination_count: Number(coordination.recoordination_count || 0),
       invitation_deadline_at: coordination.invitation_deadline_at || null,
@@ -204,9 +358,12 @@ function createDateCoordinationHandlers(overrides = {}) {
       missing_dimensions: coordination.missing_dimensions || [],
       role,
       can_respond_invitation: coordination.status === STATUS.INVITING_PARTNER && role === 'invitee',
-      can_submit_application: [STATUS.COLLECTING_PREFERENCES, STATUS.REPLANNING].includes(coordination.status),
+      can_submit_application: (coordination.status === STATUS.COLLECTING_INITIATOR && role === 'initiator')
+        || [STATUS.COLLECTING_PREFERENCES, STATUS.REPLANNING].includes(coordination.status),
       confirmed_by_me: mineConfirmed,
-      invitation_status_text: coordination.status === STATUS.INVITING_PARTNER ? '等待确认' : (coordination.status === STATUS.INVITATION_DECLINED ? '已婉拒' : '已确认'),
+      invitation_status_text: coordination.status === STATUS.COLLECTING_INITIATOR
+        ? '准备邀请'
+        : (coordination.status === STATUS.INVITING_PARTNER ? '等待确认' : (coordination.status === STATUS.INVITATION_DECLINED ? '已婉拒' : '已确认')),
       application_status_text: applications.length >= 2 ? '双方已填写' : (mine ? '我已填写' : '等待填写'),
       confirmation_status_text: coordination.status === STATUS.ARRANGED ? '双方已确认' : (mineConfirmed ? '我已确认' : '等待确认'),
       participant_progress: [
@@ -254,6 +411,18 @@ function createDateCoordinationHandlers(overrides = {}) {
     if (!proposal || Number(proposal.coordination_id) !== Number(coordination.id)) {
       throw new Error('方案已失效，请刷新后重试')
     }
+    if (coordination.status === STATUS.ARRANGED) {
+      const completed = await dep('first')('date_coordination_confirmation', {
+        coordination_id: Number(coordination.id),
+        user_id: Number(user.id),
+        coordination_version: version
+      })
+      if (completed && completed.decision === 'confirm'
+        && Number(completed.proposal_id) === Number(proposal.id)
+        && Number(coordination.final_proposal_id) === Number(proposal.id)) {
+        return detailFor(coordination, user)
+      }
+    }
     const confirmations = await dep('list')('date_coordination_confirmation', {
       coordination_id: Number(coordination.id),
       coordination_version: version
@@ -268,17 +437,21 @@ function createDateCoordinationHandlers(overrides = {}) {
       user_id: Number(user.id),
       coordination_version: version
     })
-    if (existing) {
-      await dep('updateByDoc')('date_coordination_confirmation', existing, mine)
-    } else {
-      await dep('addWithId')('date_coordination_confirmation', Object.assign({}, mine, {
-        coordination_id: Number(coordination.id)
-      }), 'date_coordination_confirmation')
-    }
-    const updated = await dep('updateByDoc')('date_coordination', coordination, {
-      status: result.coordination.status,
-      final_proposal_id: Number(result.coordination.final_proposal_id || 0)
+    await dep('upsertConfirmation')(existing, Object.assign({}, mine, {
+      coordination_id: Number(coordination.id)
+    }))
+    const latestConfirmations = await dep('list')('date_coordination_confirmation', {
+      coordination_id: Number(coordination.id),
+      coordination_version: version
+    }, 10)
+    const confirmationBase = coordination.status === STATUS.ARRANGED
+      ? Object.assign({}, coordination, { status: STATUS.WAITING_CONFIRMATIONS })
+      : coordination
+    const latestResult = applyConfirmation(confirmationBase, proposal, latestConfirmations, {
+      user_id: user.id,
+      decision: data.decision
     })
+    const updated = await dep('updateConfirmationState')(coordination, latestResult)
     return detailFor(updated, user)
   }
 
@@ -308,6 +481,7 @@ function createDateCoordinationHandlers(overrides = {}) {
     const now = dep('now')()
     const updated = await dep('updateByDoc')('date_coordination', coordination, {
       status: STATUS.REPLANNING,
+      business_state: 'coordinating',
       coordination_version: currentVersion + 1,
       recoordination_count: rounds + 1,
       application_deadline_at: addHours(now, 72),
@@ -318,7 +492,7 @@ function createDateCoordinationHandlers(overrides = {}) {
     return detailFor(updated, user)
   }
 
-  return { create, respondInvitation, saveApplication, detail, confirmProposal, recoordinate }
+  return { create, respondInvitation, saveApplication, saveApplicationForUser, detail, confirmProposal, recoordinate }
 }
 
 const handlers = {}
@@ -337,5 +511,8 @@ module.exports = {
   detail: handler('detail'),
   confirmProposal: handler('confirmProposal'),
   recoordinate: handler('recoordinate'),
-  createDateCoordinationHandlers
+  createDateCoordinationHandlers,
+  processCoordinationDeadlines,
+  upsertConfirmation,
+  updateConfirmationState
 }

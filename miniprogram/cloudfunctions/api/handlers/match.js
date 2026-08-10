@@ -3,6 +3,7 @@ const { currentUser } = require('./user')
 const { isVipActive, ageBand, dateOnly } = require('../lib/format')
 const { flagEnabled } = require('../lib/flags')
 const { MEMBER_STATUS, memberStatus, canUseMatching, normalizeMatchSettingInput } = require('../lib/memberPolicy')
+const { rankCandidates, scoreDetailFor } = require('../lib/matchPolicy')
 const reportTask = require('./reportTask')
 
 function parseJson(value) {
@@ -378,23 +379,36 @@ async function start(data, wxContext) {
   })
   const candidates = (await list('user', { status: 1 }, 100))
     .filter((item) => memberStatus(item) === MEMBER_STATUS.APPROVED)
-  let partner = candidates.find((item) => (
-    Number(item.id) !== Number(user.id)
-      && Number(item.gender) !== Number(user.gender)
-      && !seenPartnerIds[Number(item.id)]
-  ))
-  if (!partner && data.dev_seed_current_user_candidates) {
-    partner = await seedDemoCandidate(user)
+  if (data.dev_seed_current_user_candidates && candidates.length === 0) {
+    candidates.push(await seedDemoCandidate(user))
   }
-  if (!partner) return { matched: 0, users: 1, message: '暂无新的可用候选' }
+  const settingRows = await list('user_match_setting', {}, 200)
+  const settingsByUserId = {}
+  settingRows.forEach((setting) => {
+    settingsByUserId[String(setting.user_id)] = setting
+  })
+  const blockedIds = new Set(Object.keys(seenPartnerIds).map(Number))
+  const ranked = rankCandidates(user, candidates, settingsByUserId, { blockedIds })
+  const best = ranked.find((item) => item.quality.pass)
+  if (!best) {
+    return {
+      matched: 0,
+      users: ranked.length + 1,
+      evaluated_candidates: ranked.length,
+      rejected_by_quality: ranked.filter((item) => !item.quality.pass).length,
+      message: ranked.length ? '本轮暂无通过严格质量门槛的匹配' : '暂无新的可用候选'
+    }
+  }
+  const partner = best.candidate
+  const abTestRunId = String(partner.ab_test_run_id || '')
   const today = dateOnly(new Date())
-  const detailJsonA = buildDemoScoreDetail(user, partner, { totalScore: 88 })
-  const detailJsonB = buildDemoScoreDetail(partner, user, { totalScore: 88 })
+  const detailJsonA = scoreDetailFor(best, 'a', ranked.indexOf(best) + 1)
+  const detailJsonB = scoreDetailFor(best, 'b', ranked.indexOf(best) + 1)
   const logA = await addWithId('user_match_log', {
     user_id: user.id,
     match_user_id: partner.id,
-    view_similarity: 88,
-    total_score: 88,
+    view_similarity: best.viewSimilarity,
+    total_score: best.scoreA.total,
     score_detail_json: JSON.stringify(detailJsonA),
     score_version: 'algo_evidence_v2',
     ai_report_text: '',
@@ -403,13 +417,14 @@ async function start(data, wxContext) {
     ai_report_time: null,
     local_report_text: fallbackMatchReportText(user, partner),
     match_date: today,
-    match_type: '开发测试'
+    match_type: abTestRunId ? 'A/B内测' : '双向算法测试',
+    ab_test_run_id: abTestRunId
   }, 'match_log')
   const logB = await addWithId('user_match_log', {
     user_id: partner.id,
     match_user_id: user.id,
-    view_similarity: 88,
-    total_score: 88,
+    view_similarity: best.viewSimilarity,
+    total_score: best.scoreB.total,
     score_detail_json: JSON.stringify(detailJsonB),
     score_version: 'algo_evidence_v2',
     ai_report_text: '',
@@ -418,10 +433,20 @@ async function start(data, wxContext) {
     ai_report_time: null,
     local_report_text: fallbackMatchReportText(partner, user),
     match_date: today,
-    match_type: '开发测试'
+    match_type: abTestRunId ? 'A/B内测' : '双向算法测试',
+    ab_test_run_id: abTestRunId
   }, 'match_log')
   await reportTask.ensureTaskForMatch(logA, 'auto')
-  return { matched: 1, users: 2, match_id: logA.id, match_user_id: partner.id }
+  return {
+    matched: 1,
+    users: ranked.length + 1,
+    evaluated_candidates: ranked.length,
+    match_id: logA.id,
+    match_user_id: partner.id,
+    view_similarity: best.viewSimilarity,
+    mutual_score: best.mutualScore,
+    algorithm_version: 'algo_evidence_v2'
+  }
 }
 
 module.exports = {

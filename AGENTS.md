@@ -1,37 +1,55 @@
-# AGENTS.md — WeFinally 婚恋小程序（给执行 agent 的背景与规矩）
+# AGENTS.md — WeFinally 执行边界
 
-你正处在**代码根目录**（双层同名嵌套：`D:\wefinal\WeFinally婚恋小程序项目\WeFinally婚恋小程序项目\`）。`miniprogram/`、`server/`、`database/`、`project-docs/` 都在这一层。
+## 唯一工作目录
 
-## 这是什么
-纯结婚导向的严肃婚恋微信小程序。原生小程序 + Node/Express + MySQL8 + node-cron。无图片/无头像、用户间无私聊、官方客服对接奔现、50 圈层合伙人 50/50 分润。
+- 仓库根目录：`D:\wefinal\.worktrees\wefinally-ai-agent`
+- 当前整合分支：`feature/ai-agent-system`
+- 禁止在外层 `D:\wefinal` 直接开发。
 
-## 先读这些（单一真源，别从零猜）
-- `project-docs/README_HANDOVER.md` — 总交接入口
-- `project-docs/AGENT.md` — 工作规矩（最高优先级原则、禁止事项、UI 复用）
-- `project-docs/BOSS_IDEAS_CHECKLIST.md` — 老板原话（A 组=最高优先级，含新需求 A7-A9）
-- `project-docs/QUESTIONS_TO_BOSS.md` — 已确认/待确认决策
-- `project-docs/MODULES/` — 各模块规格
-- `project-docs/DEVELOPMENT_LOG.md` — 变更流水（每次改完追加一条）
+当前工作树包含大量未提交和未跟踪的产品改动。未经用户明确授权，禁止执行 `git reset`、`git clean`、`git checkout`、`git restore`、提交、强推或覆盖其他人的改动。
 
-## 当前状态与接手原则
-当前分支：`feature/appearance-llm-match`。module11 / module13、匹配增强、匹配订阅通知预留、外貌 LLM 方案丙均已交付并验收；不要再把旧 plan 当作当前任务重复执行。
+## 每次接手先读
 
-外貌 LLM 仍是默认关闭：`llmConfig.enabled=false`、`matchConfig.useAppearanceInMatch=false`。未拿到霞姐知情同意、个保法授权、内容安全与预算确认前，不开启。
+1. `PROJECT_HANDOFF.md`
+2. `CONTRIBUTING.md`
+3. `project-docs/NEXT_THREAD_HANDOFF_2026-07-26_MINIPROGRAM_CONTINUATION.md`
+4. `project-docs/DEVELOPMENT_LOG.md`
+5. 与任务直接相关的 `project-docs/MODULES/`、`project-docs/REQUIREMENTS.md` 和自检脚本
 
-新任务以用户最新指令或新的 plan 为准。执行前先看 `project-docs/DEVELOPMENT_LOG.md` 和 `server/selfcheck/`，优先复用已有自检脚本，不再写完即删临时验收。
+`project-docs/archive/` 只保存历史快照，不作为当前需求真源。
 
-## 硬约束（违反即返工）
-- **不改**：`orderService` 分润、支付流程、`matchCron` 周三/五节奏、`database/init.sql` 已上线结构（要改表写新 `database/patch-*.sql`）、`app.wxss` 设计系统。
-- 红线：用户端无图片上传、用户间无私聊；LBS 必须用户主动授权、不后台静默采集；不宣称"直连110"。
-- **复用现有 UI**，不为新功能重做一套。小步改，不大重构。
-- 不确定是否老板原意 → 写进 `QUESTIONS_TO_BOSS.md`，**不要猜着实现**。
-- ⚠️ 豆包文档里的"单身人数/单身率/数据来源"未经核实，**禁止写进小程序或宣传文案**。
+## 产品与安全边界
 
-## 本地环境（已就绪）
-- 数据库：Docker 容器 `wefinally-mysql`（mysql:8.0，root 密码 `wefinally123`，库 `wefinally`，端口 3306）。开机后 `docker start wefinally-mysql`。导库：`docker exec -i wefinally-mysql mysql -uroot -pwefinally123 wefinally < database/xxx.sql`。
-- 后端：`server/.env` 已配（`DB_PASSWORD=wefinally123`）；`cd server && npm install && node src/app.js`；健康检查 `GET http://localhost:3000/api/common/health`。
-- 后台账号：`admin / admin123456`。
-- 已是 git 仓库；提交沿用现有 author 风格即可。
+- 无头像、无用户私聊、无社交动态；官方客服协调线下见面。
+- LBS 必须由用户主动授权，不后台静默采集；不宣称“直连 110”。
+- Agent/模型不能扫描全库、直接写数据库或绕过确定性权限与安全规则。
+- 不向模型发送手机号、OpenID、精确住址、单位、联系方式、密钥或私钥。
+- 云端写入必须经过白名单业务服务；测试数据清理必须走有审计的后台业务按钮。
+- 不依赖模型供应商 `conversation_id` 保存业务状态。
+- 不直接批量修改生产数据库；表结构变更使用新迁移文件。
+- 支付、会员、匹配和分润改动必须有专项自检与人工复核。
 
-## 验收习惯
-项目无测试框架 → 用计划里给的 **curl / node 自包含脚本** 连本地库验收；非平凡逻辑留一个能跑的自检。改完更新 `DEVELOPMENT_LOG.md`，实际与计划不符处以代码为准并注明。
+## 凭据
+
+本地环境变量只保存在已忽略的 `.env` 文件或云端密钥配置中。文档、日志、截图、提交和聊天回复均不得记录真实密码、Token、API Key、微信支付 APIv3 密钥、商户私钥或管理员凭据。
+
+历史提交曾包含本地测试凭据。接入 GitHub 前必须采用经确认的历史清理方案或建立经过审计的全新基线，不能直接推送现有历史。
+
+## 基线验证
+
+按顺序运行：
+
+```powershell
+npm --prefix server run selfcheck:agent
+npm --prefix server run selfcheck:safety
+npm --prefix server run selfcheck:ai-report
+npm --prefix server run selfcheck:cloudpay
+npm --prefix server run selfcheck:member
+npm --prefix server run selfcheck:cloud-match
+```
+
+失败时依据实际证据修复，不能通过回滚现有改动“让测试变绿”。非平凡逻辑应保留可重复运行的自检，并更新 `project-docs/DEVELOPMENT_LOG.md`。
+
+## 发布边界
+
+“部署 `api` 云函数”和“上传小程序客户端”是两个独立动作。任何发布前都要记录源分支、提交号、自检结果和目标环境；未明确授权不得部署、上传或修改生产数据。

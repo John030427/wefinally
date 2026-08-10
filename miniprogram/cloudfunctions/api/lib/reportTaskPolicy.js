@@ -10,6 +10,14 @@ const STATUS = Object.freeze({
 })
 
 const MAX_ATTEMPTS = 3
+const MAX_MANUAL_RETRIES = 3
+
+function leaseExpired(task, current, leaseMs) {
+  if (!task || task.status !== STATUS.GENERATING || !task.started_at) return false
+  const startedAt = new Date(task.started_at).getTime()
+  const nowMs = new Date(current).getTime()
+  return Number.isFinite(startedAt) && Number.isFinite(nowMs) && nowMs - startedAt > Number(leaseMs || 0)
+}
 
 function taskId(matchGroupId, version) {
   return `match-report-${String(matchGroupId)}-v${Number(version || 1)}`
@@ -20,12 +28,12 @@ function canUserRequest(status) {
 }
 
 function canRetry(task) {
-  return Boolean(task && task.status === STATUS.FAILED && Number(task.manual_retry_count || 0) < 2)
+  return Boolean(task && task.status === STATUS.FAILED && Number(task.manual_retry_count || 0) < MAX_MANUAL_RETRIES)
 }
 
 function classifyError(err) {
   const message = String((err && err.message) || err || '')
-  const retryable = /timeout|timed out|ECONN|ENOTFOUND|HTTP 429|HTTP 5\d\d/i.test(message)
+  const retryable = /timeout|timed out|socket hang up|ECONN|ENOTFOUND|EAI_AGAIN|HTTP (?:408|429|5\d\d)/i.test(message)
   return {
     code: /429/.test(message) ? 'rate_limited' : (retryable ? 'provider_unavailable' : 'invalid_output'),
     retryable,
@@ -53,5 +61,6 @@ module.exports = {
   canUserRequest,
   canRetry,
   classifyError,
-  retentionDates
+  retentionDates,
+  leaseExpired
 }

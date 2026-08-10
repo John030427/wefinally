@@ -37,6 +37,9 @@ function makeFakeDeps() {
       neq: (value) => ({ __op: 'neq', value })
     },
     first: async (name, query) => (collections[name] || []).find((row) => matches(row, query)) || null,
+    list: async (name, query, limit) => (collections[name] || [])
+      .filter((row) => matches(row, query))
+      .slice(0, Number(limit || 100)),
     addWithId: async (name, data, prefix) => {
       const row = Object.assign({}, data, {
         _id: `${prefix || name}_${collections[name].length + 1}`,
@@ -139,6 +142,61 @@ async function main() {
   assert.strictEqual(status.pay_status, 1)
   assert.strictEqual(status.is_paid, true)
 
+  deps.state.now = new Date('2026-07-09T00:05:00.000Z')
+  await service.createPendingVipOrder(user, {
+    orderNo: 'WF_TEST_ORDER_PENDING',
+    amountTotal: 18800
+  })
+  deps.state.orders.push({
+    _id: 'order_other_user',
+    id: 99,
+    user_id: 2,
+    order_no: 'WF_OTHER_USER',
+    amount_total: 18800,
+    price: 188,
+    pay_status: 1,
+    create_time: new Date('2026-07-09T00:06:00.000Z')
+  })
+  const orderList = await service.listForUser(user)
+  assert.deepStrictEqual(orderList.map((item) => item.order_no), [
+    'WF_TEST_ORDER_PENDING',
+    'WF_TEST_ORDER_1'
+  ])
+  assert.strictEqual(orderList[1].invoice_eligible, true)
+  assert.strictEqual(orderList[0].invoice_eligible, false)
+  assert.strictEqual(orderList.some((item) => item.order_no === 'WF_OTHER_USER'), false)
+
+  const invoice = await service.requestInvoiceForUser(user, order.order_no, {
+    invoice_type: 'company',
+    title: 'WeFinally 测试有限公司',
+    tax_no: '91440300TEST123456',
+    email: 'finance@example.com'
+  })
+  assert.strictEqual(invoice.order_no, order.order_no)
+  assert.strictEqual(invoice.invoice_status, 'pending')
+  assert.strictEqual(invoice.idempotent, false)
+  assert.strictEqual(deps.state.orders[0].invoice_title, 'WeFinally 测试有限公司')
+  const duplicateInvoice = await service.requestInvoiceForUser(user, order.order_no, {
+    invoice_type: 'company',
+    title: '不应覆盖',
+    tax_no: '91440300CHANGED1234',
+    email: 'changed@example.com'
+  })
+  assert.strictEqual(duplicateInvoice.idempotent, true)
+  assert.strictEqual(deps.state.orders[0].invoice_title, 'WeFinally 测试有限公司')
+  await assert.rejects(
+    service.requestInvoiceForUser(user, 'WF_TEST_ORDER_PENDING', {
+      invoice_type: 'personal', title: '测试用户', email: 'test@example.com'
+    }),
+    /支付成功/
+  )
+  await assert.rejects(
+    service.requestInvoiceForUser(user, 'WF_OTHER_USER', {
+      invoice_type: 'personal', title: '测试用户', email: 'test@example.com'
+    }),
+    /订单不存在/
+  )
+
   const { createVipHandlers } = require('../../miniprogram/cloudfunctions/api/handlers/vip')
   const fakeUser = Object.assign({}, user, { is_vip: 0, vip_expire_time: null })
   let createdOrder = null
@@ -176,7 +234,14 @@ async function main() {
         return createdOrder
       },
       savePrepay: async (order, prepay) => Object.assign(order, { prepay_id: prepay.prepay_id }),
-      getStatusForUser: async () => ({ order_no: 'WF_TEST_ORDER_2', pay_status: 1, is_paid: true })
+      getStatusForUser: async () => ({ order_no: 'WF_TEST_ORDER_2', pay_status: 1, is_paid: true }),
+      listForUser: async () => [{ order_no: 'WF_TEST_ORDER_2', pay_status: 1, is_paid: true }],
+      requestInvoiceForUser: async (invoiceUser, orderNo, input) => ({
+        order_no: orderNo,
+        invoice_status: 'pending',
+        invoice_type: input.invoice_type,
+        idempotent: false
+      })
     }
   })
   const purchase = await handlers.purchase({}, {})
@@ -186,6 +251,15 @@ async function main() {
   assert.strictEqual(purchase.demo_granted, false)
   const routeStatus = await handlers.status({ order_no: 'WF_TEST_ORDER_2' }, {})
   assert.strictEqual(routeStatus.is_paid, true)
+  const routeList = await handlers.list({}, {})
+  assert.strictEqual(routeList[0].order_no, 'WF_TEST_ORDER_2')
+  const routeInvoice = await handlers.invoice({
+    order_no: 'WF_TEST_ORDER_2',
+    invoice_type: 'personal',
+    title: '测试用户',
+    email: 'test@example.com'
+  }, {})
+  assert.strictEqual(routeInvoice.invoice_status, 'pending')
 
   let statusReads = 0
   let queriedOrderNo = ''

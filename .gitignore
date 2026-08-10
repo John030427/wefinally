@@ -11,6 +11,7 @@ server/.env
 *.log
 npm-debug.log*
 logs/
+.deploy/
 cloudbase-export/
 cloudbase-export-jsonl/
 server/sample-data/matching-system/latest-run.json

@@ -7,6 +7,8 @@ cloud.init({
 const { handleRoute } = require('./handlers/route')
 const { handleHttp } = require('./handlers/paymentNotify')
 const { processQueuedTasks } = require('./handlers/reportTask')
+const { processNotificationJobs } = require('./agent/notificationJobs')
+const { processCoordinationDeadlines } = require('./handlers/dateCoordination')
 
 const ENV_ID = 'cloud1-d4gy8l52g08bba326'
 
@@ -36,6 +38,14 @@ exports.main = async (event = {}) => {
           success: true,
           data: await processQueuedTasks(Number(payload.limit || 2))
         }
+      case 'processWorkerTasks': {
+        const [reports, notifications, coordinations] = await Promise.all([
+          processQueuedTasks(Number(payload.report_limit || 2)),
+          processNotificationJobs({ limit: Number(payload.notification_limit || 10) }),
+          processCoordinationDeadlines({ limit: Number(payload.coordination_limit || 50) })
+        ])
+        return { success: true, data: { reports, notifications, coordinations } }
+      }
       default:
         return {
           success: false,

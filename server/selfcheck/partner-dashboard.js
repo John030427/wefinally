@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const {
   cleanupOpenids,
   cleanupPartnerPhones,
@@ -13,7 +14,7 @@ const { PARTNER_STATUS } = require('../src/config/constants');
 
 (async () => {
   const phone = 'sc_partner_dashboard';
-  const password = 'Partner123456';
+  const password = `Sc_${crypto.randomUUID()}`;
   const openids = ['sc_partner_free_member'];
 
   try {

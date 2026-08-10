@@ -23,14 +23,41 @@
   </block>
 
   <block wx:else>
-    <view class="hero-card card">
-      <view class="hero-title">AI 定时精准匹配</view>
-      <view class="hero-desc">{{scheduleDesc}}</view>
-      <view class="next-match">
-        <text class="next-label">下次匹配时间</text>
-        <text class="next-value">{{nextMatchText}}</text>
+    <view class="journey-band" wx:if="{{journeyState}}">
+      <view class="journey-status">
+        <view class="journey-status-dot"></view>
+        <text>当前进度</text>
       </view>
-      <button wx:if="{{isVip && devMatchStartEnabled}}" class="dev-match-btn" loading="{{devMatchStarting}}" bindtap="devStartMatch">开发测试：立即匹配</button>
+      <view class="journey-body">
+        <view class="journey-copy">
+          <view class="journey-kicker">{{journeyState.eyebrow}}</view>
+          <view class="journey-title">{{journeyState.title}}</view>
+          <view class="journey-desc">{{journeyState.description}}</view>
+        </view>
+        <button class="journey-action" bindtap="onJourneyAction">
+          <text>{{journeyState.actionText}}</text>
+          <text class="journey-action-arrow">→</text>
+        </button>
+      </view>
+    </view>
+
+    <view class="match-stage">
+      <view class="match-stage-orbit orbit-large"></view>
+      <view class="match-stage-orbit orbit-small"></view>
+      <view class="match-stage-head">
+        <view class="match-stage-kicker">下一次介绍</view>
+        <view class="match-stage-frequency">每周 2 次</view>
+      </view>
+      <view class="match-stage-time">{{nextMatchText}}</view>
+      <view class="match-stage-desc">{{scheduleDesc}}</view>
+      <view class="match-stage-note">
+        <view class="match-stage-note-dot"></view>
+        <text>按双方条件依次筛选，不需要反复刷新</text>
+      </view>
+      <view wx:if="{{isVip && devMatchStartEnabled}}" class="dev-match-row">
+        <text class="dev-match-label">测试环境</text>
+        <button class="dev-match-btn" loading="{{devMatchStarting}}" bindtap="devStartMatch">立即生成匹配</button>
+      </view>
     </view>
 
     <view class="vip-banner card" wx:if="{{!isVip}}">

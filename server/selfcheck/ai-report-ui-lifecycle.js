@@ -23,5 +23,7 @@ assert(page.includes('stopReportPolling'))
 assert(!page.includes('if (hasAiReportText) status = 1'))
 assert(view.includes('detail.aiReport.summary'))
 assert(view.includes("detail.aiReportStatus === 'succeeded'"))
+assert(view.includes('detail.aiReportErrorText'))
+assert(page.includes('aiReportErrorText: aiReportState.aiReportErrorText'))
 
 console.log('PASS ai report ui lifecycle')

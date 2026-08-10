@@ -4,10 +4,13 @@ const cloud = require('wx-server-sdk')
 const db = require('../lib/db')
 const { signBackofficeToken, verifyBackofficeToken } = require('../lib/backofficeToken')
 const { reviewMemberApplication } = require('./member')
+const { changeInternalTestVip } = require('./internalTestVip')
+const { changeAbMatchFixture } = require('./abMatchFixture')
 const { createAgentBackofficeService } = require('../agent/backofficeService')
 
 const AGENT_BACKOFFICE_PATHS = Object.freeze({
   tickets: '/api/admin/agent/tickets',
+  conversations: '/api/admin/agent/conversations',
   knowledge: '/api/admin/knowledge-articles',
   coordinations: '/api/admin/date-coordinations'
 })
@@ -104,6 +107,11 @@ async function applicationList(actor, status) {
   return Promise.all(rows.map(async (application) => {
     const user = await db.byId('user', application.user_id)
     const partner = await db.byId('partner', application.assigned_partner_id)
+    const fixture = user ? await db.first('user', {
+      ab_test_owner_user_id: user.id,
+      is_test_fixture: 1,
+      status: 1
+    }) : null
     return Object.assign({}, application, {
       user: user ? {
         id: user.id,
@@ -112,9 +120,17 @@ async function applicationList(actor, status) {
         education: user.education,
         city: user.city,
         occupation_description: user.occupation_description || '',
-        member_status: user.member_status
+        member_status: user.member_status,
+        is_vip: Number(user.is_vip || 0),
+        vip_expire_time: user.vip_expire_time || null,
+        vip_source: user.vip_source || ''
       } : null,
-      partner_name: partner ? partner.name : ''
+      partner_name: partner ? partner.name : '',
+      ab_test_fixture: fixture ? {
+        user_id: fixture.id,
+        run_id: fixture.ab_test_run_id,
+        expires_at: fixture.ab_test_expires_at
+      } : null
     })
   }))
 }
@@ -212,6 +228,9 @@ async function handleBackofficeHttp(event = {}) {
     if (method === 'GET' && path.endsWith(AGENT_BACKOFFICE_PATHS.tickets)) {
       return ok({ list: await agentService().listTickets(actor, event.queryStringParameters || {}) })
     }
+    if (method === 'GET' && path.endsWith(AGENT_BACKOFFICE_PATHS.conversations)) {
+      return ok({ list: await agentService().listConversations(actor, event.queryStringParameters || {}) })
+    }
     if (method === 'GET' && path.endsWith(AGENT_BACKOFFICE_PATHS.knowledge)) {
       return ok({ list: await agentService().listKnowledge(actor, event.queryStringParameters || {}) })
     }
@@ -246,6 +265,42 @@ async function handleBackofficeHttp(event = {}) {
     matched = path.match(/\/api\/admin\/member-applications\/(\d+)\/reassign$/)
     if (method === 'PUT' && matched) return ok(await reassign(Number(matched[1]), body, actor))
 
+    matched = path.match(new RegExp('/api/admin/users/(\\d+)/test-vip$'))
+    if (method === 'POST' && matched) {
+      const result = await changeInternalTestVip({
+        userId: Number(matched[1]),
+        action: body.action,
+        days: body.days,
+        reason: body.reason,
+        requestId: body.request_id
+      }, actor)
+      return ok(result, body.action === 'revoke' ? '内测 VIP 已撤销' : '内测 VIP 已授权')
+    }
+
+    matched = path.match(new RegExp('/api/admin/users/(\\d+)/ab-match-fixture$'))
+    if (method === 'POST' && matched) {
+      const result = await changeAbMatchFixture({
+        ownerUserId: Number(matched[1]),
+        action: body.action,
+        reason: body.reason,
+        requestId: body.request_id,
+        runId: body.run_id
+      }, actor)
+      return ok(result, body.action === 'cleanup' ? 'A/B 测试数据已清理' : 'A/B 测试候选已准备')
+    }
+
+    matched = path.match(/\/api\/admin\/agent\/tickets\/(\d+)$/)
+    if (method === 'GET' && matched) {
+      return ok(await agentService().ticketDetail(actor, Number(matched[1])))
+    }
+    matched = path.match(/\/api\/admin\/agent\/conversations\/(\d+)$/)
+    if (method === 'GET' && matched) {
+      return ok(await agentService().conversationDetail(actor, Number(matched[1])))
+    }
+    matched = path.match(/\/api\/admin\/agent\/conversations\/(\d+)\/reply$/)
+    if (method === 'POST' && matched) {
+      return ok(await agentService().replyConversation(actor, Number(matched[1]), body.content), '人工回复已发送')
+    }
     matched = path.match(/\/api\/admin\/agent\/tickets\/(\d+)\/reply$/)
     if (method === 'POST' && matched) {
       return ok(await agentService().replyTicket(actor, Number(matched[1]), body.content), '人工回复已发送')

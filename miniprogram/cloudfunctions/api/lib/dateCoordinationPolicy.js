@@ -1,4 +1,5 @@
 const STATUS = Object.freeze({
+  COLLECTING_INITIATOR: 'collecting_initiator',
   INVITING_PARTNER: 'inviting_partner',
   COLLECTING_PREFERENCES: 'collecting_preferences',
   COMPUTING_OVERLAP: 'computing_overlap',
@@ -171,6 +172,11 @@ function computeOverlap(applicationA, applicationB, options = {}) {
 
 function nextStatus(current, event) {
   const transitions = {
+    [STATUS.COLLECTING_INITIATOR]: {
+      initiator_submitted: STATUS.INVITING_PARTNER,
+      expire: STATUS.EXPIRED,
+      cancel: STATUS.CANCELLED
+    },
     [STATUS.INVITING_PARTNER]: {
       accept_invitation: STATUS.COLLECTING_PREFERENCES,
       decline_invitation: STATUS.INVITATION_DECLINED,

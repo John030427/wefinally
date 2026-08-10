@@ -9,6 +9,8 @@ const member = require('./member')
 const reportTask = require('./reportTask')
 const agent = require('./agent')
 const dateCoordination = require('./dateCoordination')
+const dateApplicationPatch = require('./dateApplicationPatch')
+const experienceFeedback = require('./experienceFeedback')
 
 function methodOf(value) {
   return String(value || 'GET').toUpperCase()
@@ -61,9 +63,15 @@ function route(method, path) {
     'GET /api/match/list': match.matchList,
     'GET /api/match/detail': match.detail,
     'POST /api/match/handoff': match.handoff,
+    'GET /api/match/feedback': experienceFeedback.getMatch,
+    'POST /api/match/feedback': experienceFeedback.saveMatch,
+    'GET /api/date-feedback': experienceFeedback.getDate,
+    'POST /api/date-feedback': experienceFeedback.saveDate,
     'GET /api/vip/info': vip.info,
     'POST /api/vip/purchase': vip.purchase,
     'GET /api/order/status': vip.status,
+    'GET /api/order/list': vip.list,
+    'POST /api/order/invoice': vip.invoice,
     'GET /api/chat/history': chat.history,
     'POST /api/chat/send': chat.send,
     'POST /api/agent/sessions': agent.createSession,
@@ -85,6 +93,18 @@ function route(method, path) {
   if (method === 'POST' && m) return withParams(dateCoordination.respondInvitation, { coordination_id: Number(m[1]) })
   m = path.match(/^\/api\/date-coordinations\/(\d+)\/application$/)
   if (method === 'PUT' && m) return withParams(dateCoordination.saveApplication, { coordination_id: Number(m[1]) })
+  m = path.match(/^\/api\/date-coordinations\/(\d+)\/application-patches$/)
+  if (method === 'POST' && m) return withParams(dateApplicationPatch.createPreview, { coordination_id: Number(m[1]) })
+  m = path.match(/^\/api\/date-coordinations\/(\d+)\/application-patches\/(\d+)\/confirm$/)
+  if (method === 'POST' && m) return withParams(dateApplicationPatch.confirm, {
+    coordination_id: Number(m[1]),
+    patch_id: Number(m[2])
+  })
+  m = path.match(/^\/api\/date-coordinations\/(\d+)\/application-patches\/(\d+)\/cancel$/)
+  if (method === 'POST' && m) return withParams(dateApplicationPatch.cancel, {
+    coordination_id: Number(m[1]),
+    patch_id: Number(m[2])
+  })
   m = path.match(/^\/api\/date-coordinations\/(\d+)\/proposals\/(\d+)\/confirm$/)
   if (method === 'POST' && m) return withParams(dateCoordination.confirmProposal, {
     coordination_id: Number(m[1]),

@@ -1,11 +1,22 @@
 const cloud = require('wx-server-sdk')
 const collections = require('./collections')
+const { withCollectionBootstrap } = require('./collectionBootstrapPolicy')
 
 const db = cloud.database()
 const _ = db.command
 
 function col(name) {
   return db.collection(collections[name] || name)
+}
+
+function withCollection(name, operation) {
+  const physicalName = collections[name] || name
+  return withCollectionBootstrap({
+    logicalName: name,
+    physicalName,
+    operation,
+    createCollection: (collectionName) => db.createCollection(collectionName)
+  })
 }
 
 function now() {
@@ -19,14 +30,14 @@ function fallbackId(name, err) {
 }
 
 async function first(name, query) {
-  const res = await col(name).where(query).limit(1).get()
+  const res = await withCollection(name, () => col(name).where(query).limit(1).get())
   return res.data && res.data[0] ? res.data[0] : null
 }
 
 async function list(name, query, limit) {
   const q = query || {}
   const max = limit || 100
-  const res = await col(name).where(q).limit(max).get()
+  const res = await withCollection(name, () => col(name).where(q).limit(max).get())
   return res.data || []
 }
 
@@ -38,7 +49,7 @@ async function byId(name, id) {
   }
   if (!id) return null
   try {
-    const res = await col(name).doc(String(id)).get()
+    const res = await withCollection(name, () => col(name).doc(String(id)).get())
     return res.data || null
   } catch (err) {
     return null
@@ -48,28 +59,28 @@ async function byId(name, id) {
 async function nextId(name) {
   const id = String(name)
   try {
-    await db.collection('system_counters').doc(id).update({
+    await withCollection('system_counters', () => db.collection('system_counters').doc(id).update({
       data: {
         seq: _.inc(1),
         update_time: now()
       }
-    })
+    }))
   } catch (updateErr) {
     try {
-      await db.collection('system_counters').doc(id).set({
+      await withCollection('system_counters', () => db.collection('system_counters').doc(id).set({
         data: {
           seq: 1,
           create_time: now(),
           update_time: now()
         }
-      })
+      }))
       return 1
     } catch (setErr) {
       return fallbackId(name, setErr)
     }
   }
   try {
-    const res = await db.collection('system_counters').doc(id).get()
+    const res = await withCollection('system_counters', () => db.collection('system_counters').doc(id).get())
     return Number(res.data.seq || 1)
   } catch (err) {
     return fallbackId(name, err)
@@ -86,16 +97,24 @@ async function addWithId(name, data, prefix) {
   })
   const writeData = Object.assign({}, doc)
   delete writeData._id
-  await col(name).doc(doc._id).set({ data: writeData })
+  await withCollection(name, () => col(name).doc(doc._id).set({ data: writeData }))
   return doc
 }
 
 async function updateByDoc(name, doc, data) {
   if (!doc || !doc._id) throw new Error('记录不存在')
-  await col(name).doc(doc._id).update({
+  await withCollection(name, () => col(name).doc(doc._id).update({
     data: Object.assign({}, data, { update_time: now() })
-  })
+  }))
   return Object.assign({}, doc, data, { update_time: now() })
+}
+
+async function removeByDoc(name, doc) {
+  if (!doc || !doc._id) throw new Error('记录不存在')
+  const result = await withCollection(name, () => col(name).doc(doc._id).remove())
+  const removed = Number(result && result.stats && result.stats.removed || 0)
+  if (removed !== 1) throw new Error('记录删除失败')
+  return { removed }
 }
 
 function authError(message) {
@@ -115,5 +134,7 @@ module.exports = {
   nextId,
   addWithId,
   updateByDoc,
-  authError
+  removeByDoc,
+  authError,
+  withCollection
 }

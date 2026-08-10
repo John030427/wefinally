@@ -18,15 +18,15 @@
   <block wx:else>
     <view class="date-head card">
       <view class="date-title">第一次约会协调</view>
-      <view class="date-desc">由双方分别填写偏好，系统只展示必要的约会信息。</view>
+      <view class="date-desc">先由发起方填写偏好并邀请对方，再一起确认轻松、安全的初次见面。</view>
       <view class="status-pill">{{coordination.status_text || coordination.status || '协调中'}}</view>
     </view>
 
     <view class="progress-card card">
       <view class="section-title">进度</view>
-      <view class="progress-row"><text>1. 邀请确认</text><text>{{coordination.invitation_status_text || '进行中'}}</text></view>
-      <view class="progress-row"><text>2. 填写偏好</text><text>{{coordination.application_status_text || '等待填写'}}</text></view>
-      <view class="progress-row"><text>3. 方案确认</text><text>{{coordination.confirmation_status_text || '等待方案'}}</text></view>
+      <view class="progress-row"><text>1. 发起方填写偏好</text><text>{{coordination.status === 'collecting_initiator' ? (coordination.role === 'initiator' ? '等待你填写' : '对方准备中') : '已完成'}}</text></view>
+      <view class="progress-row"><text>2. 邀请对方参与</text><text>{{coordination.invitation_status_text || (coordination.status === 'collecting_initiator' ? '等待发出' : '进行中')}}</text></view>
+      <view class="progress-row"><text>3. 双方确认方案</text><text>{{coordination.confirmation_status_text || '等待方案'}}</text></view>
     </view>
 
     <view class="invite-card card" wx:if="{{coordination.status === 'inviting_partner'}}">
@@ -36,13 +36,17 @@
         <button class="outline-btn" bindtap="respondInvitation" data-accepted="false" loading="{{responding}}">暂不参与</button>
         <button class="primary-btn" bindtap="respondInvitation" data-accepted="true" loading="{{responding}}">接受邀请</button>
       </view>
-      <view class="muted" wx:else>邀请已发出，等待对方确认。</view>
+      <view wx:else>
+        <view class="muted">邀请已发出。对方需要使用自己的微信进入对应“匹配详情 → 官方第一次约会”，接受后双方才能填写偏好。</view>
+        <button class="outline-btn full-btn" bindtap="refreshCoordination">刷新邀请状态</button>
+      </view>
     </view>
 
-    <view class="form-card card" wx:if="{{coordination.can_submit_application || coordination.status === 'collecting_preferences' || coordination.status === 'replanning'}}">
+    <view class="form-card card" wx:if="{{coordination.can_submit_application}}">
       <view class="section-title">填写我的偏好</view>
+      <view class="form-hint" wx:if="{{coordination.status === 'collecting_initiator'}}">先告诉我们你的理想安排，保存后才会邀请对方参与协调。</view>
       <view class="form-item">
-        <view class="form-label required">可约时间</view>
+        <view class="form-label required">📅 可约时间</view>
         <picker mode="date" start="{{dateMin}}" end="{{dateMax}}" value="{{selectedDate}}" bindchange="onDateChange">
           <view class="picker-value">未来14天内选择日期</view>
         </picker>
@@ -51,45 +55,50 @@
             <text>{{dateItem.date}}</text>
             <text class="remove-date" bindtap="removeAvailability" data-value="{{dateItem.date}}">移除</text>
           </view>
-          <view class="form-label">可约时间段</view>
+          <view class="form-label">🕰 可约时间段</view>
           <view class="choice-list">
-            <text class="choice-tag" wx:for="{{periodOptions}}" wx:for-item="periodItem" wx:key="value" bindtap="togglePeriod" data-date="{{dateItem.date}}" data-period="{{periodItem.value}}">{{periodItem.label}}</text>
+            <view class="choice-tag {{selection.periods[dateItem.date] && selection.periods[dateItem.date][periodItem.value] ? 'selected' : ''}}" wx:for="{{periodOptions}}" wx:for-item="periodItem" wx:key="value" bindtap="togglePeriod" data-date="{{dateItem.date}}" data-period="{{periodItem.value}}" hover-class="choice-tag-pressed">{{periodItem.label}}</view>
           </view>
           <view class="selected-periods">已选择：{{dateItem.periods}}</view>
         </view>
       </view>
       <view class="form-item">
-        <view class="form-label required">偏好区域</view>
-        <input class="input" placeholder="如南山区、福田区，可用顿号分隔" value="{{areaText}}" bindinput="onAreasInput" />
+        <view class="form-label required">📍 偏好区域</view>
+        <input class="input field-input" placeholder="例如：浦东新区、静安区" value="{{areaText}}" bindinput="onAreasInput" />
+        <view class="field-help">可以填写多个区域，用顿号或逗号分隔</view>
       </view>
       <view class="form-item">
-        <view class="form-label required">活动偏好（最多3项）</view>
+        <view class="form-label required">🎯 活动偏好（最多3项）</view>
         <view class="choice-list">
-          <text class="choice-tag" wx:for="{{activityOptions}}" wx:key="*this" bindtap="toggleActivity" data-value="{{item}}">{{item}}</text>
+          <view class="choice-tag {{selection.activities[item.value] ? 'selected' : ''}}" wx:for="{{activityOptions}}" wx:key="value" bindtap="toggleActivity" data-value="{{item.value}}" hover-class="choice-tag-pressed">{{item.label}}</view>
         </view>
         <view class="selected-periods">已选择：{{form.activities}}</view>
       </view>
       <view class="form-item">
-        <view class="form-label required">人均预算</view>
-        <view class="choice-list"><text class="choice-tag" wx:for="{{budgetOptions}}" wx:key="value" bindtap="selectOption" data-key="budget" data-value="{{item.value}}">{{item.label}}</text></view>
+        <view class="form-label required">💰 人均预算</view>
+        <view class="choice-list"><view class="choice-tag {{form.budget === item.value ? 'selected' : ''}}" wx:for="{{budgetOptions}}" wx:key="value" bindtap="selectOption" data-key="budget" data-value="{{item.value}}" hover-class="choice-tag-pressed">{{item.label}}</view></view>
       </view>
       <view class="form-item">
-        <view class="form-label required">费用方式</view>
-        <view class="choice-list"><text class="choice-tag" wx:for="{{paymentOptions}}" wx:key="value" bindtap="selectOption" data-key="payment_preference" data-value="{{item.value}}">{{item.label}}</text></view>
+        <view class="form-label required">🤝 费用方式</view>
+        <view class="choice-list"><view class="choice-tag {{form.payment_preference === item.value ? 'selected' : ''}}" wx:for="{{paymentOptions}}" wx:key="value" bindtap="selectOption" data-key="payment_preference" data-value="{{item.value}}" hover-class="choice-tag-pressed">{{item.label}}</view></view>
       </view>
       <view class="form-item">
-        <view class="form-label required">可接受时长</view>
-        <view class="choice-list"><text class="choice-tag" wx:for="{{durationOptions}}" wx:key="value" bindtap="selectOption" data-key="duration" data-value="{{item.value}}">{{item.label}}</text></view>
+        <view class="form-label required">⏳ 可接受时长</view>
+        <view class="choice-list"><view class="choice-tag {{form.duration === item.value ? 'selected' : ''}}" wx:for="{{durationOptions}}" wx:key="value" bindtap="selectOption" data-key="duration" data-value="{{item.value}}" hover-class="choice-tag-pressed">{{item.label}}</view></view>
       </view>
-      <view class="form-item"><view class="form-label">出行限制</view><input class="input" placeholder="如步行距离或无障碍需求" value="{{form.transport_constraints}}" data-key="transport_constraints" bindinput="onInput" /></view>
-      <view class="form-item"><view class="form-label">其他要求</view><textarea class="textarea" maxlength="100" placeholder="选填，告诉平台你在意的安排" value="{{form.other_requirements}}" data-key="other_requirements" bindinput="onInput"></textarea></view>
-      <view class="form-item"><view class="form-label">对方可见内容</view><textarea class="textarea" maxlength="100" placeholder="选填，简短友善地说明期待" value="{{form.share_message}}" data-key="share_message" bindinput="onInput"></textarea></view>
+      <view class="form-item">
+        <view class="form-label">🚌 出行限制</view>
+        <input class="input field-input" placeholder="例如：不方便走远、需要靠近地铁" value="{{form.transport_constraints}}" data-key="transport_constraints" bindinput="onInput" />
+        <view class="field-help">没有限制也可以留空，不需要填写详细地址</view>
+      </view>
+      <view class="form-item"><view class="form-label">📝 其他要求</view><textarea class="textarea" maxlength="100" placeholder="选填，告诉平台你在意的安排" value="{{form.other_requirements}}" data-key="other_requirements" bindinput="onInput"></textarea></view>
+      <view class="form-item"><view class="form-label">💌 对方可见内容</view><textarea class="textarea" maxlength="100" placeholder="选填，简短友善地说明期待" value="{{form.share_message}}" data-key="share_message" bindinput="onInput"></textarea></view>
       <view class="share-preview">
         <view class="preview-label">对方可见内容</view>
         <view>{{form.share_message || '尚未填写'}}</view>
       </view>
       <view class="public-note">建议选择白天、公共场所，尊重彼此的边界和节奏。</view>
-      <button class="primary-btn full-btn" bindtap="submitApplication" loading="{{submitting}}" disabled="{{submitting}}">提交我的偏好</button>
+      <button class="primary-btn full-btn" bindtap="submitApplication" loading="{{submitting}}" disabled="{{submitting}}">{{coordination.status === 'collecting_initiator' ? '💌 保存偏好并邀请对方' : '💗 提交我的偏好'}}</button>
     </view>
 
     <view class="proposal-card card" wx:if="{{proposal}}">
@@ -107,10 +116,21 @@
       <button class="primary-btn full-btn" bindtap="recoordinate" loading="{{submitting}}">重新协调</button>
     </view>
 
-    <view class="contact-card card">
-      <view>想了解当前协调进度？</view>
-      <view class="contact-link" bindtap="goCoordinator">询问AI协调员</view>
+    <view class="support-card support-card-ai" bindtap="goCoordinator" hover-class="support-card-pressed">
+      <view class="support-icon">💗</view>
+      <view class="support-content">
+        <view class="support-title">AI约会协调员</view>
+        <view class="support-desc">查询进度、调整偏好，帮双方重新协调</view>
+      </view>
+      <view class="support-arrow">›</view>
     </view>
-    <view class="contact-card card"><view>需要人工协助？</view><view class="contact-link" bindtap="goService">联系平台客服</view></view>
+    <view class="support-card support-card-human" bindtap="goService" hover-class="support-card-pressed">
+      <view class="support-icon">🎧</view>
+      <view class="support-content">
+        <view class="support-title">人工客服协助</view>
+        <view class="support-desc">遇到复杂情况，由平台客服继续处理</view>
+      </view>
+      <view class="support-arrow">›</view>
+    </view>
   </block>
 </view>

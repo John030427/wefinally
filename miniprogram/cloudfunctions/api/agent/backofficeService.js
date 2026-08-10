@@ -25,6 +25,13 @@ function ref(prefix, value) {
   return `WF-${prefix}-${String(Number(value || 0)).padStart(6, '0')}`
 }
 
+function refId(value, prefix) {
+  const text = String(value || '').trim()
+  const matched = text.match(new RegExp(`^WF-${prefix}-(\\d+)$`, 'i'))
+  if (matched) return Number(matched[1])
+  return /^\d+$/.test(text) ? Number(text) : 0
+}
+
 function ticketDto(row) {
   return {
     id: row.id,
@@ -36,9 +43,126 @@ function ticketDto(row) {
     category: row.category,
     summary: String(row.summary || '').slice(0, 500),
     status: row.status,
+    assigned_admin_ref: row.assigned_admin_id ? ref('A', row.assigned_admin_id) : '',
+    handoff_status: String(row.handoff_status || ''),
+    last_reply_at: row.last_reply_at || null,
     create_time: row.create_time,
     update_time: row.update_time
   }
+}
+
+function sessionDto(row) {
+  return {
+    id: row.id,
+    session_ref: ref('S', row.id),
+    user_ref: ref('U', row.user_id),
+    coordination_ref: row.coordination_id ? ref('D', row.coordination_id) : '',
+    agent_type: String(row.agent_type || ''),
+    status: String(row.status || ''),
+    summary: String(row.summary || '').slice(0, 500),
+    create_time: row.create_time,
+    update_time: row.update_time
+  }
+}
+
+function messageDto(row) {
+  const senderType = ['user', 'agent', 'human_agent', 'system'].includes(String(row.sender_type || ''))
+    ? String(row.sender_type)
+    : (row.role === 'user' ? 'user' : 'agent')
+  return {
+    source_type: 'message',
+    message_ref: ref('M', row.id),
+    role: row.role === 'user' ? 'user' : 'assistant',
+    sender_type: senderType,
+    content: String(row.content || '').slice(0, 2000),
+    event_type: String(row.event_type || ''),
+    notification_job_ref: row.notification_job_id ? ref('N', row.notification_job_id) : '',
+    risk_level: String(row.risk_level || ''),
+    create_time: row.create_time
+  }
+}
+
+function runDto(row) {
+  return {
+    run_ref: ref('R', row.id),
+    provider: String(row.provider || ''),
+    status: String(row.status || ''),
+    error_code: String(row.error_code || '').slice(0, 100),
+    create_time: row.create_time
+  }
+}
+
+function notificationJobDto(row) {
+  return {
+    job_ref: ref('N', row.id),
+    stage: String(row.stage || ''),
+    status: String(row.status || ''),
+    attempts: Number(row.attempts || 0),
+    error_code: String(row.error_code || '').slice(0, 100),
+    create_time: row.create_time,
+    sent_at: row.sent_at || null
+  }
+}
+
+function coordinationEventDto(row) {
+  const eventType = String(row.event_type || 'coordination_updated')
+  const content = ({
+    application_sent: '约会申请已提交，系统开始等待另一方回应。',
+    preference_changed: '约会偏好修改已确认，系统已重新计算双方交集。',
+    proposal_generated: '系统已生成新的候选方案。',
+    proposal_confirmed: '一方已确认候选方案。',
+    coordination_arranged: '双方已确认同一方案，协调状态已完成。'
+  })[eventType] || '约会协调状态已更新。'
+  return {
+    source_type: 'coordination_event',
+    event_ref: ref('E', row.id),
+    role: 'assistant',
+    sender_type: 'system',
+    event_type: eventType,
+    content,
+    coordination_version: Number(row.coordination_version || 1),
+    create_time: row.create_time
+  }
+}
+
+function notificationTimelineDto(row) {
+  const stage = String(row.stage || 'notification')
+  const status = String(row.status || 'pending')
+  const action = ({
+    invitation_created: '约会协调邀请',
+    invitation: '邀请提醒',
+    application: '偏好表单提醒',
+    proposal_generated: '候选方案通知',
+    confirmation: '方案确认提醒',
+    preference_changed: '偏好变更通知'
+  })[stage] || '自动通知'
+  const state = ({ pending: '等待发送', sent: '已发送', expired: '已过期', failed: '发送失败' })[status] || status
+  return {
+    source_type: 'notification',
+    notification_job_ref: ref('N', row.id),
+    role: 'assistant',
+    sender_type: 'system',
+    event_type: stage,
+    content: `${action}：${state}。`,
+    create_time: row.sent_at || row.create_time
+  }
+}
+
+function timeValue(value) {
+  const raw = value && typeof value === 'object' && value.$date !== undefined ? value.$date : value
+  const time = new Date(raw || 0).getTime()
+  return Number.isFinite(time) ? time : 0
+}
+
+function buildTimeline(messages, events, notificationJobs) {
+  const messageItems = messages.map(messageDto)
+  const deliveredJobRefs = new Set(messageItems.map((item) => item.notification_job_ref).filter(Boolean))
+  const notificationItems = notificationJobs
+    .filter((row) => !deliveredJobRefs.has(ref('N', row.id)))
+    .map(notificationTimelineDto)
+  return messageItems
+    .concat(events.map(coordinationEventDto), notificationItems)
+    .sort((a, b) => timeValue(a.create_time) - timeValue(b.create_time))
 }
 
 function knowledgeDto(row) {
@@ -89,12 +213,122 @@ function createAgentBackofficeService(deps) {
     return rows.sort((a, b) => Number(b.id || 0) - Number(a.id || 0)).map(ticketDto)
   }
 
+  async function ticketDetail(actor, ticketId) {
+    requireRole(actor, ['super_admin', 'customer_service', 'auditor'])
+    const ticket = await deps.byId('agent_human_ticket', Number(ticketId || 0))
+    if (!ticket) throw new Error('人工工单不存在')
+    const session = await deps.byId('agent_session', ticket.session_id)
+    if (!session) throw new Error('Agent会话不存在')
+    const messages = await deps.list('agent_message', { session_id: session.id }, 200)
+    const runs = await deps.list('agent_run', { session_id: session.id }, 50)
+    const coordination = ticket.coordination_id
+      ? await deps.byId('date_coordination', ticket.coordination_id)
+      : null
+    const notificationJobs = ticket.coordination_id
+      ? await deps.list('agent_notification_job', { coordination_id: ticket.coordination_id, user_id: ticket.user_id }, 100)
+      : []
+    const coordinationEvents = ticket.coordination_id
+      ? await deps.list('date_coordination_event', { coordination_id: ticket.coordination_id }, 200)
+      : []
+    return {
+      ticket: ticketDto(ticket),
+      session: sessionDto(session),
+      messages: messages
+        .sort((a, b) => Number(a.id || 0) - Number(b.id || 0))
+        .map(messageDto),
+      timeline: buildTimeline(messages, coordinationEvents, notificationJobs),
+      coordination: coordination ? coordinationDto(coordination) : null,
+      runs: runs
+        .sort((a, b) => Number(b.id || 0) - Number(a.id || 0))
+        .map(runDto),
+      notification_jobs: notificationJobs
+        .sort((a, b) => Number(b.id || 0) - Number(a.id || 0))
+        .map(notificationJobDto)
+    }
+  }
+
+  async function listConversations(actor, filters = {}) {
+    requireRole(actor, ['super_admin', 'customer_service', 'auditor'])
+    const coordinationId = refId(filters.coordination_ref, 'D')
+    const sessionId = refId(filters.session_ref, 'S')
+    const userId = refId(filters.user_ref, 'U')
+    let rows
+    if (sessionId) {
+      const session = await deps.byId('agent_session', sessionId)
+      rows = session ? [session] : []
+    } else if (coordinationId) {
+      rows = await deps.list('agent_session', { coordination_id: coordinationId }, 200)
+    } else if (userId) {
+      rows = await deps.list('agent_session', { user_id: userId }, 200)
+    } else {
+      rows = await deps.list('agent_session', {}, 200)
+    }
+    const query = String(filters.query || '').trim().toLowerCase()
+    return rows
+      .filter((row) => !query || [
+        ref('S', row.id),
+        ref('U', row.user_id),
+        row.coordination_id ? ref('D', row.coordination_id) : '',
+        row.agent_type,
+        row.status,
+        row.summary
+      ].join(' ').toLowerCase().includes(query))
+      .sort((a, b) => Number(b.id || 0) - Number(a.id || 0))
+      .map(sessionDto)
+  }
+
+  async function conversationDetail(actor, sessionId) {
+    const viewerRole = requireRole(actor, ['super_admin', 'customer_service', 'auditor'])
+    const session = await deps.byId('agent_session', Number(sessionId || 0))
+    if (!session) throw new Error('Agent会话不存在')
+    const messages = await deps.list('agent_message', { session_id: session.id }, 500)
+    const runs = await deps.list('agent_run', { session_id: session.id }, 100)
+    const coordination = session.coordination_id
+      ? await deps.byId('date_coordination', session.coordination_id)
+      : null
+    const notificationJobs = session.coordination_id
+      ? await deps.list('agent_notification_job', { coordination_id: session.coordination_id, user_id: session.user_id }, 100)
+      : []
+    const coordinationEvents = session.coordination_id
+      ? await deps.list('date_coordination_event', { coordination_id: session.coordination_id }, 200)
+      : []
+    await deps.addWithId('partner_user_audit_log', {
+      actor_role: 'admin',
+      actor_id: actor.id,
+      admin_role: viewerRole,
+      action: 'view_agent_conversation',
+      session_id: session.id,
+      coordination_id: Number(session.coordination_id || 0),
+      user_id: session.user_id,
+      reason: 'authorized_backoffice_read'
+    }, 'member_audit')
+    return {
+      read_only: true,
+      session: sessionDto(session),
+      messages: messages
+        .sort((a, b) => Number(a.id || 0) - Number(b.id || 0))
+        .map(messageDto),
+      timeline: buildTimeline(messages, coordinationEvents, notificationJobs),
+      coordination: coordination ? coordinationDto(coordination) : null,
+      runs: runs
+        .sort((a, b) => Number(b.id || 0) - Number(a.id || 0))
+        .map(runDto),
+      notification_jobs: notificationJobs
+        .sort((a, b) => Number(b.id || 0) - Number(a.id || 0))
+        .map(notificationJobDto)
+    }
+  }
+
   async function replyTicket(actor, ticketId, content) {
     requireRole(actor, ['super_admin', 'customer_service'])
     const ticket = await deps.byId('agent_human_ticket', Number(ticketId || 0))
     if (!ticket || ticket.status === 'closed') throw new Error('人工工单不存在或已关闭')
     const session = await deps.byId('agent_session', ticket.session_id)
     if (!session) throw new Error('Agent会话不存在')
+    return writeHumanReply(actor, ticket, session, content)
+  }
+
+  async function writeHumanReply(actor, ticket, session, content) {
     const reply = String(content || '').trim().slice(0, 1000)
     if (!reply) throw new Error('请输入人工回复内容')
     await deps.addWithId('agent_message', {
@@ -112,6 +346,30 @@ function createAgentBackofficeService(deps) {
       last_reply_at: deps.now()
     })
     return ticketDto(ticket)
+  }
+
+  async function replyConversation(actor, sessionId, content) {
+    requireRole(actor, ['super_admin', 'customer_service'])
+    const session = await deps.byId('agent_session', Number(sessionId || 0))
+    if (!session) throw new Error('Agent会话不存在')
+    let ticket = await deps.first('agent_human_ticket', { session_id: session.id })
+    let created = false
+    if (!ticket || ticket.status === 'closed') {
+      ticket = await deps.addWithId('agent_human_ticket', {
+        session_id: session.id,
+        user_id: session.user_id,
+        coordination_id: Number(session.coordination_id || 0),
+        priority: 'P2',
+        category: 'user_request',
+        summary: '管理员从会话工作台发起人工处理',
+        status: 'open',
+        assigned_admin_id: actor.id,
+        handoff_status: 'internal_processing'
+      }, 'agent_human_ticket')
+      created = true
+    }
+    const updated = await writeHumanReply(actor, ticket, session, content)
+    return { created, ticket: updated }
   }
 
   async function closeTicket(actor, ticketId, input = {}) {
@@ -199,7 +457,11 @@ function createAgentBackofficeService(deps) {
 
   return {
     listTickets,
+    ticketDetail,
+    listConversations,
+    conversationDetail,
     replyTicket,
+    replyConversation,
     closeTicket,
     listKnowledge,
     saveKnowledge,

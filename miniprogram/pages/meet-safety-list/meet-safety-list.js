@@ -34,6 +34,6 @@ Page({
   },
 
   goCreate() {
-    wx.navigateTo({ url: '/pages/meet-safety/meet-safety' })
+    wx.navigateTo({ url: '/pages/meet-safety/meet-safety?mode=create' })
   }
 })

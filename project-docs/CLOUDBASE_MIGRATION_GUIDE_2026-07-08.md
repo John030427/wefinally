@@ -96,11 +96,12 @@ AI 匹配报告在 `cloudfunctions/api` 云函数内生成，不要把 API Key �
 在微信开发者工具/云开发控制台给 `api` 云函数配置环境变量：
 
 ```text
-MINIMAX_API_KEY=<MiniMax Key>
-MINIMAX_BASE_URL=https://api.minimaxi.com/anthropic
-MINIMAX_MODEL=MiniMax-M3
-MINIMAX_TIMEOUT_MS=12000
-MINIMAX_MATCH_REPORT_ENABLED=true
+DEEPSEEK_API_KEY=<DeepSeek Key>
+DEEPSEEK_BASE_URL=https://api.deepseek.com
+DEEPSEEK_MODEL=deepseek-chat
+DEEPSEEK_TIMEOUT_MS=20000
+DEEPSEEK_MATCH_REPORT_ENABLED=true
+AGENT_LLM_ENABLED=true
 ```
 
 改完环境变量后，重新上传并部署 `cloudfunctions/api`。如果 MiniMax 超时、Key 未配置或返回异常，匹配仍会成功，系统会写入一份确定性兜底报告，并在 `score_detail_json.report_fallback_used` 标记为 `true`。

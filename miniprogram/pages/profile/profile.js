@@ -1,6 +1,7 @@
 const { get, post } = require('../../utils/request')
 const { API_PATHS } = require('../../utils/constants')
 const { genderText, calcAge } = require('../../utils/util')
+const { buildProfileReadiness } = require('../../utils/productExperience')
 
 Page({
   data: {
@@ -8,10 +9,12 @@ Page({
     errorMsg: '',
     userInfo: null,
     isVip: false,
+    readiness: null,
     menuList: [
       { icon: '⚙️', title: '择偶配置', url: '/pages/match-setting/match-setting' },
       { icon: '📝', title: '外貌描述', url: '/pages/appearance/appearance' },
       { icon: '👑', title: 'VIP 会员', url: '/pages/vip/vip' },
+      { icon: '🧾', title: '我的订单', url: '/pages/orders/orders' },
       { icon: '🎖️', title: '激活码兑换', action: 'claimFree' },
       { icon: '🛡️', title: '见面安全记录', url: '/pages/meet-safety-list/meet-safety-list' },
       { icon: '💒', title: '领证数据公示', url: '/pages/marry-stat/marry-stat' },
@@ -60,7 +63,8 @@ Page({
       this.setData({
         pageState: 'success',
         userInfo: { ...userInfo, display },
-        isVip: profile && (profile.isVip || profile.is_vip === 1)
+        isVip: profile && (profile.isVip || profile.is_vip === 1),
+        readiness: buildProfileReadiness(userInfo)
       })
     } catch (err) {
       this.setData({
@@ -73,6 +77,14 @@ Page({
 
   onRetry() {
     this.loadProfile()
+  },
+
+  editBaseProfile() {
+    wx.navigateTo({ url: '/pages/register/register?edit=1' })
+  },
+
+  editMatchProfile() {
+    wx.navigateTo({ url: '/pages/match-setting/match-setting' })
   },
 
   onMenuTap(e) {

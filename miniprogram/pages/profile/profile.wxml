@@ -39,6 +39,27 @@
       </view>
     </view>
 
+    <view class="readiness-card card" wx:if="{{readiness}}">
+      <view class="readiness-head">
+        <view>
+          <view class="readiness-kicker">匹配资料就绪度</view>
+          <view class="readiness-title">{{readiness.isComplete ? '资料已就绪' : readiness.hint}}</view>
+        </view>
+        <view class="readiness-score">{{readiness.percent}}%</view>
+      </view>
+      <view class="readiness-track">
+        <view class="readiness-fill" style="width: {{readiness.percent}}%"></view>
+      </view>
+      <view class="readiness-missing" wx:if="{{!readiness.isComplete}}">
+        缺失：{{readiness.missingText}}
+      </view>
+      <view class="readiness-actions" wx:if="{{!readiness.isComplete}}">
+        <view class="readiness-action" bindtap="editBaseProfile">完善基本资料</view>
+        <view class="readiness-action secondary" bindtap="editMatchProfile">完善择偶与价值观</view>
+      </view>
+      <view class="readiness-ready" wx:else>资料会用于硬性筛选和双向评分，你可以随时更新。</view>
+    </view>
+
     <view class="menu-card card">
       <view
         class="menu-item"

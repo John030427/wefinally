@@ -2,15 +2,18 @@ const { db, col, first, byId, now } = require('../lib/db')
 const { currentUser } = require('./user')
 const { isVipActive } = require('../lib/format')
 const { MEMBER_STATUS, memberStatus, canUseMatching } = require('../lib/memberPolicy')
-const { generateStructuredMatchReports } = require('../lib/minimax')
+const { generateStructuredMatchReports } = require('../lib/deepseek')
 const {
   STATUS,
   MAX_ATTEMPTS,
   taskId,
   canRetry,
   classifyError,
-  retentionDates
+  retentionDates,
+  leaseExpired
 } = require('../lib/reportTaskPolicy')
+
+const GENERATION_LEASE_MS = 120000
 
 function parseJson(value) {
   if (!value) return {}
@@ -18,9 +21,14 @@ function parseJson(value) {
   try { return JSON.parse(value) } catch (err) { return {} }
 }
 
+function databaseSafe(value) {
+  return JSON.parse(JSON.stringify(value))
+}
+
 function publicTask(task, side) {
   if (!task) return { status: STATUS.NOT_REQUESTED }
-  const report = task.reports && task.reports[side || 'a']
+  const storedReports = task.reports || parseJson(task.reports_json)
+  const report = storedReports && storedReports[side || 'a']
   return {
     id: task._id,
     status: task.status,
@@ -162,6 +170,19 @@ async function claimTask(task) {
   return res.stats && res.stats.updated ? attemptId : ''
 }
 
+async function persistOptionalReportAudit(task, attemptId, result, retention, generatedAt) {
+  try {
+    await col('ai_report_task').where({ _id: task._id, attempt_id: attemptId }).update({ data: {
+      input_snapshot: databaseSafe(result.input_snapshot),
+      input_expires_at: retention.input_expires_at,
+      report_expires_at: retention.report_expires_at,
+      update_time: generatedAt
+    } })
+  } catch (err) {
+    console.warn('[ai-report] optional audit snapshot failed:', err.message)
+  }
+}
+
 async function processOne(task) {
   const attemptId = await claimTask(task)
   if (!attemptId) return false
@@ -186,17 +207,15 @@ async function processOne(task) {
     const retention = retentionDates(generatedAt)
     await col('ai_report_task').where({ _id: task._id, attempt_id: attemptId }).update({ data: {
       status: STATUS.SUCCEEDED,
-      reports: result.reports,
-      input_snapshot: result.input_snapshot,
+      reports_json: JSON.stringify(databaseSafe(result.reports)),
       model_name: result.model,
       generated_at: generatedAt,
       generation_duration_ms: Date.now() - started,
-      input_expires_at: retention.input_expires_at,
-      report_expires_at: retention.report_expires_at,
       error_code: '',
       error_message: '',
       update_time: generatedAt
     } })
+    await persistOptionalReportAudit(task, attemptId, result, retention, generatedAt)
   } catch (err) {
     const failure = classifyError(err)
     const attempts = Number(task.attempt_count || 0) + 1
@@ -212,7 +231,34 @@ async function processOne(task) {
   return true
 }
 
+async function recoverStaleGeneratingTasks() {
+  const current = now()
+  const res = await col('ai_report_task').where({ status: STATUS.GENERATING }).limit(5).get()
+  let requeued = 0
+  let failed = 0
+  for (const task of res.data || []) {
+    if (!leaseExpired(task, current, GENERATION_LEASE_MS)) continue
+    const exhausted = Number(task.attempt_count || 0) >= MAX_ATTEMPTS
+    await col('ai_report_task').where({
+      _id: task._id,
+      status: STATUS.GENERATING,
+      attempt_id: task.attempt_id
+    }).update({ data: {
+      status: exhausted ? STATUS.FAILED : STATUS.QUEUED,
+      attempt_id: '',
+      error_code: 'worker_interrupted',
+      error_message: exhausted ? 'AI 报告生成多次中断，请手动重试' : '',
+      next_retry_at: null,
+      update_time: current
+    } })
+    if (exhausted) failed += 1
+    else requeued += 1
+  }
+  return { requeued, failed }
+}
+
 async function processQueuedTasks(limit) {
+  const recovered = await recoverStaleGeneratingTasks()
   const res = await col('ai_report_task').where({ status: STATUS.QUEUED }).limit(Math.max(1, Math.min(Number(limit || 2), 5))).get()
   let processed = 0
   for (const task of res.data || []) {
@@ -220,7 +266,7 @@ async function processQueuedTasks(limit) {
     if (await processOne(task)) processed += 1
   }
   const cleanup = await cleanupExpiredTasks()
-  return { processed, cleanup }
+  return { processed, recovered, cleanup }
 }
 
 async function cleanupExpiredTasks() {

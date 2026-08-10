@@ -13,12 +13,15 @@
     </view>
     <view class="form-item">
       <view class="form-label">见面地点</view>
-      <input class="input" placeholder="填写公共场所名称或地址" value="{{form.meet_place}}" data-k="meet_place" bindinput="onInput" />
-    </view>
-    <view class="form-item">
-      <view class="form-label">定位</view>
-      <button class="btn-secondary loc-btn" bindtap="getLoc">获取定位</button>
-      <view class="loc-text" wx:if="{{form.lat && form.lng}}">{{form.lat}}，{{form.lng}}</view>
+      <button class="map-picker-btn" bindtap="chooseMeetLocation">📍 {{form.meet_place ? '重新选择地点' : '在地图中选择地点'}}</button>
+      <view class="selected-location" wx:if="{{form.meet_place}}" bindtap="openMeetLocation">
+        <view class="location-main">
+          <view class="location-name">{{form.meet_place}}</view>
+          <view class="location-address">{{form.meet_address || '已获取地图坐标'}}</view>
+        </view>
+        <view class="location-open">地图查看 ›</view>
+      </view>
+      <view class="location-help">可在微信地图中搜索具体咖啡店、商场或其他公共场所</view>
     </view>
     <view class="form-item">
       <view class="form-label">见面说明</view>
@@ -38,8 +41,10 @@
   <view class="card safety-card" wx:else>
     <view class="card-title">{{shareMode ? '亲友分享的见面安全确认' : '已提交见面安全确认'}}</view>
     <view class="info-row"><text>预计时间</text><text>{{form.meet_time || '未填写'}}</text></view>
-    <view class="info-row"><text>预计地点</text><text>{{form.meet_place || '未填写'}}</text></view>
-    <view class="info-row" wx:if="{{form.lat && form.lng}}"><text>定位</text><text>{{form.lat}}，{{form.lng}}</text></view>
+    <view class="info-row map-info-row" bindtap="openMeetLocation">
+      <text>预计地点</text>
+      <view class="saved-location"><text>{{form.meet_place || '未填写'}}</text><text wx:if="{{form.meet_address}}">{{form.meet_address}}</text><text wx:if="{{form.lat && form.lng}}" class="map-link">地图查看 ›</text></view>
+    </view>
     <view class="info-row"><text>安全提示</text><text>{{safetyTips}}</text></view>
     <view class="note">{{form.meet_note || safetyTips}}</view>
     <view class="guard-status {{guarding ? 'active' : ''}}">
@@ -49,7 +54,7 @@
       <text>前台守护轨迹：{{locationCount}} 条</text>
       <text wx:if="{{latestLocationText}}">最近记录：{{latestLocationText}}</text>
     </view>
-    <button wx:if="{{!shareMode}}" class="share-btn" open-type="share">发送安全确认给亲友</button>
+    <button wx:if="{{!shareMode}}" class="share-btn" open-type="share">发送安全确认给对方或亲友</button>
     <button wx:if="{{!shareMode}}" class="guard-btn {{guarding ? 'active' : ''}}" bindtap="toggleGuard">
       {{guarding ? '结束安全守护' : '开启安全守护'}}
     </button>

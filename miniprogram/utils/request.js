@@ -23,52 +23,46 @@ function request(options) {
     wx.showLoading({ title: loadingText, mask: true })
   }
 
-  return new Promise((resolve, reject) => {
-    wx.getNetworkType({
-      success(netRes) {
-        if (netRes.networkType === 'none') {
-          if (showLoading) wx.hideLoading()
-          const err = { code: -1, message: '网络不可用，请检查网络连接', type: 'network' }
-          if (showError) {
-            wx.showToast({ title: err.message, icon: 'none', duration: 2500 })
-          }
-          reject(err)
-          return
-        }
+  const rejectNetwork = (message) => {
+    if (showLoading) wx.hideLoading()
+    const err = { code: -1, message, type: 'network' }
+    if (showError) wx.showToast({ title: err.message, icon: 'none', duration: 2500 })
+    return Promise.reject(err)
+  }
 
-        requestByPath(method, url, {
+  return Promise.resolve()
+    .then(() => app && typeof app.checkNetwork === 'function' ? app.checkNetwork() : true)
+    .then((available) => {
+      if (!available) return rejectNetwork('网络不可用，请检查网络连接')
+      return requestByPath(method, url, {
           ...data,
           __token: token || '',
           __headers: header || {}
         }).then((body) => {
           if (showLoading) wx.hideLoading()
-          resolve(body)
+          return body
         }).catch((err) => {
           if (showLoading) wx.hideLoading()
           if (err && err.code === 401) {
               app && app.clearLoginState && app.clearLoginState()
               wx.showToast({ title: '登录已过期', icon: 'none' })
-              reject({ code: 401, message: '未授权', type: 'auth' })
-              return
+              return Promise.reject({ code: 401, message: '未授权', type: 'auth' })
           }
-          const msg = (err && err.message) || '服务暂时不可用，请稍后重试'
+          const rawMsg = (err && err.message) || ''
+          const msg = /接口不存在|route not found|unknown route/i.test(rawMsg)
+            ? '功能服务尚未更新，请稍后再试'
+            : (/DATABASE_COLLECTION_NOT_EXIST|database collection not exists|ResourceNotFound/i.test(rawMsg)
+              ? '功能数据正在初始化，请稍后再试'
+              : (rawMsg || '服务暂时不可用，请稍后重试'))
           if (showError) wx.showToast({ title: msg, icon: 'none' })
-          reject({
+          return Promise.reject({
             code: (err && err.code) || -2,
             message: msg,
             type: (err && err.type) || 'cloud',
             detail: err
           })
         })
-      },
-      fail() {
-        if (showLoading) wx.hideLoading()
-        const err = { code: -1, message: '网络不可用', type: 'network' }
-        if (showError) wx.showToast({ title: err.message, icon: 'none' })
-        reject(err)
-      }
-    })
-  })
+    }, () => rejectNetwork('网络不可用'))
 }
 
 function get(url, data, options = {}) {

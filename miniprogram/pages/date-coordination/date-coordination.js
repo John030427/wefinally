@@ -13,6 +13,17 @@ function normalizeCoordination(data) {
   return coordination || {}
 }
 
+function buildSelection(form) {
+  const activities = {}
+  const periods = {}
+  ;(form.activities || []).forEach((value) => { activities[value] = true })
+  ;(form.availability || []).forEach((item) => {
+    periods[item.date] = {}
+    ;(item.periods || []).forEach((value) => { periods[item.date][value] = true })
+  })
+  return { activities, periods }
+}
+
 Page({
   data: {
     pageState: 'loading',
@@ -34,31 +45,43 @@ Page({
       other_requirements: '',
       share_message: ''
     },
+    selection: {
+      activities: {},
+      periods: {}
+    },
     periodOptions: [
-      { value: 'morning', label: '上午' },
-      { value: 'afternoon', label: '午后' },
-      { value: 'evening', label: '傍晚' },
-      { value: 'night', label: '晚上' }
+      { value: 'morning', label: '🌤 上午' },
+      { value: 'afternoon', label: '☀️ 午后' },
+      { value: 'evening', label: '🌇 傍晚' },
+      { value: 'night', label: '🌙 晚上' }
     ],
-    activityOptions: ['咖啡', '吃饭', '奶茶', '散步', '看展', '电影', '桌游'],
+    activityOptions: [
+      { value: '咖啡', label: '☕ 咖啡' },
+      { value: '吃饭', label: '🍽 吃饭' },
+      { value: '奶茶', label: '🧋 奶茶' },
+      { value: '散步', label: '🚶 散步' },
+      { value: '看展', label: '🖼 看展' },
+      { value: '电影', label: '🎬 电影' },
+      { value: '桌游', label: '🎲 桌游' }
+    ],
     budgetOptions: [
-      { value: 'under-50', label: '50元以内' },
-      { value: '50-100', label: '50-100元' },
-      { value: '100-200', label: '100-200元' },
-      { value: 'over-200', label: '200元以上' },
-      { value: 'flexible', label: '灵活' }
+      { value: 'under-50', label: '💵 50元以内' },
+      { value: '50-100', label: '💰 50-100元' },
+      { value: '100-200', label: '💳 100-200元' },
+      { value: 'over-200', label: '✨ 200元以上' },
+      { value: 'flexible', label: '🌈 灵活' }
     ],
     paymentOptions: [
-      { value: 'aa', label: '接受AA' },
-      { value: 'partner_pays', label: '希望对方请客' },
-      { value: 'self_pays', label: '我愿意请客' },
-      { value: 'flexible', label: '都可以' }
+      { value: 'aa', label: '🤝 接受AA' },
+      { value: 'partner_pays', label: '🎁 希望对方请客' },
+      { value: 'self_pays', label: '🙋 我愿意请客' },
+      { value: 'flexible', label: '🌈 都可以' }
     ],
     durationOptions: [
-      { value: 'about-1h', label: '1小时左右' },
-      { value: '1-2h', label: '1-2小时' },
-      { value: '2-3h', label: '2-3小时' },
-      { value: 'flexible', label: '灵活' }
+      { value: 'about-1h', label: '⏱ 1小时左右' },
+      { value: '1-2h', label: '🕐 1-2小时' },
+      { value: '2-3h', label: '🕑 2-3小时' },
+      { value: 'flexible', label: '🌈 灵活' }
     ],
     proposal: null,
     submitting: false,
@@ -66,6 +89,7 @@ Page({
   },
 
   onLoad(options) {
+    this.launchOptions = Object.assign({}, options)
     const today = new Date()
     const min = new Date(today.getTime() + 24 * 60 * 60 * 1000)
     const max = new Date(today.getTime() + 14 * 24 * 60 * 60 * 1000)
@@ -73,7 +97,15 @@ Page({
     this.openCoordination(options)
   },
 
+  onShow() {
+    if (this.hasShown && this.data.coordinationId && this.data.pageState === 'success') {
+      this.refreshCoordination()
+    }
+    this.hasShown = true
+  },
+
   async openCoordination(options) {
+    options = options || {}
     this.setData({ pageState: 'loading', errorMsg: '' })
     const app = getApp()
     if (!await app.checkNetwork()) {
@@ -112,6 +144,7 @@ Page({
       coordinationId: String(id),
       coordination,
       form,
+      selection: buildSelection(form),
       areaText: Array.isArray(form.areas) ? form.areas.join('、') : '',
       proposal,
       pageState: status === 'expired' ? 'expired' : 'success'
@@ -119,6 +152,13 @@ Page({
   },
 
   onRetry() {
+    this.openCoordination(this.data.coordinationId
+      ? { coordinationId: this.data.coordinationId }
+      : (this.launchOptions || {}))
+  },
+
+  refreshCoordination() {
+    if (!this.data.coordinationId) return
     this.openCoordination({ coordinationId: this.data.coordinationId })
   },
 
@@ -126,15 +166,22 @@ Page({
     const value = e.detail.value
     const availability = this.data.form.availability || []
     if (availability.some((item) => item.date === value)) return
+    const nextAvailability = [...availability, { date: value, periods: ['afternoon'] }].slice(0, 5)
+    const nextForm = Object.assign({}, this.data.form, { availability: nextAvailability })
     this.setData({
       selectedDate: value,
-      'form.availability': [...availability, { date: value, periods: ['afternoon'] }].slice(0, 5)
+      'form.availability': nextAvailability,
+      selection: buildSelection(nextForm)
     })
   },
 
   removeAvailability(e) {
     const value = e.currentTarget.dataset.value
-    this.setData({ 'form.availability': (this.data.form.availability || []).filter((item) => item.date !== value) })
+    const availability = (this.data.form.availability || []).filter((item) => item.date !== value)
+    this.setData({
+      'form.availability': availability,
+      selection: buildSelection(Object.assign({}, this.data.form, { availability }))
+    })
   },
 
   togglePeriod(e) {
@@ -152,7 +199,10 @@ Page({
         periods: periods.includes(period) ? periods.filter((value) => value !== period) : [...periods, period]
       }
     })
-    this.setData({ 'form.availability': availability })
+    this.setData({
+      'form.availability': availability,
+      selection: buildSelection(Object.assign({}, this.data.form, { availability }))
+    })
   },
 
   toggleActivity(e) {
@@ -165,7 +215,10 @@ Page({
       wx.showToast({ title: '活动最多3项', icon: 'none' })
       return
     }
-    this.setData({ 'form.activities': next })
+    this.setData({
+      'form.activities': next,
+      selection: buildSelection(Object.assign({}, this.data.form, { activities: next }))
+    })
   },
 
   onInput(e) {
@@ -206,10 +259,14 @@ Page({
       return
     }
     this.setData({ submitting: true })
+    const wasInitiatorDraft = this.data.coordination.status === 'collecting_initiator'
     try {
       const result = await put(`${API_PATHS.DATE_COORDINATIONS}/${this.data.coordinationId}/application`, this.data.form, { showError: false })
       this.applyCoordination(normalizeCoordination(result))
-      wx.showToast({ title: '已提交约会偏好', icon: 'success' })
+      wx.showToast({
+        title: wasInitiatorDraft ? '已保存偏好，正在邀请对方' : '已提交约会偏好',
+        icon: 'success'
+      })
     } catch (err) {
       wx.showToast({ title: (err && err.message) || '提交失败，请重试', icon: 'none' })
     } finally {

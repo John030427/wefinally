@@ -4,7 +4,7 @@ const { AGENT_TYPES, isAgentType } = require('../../miniprogram/cloudfunctions/a
 const { RISK, classifyRisk, sanitizeOutput } = require('../../miniprogram/cloudfunctions/api/agent/safety')
 const { buildContext } = require('../../miniprogram/cloudfunctions/api/agent/context')
 const { searchReviewedKnowledge } = require('../../miniprogram/cloudfunctions/api/agent/knowledge')
-const { getProviderConfig, generateDecision } = require('../../miniprogram/cloudfunctions/api/agent/provider')
+const { getProviderConfig, generateDecision, requestBody } = require('../../miniprogram/cloudfunctions/api/agent/provider')
 const { createAgentRepositories } = require('../../miniprogram/cloudfunctions/api/agent/repositories')
 
 async function main() {
@@ -54,32 +54,58 @@ async function main() {
   assert.deepStrictEqual(knowledge.map((item) => item.id), ['raw-1'])
   assert.strictEqual(Object.prototype.hasOwnProperty.call(knowledge[0], 'internal_note'), false)
 
-  const minimaxConfig = getProviderConfig({ AGENT_PROVIDER: 'minimax', MINIMAX_API_KEY: 'test-key' })
-  assert.deepStrictEqual({ provider: minimaxConfig.provider, protocol: minimaxConfig.protocol }, { provider: 'minimax', protocol: 'anthropic' })
   const deepseekConfig = getProviderConfig({ AGENT_PROVIDER: 'deepseek', DEEPSEEK_API_KEY: 'test-key' })
   assert.deepStrictEqual({ provider: deepseekConfig.provider, protocol: deepseekConfig.protocol }, { provider: 'deepseek', protocol: 'openai' })
+  const forcedDeepseekConfig = getProviderConfig({ AGENT_PROVIDER: 'unsupported-provider', LLM_API_KEY: 'test-key' })
+  assert.deepStrictEqual({ provider: forcedDeepseekConfig.provider, protocol: forcedDeepseekConfig.protocol }, { provider: 'deepseek', protocol: 'openai' })
+  assert.strictEqual(getProviderConfig({ DEEPSEEK_API_KEY: 'test-key', DEEPSEEK_TIMEOUT_MS: '25000' }).timeoutMs, 25000)
+  assert.strictEqual(getProviderConfig({ DEEPSEEK_API_KEY: 'test-key', DEEPSEEK_TIMEOUT_MS: '90000' }).timeoutMs, 30000)
   const providerDecision = await generateDecision({ prompt: '请给一个简短建议' }, {
     env: { AGENT_PROVIDER: 'deepseek', DEEPSEEK_API_KEY: 'test-key' },
     request: async ({ config }) => {
       assert.strictEqual(config.provider, 'deepseek')
-      return { choices: [{ message: { content: '{"intent":"love_advice","reply_draft":"保持真诚","requested_tools":[],"risk_level":"safe","suggested_actions":["继续沟通"]}' } }] }
+      return { choices: [{ message: { content: '{"intent":"modify_date_application","reply_draft":"我整理了一份修改预览，请确认。","requested_tools":["create_date_application_patch"],"tool_request":{"tool":"create_date_application_patch","arguments":{"activities":["咖啡"]}},"risk_level":"safe","suggested_actions":["confirm_patch"]}' } }] }
     }
   })
   assert.deepStrictEqual(providerDecision, {
-    intent: 'love_advice',
-    replyDraft: '保持真诚',
-    requestedTools: [],
+    intent: 'modify_date_application',
+    replyDraft: '我整理了一份修改预览，请确认。',
+    requestedTools: ['create_date_application_patch'],
+    toolRequest: { tool: 'create_date_application_patch', arguments: { activities: ['咖啡'] } },
     riskLevel: 'safe',
-    suggestedActions: ['继续沟通'],
+    suggestedActions: ['confirm_patch'],
     provider: 'deepseek',
     fallback: false
   })
+  const fencedDecision = await generateDecision({ prompt: '请给一个简短建议' }, {
+    env: { AGENT_PROVIDER: 'deepseek', DEEPSEEK_API_KEY: 'test-key' },
+    request: async () => ({
+      choices: [{ message: { content: '```json\n{"intent":"love_advice","reply_draft":"先梳理自己的感受和边界","requested_tools":[],"risk_level":"safe","suggested_actions":[]}\n```' } }]
+    })
+  })
+  assert.strictEqual(fencedDecision.replyDraft, '先梳理自己的感受和边界')
+  assert.strictEqual(fencedDecision.intent, 'love_advice')
+  const truncatedDecision = await generateDecision({ prompt: '请给一个简短建议' }, {
+    env: { AGENT_PROVIDER: 'deepseek', DEEPSEEK_API_KEY: 'test-key' },
+    request: async () => ({
+      choices: [{ message: { content: '{"intent":"love_advice","reply_draft":"先说清自己的感受和边界，再邀请对方回应' } }]
+    })
+  })
+  assert.strictEqual(truncatedDecision.fallback, false)
+  assert.strictEqual(truncatedDecision.provider, 'deepseek')
+  assert.strictEqual(truncatedDecision.replyDraft, '先说清自己的感受和边界，再邀请对方回应')
+  assert.strictEqual(truncatedDecision.replyDraft.includes('reply_draft'), false)
+  const deepseekBody = requestBody(deepseekConfig, { prompt: '请给一个简短建议' })
+  assert(deepseekBody.max_tokens > 600)
+  assert.strictEqual(deepseekBody.response_format.type, 'json_object')
+  assert(String(deepseekBody.messages[0].content).includes('350'))
   const fallbackDecision = await generateDecision({ prompt: '请给一个简短建议' }, {
-    env: { AGENT_PROVIDER: 'minimax', MINIMAX_API_KEY: 'test-key' },
+    env: { AGENT_PROVIDER: 'deepseek', DEEPSEEK_API_KEY: 'test-key' },
     request: async () => { throw new Error('provider unavailable') }
   })
   assert.strictEqual(fallbackDecision.fallback, true)
   assert.strictEqual(fallbackDecision.provider, 'fallback')
+  assert.strictEqual(fallbackDecision.errorCode, 'request_error')
 
   const writes = []
   const repositories = createAgentRepositories({

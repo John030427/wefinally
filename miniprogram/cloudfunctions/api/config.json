@@ -2,5 +2,5 @@
   "permissions": {
     "openapi": ["wxacode.getUnlimited"]
   },
-  "timeout": 20
+  "timeout": 60
 }

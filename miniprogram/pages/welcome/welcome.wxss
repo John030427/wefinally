@@ -1,37 +1,230 @@
 .welcome-page {
   min-height: 100vh;
-  position: relative;
-  overflow: hidden;
-  background: #f7edf7;
-}
-
-.cover-image {
-  position: absolute;
-  left: 0;
-  top: 0;
-  width: 100%;
-  height: 100%;
-}
-
-.cover-shade {
-  position: absolute;
-  left: 0;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.04) 0%, rgba(255, 244, 249, 0.12) 48%, rgba(248, 229, 242, 0.92) 100%);
-}
-
-.welcome-loading {
-  position: relative;
-  z-index: 1;
-  min-height: 100vh;
+  background: #fff9f6;
+  color: #231f20;
   display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  padding: 0 44rpx calc(68rpx + env(safe-area-inset-bottom));
+  flex-direction: column;
   box-sizing: border-box;
-  color: #8d7891;
+  padding: calc(28rpx + env(safe-area-inset-top)) 40rpx calc(28rpx + env(safe-area-inset-bottom));
+}
+
+.brand-row {
+  display: flex;
+  align-items: center;
+  min-height: 64rpx;
+}
+
+.brand-mark {
+  width: 56rpx;
+  height: 56rpx;
+  border-radius: 18rpx;
+  background: #ff6b8a;
+  color: #fff;
+  font-size: 20rpx;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  letter-spacing: 1rpx;
+}
+
+.brand-name {
+  margin-left: 16rpx;
+  font-size: 28rpx;
+  font-weight: 700;
+  letter-spacing: 1rpx;
+}
+
+.skip-action {
+  margin-left: auto;
+  color: #786f72;
+  font-size: 24rpx;
+  padding: 16rpx 0 16rpx 24rpx;
+}
+
+.trust-swiper {
+  flex: 1;
+  min-height: 760rpx;
+}
+
+.trust-slide {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.visual-stage {
+  position: relative;
+  width: 500rpx;
+  height: 360rpx;
+  margin: 0 auto 54rpx;
+}
+
+.visual-orbit {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  border: 2rpx solid rgba(255, 107, 138, 0.22);
+  border-radius: 50%;
+  transform: translate(-50%, -50%) rotate(-12deg);
+}
+
+.orbit-one {
+  width: 440rpx;
+  height: 250rpx;
+}
+
+.orbit-two {
+  width: 340rpx;
+  height: 340rpx;
+  border-color: rgba(62, 142, 107, 0.18);
+  transform: translate(-50%, -50%) rotate(22deg);
+}
+
+.visual-core {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 210rpx;
+  height: 210rpx;
+  border-radius: 72rpx;
+  transform: translate(-50%, -50%) rotate(8deg);
+  background: linear-gradient(145deg, #ffe8ee, #fff);
+  box-shadow: 0 30rpx 70rpx rgba(128, 65, 80, 0.14);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.visual-symbol {
+  transform: rotate(-8deg);
+  font-size: 78rpx;
+  font-weight: 700;
+  color: #ff6b8a;
+  letter-spacing: 4rpx;
+}
+
+.visual-privacy .visual-core {
+  background: linear-gradient(145deg, #e9f7ef, #fff);
+}
+
+.visual-privacy .visual-symbol {
+  color: #3e8e6b;
+}
+
+.visual-match .visual-core {
+  border-radius: 50%;
+  background: linear-gradient(145deg, #ffe8ee, #edf8f2);
+}
+
+.visual-chip {
+  position: absolute;
+  border-radius: 999rpx;
+  padding: 12rpx 22rpx;
+  background: #fff;
+  box-shadow: 0 16rpx 40rpx rgba(67, 47, 52, 0.1);
   font-size: 22rpx;
+  font-weight: 600;
+}
+
+.chip-left {
+  left: 24rpx;
+  top: 70rpx;
+  color: #ff6b8a;
+}
+
+.chip-right {
+  right: 18rpx;
+  bottom: 58rpx;
+  color: #3e8e6b;
+}
+
+.slide-copy {
+  max-width: 620rpx;
+}
+
+.slide-kicker {
+  color: #ff6b8a;
+  font-size: 23rpx;
+  font-weight: 700;
+  letter-spacing: 3rpx;
+  margin-bottom: 16rpx;
+}
+
+.slide-title {
+  font-size: 50rpx;
+  line-height: 1.25;
+  font-weight: 700;
+  letter-spacing: -1rpx;
+  margin-bottom: 22rpx;
+}
+
+.slide-description {
+  color: #675f61;
+  font-size: 27rpx;
+  line-height: 1.75;
+}
+
+.trust-badge {
+  display: inline-block;
+  margin-top: 28rpx;
+  padding: 12rpx 20rpx;
+  border-radius: 999rpx;
+  background: #fff0f3;
+  color: #a9435a;
+  font-size: 22rpx;
+}
+
+.welcome-footer {
+  flex: 0 0 auto;
+}
+
+.dots {
+  display: flex;
+  gap: 10rpx;
+  margin-bottom: 24rpx;
+}
+
+.dot {
+  width: 12rpx;
+  height: 12rpx;
+  border-radius: 6rpx;
+  background: #e5dcde;
+  transition: width 0.2s ease;
+}
+
+.dot.active {
+  width: 44rpx;
+  background: #ff6b8a;
+}
+
+.welcome-primary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  height: 94rpx;
+  line-height: 1.2;
+  padding: 0 32rpx;
+  border-radius: 24rpx;
+  background: #231f20;
+  color: #fff;
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-size: 30rpx;
+  font-weight: 650;
+  letter-spacing: 2rpx;
   text-align: center;
+}
+
+.welcome-primary::after {
+  border: 0;
+}
+
+.welcome-note {
+  margin-top: 18rpx;
+  text-align: center;
+  color: #a29a9c;
+  font-size: 20rpx;
+  line-height: 1.5;
 }

@@ -1,6 +1,6 @@
 const assert = require('assert')
 
-const { createDateCoordinationHandlers } = require('../../miniprogram/cloudfunctions/api/handlers/dateCoordination')
+const { createDateCoordinationHandlers, processCoordinationDeadlines } = require('../../miniprogram/cloudfunctions/api/handlers/dateCoordination')
 
 const NOW = new Date('2026-07-12T08:00:00.000Z')
 
@@ -19,7 +19,9 @@ function memoryDeps(seed = {}) {
       return user
     },
     first: async (name, query) => collection(name).find((item) => Object.keys(query || {}).every((key) => item[key] === query[key])) || null,
-    list: async (name, query) => collection(name).filter((item) => Object.keys(query || {}).every((key) => item[key] === query[key])),
+    list: async (name, query, limit) => collection(name)
+      .filter((item) => Object.keys(query || {}).every((key) => item[key] === query[key]))
+      .slice(0, Number(limit || 100)),
     byId: async (name, id) => collection(name).find((item) => Number(item.id) === Number(id)) || null,
     addWithId: async (name, data, prefix) => {
       counters[name] = Number(counters[name] || 0) + 1
@@ -28,32 +30,111 @@ function memoryDeps(seed = {}) {
       return row
     },
     updateByDoc: async (name, doc, data) => Object.assign(doc, data),
+    expireIfCurrent: async (doc) => {
+      if (!['collecting_initiator', 'inviting_partner', 'collecting_preferences', 'waiting_confirmations'].includes(doc.status)) return false
+      Object.assign(doc, { status: 'expired', business_state: 'expired' })
+      return true
+    },
+    upsertConfirmation: async (existing, data) => {
+      if (existing) return Object.assign(existing, data)
+      const id = `date-confirmation-${data.coordination_id}-${data.user_id}-v${data.coordination_version}`
+      const current = collection('date_coordination_confirmation').find((item) => item._id === id)
+      if (current) return Object.assign(current, data)
+      const row = Object.assign({ _id: id }, data)
+      collection('date_coordination_confirmation').push(row)
+      return row
+    },
+    updateConfirmationState: async (coordination, result) => {
+      if (coordination.status === 'arranged' && result.coordination.status !== 'arranged') return coordination
+      return Object.assign(coordination, {
+        status: result.coordination.status,
+        business_state: result.coordination.status === 'arranged' ? 'completed' : 'waiting_confirm',
+        final_proposal_id: Number(result.coordination.final_proposal_id || 0)
+      })
+    },
     now: () => new Date(NOW)
   }
 }
 
 async function main() {
+  assert.strictEqual(typeof processCoordinationDeadlines, 'function')
+  const lifecycleDeps = memoryDeps({
+    date_coordination: [
+      { id: 201, status: 'collecting_initiator', application_deadline_at: new Date('2026-07-11T00:00:00Z') },
+      { id: 202, status: 'inviting_partner', invitation_deadline_at: new Date('2026-07-11T00:00:00Z') },
+      { id: 203, status: 'waiting_confirmations', confirmation_deadline_at: new Date('2026-07-13T00:00:00Z') }
+    ]
+  })
+  const lifecycle = await processCoordinationDeadlines({ deps: lifecycleDeps, now: NOW, limit: 10 })
+  assert.deepStrictEqual(lifecycle, { scanned: 3, expired: 2 })
+  assert.strictEqual(lifecycleDeps.rows.date_coordination[0].status, 'expired')
+  assert.strictEqual(lifecycleDeps.rows.date_coordination[1].status, 'expired')
+  assert.strictEqual(lifecycleDeps.rows.date_coordination[2].status, 'waiting_confirmations')
+
+  const starvationDeps = memoryDeps({
+    date_coordination: Array.from({ length: 100 }, (_, index) => ({
+      id: 300 + index,
+      status: 'arranged'
+    })).concat([{
+      id: 499,
+      status: 'inviting_partner',
+      invitation_deadline_at: new Date('2026-07-11T00:00:00Z')
+    }])
+  })
+  const starvation = await processCoordinationDeadlines({ deps: starvationDeps, now: NOW, limit: 4 })
+  assert.strictEqual(starvation.expired, 1)
+  assert.strictEqual(starvationDeps.rows.date_coordination[100].status, 'expired')
+
+  const raceDeps = memoryDeps({
+    date_coordination: [{
+      id: 500,
+      status: 'waiting_confirmations',
+      confirmation_deadline_at: new Date('2026-07-11T00:00:00Z')
+    }]
+  })
+  raceDeps.expireIfCurrent = async (doc) => {
+    doc.status = 'arranged'
+    doc.business_state = 'completed'
+    return false
+  }
+  raceDeps.updateByDoc = async () => {
+    throw new Error('deadline processor must not perform an unconditional state update')
+  }
+  const race = await processCoordinationDeadlines({ deps: raceDeps, now: NOW, limit: 4 })
+  assert.deepStrictEqual(race, { scanned: 1, expired: 0 })
+  assert.strictEqual(raceDeps.rows.date_coordination[0].status, 'arranged')
+
   const deps = memoryDeps({
     user: [
       { _id: 'user_1', id: 1, member_status: 'approved', is_vip: 1, vip_expire_time: '2026-08-01T00:00:00.000Z' },
       { _id: 'user_2', id: 2, member_status: 'approved', is_vip: 1, vip_expire_time: '2026-08-01T00:00:00.000Z' },
       { _id: 'user_3', id: 3, member_status: 'approved', is_vip: 1, vip_expire_time: '2026-08-01T00:00:00.000Z' }
     ],
-    user_match_log: [{ _id: 'match_10', id: 10, user_id: 1, match_user_id: 2 }]
+    user_match_log: [{ _id: 'match_10', id: 10, user_id: 1, match_user_id: 2 }],
+    agent_session: [{
+      _id: 'agent_session_20', id: 20, user_id: 1,
+      agent_type: 'date_coordinator', coordination_id: 1, status: 'active'
+    }],
+    agent_message: []
   })
   const handlers = createDateCoordinationHandlers(deps)
 
-  const first = await handlers.create({ match_user_id: 2 }, { user_id: 1 })
-  assert.strictEqual(first.status, 'inviting_partner')
+  const first = await handlers.create({ match_log_id: 10 }, { user_id: 1 })
+  assert.strictEqual(first.status, 'collecting_initiator')
+  assert.strictEqual(first.business_state, 'created')
   assert.strictEqual(first.role, 'initiator')
+  assert.strictEqual(first.can_submit_application, true)
   assert.strictEqual(Object.prototype.hasOwnProperty.call(first, 'user_a_id'), false)
   assert.strictEqual(Object.prototype.hasOwnProperty.call(first, 'user_b_id'), false)
-  assert.strictEqual(first.invitation_deadline_at.toISOString(), '2026-07-14T08:00:00.000Z')
+  assert.strictEqual(first.invitation_deadline_at, null)
+  assert.strictEqual(first.application_deadline_at.toISOString(), '2026-07-15T08:00:00.000Z')
   assert.strictEqual(deps.rows.date_coordination.length, 1)
 
   const second = await handlers.create({ match_user_id: 1 }, { user_id: 2 })
   assert.strictEqual(second.id, first.id)
   assert.strictEqual(second.role, 'invitee')
+  assert.strictEqual(second.can_submit_application, false)
+  assert.strictEqual(second.can_respond_invitation, false)
   assert.strictEqual(deps.rows.date_coordination.length, 1)
 
   const denied = createDateCoordinationHandlers(memoryDeps({
@@ -62,13 +143,16 @@ async function main() {
   }))
   await assert.rejects(() => denied.create({ match_user_id: 2 }, { user_id: 3 }), /审核通过.*VIP/)
 
-  const accepted = await handlers.respondInvitation({ coordination_id: first.id, decision: 'accept' }, { user_id: 2 })
-  assert.strictEqual(accepted.status, 'collecting_preferences')
-  assert.strictEqual(accepted.application_deadline_at.toISOString(), '2026-07-15T08:00:00.000Z')
-  await assert.rejects(
-    () => handlers.respondInvitation({ coordination_id: first.id, decision: 'decline' }, { user_id: 1 }),
-    /仅受邀参与者/
-  )
+  const legacyDeps = memoryDeps({
+    user: [
+      { _id: 'legacy_user_1', id: 11, status: 1, free_member: 1 },
+      { _id: 'legacy_user_2', id: 12, status: 1, free_member: 1 }
+    ],
+    user_match_log: [{ _id: 'legacy_match_1', id: 21, user_id: 11, match_user_id: 12 }]
+  })
+  const legacyCoordination = await createDateCoordinationHandlers(legacyDeps)
+    .create({ match_log_id: 21 }, { user_id: 11 })
+  assert.strictEqual(legacyCoordination.status, 'collecting_initiator')
 
   const declinedDeps = memoryDeps({
     user: [
@@ -80,6 +164,21 @@ async function main() {
   const declined = await createDateCoordinationHandlers(declinedDeps)
     .respondInvitation({ coordination_id: 9, decision: 'decline' }, { user_id: 2 })
   assert.strictEqual(declined.status, 'invitation_declined')
+
+  const legacyInvitationDeps = memoryDeps({
+    user: [{ id: 1, member_status: 'approved', is_vip: 1, vip_expire_time: '2026-08-01T00:00:00.000Z' }],
+    date_coordination: [{
+      _id: 'date_coordination_12', id: 12, user_a_id: 1, user_b_id: 2,
+      status: 'inviting_partner', coordination_version: 1,
+      invitation_deadline_at: '2026-07-14T08:00:00.000Z'
+    }]
+  })
+  const migratedLegacyInvitation = await createDateCoordinationHandlers(legacyInvitationDeps)
+    .detail({ coordination_id: 12 }, { user_id: 1 })
+  assert.strictEqual(migratedLegacyInvitation.status, 'collecting_initiator')
+  assert.strictEqual(migratedLegacyInvitation.can_submit_application, true)
+  assert.strictEqual(migratedLegacyInvitation.invitation_deadline_at, null)
+  assert.strictEqual(migratedLegacyInvitation.application_deadline_at.toISOString(), '2026-07-15T08:00:00.000Z')
 
   const applicationA = {
     availability: [{ date: '2026-07-15', periods: ['afternoon', 'evening'] }],
@@ -99,14 +198,52 @@ async function main() {
     duration: '1-2h',
     share_message: '这条也不能给对方看'
   }
+  await assert.rejects(
+    () => handlers.saveApplication({ coordination_id: first.id, ...applicationB }, { user_id: 2 }),
+    /等待发起方填写/
+  )
   const firstApplication = await handlers.saveApplication({ coordination_id: first.id, ...applicationA }, { user_id: 1 })
-  assert.strictEqual(firstApplication.status, 'collecting_preferences')
+  assert.strictEqual(firstApplication.status, 'inviting_partner')
+  assert.strictEqual(firstApplication.business_state, 'waiting_partner')
+  assert.strictEqual(firstApplication.can_submit_application, false)
+  assert.strictEqual(firstApplication.invitation_deadline_at.toISOString(), '2026-07-14T08:00:00.000Z')
+  assert.strictEqual(deps.rows.date_coordination_application.length, 1)
+  assert.strictEqual(deps.rows.agent_notification_job.length, 1)
+  assert.strictEqual(deps.rows.agent_notification_job[0].user_id, 2)
+  assert.strictEqual(deps.rows.agent_notification_job[0].stage, 'invitation_created')
+  assert.strictEqual(deps.rows.agent_notification_job[0].scheduled_at.toISOString(), NOW.toISOString())
+
+  const invitedDetail = await handlers.detail({ coordination_id: first.id }, { user_id: 2 })
+  assert.strictEqual(invitedDetail.can_respond_invitation, true)
+  assert.strictEqual(invitedDetail.my_application, null)
+  assert.strictEqual(JSON.stringify(invitedDetail).includes(applicationA.share_message), false)
+
+  const accepted = await handlers.respondInvitation({ coordination_id: first.id, decision: 'accept' }, { user_id: 2 })
+  assert.strictEqual(accepted.status, 'collecting_preferences')
+  assert.strictEqual(accepted.business_state, 'coordinating')
+  assert.strictEqual(accepted.application_deadline_at.toISOString(), '2026-07-15T08:00:00.000Z')
+  await assert.rejects(
+    () => handlers.respondInvitation({ coordination_id: first.id, decision: 'decline' }, { user_id: 1 }),
+    /仅受邀参与者/
+  )
+
   const computed = await handlers.saveApplication({ coordination_id: first.id, ...applicationB }, { user_id: 2 })
   assert.strictEqual(computed.status, 'waiting_confirmations')
+  assert.strictEqual(computed.business_state, 'proposal_generated')
   assert.strictEqual(deps.rows.date_coordination_application.length, 2)
   assert.strictEqual(deps.rows.date_coordination_proposal.length, 1)
   assert.strictEqual(deps.rows.date_coordination_proposal[0].status, 'active')
   assert.strictEqual(computed.confirmation_deadline_at.toISOString(), '2026-07-13T08:00:00.000Z')
+  assert.strictEqual(deps.rows.agent_notification_job.length, 2)
+  assert.strictEqual(deps.rows.agent_notification_job[1].user_id, 1)
+  assert.strictEqual(deps.rows.agent_notification_job[1].stage, 'proposal_generated')
+  assert.strictEqual(deps.rows.agent_notification_job[1].scheduled_at.toISOString(), NOW.toISOString())
+  assert.strictEqual(deps.rows.agent_notification_job[1].status, 'sent')
+  assert.strictEqual(deps.rows.agent_message.length, 1)
+  assert.strictEqual(deps.rows.agent_message[0].session_id, 20)
+  assert(deps.rows.agent_message[0].content.includes('对方已确认参与'))
+  assert(deps.rows.agent_message[0].content.includes('福田区'))
+  assert.strictEqual(deps.rows.agent_message[0].content.includes(applicationB.share_message), false)
   await assert.rejects(() => handlers.saveApplication({ coordination_id: 999, ...applicationA }, { user_id: 1 }), /日期协调不存在/)
   await assert.rejects(() => handlers.saveApplication({ coordination_id: first.id, ...applicationA }, { user_id: 3 }), /无权操作该日期协调/)
 
@@ -127,21 +264,39 @@ async function main() {
     () => handlers.confirmProposal({ coordination_id: first.id, proposal_id: proposal.id, coordination_version: 2, decision: 'confirm' }, { user_id: 1 }),
     /方案已失效/
   )
-  const firstConfirmation = await handlers.confirmProposal({
+  const confirmations = await Promise.all([
+    handlers.confirmProposal({
+      coordination_id: first.id,
+      proposal_id: proposal.id,
+      coordination_version: 1,
+      decision: 'confirm'
+    }, { user_id: 1 }),
+    handlers.confirmProposal({
+      coordination_id: first.id,
+      proposal_id: proposal.id,
+      coordination_version: 1,
+      decision: 'confirm'
+    }, { user_id: 1 }),
+    handlers.confirmProposal({
+      coordination_id: first.id,
+      proposal_id: proposal.id,
+      coordination_version: 1,
+      decision: 'confirm'
+    }, { user_id: 2 })
+  ])
+  assert.strictEqual(deps.rows.date_coordination_confirmation.filter((row) => row.user_id === 1).length, 1)
+  assert.strictEqual(deps.rows.date_coordination_confirmation.filter((row) => row.user_id === 2).length, 1)
+  const arranged = confirmations[2]
+  assert.strictEqual(arranged.status, 'arranged')
+  assert.strictEqual(arranged.business_state, 'completed')
+  assert.strictEqual(arranged.final_proposal_id, proposal.id)
+  const repeatedAfterArranged = await handlers.confirmProposal({
     coordination_id: first.id,
     proposal_id: proposal.id,
     coordination_version: 1,
     decision: 'confirm'
   }, { user_id: 1 })
-  assert.strictEqual(firstConfirmation.status, 'waiting_confirmations')
-  const arranged = await handlers.confirmProposal({
-    coordination_id: first.id,
-    proposal_id: proposal.id,
-    coordination_version: 1,
-    decision: 'confirm'
-  }, { user_id: 2 })
-  assert.strictEqual(arranged.status, 'arranged')
-  assert.strictEqual(arranged.final_proposal_id, proposal.id)
+  assert.strictEqual(repeatedAfterArranged.status, 'arranged')
 
   const recoordinationDeps = memoryDeps({
     user: [

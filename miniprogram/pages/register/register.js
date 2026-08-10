@@ -391,6 +391,7 @@ Page({
   async onSubmit() {
     if (!this.validateForm() || this.data.submitting) return
 
+    const { form } = this.data
     const openid = wx.getStorageSync(STORAGE_KEYS.OPENID)
     if (!this.data.editMode && !openid) {
       wx.showModal({
@@ -417,7 +418,6 @@ Page({
       return false
     }
 
-    const { form } = this.data
     if (form.marriage === '离异') {
       wx.showModal({
         title: '需先提交复入申请',

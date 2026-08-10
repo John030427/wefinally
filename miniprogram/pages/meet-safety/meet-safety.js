@@ -1,5 +1,6 @@
 const { get, post } = require('../../utils/request')
 const { GUANGDONG_110_DEFAULT } = require('../../utils/constants')
+const { normalizeChosenLocation, hasMapLocation, shouldCreateBlankReport } = require('../../utils/meetLocation')
 
 Page({
   data: {
@@ -8,8 +9,10 @@ Page({
       match_log_id: 0,
       meet_time: '',
       meet_place: '',
+      meet_address: '',
       lat: null,
       lng: null,
+      location_source: '',
       meet_note: '',
       emergency_contact: ''
     },
@@ -27,6 +30,7 @@ Page({
   },
 
   onLoad(options) {
+    if (shouldCreateBlankReport(options)) return
     if (options.shareToken) {
       this.loadSharedReport(options.shareToken)
       return
@@ -107,8 +111,10 @@ Page({
           match_log_id: r.match_log_id || 0,
           meet_time: r.meet_time || '',
           meet_place: r.meet_place || '',
+          meet_address: r.meet_address || '',
           lat: r.lat,
           lng: r.lng,
+          location_source: r.location_source || '',
           meet_note: r.meet_note || '',
           emergency_contact: r.emergency_contact || ''
         },
@@ -135,8 +141,10 @@ Page({
           match_log_id: 0,
           meet_time: r.meet_time || '',
           meet_place: r.meet_place || '',
+          meet_address: r.meet_address || '',
           lat: r.lat,
           lng: r.lng,
+          location_source: r.location_source || '',
           meet_note: r.meet_note || '',
           emergency_contact: ''
         },
@@ -155,14 +163,51 @@ Page({
     }
   },
 
-  getLoc() {
-    wx.getLocation({
-      type: 'gcj02',
-      success: (r) => {
-        this.setData({ 'form.lat': r.latitude, 'form.lng': r.longitude })
-        wx.showToast({ title: '定位已获取', icon: 'success' })
+  chooseMeetLocation() {
+    if (typeof wx.chooseLocation !== 'function') {
+      wx.showModal({ title: '暂不支持地图选点', content: '请升级微信或在真机中重新打开小程序。', showCancel: false })
+      return
+    }
+    wx.chooseLocation({
+      success: (result) => {
+        const location = normalizeChosenLocation(result)
+        if (!hasMapLocation(location)) {
+          wx.showToast({ title: '没有获取到有效地点', icon: 'none' })
+          return
+        }
+        this.setData({
+          'form.meet_place': location.meet_place,
+          'form.meet_address': location.meet_address,
+          'form.lat': location.lat,
+          'form.lng': location.lng,
+          'form.location_source': location.location_source
+        })
+        wx.showToast({ title: '地点已选好', icon: 'success' })
       },
-      fail: () => wx.showModal({ title: '需要定位授权', content: '请在设置中允许位置权限', showCancel: false })
+      fail: (err) => {
+        const message = String(err && err.errMsg || '')
+        if (message.includes('cancel')) return
+        wx.showModal({
+          title: '无法选择地点',
+          content: '请在微信设置中允许位置信息权限后重试。',
+          confirmText: '去设置',
+          success: (res) => {
+            if (res.confirm && wx.openSetting) wx.openSetting({})
+          }
+        })
+      }
+    })
+  },
+
+  openMeetLocation() {
+    if (!hasMapLocation(this.data.form)) return wx.showToast({ title: '请先选择地点', icon: 'none' })
+    if (typeof wx.openLocation !== 'function') return wx.showToast({ title: '当前微信版本不支持查看地图', icon: 'none' })
+    wx.openLocation({
+      latitude: Number(this.data.form.lat),
+      longitude: Number(this.data.form.lng),
+      name: this.data.form.meet_place || '见面地点',
+      address: this.data.form.meet_address || '',
+      scale: 17
     })
   },
 
@@ -198,6 +243,7 @@ Page({
 
   async submit() {
     if (!this.data.ack) return wx.showToast({ title: '请勾选安全提示', icon: 'none' })
+    if (!hasMapLocation(this.data.form)) return wx.showToast({ title: '请先在地图中选择见面地点', icon: 'none' })
     try {
       const d = await post('/api/meet/create', Object.assign({}, this.data.form, { safety_ack: 1 }), { showLoading: true })
       this.setData({ created: d, shareMode: false, locationCount: 0, latestLocationText: '' })

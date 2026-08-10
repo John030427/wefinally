@@ -76,6 +76,7 @@ async function main() {
     nonce: 'request-nonce'
   })
   assert.strictEqual(apiRequest.options.headers['Wechatpay-Serial'], 'PUB_KEY_ID_TEST')
+  assert.strictEqual(apiRequest.options.headers['User-Agent'], 'WeFinally-WeChatMiniProgram/1.0')
   assert.strictEqual(apiRequest.options.method, 'POST')
 
   const miniPay = wechatpay.buildMiniProgramPayParams({

@@ -1,7 +1,8 @@
 const https = require('https')
-const { first } = require('./db')
+const { normalizeStructuredReport, plainTextReport, unwrapStructuredReport } = require('./reportSchema')
 
-const CLOUD_FUNCTION_SAFE_TIMEOUT_MS = 12000
+const CLOUD_FUNCTION_SAFE_TIMEOUT_MS = 45000
+const CLOUD_FUNCTION_MAX_TIMEOUT_MS = 50000
 
 function envValue(keys) {
   for (let i = 0; i < keys.length; i += 1) {
@@ -24,6 +25,7 @@ function isTruthy(value) {
 
 async function systemValue(key) {
   try {
+    const { first } = require('./db')
     let row = await first('system_config', { key })
     if (!row) row = await first('system_config', { config_key: key })
     if (!row) row = await first('system_config', { name: key })
@@ -35,34 +37,33 @@ async function systemValue(key) {
 }
 
 async function getConfig() {
-  const apiKey = envValue(['MINIMAX_API_KEY', 'ANTHROPIC_API_KEY', 'LLM_API_KEY']) ||
-    await systemValue('minimax_api_key') ||
-    await systemValue('MINIMAX_API_KEY')
-  const enabledEnv = envValue(['MINIMAX_MATCH_REPORT_ENABLED', 'LLM_MATCH_REPORT_ENABLED', 'MINIMAX_ENABLED', 'LLM_ENABLED'])
+  const apiKey = envValue(['DEEPSEEK_API_KEY', 'LLM_API_KEY']) ||
+    await systemValue('deepseek_api_key') ||
+    await systemValue('DEEPSEEK_API_KEY')
+  const enabledEnv = envValue(['DEEPSEEK_MATCH_REPORT_ENABLED', 'LLM_MATCH_REPORT_ENABLED', 'DEEPSEEK_ENABLED', 'LLM_ENABLED'])
   const enabledDb = enabledEnv === undefined
-    ? await systemValue('minimax_match_report_enabled')
+    ? await systemValue('deepseek_match_report_enabled')
     : undefined
   const enabledValue = enabledEnv !== undefined ? enabledEnv : enabledDb
   const enabled = enabledValue === undefined ? Boolean(apiKey) : (isTruthy(enabledValue) && !isFalsy(enabledValue))
   const baseURL = String(
-    envValue(['MINIMAX_BASE_URL', 'ANTHROPIC_BASE_URL', 'LLM_BASE_URL']) ||
-      await systemValue('minimax_base_url') ||
-      'https://api.minimaxi.com/anthropic'
+    envValue(['DEEPSEEK_BASE_URL', 'LLM_BASE_URL']) ||
+      await systemValue('deepseek_base_url') ||
+      'https://api.deepseek.com'
   ).replace(/\/+$/, '')
   const model = String(
-    envValue(['MINIMAX_MODEL', 'ANTHROPIC_MODEL', 'LLM_MODEL']) ||
-      await systemValue('minimax_model') ||
-      'MiniMax-M3'
+    envValue(['DEEPSEEK_MODEL', 'LLM_MODEL']) ||
+      await systemValue('deepseek_model') ||
+      'deepseek-chat'
   )
   const configuredTimeoutMs = Number(
-    envValue(['MINIMAX_TIMEOUT_MS', 'LLM_TIMEOUT_MS']) ||
-      await systemValue('minimax_timeout_ms') ||
+    envValue(['DEEPSEEK_TIMEOUT_MS', 'LLM_TIMEOUT_MS']) ||
+      await systemValue('deepseek_timeout_ms') ||
       CLOUD_FUNCTION_SAFE_TIMEOUT_MS
   )
-  const timeoutMs = Math.min(
-    Number.isFinite(configuredTimeoutMs) && configuredTimeoutMs > 0 ? configuredTimeoutMs : CLOUD_FUNCTION_SAFE_TIMEOUT_MS,
-    CLOUD_FUNCTION_SAFE_TIMEOUT_MS
-  )
+  const timeoutMs = Number.isFinite(configuredTimeoutMs) && configuredTimeoutMs > 0
+    ? Math.min(Math.max(configuredTimeoutMs, CLOUD_FUNCTION_SAFE_TIMEOUT_MS), CLOUD_FUNCTION_MAX_TIMEOUT_MS)
+    : CLOUD_FUNCTION_SAFE_TIMEOUT_MS
   return {
     enabled,
     apiKey,
@@ -73,8 +74,8 @@ async function getConfig() {
 }
 
 function endpointFor(baseURL) {
-  if (/\/v1\/messages$/.test(baseURL)) return baseURL
-  return `${baseURL}/v1/messages`
+  if (/\/chat\/completions$/.test(baseURL)) return baseURL
+  return `${baseURL}/chat/completions`
 }
 
 function requestJson(url, body, headers, timeoutMs) {
@@ -97,38 +98,40 @@ function requestJson(url, body, headers, timeoutMs) {
       res.on('end', () => {
         const text = Buffer.concat(chunks).toString('utf8')
         if (res.statusCode < 200 || res.statusCode >= 300) {
-          reject(new Error(`MiniMax HTTP ${res.statusCode}: ${text.slice(0, 300)}`))
+          reject(new Error(`DeepSeek HTTP ${res.statusCode}: ${text.slice(0, 300)}`))
           return
         }
         try {
           resolve(JSON.parse(text))
         } catch (err) {
-          reject(new Error(`MiniMax JSON parse failed: ${err.message}`))
+          reject(new Error(`DeepSeek JSON parse failed: ${err.message}`))
         }
       })
     })
     req.on('error', reject)
     req.setTimeout(timeoutMs, () => {
-      req.destroy(new Error('MiniMax request timeout'))
+      req.destroy(new Error('DeepSeek request timeout'))
     })
     req.write(payload)
     req.end()
   })
 }
 
-function textFromAnthropicResponse(data) {
-  const content = data && Array.isArray(data.content) ? data.content : []
-  return content
-    .filter((item) => item && item.type === 'text')
-    .map((item) => item.text || '')
-    .join('\n')
-    .trim()
+function textFromOpenAIResponse(data) {
+  return String(data && data.choices && data.choices[0] && data.choices[0].message
+    ? data.choices[0].message.content || ''
+    : '').trim()
 }
 
 function extractJsonObject(text) {
   const raw = String(text || '').trim()
   const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/i)
   const source = fenced ? fenced[1] : raw
+  try {
+    return JSON.parse(source)
+  } catch (err) {
+    // Fall through for providers that add prose around an otherwise valid object.
+  }
   const start = source.indexOf('{')
   const end = source.lastIndexOf('}')
   if (start < 0 || end <= start) return null
@@ -192,16 +195,16 @@ async function generateMutualMatchReports(userA, userB, scoreDetailA, scoreDetai
       status: 3,
       a: { text: null, error: 'disabled' },
       b: { text: null, error: 'disabled' },
-      provider: 'minimax',
+      provider: 'deepseek',
       model: cfg.model
     }
   }
   if (!cfg.apiKey) {
     return {
       status: 2,
-      a: { text: null, error: 'missing MINIMAX_API_KEY' },
-      b: { text: null, error: 'missing MINIMAX_API_KEY' },
-      provider: 'minimax',
+      a: { text: null, error: 'missing DEEPSEEK_API_KEY' },
+      b: { text: null, error: 'missing DEEPSEEK_API_KEY' },
+      provider: 'deepseek',
       model: cfg.model
     }
   }
@@ -224,38 +227,36 @@ async function generateMutualMatchReports(userA, userB, scoreDetailA, scoreDetai
   try {
     const data = await requestJson(endpointFor(cfg.baseURL), {
       model: cfg.model,
-      system: '你只输出合法 JSON，不输出 Markdown。',
-      messages: [{
-        role: 'user',
-        content: [{ type: 'text', text: prompt }]
-      }],
+      messages: [
+        { role: 'system', content: '你只输出合法 JSON，不输出 Markdown。' },
+        { role: 'user', content: prompt }
+      ],
+      response_format: { type: 'json_object' },
       max_tokens: 700,
       temperature: 0.2,
-      service_tier: 'priority',
-      thinking: { type: 'disabled' },
       stream: false
     }, {
       Authorization: `Bearer ${cfg.apiKey}`
     }, cfg.timeoutMs)
-    const parsed = extractJsonObject(textFromAnthropicResponse(data))
+    const parsed = extractJsonObject(textFromOpenAIResponse(data))
     const a = parsed && parsed.a ? String(parsed.a).trim() : ''
     const b = parsed && parsed.b ? String(parsed.b).trim() : ''
-    if (!a || !b) throw new Error('MiniMax response missing report JSON')
+    if (!a || !b) throw new Error('DeepSeek response missing report JSON')
     return {
       status: 1,
       a: { text: a.slice(0, 1000), error: '' },
       b: { text: b.slice(0, 1000), error: '' },
-      provider: 'minimax',
+      provider: 'deepseek',
       model: cfg.model,
       usage: data.usage || null
     }
   } catch (err) {
-    console.error('[minimax] generateMutualMatchReports failed:', err.message)
+    console.error('[deepseek] generateMutualMatchReports failed:', err.message)
     return {
       status: 2,
       a: { text: null, error: err.message },
       b: { text: null, error: err.message },
-      provider: 'minimax',
+      provider: 'deepseek',
       model: cfg.model
     }
   }
@@ -298,25 +299,12 @@ function buildInputSnapshot(input) {
 }
 
 function validateStructuredReport(report, allowedEvidenceKeys) {
-  if (!report || typeof report !== 'object' || Array.isArray(report)) throw new Error('report schema invalid')
-  const requiredArrays = ['strengths', 'differences', 'hard_condition_checks', 'communication_suggestions', 'first_date_suggestions', 'data_limitations']
-  if (!String(report.summary || '').trim()) throw new Error('report schema invalid: summary')
-  if (!['high', 'medium', 'low'].includes(report.confidence)) throw new Error('report schema invalid: confidence')
-  requiredArrays.forEach((key) => {
-    if (!Array.isArray(report[key])) throw new Error(`report schema invalid: ${key}`)
-    report[key] = report[key].slice(0, 6)
-  })
-  ;['strengths', 'differences'].forEach((key) => {
-    report[key].forEach((item) => {
-      if (!item || !allowedEvidenceKeys.has(item.evidence_key)) throw new Error('report schema invalid: evidence_key')
-    })
-  })
-  return report
+  return normalizeStructuredReport(report, allowedEvidenceKeys)
 }
 
 async function generateStructuredMatchReports(input) {
   const cfg = await getConfig()
-  if (!cfg.enabled || !cfg.apiKey) throw new Error(cfg.enabled ? 'missing MINIMAX_API_KEY' : 'MiniMax disabled')
+  if (!cfg.enabled || !cfg.apiKey) throw new Error(cfg.enabled ? 'missing DEEPSEEK_API_KEY' : 'DeepSeek disabled')
   const snapshot = buildInputSnapshot(input)
   const schema = {
     summary: 'string',
@@ -328,6 +316,28 @@ async function generateStructuredMatchReports(input) {
     first_date_suggestions: ['string'],
     data_limitations: ['string']
   }
+  async function generatePlainFallbackReport(sideSnapshot) {
+    const fallbackPrompt = [
+      '你是 WeFinally 严肃婚恋平台的匹配报告助手。请基于输入证据生成一段不超过 400 个汉字的中文匹配概述。',
+      '只谈可验证的现实条件、沟通重点和初次见面建议；不做心理诊断、成功率承诺、颜值判断，不输出联系方式、单位或精确收入。',
+      '直接输出纯文本，不要 JSON、Markdown、标题或项目符号。',
+      `输入：${JSON.stringify(sideSnapshot).slice(0, 6000)}`
+    ].join('\n')
+    const fallbackData = await requestJson(endpointFor(cfg.baseURL), {
+      model: cfg.model,
+      messages: [
+        { role: 'system', content: '只输出一段简洁、克制的中文婚恋参考。' },
+        { role: 'user', content: fallbackPrompt }
+      ],
+      max_tokens: 600,
+      temperature: 0.1,
+      stream: false
+    }, { Authorization: `Bearer ${cfg.apiKey}` }, cfg.timeoutMs)
+    return {
+      report: plainTextReport(textFromOpenAIResponse(fallbackData)),
+      usage: fallbackData.usage || null
+    }
+  }
   async function generateSide(side) {
     const sideSnapshot = {
       algorithm: snapshot.algorithm[side],
@@ -338,22 +348,30 @@ async function generateStructuredMatchReports(input) {
       '你是 WeFinally 严肃婚恋平台的匹配报告助手。只解释后端证据，不能修改分数、硬条件或匹配结论。',
       '这是仅面向当前用户的一份隔离报告。只能引用 evidence 中存在的 evidence_key，不能推断或补充未提供的信息。',
       '内容要具体区分契合点、差异点、硬条件、沟通建议、初次见面建议和数据局限。禁止心理诊断、成功率承诺、联系方式、单位和精确收入。',
+      '请保持精炼：summary 不超过 300 个汉字；strengths 和 differences 各不超过 3 项；其余数组各不超过 4 项；整份 JSON 不超过 1600 个汉字。',
       `报告Schema：${JSON.stringify(schema)}`,
       '只输出一份合法JSON报告对象，不输出Markdown。',
       `输入：${JSON.stringify(sideSnapshot).slice(0, 6000)}`
     ].join('\n')
     const data = await requestJson(endpointFor(cfg.baseURL), {
       model: cfg.model,
-      system: '只输出合法 JSON，不输出 Markdown。',
-      messages: [{ role: 'user', content: [{ type: 'text', text: prompt }] }],
-      max_tokens: 1000,
+      messages: [
+        { role: 'system', content: '只输出合法 JSON，不输出 Markdown。' },
+        { role: 'user', content: prompt }
+      ],
+      response_format: { type: 'json_object' },
+      max_tokens: 1800,
       temperature: 0.15,
-      thinking: { type: 'disabled' },
       stream: false
     }, { Authorization: `Bearer ${cfg.apiKey}` }, cfg.timeoutMs)
-    const parsed = extractJsonObject(textFromAnthropicResponse(data))
+    const parsed = unwrapStructuredReport(extractJsonObject(textFromOpenAIResponse(data)), side)
     const keys = new Set(sideSnapshot.evidence.map((item) => item.key))
-    return { report: validateStructuredReport(parsed, keys), usage: data.usage || null }
+    try {
+      return { report: validateStructuredReport(parsed, keys), usage: data.usage || null }
+    } catch (err) {
+      if (!String(err && err.message || '').startsWith('report schema invalid')) throw err
+      return generatePlainFallbackReport(sideSnapshot)
+    }
   }
   const generated = await Promise.all([generateSide('a'), generateSide('b')])
   return {

@@ -1,0 +1,77 @@
+<view class="date-feedback-page container">
+  <block wx:if="{{pageState === 'loading'}}">
+    <view class="state-wrap"><view class="state-text">正在读取约会状态...</view></view>
+  </block>
+  <block wx:elif="{{pageState === 'error'}}">
+    <view class="state-wrap">
+      <view class="state-text">{{errorMsg}}</view>
+      <view class="state-btn" bindtap="onRetry">重新检查</view>
+    </view>
+  </block>
+  <block wx:else>
+    <view class="feedback-hero card">
+      <view class="hero-kicker">只对平台可见</view>
+      <view class="hero-title">这次见面，真实感受如何？</view>
+      <view class="hero-desc">反馈用于改进匹配和人工服务，不会直接展示给对方，也不会仅凭单次反馈自动处罚。</view>
+      <view class="saved-pill" wx:if="{{saved}}">已保存，可再次修改</view>
+    </view>
+
+    <view class="not-met-note card" wx:if="{{form.met_status && form.met_status !== 'met'}}">
+      <view class="question-title">已记录本次未完成见面</view>
+      <view class="not-met-copy">下面可补充原因或申请人工复核；未发生的资料一致性和安全感受不会被强行评分。</view>
+    </view>
+
+    <view class="question-card card" wx:if="{{form.met_status === 'met'}}">
+      <view class="question-index">01</view>
+      <view class="question-title">你们是否实际见面？</view>
+      <view class="choice-grid">
+        <view class="choice {{form.met_status === item.value ? 'selected' : ''}}" wx:for="{{metOptions}}" wx:key="value" data-key="met_status" data-value="{{item.value}}" bindtap="selectSingle">{{item.label}}</view>
+      </view>
+    </view>
+
+    <view class="question-card card" wx:if="{{form.met_status === 'met'}}">
+      <view class="question-index">02</view>
+      <view class="question-title">你是否愿意继续了解？</view>
+      <view class="choice-grid">
+        <view class="choice {{form.continue_intent === item.value ? 'selected' : ''}}" wx:for="{{continueOptions}}" wx:key="value" data-key="continue_intent" data-value="{{item.value}}" bindtap="selectSingle">{{item.label}}</view>
+      </view>
+    </view>
+
+    <view class="question-card card" wx:if="{{form.met_status === 'met'}}">
+      <view class="question-index">03</view>
+      <view class="question-title">对方与平台资料是否一致？</view>
+      <view class="choice-grid">
+        <view class="choice {{form.authenticity === item.value ? 'selected' : ''}}" wx:for="{{authenticityOptions}}" wx:key="value" data-key="authenticity" data-value="{{item.value}}" bindtap="selectSingle">{{item.label}}</view>
+      </view>
+    </view>
+
+    <view class="question-card card">
+      <view class="question-index">04</view>
+      <view class="question-title">见面过程中你的安全感受？</view>
+      <view class="choice-grid">
+        <view class="choice safety-choice {{form.safety === item.value ? 'selected' : ''}}" wx:for="{{safetyOptions}}" wx:key="value" data-key="safety" data-value="{{item.value}}" bindtap="selectSingle">{{item.label}}</view>
+      </view>
+    </view>
+
+    <view class="question-card card">
+      <view class="question-title">哪些方面最影响判断？</view>
+      <view class="reason-grid">
+        <view class="reason {{selectedReasons[item.value] ? 'selected' : ''}}" wx:for="{{reasonOptions}}" wx:key="value" data-value="{{item.value}}" bindtap="toggleReason">{{item.label}}</view>
+      </view>
+      <textarea class="note-input" maxlength="200" value="{{form.note}}" bindinput="onNoteInput" placeholder="选填：请勿填写手机号、微信号或其他敏感凭证"></textarea>
+      <view class="switch-row">
+        <checkbox-group data-key="avoid_similar" bindchange="onBooleanChange">
+          <label><checkbox value="yes" checked="{{form.avoid_similar}}" color="#FF6B8A" />建议平台减少类似匹配</label>
+        </checkbox-group>
+      </view>
+      <view class="switch-row">
+        <checkbox-group data-key="request_human_review" bindchange="onBooleanChange">
+          <label><checkbox value="yes" checked="{{form.request_human_review}}" color="#FF6B8A" />申请人工复核</label>
+        </checkbox-group>
+      </view>
+    </view>
+
+    <button class="submit-button" loading="{{submitting}}" disabled="{{submitting}}" bindtap="submit">保存约会反馈</button>
+    <view class="privacy-copy">自由文本不会直接交给匹配模型，也不会展示给其他用户。</view>
+  </block>
+</view>

@@ -1,6 +1,8 @@
 const { get, post } = require('../../utils/request')
 const { API_PATHS } = require('../../utils/constants')
 const { buildFieldExplainItems, buildLocalMatchReport } = require('../../utils/matchReport')
+const { resolveTotalScorePercent } = require('../../utils/matchScore')
+const { buildMatchSummary } = require('../../utils/productExperience')
 const {
   formatDateOnly,
   getCompatibilityColor,
@@ -41,6 +43,16 @@ function buildReportStatusText(status) {
   return '待生成'
 }
 
+function buildReportErrorText(value) {
+  const message = String(value || '').toLowerCase()
+  if (!message) return 'AI服务暂时不可用'
+  if (message.includes('missing deepseek_api_key') || message.includes('disabled')) return 'AI服务配置尚未完成'
+  if (message.includes('timeout') || message.includes('timed out')) return 'AI服务响应超时'
+  if (message.includes('429') || message.includes('rate')) return 'AI服务请求繁忙'
+  if (message.includes('401') || message.includes('403')) return 'AI服务鉴权失败'
+  return 'AI服务暂时不可用'
+}
+
 function normalizeAiReportState(detail) {
   const status = String(detail.ai_report_status || detail.aiReportStatus || 'not_requested')
   const reportTime = detail.ai_report_time || detail.aiReportTime || detail.update_time || detail.updatedAt || ''
@@ -52,12 +64,19 @@ function normalizeAiReportState(detail) {
     canRefreshReport: status === 'queued' || status === 'generating',
     reportActionText: status === 'failed' ? '重试AI报告' : '生成AI报告',
     reportStatusText: buildReportStatusText(status),
+    aiReportErrorText: status === 'failed' ? buildReportErrorText(detail.ai_report_error || detail.aiReportError) : '',
     reportHintText: status === 'expired' ? 'AI报告已超过保存期限，相关内容已删除。' : ''
   }
 }
 
 function shortDate(value) {
   return formatDateOnly(value)
+}
+
+function selectionMap(items) {
+  const map = {}
+  ;(items || []).forEach((item) => { map[item] = true })
+  return map
 }
 
 Page({
@@ -80,7 +99,30 @@ Page({
     hasScore: false,
     compatibilityLevel: '',
     progressColor: 'progress-gray',
-    tagClass: 'tag-gray'
+    tagClass: 'tag-gray',
+    showAlgorithmDetails: false,
+    matchSummary: null,
+    matchFeedback: null,
+    feedbackVerdict: '',
+    feedbackReasons: [],
+    feedbackReasonSelection: {},
+    feedbackNote: '',
+    feedbackReview: false,
+    feedbackSubmitting: false,
+    dateFeedbackEligibility: null,
+    feedbackVerdictOptions: [
+      { value: 'accurate', label: '比较准确' },
+      { value: 'partly_accurate', label: '部分准确' },
+      { value: 'not_accurate', label: '不太准确' }
+    ],
+    feedbackReasonOptions: [
+      { value: 'preferences', label: '择偶条件' },
+      { value: 'values', label: '价值观' },
+      { value: 'appearance', label: '外貌偏好' },
+      { value: 'life_stage', label: '生活阶段' },
+      { value: 'location', label: '城市距离' },
+      { value: 'other', label: '其他' }
+    ]
   },
 
   onLoad(options) {
@@ -144,6 +186,7 @@ Page({
       const hasScore = !locked && score !== null && score !== undefined && score > 0
       const hasTotalScore = !locked && totalScore !== null && totalScore !== undefined && Number(totalScore) > 0
       const scoreDetail = detail.score_detail || detail.scoreDetail || null
+      const totalScorePercent = resolveTotalScorePercent(totalScore, scoreDetail)
       const appearanceText = buildAppearanceText(scoreDetail)
 
       const builtLocalReportText = buildLocalMatchReport({
@@ -170,8 +213,8 @@ Page({
         matchType: detail.match_type || detail.matchType || '',
         matchDate: shortDate(detail.match_date || detail.matchDate || ''),
         totalScore: Math.round(Number(totalScore) || 0),
-        totalScorePercent: Math.min(100, Math.round(Number(totalScore) || 0)),
-        totalScoreText: getTotalMatchDisplayText(totalScore),
+        totalScorePercent,
+        totalScoreText: getTotalMatchDisplayText(totalScorePercent),
         compatibilityText: getCompatibilityDisplayText(score),
         compatibilityPercent: Math.min(95, Math.round(Number(score) || 0)),
         scoreDetail,
@@ -191,6 +234,7 @@ Page({
         hasAiReportText: aiReportState.hasAiReportText,
         aiReportStatus: aiReportState.aiReportStatus,
         aiReportError: detail.ai_report_error || detail.aiReportError || '',
+        aiReportErrorText: aiReportState.aiReportErrorText,
         aiReportTime: aiReportState.aiReportTime,
         canGenerateReport: aiReportState.canGenerateReport,
         canRefreshReport: aiReportState.canRefreshReport,
@@ -219,8 +263,10 @@ Page({
         hasScore,
         compatibilityLevel: hasScore ? getCompatibilityLevel(numScore) : '',
         progressColor: hasScore ? getCompatibilityColor(numScore) : 'progress-gray',
-        tagClass: hasScore ? getCompatibilityTagClass(numScore) : 'tag-gray'
+        tagClass: hasScore ? getCompatibilityTagClass(numScore) : 'tag-gray',
+        matchSummary: buildMatchSummary(detail)
       })
+      if (!(options && options.polling)) this.loadExperienceState()
       if (normalized.aiReportStatus === 'queued' || normalized.aiReportStatus === 'generating') this.startReportPolling()
       else this.stopReportPolling()
     } catch (err) {
@@ -242,6 +288,89 @@ Page({
       expanded: item.key === key ? !item.expanded : item.expanded
     }))
     this.setData({ 'detail.scoreBreakdown': items })
+  },
+
+  toggleAlgorithmDetails() {
+    this.setData({ showAlgorithmDetails: !this.data.showAlgorithmDetails })
+  },
+
+  async loadExperienceState() {
+    const params = { match_log_id: Number(this.data.matchId) }
+    const results = await Promise.all([
+      get(API_PATHS.MATCH_FEEDBACK, params, { showError: false }).catch(() => null),
+      get(API_PATHS.DATE_FEEDBACK, params, { showError: false }).catch(() => null)
+    ])
+    const feedback = results[0]
+    const dateState = results[1]
+    const reasons = feedback && Array.isArray(feedback.reasons) ? feedback.reasons : []
+    this.setData({
+      matchFeedback: feedback || null,
+      feedbackVerdict: feedback ? feedback.verdict || '' : '',
+      feedbackReasons: reasons,
+      feedbackReasonSelection: selectionMap(reasons),
+      feedbackNote: feedback ? feedback.note || '' : '',
+      feedbackReview: feedback ? feedback.request_human_review === true : false,
+      dateFeedbackEligibility: dateState || null
+    })
+  },
+
+  selectFeedbackVerdict(e) {
+    this.setData({ feedbackVerdict: e.currentTarget.dataset.value || '' })
+  },
+
+  toggleFeedbackReason(e) {
+    const value = e.currentTarget.dataset.value
+    const current = this.data.feedbackReasons || []
+    const next = current.includes(value)
+      ? current.filter((item) => item !== value)
+      : current.concat(value).slice(0, 5)
+    this.setData({
+      feedbackReasons: next,
+      feedbackReasonSelection: selectionMap(next)
+    })
+  },
+
+  onFeedbackNoteInput(e) {
+    this.setData({ feedbackNote: e.detail.value || '' })
+  },
+
+  onFeedbackReviewChange(e) {
+    this.setData({ feedbackReview: Boolean(e.detail.value && e.detail.value.length) })
+  },
+
+  async submitMatchFeedback() {
+    if (!this.data.feedbackVerdict || this.data.feedbackSubmitting) {
+      if (!this.data.feedbackVerdict) wx.showToast({ title: '请先选择准确程度', icon: 'none' })
+      return
+    }
+    this.setData({ feedbackSubmitting: true })
+    try {
+      const saved = await post(API_PATHS.MATCH_FEEDBACK, {
+        match_log_id: Number(this.data.matchId),
+        verdict: this.data.feedbackVerdict,
+        reasons: this.data.feedbackReasons,
+        note: this.data.feedbackNote,
+        request_human_review: this.data.feedbackReview
+      }, { showLoading: true, loadingText: '正在保存...' })
+      this.setData({ matchFeedback: saved || {} })
+      wx.showToast({ title: '反馈已保存', icon: 'success' })
+    } catch (err) {
+      wx.showModal({
+        title: '反馈未保存',
+        content: (err && err.message) || '请稍后重试',
+        showCancel: false
+      })
+    } finally {
+      this.setData({ feedbackSubmitting: false })
+    }
+  },
+
+  goDateFeedback() {
+    const state = this.data.dateFeedbackEligibility
+    if (!state || !state.can_submit) return
+    wx.navigateTo({
+      url: `/pages/date-feedback/date-feedback?matchLogId=${this.data.matchId}&coordinationId=${state.coordination_id || 0}`
+    })
   },
 
   async requestHandoff() {
@@ -271,13 +400,14 @@ Page({
   async requestAiReport(options) {
     if (!this.data.detail || this.data.detail.locked || this.data.reportGenerating) return
     const silentReport = options && options.silentReport === true
+    const reportWasFailed = this.data.detail.aiReportStatus === 'failed'
     this.setData({
       reportGenerating: true,
       'detail.aiReportStatus': 4,
       'detail.reportStatusText': '生成中'
     })
     try {
-      const path = this.data.detail.aiReportStatus === 'failed'
+      const path = reportWasFailed
         ? API_PATHS.MATCH_REPORT_TASK_RETRY
         : API_PATHS.MATCH_REPORT_TASK
       await post(path, {

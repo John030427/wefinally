@@ -13,6 +13,10 @@ const root = path.join(__dirname, '..');
 const html = fs.readFileSync(path.join(root, 'public', 'admin', 'index.html'), 'utf8');
 const route = fs.readFileSync(path.join(root, 'src', 'routes', 'admin.js'), 'utf8');
 const openids = ['sc_admin_diag_a', 'sc_admin_diag_b'];
+const memberActionBlock = html.slice(
+  html.indexOf('window.adminReview'),
+  html.indexOf('async function pgDashboard')
+);
 
 async function insertSetting(userId, selfViewText, targetViewText) {
   await pool.query(
@@ -66,6 +70,12 @@ ok('admin web exposes match records nav', html.includes('data-p="matches"') && h
 ok('admin web renders match records from API', html.includes('function pgMatches') && html.includes("api('/admin/matches"));
 ok('admin web can open match diagnostic modal', html.includes('viewMatch') && html.includes('质量门槛') && html.includes('双方资料'));
 ok('admin user detail modal renders values and appearance', html.includes('match_settings') && html.includes('appearance_description') && html.includes('三观自述'));
+ok('admin member review exposes full profile detail action', html.includes('adminViewMember') && html.includes('查看资料'));
+ok('admin member detail loads cloud application detail', html.includes("memberApi('/admin/member-applications/' + id)") && html.includes('profile_snapshot_json'));
+ok('admin member detail renders review fields safely', html.includes("memberDetailItem('我的三观自述'") && html.includes("memberDetailItem('期待对方三观'") && html.includes('esc(display)'));
+ok('admin member actions do not use unsupported browser prompts', !memberActionBlock.includes('prompt('));
+ok('admin member review uses an in-page confirmation form', memberActionBlock.includes('submitAdminReview') && memberActionBlock.includes('adminReviewReason'));
+ok('admin member reassignment uses an in-page form', memberActionBlock.includes('submitAdminReassign') && memberActionBlock.includes('adminReassignPartnerId'));
 ok('admin route exposes whitelist audit APIs', route.includes("router.get('/whitelist'") && route.includes("router.get('/whitelist/batches'") && route.includes("router.post('/whitelist/import'"));
 ok('admin web exposes whitelist audit nav', html.includes('data-p="whitelist"') && html.includes('单位白名单'));
 ok('admin web can import and inspect whitelist batches', html.includes('function pgWhitelist') && html.includes("api('/admin/whitelist/batches") && html.includes('importWhitelist'));
