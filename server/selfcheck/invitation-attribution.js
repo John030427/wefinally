@@ -9,8 +9,9 @@ async function main() {
   let existing = null
   const deps = {
     first: async () => existing,
-    addWithId: async (name, data) => {
+    addWithId: async (name, data, prefix, stableId) => {
       writes.push({ name, data })
+      writes[writes.length - 1].stableId = stableId
       existing = Object.assign({ id: 1 }, data)
       return existing
     },
@@ -25,6 +26,7 @@ async function main() {
   assert.strictEqual(first.user_id, 11)
   assert.strictEqual(first.source_type, 'signed_token')
   assert.strictEqual(first.attribution_locked, true)
+  assert.strictEqual(writes[0].stableId, user.id)
   assert.strictEqual(second.id, first.id)
   assert.strictEqual(writes.length, 1)
   assert.strictEqual(writes[0].name, 'partner_referral_attribution')

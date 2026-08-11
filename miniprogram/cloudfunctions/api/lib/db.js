@@ -87,8 +87,13 @@ async function nextId(name) {
   }
 }
 
-async function addWithId(name, data, prefix) {
-  const id = await nextId(name)
+async function addWithId(name, data, prefix, stableId) {
+  const hasStableId = stableId !== undefined && stableId !== null
+  const stableNumber = Number(stableId)
+  if (hasStableId && (!Number.isInteger(stableNumber) || stableNumber <= 0)) {
+    throw new Error('稳定记录 ID 无效')
+  }
+  const id = hasStableId ? stableNumber : await nextId(name)
   const doc = Object.assign({}, data, {
     _id: `${prefix || name}_${id}`,
     id,

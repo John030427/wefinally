@@ -24,7 +24,7 @@ async function ensureReferralAttribution(user, partner, rawReferral, deps = {}) 
     attribution_key: `user:${userId}`,
     attribution_locked: true,
     attributed_at: now()
-  }, 'partner_referral')
+  }, 'partner_referral', userId)
 }
 
 module.exports = { referralSource, ensureReferralAttribution }
