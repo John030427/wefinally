@@ -8,6 +8,7 @@ const { changeInternalTestVip } = require('./internalTestVip')
 const { changeAbMatchFixture } = require('./abMatchFixture')
 const { createAgentBackofficeService } = require('../agent/backofficeService')
 const { buildPartnerDashboard } = require('../lib/partnerDashboardPolicy')
+const { createReferralToken } = require('../lib/partnerReferralPolicy')
 
 const AGENT_BACKOFFICE_PATHS = Object.freeze({
   tickets: '/api/admin/agent/tickets',
@@ -139,6 +140,10 @@ async function applicationList(actor, status) {
 async function inviteAssets(actor) {
   const partner = await db.byId('partner', actor.id)
   const code = partner && partner.promote_code || ''
+  let referral = code
+  if (process.env.PARTNER_REFERRAL_SECRET) {
+    try { referral = createReferralToken(actor.id) } catch (err) { referral = code }
+  }
   let qrcodeBase64 = ''
   let qrcodeError = ''
   try {
@@ -155,8 +160,9 @@ async function inviteAssets(actor) {
   }
   return {
     promote_code: code,
-    miniprogram_path: `/pages/register/register?promote_code=${encodeURIComponent(code)}`,
-    scene: code,
+    attribution_token: referral === code ? '' : referral,
+    miniprogram_path: `/pages/register/register?promote_code=${encodeURIComponent(referral)}`,
+    scene: referral,
     qrcode_base64: qrcodeBase64,
     qrcode_error: qrcodeError
   }

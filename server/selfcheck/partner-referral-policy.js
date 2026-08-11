@@ -1,0 +1,24 @@
+const assert = require('assert')
+const fs = require('fs')
+const path = require('path')
+const { createReferralToken, verifyReferralToken, referralInput } = require('../../miniprogram/cloudfunctions/api/lib/partnerReferralPolicy')
+
+const secret = 'selfcheck-partner-secret'
+const token = createReferralToken(17, { secret, now: 1700000000000, ttlMs: 86400000 })
+assert(token.startsWith('wf1.17.'))
+assert.strictEqual(verifyReferralToken(token, { secret, now: 1700000000000 }).partnerId, 17)
+assert.throws(() => verifyReferralToken(token, { secret: 'wrong', now: 1700000000000 }), /归因标识无效/)
+assert.throws(() => verifyReferralToken(token, { secret, now: 1700000000000 + 86400001 }), /归因标识已过期/)
+assert.strictEqual(referralInput(token, { secret, now: 1700000000000 }).partnerId, 17)
+assert.strictEqual(referralInput('PLAIN17', { secret, now: 1700000000000 }).code, 'PLAIN17')
+
+const memberPolicy = fs.readFileSync(path.resolve(__dirname, '../../miniprogram/cloudfunctions/api/lib/memberPolicy.js'), 'utf8')
+const cloudBackoffice = fs.readFileSync(path.resolve(__dirname, '../../miniprogram/cloudfunctions/api/handlers/backoffice.js'), 'utf8')
+const mysqlUser = fs.readFileSync(path.resolve(__dirname, '../src/routes/user.js'), 'utf8')
+const mysqlPartner = fs.readFileSync(path.resolve(__dirname, '../src/routes/partner.js'), 'utf8')
+assert(memberPolicy.includes('referralInput(code)'))
+assert(cloudBackoffice.includes('createReferralToken(actor.id)'))
+assert(mysqlUser.includes('referralInput(promote_code)'))
+assert(mysqlPartner.includes('createReferralToken(req.auth.id)'))
+
+console.log('PASS signed partner referral token and plain-code fallback policy')

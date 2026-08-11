@@ -1,3 +1,5 @@
+const { referralInput } = require('./partnerReferralPolicy')
+
 const MEMBER_STATUS = Object.freeze({
   PENDING_PROFILE: 'pending_profile',
   PENDING_REVIEW: 'pending_review',
@@ -104,9 +106,11 @@ function nextMemberStatus(currentStatus, action) {
 }
 
 async function resolveInvitation(code, first) {
-  const normalized = String(code || '').trim().toUpperCase()
-  if (!normalized) throw new Error('邀请制注册需要有效邀请码')
-  const partner = await first('partner', { promote_code: normalized, status: 1 })
+  const referral = referralInput(code)
+  if (!referral.code && !referral.partnerId) throw new Error('邀请制注册需要有效邀请码')
+  const partner = referral.partnerId
+    ? await first('partner', { id: referral.partnerId, status: 1 })
+    : await first('partner', { promote_code: referral.code, status: 1 })
   if (!partner) throw new Error('邀请码无效或已停用')
   return partner
 }
