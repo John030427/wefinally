@@ -60,6 +60,15 @@ function fallbackMatchReportText(viewer, partner) {
   ].join('\n\n')
 }
 
+function matchStateSnapshot(row) {
+  const source = row || {}
+  return {
+    match_status: source.match_status == null ? null : source.match_status,
+    matched_partner_id: source.matched_partner_id == null ? null : source.matched_partner_id,
+    matched_at: source.matched_at == null ? null : source.matched_at
+  }
+}
+
 function withReportStatus(scoreDetail, status, report) {
   return Object.assign({}, scoreDetail || {}, {
     report_status: status,
@@ -508,16 +517,8 @@ async function start(data, wxContext) {
     let claimAudit = null
     let userUpdated = false
     let partnerUpdated = false
-    const previousUserState = {
-      match_status: user.match_status,
-      matched_partner_id: user.matched_partner_id,
-      matched_at: user.matched_at
-    }
-    const previousPartnerState = {
-      match_status: partner.match_status,
-      matched_partner_id: partner.matched_partner_id,
-      matched_at: partner.matched_at
-    }
+    const previousUserState = matchStateSnapshot(user)
+    const previousPartnerState = matchStateSnapshot(partner)
     try {
       const abTestRunId = String(partner.ab_test_run_id || '')
       const detailJsonA = Object.assign(scoreDetailFor(best, 'a', ranked.indexOf(best) + 1), {
