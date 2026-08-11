@@ -71,7 +71,7 @@ ok('cloud manual match does not persist a fixed demo score', !matchStartBody.inc
 ok('cloud manual match refuses quality fallback', matchStartBody.includes('本轮暂无通过严格质量门槛的匹配'));
 ok('cloud DeepSeek report helper exists', exists('miniprogram/cloudfunctions/api/lib/deepseek.js'));
 ok('cloud match report uses durable async task', cloudMatchJs.includes("require('./reportTask')") && cloudMatchJs.includes("ensureTaskForMatch(logA, 'auto')"));
-ok('cloud DeepSeek key can be read from safe runtime config', read('miniprogram/cloudfunctions/api/lib/deepseek.js').includes("systemValue('deepseek_api_key')"));
+ok('cloud DeepSeek key is read only from server environment', read('miniprogram/cloudfunctions/api/lib/deepseek.js').includes("envValue(['DEEPSEEK_API_KEY', 'LLM_API_KEY'])") && !read('miniprogram/cloudfunctions/api/lib/deepseek.js').includes('systemValue('));
 ok('cloud DeepSeek has no hardcoded key fallback', !read('miniprogram/cloudfunctions/api/lib/deepseek.js').includes(deepseekHardcodedKeySymbol));
 ok('cloud DeepSeek request timeout stays below worker function limit', read('miniprogram/cloudfunctions/api/lib/deepseek.js').includes('CLOUD_FUNCTION_SAFE_TIMEOUT_MS'));
 ok('cloud manual match no longer waits for DeepSeek report', !matchStartBody.includes('generateMutualMatchReports'));

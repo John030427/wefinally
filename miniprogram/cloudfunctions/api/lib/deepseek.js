@@ -23,43 +23,19 @@ function isTruthy(value) {
   return text === 'true' || text === '1' || text === 'yes' || text === 'on'
 }
 
-async function systemValue(key) {
-  try {
-    const { first } = require('./db')
-    let row = await first('system_config', { key })
-    if (!row) row = await first('system_config', { config_key: key })
-    if (!row) row = await first('system_config', { name: key })
-    if (!row) return undefined
-    return row.value !== undefined ? row.value : (row.config_value !== undefined ? row.config_value : row.enabled)
-  } catch (err) {
-    return undefined
-  }
-}
-
 async function getConfig() {
-  const apiKey = envValue(['DEEPSEEK_API_KEY', 'LLM_API_KEY']) ||
-    await systemValue('deepseek_api_key') ||
-    await systemValue('DEEPSEEK_API_KEY')
+  const apiKey = envValue(['DEEPSEEK_API_KEY', 'LLM_API_KEY'])
   const enabledEnv = envValue(['DEEPSEEK_MATCH_REPORT_ENABLED', 'LLM_MATCH_REPORT_ENABLED', 'DEEPSEEK_ENABLED', 'LLM_ENABLED'])
-  const enabledDb = enabledEnv === undefined
-    ? await systemValue('deepseek_match_report_enabled')
-    : undefined
-  const enabledValue = enabledEnv !== undefined ? enabledEnv : enabledDb
+  const enabledValue = enabledEnv !== undefined ? enabledEnv : undefined
   const enabled = enabledValue === undefined ? Boolean(apiKey) : (isTruthy(enabledValue) && !isFalsy(enabledValue))
   const baseURL = String(
-    envValue(['DEEPSEEK_BASE_URL', 'LLM_BASE_URL']) ||
-      await systemValue('deepseek_base_url') ||
-      'https://api.deepseek.com'
+    envValue(['DEEPSEEK_BASE_URL', 'LLM_BASE_URL']) || 'https://api.deepseek.com'
   ).replace(/\/+$/, '')
   const model = String(
-    envValue(['DEEPSEEK_MODEL', 'LLM_MODEL']) ||
-      await systemValue('deepseek_model') ||
-      'deepseek-chat'
+    envValue(['DEEPSEEK_MODEL', 'LLM_MODEL']) || 'deepseek-chat'
   )
   const configuredTimeoutMs = Number(
-    envValue(['DEEPSEEK_TIMEOUT_MS', 'LLM_TIMEOUT_MS']) ||
-      await systemValue('deepseek_timeout_ms') ||
-      CLOUD_FUNCTION_SAFE_TIMEOUT_MS
+    envValue(['DEEPSEEK_TIMEOUT_MS', 'LLM_TIMEOUT_MS']) || CLOUD_FUNCTION_SAFE_TIMEOUT_MS
   )
   const timeoutMs = Number.isFinite(configuredTimeoutMs) && configuredTimeoutMs > 0
     ? Math.min(Math.max(configuredTimeoutMs, CLOUD_FUNCTION_SAFE_TIMEOUT_MS), CLOUD_FUNCTION_MAX_TIMEOUT_MS)
