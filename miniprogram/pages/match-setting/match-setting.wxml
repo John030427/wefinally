@@ -167,6 +167,10 @@
         <view class="intent-label">待确认项</view>
         <view wx:for="{{intentConfirmation.uncertainties}}" wx:key="value" class="intent-item">{{item.value}}</view>
       </view>
+      <view class="intent-group" wx:if="{{intentConfirmation.contradictions.length}}">
+        <view class="intent-label">需要厘清的矛盾</view>
+        <view wx:for="{{intentConfirmation.contradictions}}" wx:key="value" class="intent-item">{{item.value}}</view>
+      </view>
       <button class="btn-primary intent-confirm-btn" bindtap="onConfirmIntent" loading="{{submitting}}" disabled="{{submitting}}">{{memberStatus === 'approved' ? '确认理解并保存' : '确认理解并提交审核'}}</button>
       <button class="btn-secondary intent-edit-btn" bindtap="onEditIntent" disabled="{{submitting}}">返回修改补充</button>
     </view>

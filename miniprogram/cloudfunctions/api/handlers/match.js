@@ -456,6 +456,26 @@ async function semanticRerank(ranked, user, settingsByUserId) {
   }
 }
 
+function intentMatchGate(setting) {
+  const profile = parseJson(setting && setting.intent_profile_json)
+  if (!profile || !profile.mode) return null
+  if (profile.mode === 'confirm' && !setting.intent_profile_confirmed_at) {
+    return {
+      code: 409,
+      message: '请先确认 AI 对你的理解后再开始匹配',
+      clarification_questions: profile.clarification_questions || []
+    }
+  }
+  if (Array.isArray(profile.contradictions) && profile.contradictions.length) {
+    return {
+      code: 409,
+      message: '你的匹配补充存在需要先厘清的矛盾，请修改后再试',
+      clarification_questions: profile.clarification_questions || []
+    }
+  }
+  return null
+}
+
 async function start(data, wxContext) {
   const enabled = await flagEnabled('cloud_demo_match_enabled')
   if (!enabled) {
@@ -466,6 +486,14 @@ async function start(data, wxContext) {
   const user = await currentUser(wxContext)
   if (!canUseMatching({ member_status: memberStatus(user), vipActive: isVipActive(user) })) {
     throw authError(memberStatus(user) === MEMBER_STATUS.APPROVED ? '请先开通 VIP' : '会员审核通过后才能进入匹配流程')
+  }
+  const currentSetting = await first('user_match_setting', { user_id: user.id })
+  const intentGate = intentMatchGate(currentSetting)
+  if (intentGate) {
+    const err = new Error(intentGate.message)
+    err.code = intentGate.code
+    err.clarification_questions = intentGate.clarification_questions
+    throw err
   }
   const userClaim = await first('match_claim', { user_id: Number(user.id), status: CLAIM_STATUS })
   if (userClaim) {
