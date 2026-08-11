@@ -88,6 +88,20 @@ function eduRank(education, config) {
 
 function hardOk(settings, candidate, config) {
   const cfg = config || MATCH_CONFIG
+  const requiredText = (keys) => {
+    for (let index = 0; index < keys.length; index += 1) {
+      const value = String(settings[keys[index]] || '').trim()
+      if (value) return value
+    }
+    return ''
+  }
+  const candidateText = (keys) => {
+    for (let index = 0; index < keys.length; index += 1) {
+      const value = String(candidate[keys[index]] || '').trim()
+      if (value) return value
+    }
+    return ''
+  }
   const hasAgeMin = settings.age_min != null && settings.age_min !== ''
   const hasAgeMax = settings.age_max != null && settings.age_max !== ''
   if (cfg.hard.age && (hasAgeMin || hasAgeMax)) {
@@ -102,6 +116,26 @@ function hardOk(settings, candidate, config) {
   }
   if (cfg.hard.minEducation && settings.min_education) {
     if (eduRank(candidate.education, cfg) < eduRank(settings.min_education, cfg)) return false
+  }
+  const requiredMarryStatus = requiredText(['must_marry_status', 'required_marry_status'])
+  if (requiredMarryStatus && candidateText(['marry_status', 'marriage_status']) !== requiredMarryStatus) return false
+  const requiredBabyPlan = requiredText(['must_baby_plan', 'required_baby_plan'])
+  if (requiredBabyPlan && candidateText(['baby_plan']) !== requiredBabyPlan) return false
+  const requiredCity = requiredText(['must_city', 'required_city'])
+  if (requiredCity && candidateText(['city']) !== requiredCity) return false
+  const requiredSmoking = requiredText(['must_smoking_status', 'required_smoking_status'])
+  if (requiredSmoking && candidateText(['smoking_status', 'smoking']) !== requiredSmoking) return false
+  const mustHeightMin = settings.must_height_min != null ? Number(settings.must_height_min) : null
+  const mustHeightMax = settings.must_height_max != null ? Number(settings.must_height_max) : null
+  if (mustHeightMin != null || mustHeightMax != null) {
+    const height = parseHeightCm(candidate.height_range)
+    if (height == null) return false
+    if (mustHeightMin != null && height < mustHeightMin) return false
+    if (mustHeightMax != null && height > mustHeightMax) return false
+  }
+  if (settings.require_safe_account === true) {
+    if (candidate.status !== undefined && Number(candidate.status) !== 1) return false
+    if (candidate.member_status && candidate.member_status !== 'approved') return false
   }
   return true
 }
