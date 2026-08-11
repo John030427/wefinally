@@ -7,6 +7,7 @@ const { reviewMemberApplication } = require('./member')
 const { changeInternalTestVip } = require('./internalTestVip')
 const { changeAbMatchFixture } = require('./abMatchFixture')
 const { createAgentBackofficeService } = require('../agent/backofficeService')
+const { buildPartnerDashboard } = require('../lib/partnerDashboardPolicy')
 
 const AGENT_BACKOFFICE_PATHS = Object.freeze({
   tickets: '/api/admin/agent/tickets',
@@ -161,6 +162,30 @@ async function inviteAssets(actor) {
   }
 }
 
+async function partnerDashboard(actor) {
+  const partner = await db.byId('partner', actor.id)
+  if (!partner) throw new Error('合伙人不存在')
+  async function safeList(name, query, limit) {
+    try {
+      return await db.list(name, query || {}, limit || 5000)
+    } catch (err) {
+      return []
+    }
+  }
+  const partnerId = Number(actor.id)
+  const [users, orders, withdrawals, attributions, shareEvents, rules, daily] = await Promise.all([
+    safeList('user', { promote_partner_id: partnerId }, 5000),
+    safeList('user_order', { partner_id: partnerId }, 5000),
+    safeList('partner_withdraw', { partner_id: partnerId }, 5000),
+    safeList('partner_referral_attribution', { partner_id: partnerId }, 5000),
+    safeList('partner_share_event', { partner_id: partnerId }, 5000),
+    safeList('partner_commission_rule', { status: 1 }, 20),
+    safeList('partner_dashboard_daily', { partner_id: partnerId }, 60)
+  ])
+  const rule = rules.sort((left, right) => Number(right.id || 0) - Number(left.id || 0))[0] || null
+  return buildPartnerDashboard({ partner, users, orders, withdrawals, attributions, shareEvents, rule, daily })
+}
+
 async function reassign(applicationId, body, actor) {
   if (actor.role !== 'admin') throw new Error('无权转交会员申请')
   const partnerId = Number(body.partner_id || 0)
@@ -222,6 +247,7 @@ async function handleBackofficeHttp(event = {}) {
     if (method === 'GET' && /\/api\/partner\/member-applications$/.test(path)) {
       return ok({ list: await applicationList(actor, event.queryStringParameters?.status || '') })
     }
+    if (method === 'GET' && /\/api\/partner\/dashboard$/.test(path)) return ok(await partnerDashboard(actor))
     if (method === 'GET' && /\/api\/admin\/member-applications$/.test(path)) {
       return ok({ list: await applicationList(actor, event.queryStringParameters?.status || '') })
     }
