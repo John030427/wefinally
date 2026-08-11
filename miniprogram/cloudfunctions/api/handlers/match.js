@@ -1,10 +1,11 @@
-const { first, list, byId, addWithId, updateByDoc, authError, now } = require('../lib/db')
+const { first, list, byId, addWithId, updateByDoc, removeByDoc, authError, now } = require('../lib/db')
 const { currentUser } = require('./user')
 const { isVipActive, ageBand, dateOnly } = require('../lib/format')
 const { flagEnabled } = require('../lib/flags')
 const { MEMBER_STATUS, memberStatus, canUseMatching, normalizeMatchSettingInput } = require('../lib/memberPolicy')
 const { rankCandidates, scoreDetailFor } = require('../lib/matchPolicy')
 const { compileIntentProfile, normalizeMode } = require('../lib/intentProfile')
+const { claimPair, releasePair, createCloudClaimStore, CLAIM_STATUS } = require('../lib/matchClaim')
 const reportTask = require('./reportTask')
 
 function parseJson(value) {
@@ -408,6 +409,15 @@ async function start(data, wxContext) {
   if (!canUseMatching({ member_status: memberStatus(user), vipActive: isVipActive(user) })) {
     throw authError(memberStatus(user) === MEMBER_STATUS.APPROVED ? '请先开通 VIP' : '会员审核通过后才能进入匹配流程')
   }
+  const userClaim = await first('match_claim', { user_id: Number(user.id), status: CLAIM_STATUS })
+  if (userClaim) {
+    return {
+      matched: 0,
+      users: 0,
+      evaluated_candidates: 0,
+      message: '你已成功匹配，不能再次发起匹配'
+    }
+  }
   const existingMatches = await list('user_match_log', { user_id: user.id }, 100)
   const seenPartnerIds = {}
   existingMatches.forEach((row) => {
@@ -423,10 +433,15 @@ async function start(data, wxContext) {
   settingRows.forEach((setting) => {
     settingsByUserId[String(setting.user_id)] = setting
   })
-  const blockedIds = new Set(Object.keys(seenPartnerIds).map(Number))
+  const claims = await list('match_claim', { status: CLAIM_STATUS }, 500)
+  const claimBlockedIds = []
+  claims.forEach((claim) => {
+    claimBlockedIds.push(Number(claim.user_id), Number(claim.match_user_id))
+  })
+  const blockedIds = new Set(Object.keys(seenPartnerIds).map(Number).concat(claimBlockedIds))
   const ranked = rankCandidates(user, candidates, settingsByUserId, { blockedIds })
-  const best = ranked.find((item) => item.quality.pass)
-  if (!best) {
+  const eligible = ranked.filter((item) => item.quality.pass)
+  if (!eligible.length) {
     return {
       matched: 0,
       users: ranked.length + 1,
@@ -435,53 +450,82 @@ async function start(data, wxContext) {
       message: ranked.length ? '本轮暂无通过严格质量门槛的匹配' : '暂无新的可用候选'
     }
   }
-  const partner = best.candidate
-  const abTestRunId = String(partner.ab_test_run_id || '')
   const today = dateOnly(new Date())
-  const detailJsonA = scoreDetailFor(best, 'a', ranked.indexOf(best) + 1)
-  const detailJsonB = scoreDetailFor(best, 'b', ranked.indexOf(best) + 1)
-  const logA = await addWithId('user_match_log', {
-    user_id: user.id,
-    match_user_id: partner.id,
-    view_similarity: best.viewSimilarity,
-    total_score: best.scoreA.total,
-    score_detail_json: JSON.stringify(detailJsonA),
-    score_version: 'algo_evidence_v2',
-    ai_report_text: '',
-    ai_report_status: 0,
-    ai_report_error: '',
-    ai_report_time: null,
-    local_report_text: fallbackMatchReportText(user, partner),
-    match_date: today,
-    match_type: abTestRunId ? 'A/B内测' : '双向算法测试',
-    ab_test_run_id: abTestRunId
-  }, 'match_log')
-  const logB = await addWithId('user_match_log', {
-    user_id: partner.id,
-    match_user_id: user.id,
-    view_similarity: best.viewSimilarity,
-    total_score: best.scoreB.total,
-    score_detail_json: JSON.stringify(detailJsonB),
-    score_version: 'algo_evidence_v2',
-    ai_report_text: '',
-    ai_report_status: 0,
-    ai_report_error: '',
-    ai_report_time: null,
-    local_report_text: fallbackMatchReportText(partner, user),
-    match_date: today,
-    match_type: abTestRunId ? 'A/B内测' : '双向算法测试',
-    ab_test_run_id: abTestRunId
-  }, 'match_log')
-  await reportTask.ensureTaskForMatch(logA, 'auto')
+  const claimStore = createCloudClaimStore()
+  for (let index = 0; index < eligible.length; index += 1) {
+    const best = eligible[index]
+    const partner = best.candidate
+    const claimInput = {
+      userId: user.id,
+      partnerId: partner.id,
+      requestId: String(data.request_id || `match:${user.id}:${Date.now()}`)
+    }
+    const claim = await claimPair(claimInput, claimStore)
+    if (!claim.claimed) continue
+    let logA = null
+    let logB = null
+    try {
+      const abTestRunId = String(partner.ab_test_run_id || '')
+      const detailJsonA = scoreDetailFor(best, 'a', ranked.indexOf(best) + 1)
+      const detailJsonB = scoreDetailFor(best, 'b', ranked.indexOf(best) + 1)
+      logA = await addWithId('user_match_log', {
+        user_id: user.id,
+        match_user_id: partner.id,
+        view_similarity: best.viewSimilarity,
+        total_score: best.scoreA.total,
+        score_detail_json: JSON.stringify(detailJsonA),
+        score_version: 'algo_evidence_v2',
+        ai_report_text: '',
+        ai_report_status: 0,
+        ai_report_error: '',
+        ai_report_time: null,
+        local_report_text: fallbackMatchReportText(user, partner),
+        match_date: today,
+        match_type: abTestRunId ? 'A/B内测' : '双向算法测试',
+        ab_test_run_id: abTestRunId,
+        pair_key: claim.claim.pair_key
+      }, 'match_log')
+      logB = await addWithId('user_match_log', {
+        user_id: partner.id,
+        match_user_id: user.id,
+        view_similarity: best.viewSimilarity,
+        total_score: best.scoreB.total,
+        score_detail_json: JSON.stringify(detailJsonB),
+        score_version: 'algo_evidence_v2',
+        ai_report_text: '',
+        ai_report_status: 0,
+        ai_report_error: '',
+        ai_report_time: null,
+        local_report_text: fallbackMatchReportText(partner, user),
+        match_date: today,
+        match_type: abTestRunId ? 'A/B内测' : '双向算法测试',
+        ab_test_run_id: abTestRunId,
+        pair_key: claim.claim.pair_key
+      }, 'match_log')
+      await reportTask.ensureTaskForMatch(logA, 'auto')
+      return {
+        matched: 1,
+        users: ranked.length + 1,
+        evaluated_candidates: ranked.length,
+        match_id: logA.id,
+        match_user_id: partner.id,
+        view_similarity: best.viewSimilarity,
+        mutual_score: best.mutualScore,
+        pair_key: claim.claim.pair_key,
+        algorithm_version: 'algo_evidence_v2'
+      }
+    } catch (err) {
+      if (logB) await removeByDoc('user_match_log', logB).catch(() => {})
+      if (logA) await removeByDoc('user_match_log', logA).catch(() => {})
+      await releasePair(claimInput, claimStore).catch(() => {})
+      throw err
+    }
+  }
   return {
-    matched: 1,
+    matched: 0,
     users: ranked.length + 1,
     evaluated_candidates: ranked.length,
-    match_id: logA.id,
-    match_user_id: partner.id,
-    view_similarity: best.viewSimilarity,
-    mutual_score: best.mutualScore,
-    algorithm_version: 'algo_evidence_v2'
+    message: '可用候选已被其他匹配占用，请稍后再试'
   }
 }
 

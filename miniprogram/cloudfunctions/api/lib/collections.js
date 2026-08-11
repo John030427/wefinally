@@ -2,6 +2,7 @@ module.exports = {
   user: 'users',
   user_match_setting: 'user_match_settings',
   user_match_log: 'user_match_logs',
+  match_claim: 'match_claims',
   occupation_circle: 'occupation_circles',
   user_order: 'user_orders',
   marry_report: 'marry_reports',
