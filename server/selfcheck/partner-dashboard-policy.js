@@ -15,6 +15,11 @@ const snapshot = buildPartnerDashboard({
     { id: 11, partner_id: 7, pay_status: 1, partner_commission: 5, order_no: 'order-11' },
     { id: 12, partner_id: 7, pay_status: 0, partner_commission: 99, order_no: 'order-12' }
   ],
+  ledger: [
+    { partner_id: 7, order_no: 'order-10', direction: 'credit', amount: 20, idempotency_key: 'credit:order-10' },
+    { partner_id: 7, order_no: 'order-10', direction: 'credit', amount: 20, idempotency_key: 'credit:order-10' },
+    { partner_id: 7, order_no: 'order-10', direction: 'debit', amount: 5, idempotency_key: 'debit:refund-10' }
+  ],
   withdrawals: [{ partner_id: 7, amount: 6, status: 0 }, { partner_id: 7, amount: 4, status: 1 }],
   attributions: [{ partner_id: 7, user_id: 1 }, { partner_id: 7, user_id: 1 }, { partner_id: 7, user_id: 2 }],
   rule: { rule_type: 'fixed', version: 'v2', effective_date: '2026-08-01', commission_condition: '支付成功', settlement_cycle: 'T+7' },
@@ -27,7 +32,7 @@ assert.strictEqual(snapshot.metrics.profile_completed, 2)
 assert.strictEqual(snapshot.metrics.approved_members, 1)
 assert.strictEqual(snapshot.metrics.paid_members, 1)
 assert.strictEqual(snapshot.metrics.paid_orders, 2)
-assert.strictEqual(snapshot.metrics.total_commission, 25)
+assert.strictEqual(snapshot.metrics.total_commission, 15)
 assert.strictEqual(snapshot.metrics.pending_amount, 6)
 assert.strictEqual(snapshot.metrics.settled_amount, 4)
 assert.strictEqual(snapshot.metrics.available_amount, 18.5)
@@ -42,5 +47,6 @@ const handler = fs.readFileSync(path.resolve(__dirname, '../../miniprogram/cloud
 assert(handler.includes("/api\\/partner\\/dashboard$"))
 assert(handler.includes('buildPartnerDashboard'))
 assert(handler.includes('partner_referral_attribution'))
+assert(handler.includes('partner_commission_ledger'))
 
 console.log('PASS partner dashboard policy deduplicates attribution and exposes server metrics')

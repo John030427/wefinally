@@ -6,6 +6,7 @@ module.exports = {
   match_claim_audit: 'match_claim_audits',
   occupation_circle: 'occupation_circles',
   user_order: 'user_orders',
+  partner_commission_ledger: 'partner_commission_ledgers',
   marry_report: 'marry_reports',
   system_stat: 'system_stats',
   system_config: 'system_configs',

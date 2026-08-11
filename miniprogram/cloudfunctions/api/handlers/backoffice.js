@@ -179,17 +179,18 @@ async function partnerDashboard(actor) {
     }
   }
   const partnerId = Number(actor.id)
-  const [users, orders, withdrawals, attributions, shareEvents, rules, daily] = await Promise.all([
+  const [users, orders, withdrawals, attributions, shareEvents, ledger, rules, daily] = await Promise.all([
     safeList('user', { promote_partner_id: partnerId }, 5000),
     safeList('user_order', { partner_id: partnerId }, 5000),
     safeList('partner_withdraw', { partner_id: partnerId }, 5000),
     safeList('partner_referral_attribution', { partner_id: partnerId }, 5000),
     safeList('partner_share_event', { partner_id: partnerId }, 5000),
+    safeList('partner_commission_ledger', { partner_id: partnerId }, 5000),
     safeList('partner_commission_rule', { status: 1 }, 20),
     safeList('partner_dashboard_daily', { partner_id: partnerId }, 60)
   ])
   const rule = rules.sort((left, right) => Number(right.id || 0) - Number(left.id || 0))[0] || null
-  return buildPartnerDashboard({ partner, users, orders, withdrawals, attributions, shareEvents, rule, daily })
+  return buildPartnerDashboard({ partner, users, orders, withdrawals, attributions, shareEvents, ledger, rule, daily })
 }
 
 async function reassign(applicationId, body, actor) {

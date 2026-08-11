@@ -58,6 +58,18 @@ function trendRows(daily, days, anchor) {
   return rows
 }
 
+function ledgerNet(entries, partnerId) {
+  const seen = new Set()
+  return (entries || []).reduce((sum, row) => {
+    if (Number(row.partner_id) !== Number(partnerId)) return sum
+    const key = String(row.idempotency_key || row._id || `${row.order_no}:${row.direction}:${row.amount}`)
+    if (seen.has(key)) return sum
+    seen.add(key)
+    const amount = number(row.amount)
+    return sum + (String(row.direction || '').toLowerCase() === 'debit' ? -amount : amount)
+  }, 0)
+}
+
 function buildPartnerDashboard(input = {}) {
   const partner = input.partner || {}
   const partnerId = Number(partner.id || 0)
@@ -69,7 +81,10 @@ function buildPartnerDashboard(input = {}) {
   const paidOrders = (input.orders || []).filter((row) => Number(row.partner_id) === partnerId && Number(row.pay_status || row.status) === 1)
   const paidUserIds = new Set(paidOrders.map((row) => Number(row.user_id || 0)).filter((id) => id > 0))
   const paidMembers = paidUserIds.size || Math.min(approved, paidOrders.length)
-  const totalCommission = paidOrders.reduce((sum, row) => sum + number(row.partner_commission), 0)
+  const ledgerRows = (input.ledger || []).filter((row) => Number(row.partner_id) === partnerId)
+  const totalCommission = ledgerRows.length
+    ? ledgerNet(ledgerRows, partnerId)
+    : paidOrders.reduce((sum, row) => sum + number(row.partner_commission), 0)
   const withdrawals = (input.withdrawals || []).filter((row) => Number(row.partner_id) === partnerId)
   const pendingAmount = withdrawals.filter((row) => Number(row.status) === 0).reduce((sum, row) => sum + number(row.amount), 0)
   const settledAmount = withdrawals.filter((row) => Number(row.status) === 1 || Number(row.status) === 3).reduce((sum, row) => sum + number(row.amount), 0)
