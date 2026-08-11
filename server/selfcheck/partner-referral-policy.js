@@ -5,6 +5,7 @@ const { createReferralToken, verifyReferralToken, referralInput } = require('../
 const { normalizePromoteCode } = require('../../miniprogram/utils/util')
 const registerPage = fs.readFileSync(path.resolve(__dirname, '../../miniprogram/pages/register/register.js'), 'utf8')
 const commonHandler = fs.readFileSync(path.resolve(__dirname, '../../miniprogram/cloudfunctions/api/handlers/common.js'), 'utf8')
+const mysqlCommonRoute = fs.readFileSync(path.resolve(__dirname, '../src/routes/common.js'), 'utf8')
 
 const secret = 'selfcheck-partner-secret'
 const token = createReferralToken(17, { secret, now: 1700000000000, ttlMs: 86400000 })
@@ -19,6 +20,8 @@ assert.strictEqual(normalizePromoteCode('  plain17  '), 'PLAIN17')
 assert(registerPage.includes('normalizePromoteCode'))
 assert(commonHandler.includes('referralInput(code)'))
 assert(!commonHandler.includes("String(data.code || '').trim().toUpperCase()"))
+assert(mysqlCommonRoute.includes('referralInput(code)'))
+assert(!mysqlCommonRoute.includes("String(req.query.code || '').trim().toUpperCase()"))
 
 const memberPolicy = fs.readFileSync(path.resolve(__dirname, '../../miniprogram/cloudfunctions/api/lib/memberPolicy.js'), 'utf8')
 const cloudBackoffice = fs.readFileSync(path.resolve(__dirname, '../../miniprogram/cloudfunctions/api/handlers/backoffice.js'), 'utf8')
