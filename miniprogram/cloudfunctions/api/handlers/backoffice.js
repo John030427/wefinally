@@ -168,6 +168,22 @@ async function inviteAssets(actor) {
   }
 }
 
+async function recordShareEvent(body, actor) {
+  if (!actor || actor.role !== 'partner') throw new Error('无权记录分享行为')
+  const channel = String(body.channel || 'link').trim().slice(0, 32) || 'link'
+  const allowedChannels = new Set(['link', 'code', 'qrcode', 'wechat'])
+  const partner = await db.byId('partner', actor.id)
+  if (!partner || Number(partner.status) !== 1) throw new Error('后台账号已停用')
+  const normalizedChannel = allowedChannels.has(channel) ? channel : 'link'
+  await db.addWithId('partner_share_event', {
+    partner_id: Number(actor.id),
+    event_type: 'share_trigger',
+    channel: normalizedChannel,
+    source: 'partner_dashboard'
+  }, 'partner_share_event')
+  return { recorded: true, channel: normalizedChannel }
+}
+
 async function partnerDashboard(actor) {
   const partner = await db.byId('partner', actor.id)
   if (!partner) throw new Error('合伙人不存在')
@@ -255,6 +271,7 @@ async function handleBackofficeHttp(event = {}) {
       return ok({ list: await applicationList(actor, event.queryStringParameters?.status || '') })
     }
     if (method === 'GET' && /\/api\/partner\/dashboard$/.test(path)) return ok(await partnerDashboard(actor))
+    if (method === 'POST' && /\/api\/partner\/share-event$/.test(path)) return ok(await recordShareEvent(body, actor))
     if (method === 'GET' && /\/api\/admin\/member-applications$/.test(path)) {
       return ok({ list: await applicationList(actor, event.queryStringParameters?.status || '') })
     }

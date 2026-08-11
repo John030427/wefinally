@@ -430,13 +430,14 @@
       ? '<div class="card"><div class="card-header"><h4>邀请小程序码</h4></div><div class="card-body"><img alt="邀请小程序码" style="width:220px;max-width:100%" src="data:image/png;base64,' + data.qrcode_base64 + '" /></div></div>'
       : '';
     document.getElementById('pageContent').innerHTML =
-      '<div class="card"><div class="card-header"><h4>专属推广码</h4><button class="btn btn-sm btn-primary" onclick="copyText(\'' + esc(data.promote_code) + '\')">复制推广码</button></div><div class="card-body"><div class="copy-box">' + esc(data.promote_code) + '</div></div></div>' +
-      '<div class="card"><div class="card-header"><h4>推广链接</h4><button class="btn btn-sm btn-primary" onclick="copyText(\'' + esc(link) + '\')">复制链接</button></div><div class="card-body"><div class="copy-box">' + esc(link) + '</div><p style="font-size:.8125rem;color:var(--muted);margin-top:.5rem">' + esc(data.qrcode_tip || data.qrcode_error || '') + '</p></div></div>' +
+      '<div class="card"><div class="card-header"><h4>专属推广码</h4><button class="btn btn-sm btn-primary" onclick="copyText(\'' + esc(data.promote_code) + '\', \'code\')">复制推广码</button></div><div class="card-body"><div class="copy-box">' + esc(data.promote_code) + '</div></div></div>' +
+      '<div class="card"><div class="card-header"><h4>推广链接</h4><button class="btn btn-sm btn-primary" onclick="copyText(\'' + esc(link) + '\', \'link\')">复制链接</button></div><div class="card-body"><div class="copy-box">' + esc(link) + '</div><p style="font-size:.8125rem;color:var(--muted);margin-top:.5rem">' + esc(data.qrcode_tip || data.qrcode_error || '') + '</p></div></div>' +
       qrcode +
       '<div class="card"><div class="card-body"><p><strong>' + esc(data.share_title || 'WeFinally 邀请') + '</strong></p><p style="color:var(--muted);font-size:.875rem;margin-top:.35rem">' + esc(data.share_desc || '通过专属邀请码申请正式会员') + '</p></div></div>';
   }
 
-  window.copyText = function (text) {
+  window.copyText = function (text, channel) {
+    api('/partner/share-event', { method: 'POST', body: { channel: channel || 'link' } }).catch(function () {});
     navigator.clipboard.writeText(text).then(function () { toast('已复制到剪贴板', 'success'); }).catch(function () { toast('复制失败，请手动复制', 'error'); });
   };
 
