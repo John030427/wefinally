@@ -113,7 +113,7 @@
     <view class="algorithm-toggle card" wx:if="{{!detail.locked}}" bindtap="toggleAlgorithmDetails">
       <view>
         <view class="algorithm-title">算法与报告细节</view>
-        <view class="algorithm-desc">综合分、字段拆解和 AI 报告仅作辅助参考</view>
+        <view class="algorithm-desc">综合分、细项解释和 AI 报告仅作辅助参考</view>
       </view>
       <view class="algorithm-action">{{showAlgorithmDetails ? '收起' : '展开'}} ›</view>
     </view>
