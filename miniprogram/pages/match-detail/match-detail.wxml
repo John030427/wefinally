@@ -259,6 +259,7 @@
         <navigator wx:if="{{!detail.locked}}" url="/pages/date-coordination/date-coordination?matchUserId={{detail.matchedUserId}}&matchLogId={{matchId}}" class="meet-action-btn meet-action-primary">开始约会协调</navigator>
         <view wx:if="{{dateFeedbackEligibility && dateFeedbackEligibility.can_submit}}" class="meet-action-btn date-feedback-action" bindtap="goDateFeedback">填写约会后反馈</view>
         <navigator url="/pages/meet-safety/meet-safety?matchUserId={{detail.matchedUserId}}&matchLogId={{matchId}}" class="meet-action-btn meet-action-primary">线下见面安全确认</navigator>
+        <button class="meet-action-btn" open-type="contact">匹配异常联系人工客服</button>
       </view>
     </view>
 
