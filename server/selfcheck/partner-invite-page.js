@@ -9,6 +9,7 @@ const backoffice = fs.readFileSync(path.join(root, 'cloudfunctions/api/handlers/
 const page = fs.readFileSync(path.join(root, 'pages/partner-invite/partner-invite.js'), 'utf8')
 const markup = fs.readFileSync(path.join(root, 'pages/partner-invite/partner-invite.wxml'), 'utf8')
 const constants = fs.readFileSync(path.join(root, 'utils/constants.js'), 'utf8')
+const appJs = fs.readFileSync(path.join(root, 'app.js'), 'utf8')
 
 assert(app.pages.includes('pages/partner-login/partner-login'))
 assert(app.pages.includes('pages/partner-invite/partner-invite'))
@@ -23,5 +24,7 @@ assert(page.includes("recordShareEvent('wechat')"))
 assert(markup.includes('open-type="share"'))
 assert(markup.includes('qrcodePath'))
 assert(constants.includes('PARTNER_TOKEN'))
+assert(appJs.includes('wx.removeStorageSync(STORAGE_KEYS.PARTNER_TOKEN)'))
+assert(appJs.includes('wx.removeStorageSync(STORAGE_KEYS.PARTNER_INFO)'))
 
 console.log('PASS mini-program partner invite page uses signed attribution, native share and QR fallback')
