@@ -3,7 +3,7 @@ const fs = require('fs')
 const path = require('path')
 
 const html = fs.readFileSync(path.resolve(__dirname, '../public/partner/index.html'), 'utf8')
-assert(html.includes("const CLOUD_ONLY_PAGES = ['dashboard', 'audit', 'promote'];"))
+assert(html.includes("const CLOUD_ONLY_ALLOWED_PAGES = ['dashboard'].concat(CLOUD_ONLY_PAGES);"))
 assert(html.includes('function renderCloudDashboard'))
 assert(html.includes('metrics.attributed_registrations'))
 assert(html.includes('metrics.pending_amount'))
