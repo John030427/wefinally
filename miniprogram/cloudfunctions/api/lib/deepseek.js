@@ -142,6 +142,59 @@ function extractJsonObject(text) {
   }
 }
 
+function matchRerankEnabled() {
+  const value = envValue(['DEEPSEEK_MATCH_RERANK_ENABLED'])
+  return value !== undefined && isTruthy(value) && !isFalsy(value)
+}
+
+function rerankConfig() {
+  const timeout = Number(envValue(['DEEPSEEK_MATCH_RERANK_TIMEOUT_MS']) || 12000)
+  return {
+    apiKey: envValue(['DEEPSEEK_API_KEY', 'LLM_API_KEY']),
+    baseURL: String(envValue(['DEEPSEEK_BASE_URL', 'LLM_BASE_URL']) || 'https://api.deepseek.com').replace(/\/+$/, ''),
+    model: String(envValue(['DEEPSEEK_MATCH_RERANK_MODEL', 'DEEPSEEK_MODEL', 'LLM_MODEL']) || 'deepseek-chat'),
+    timeoutMs: Number.isFinite(timeout) && timeout > 0 ? Math.min(Math.max(timeout, 3000), 20000) : 12000
+  }
+}
+
+async function rerankMutualMatchCandidates(request) {
+  if (!matchRerankEnabled()) return { enabled: false, response: null, model: '' }
+  const cfg = rerankConfig()
+  if (!cfg.apiKey) throw new Error('missing DEEPSEEK_API_KEY for match rerank')
+  const prompt = [
+    '你是 WeFinally 匹配语义校验器，只能在给定候选内重排，不能新增、删除或修改候选。',
+    '基于 A→B 与 B→A 的双向理解，关注价值观、生活规划、外貌气质偏好和补充需求的明确度。',
+    '不得访问数据库，不得输出联系方式、openid、手机号、精确地址、单位或收入；只输出合法 JSON。',
+    '输出字段：version、ranking；每项包含 candidate_ref、rank、a_to_b_semantic_score、b_to_a_semantic_score、mutual_semantic_score、mutual_strengths、asymmetric_risks、confirmation_questions、evidence_tags、data_completeness、confidence。',
+    `输入：${JSON.stringify(request).slice(0, 16000)}`
+  ].join('\n')
+  const body = {
+    model: cfg.model,
+    messages: [
+      { role: 'system', content: '只输出符合要求的合法 JSON。' },
+      { role: 'user', content: prompt }
+    ],
+    response_format: { type: 'json_object' },
+    max_tokens: 1800,
+    temperature: 0.1,
+    stream: false
+  }
+  let lastError = null
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const data = await requestJson(endpointFor(cfg.baseURL), body, {
+        Authorization: `Bearer ${cfg.apiKey}`
+      }, cfg.timeoutMs)
+      const parsed = extractJsonObject(textFromOpenAIResponse(data))
+      if (!parsed) throw new Error('DeepSeek match rerank JSON invalid')
+      return { enabled: true, response: parsed, model: cfg.model, usage: data.usage || null }
+    } catch (err) {
+      lastError = err
+    }
+  }
+  throw lastError || new Error('DeepSeek match rerank failed')
+}
+
 function compactUser(user) {
   return {
     gender: Number(user.gender) === 1 ? '男' : '女',
@@ -393,5 +446,6 @@ module.exports = {
   generateMutualMatchReports,
   generateStructuredMatchReports,
   validateStructuredReport,
-  buildInputSnapshot
+  buildInputSnapshot,
+  rerankMutualMatchCandidates
 }

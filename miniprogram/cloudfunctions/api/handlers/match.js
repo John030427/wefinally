@@ -6,6 +6,12 @@ const { MEMBER_STATUS, memberStatus, canUseMatching, normalizeMatchSettingInput 
 const { rankCandidates, scoreDetailFor } = require('../lib/matchPolicy')
 const { compileIntentProfile, normalizeMode } = require('../lib/intentProfile')
 const { claimPair, releasePair, createCloudClaimStore, CLAIM_STATUS } = require('../lib/matchClaim')
+const {
+  buildSemanticRerankRequest,
+  validateSemanticRerankResponse,
+  mergeSemanticRerank
+} = require('../lib/matchSemanticRerank')
+const { rerankMutualMatchCandidates } = require('../lib/deepseek')
 const reportTask = require('./reportTask')
 
 function parseJson(value) {
@@ -398,6 +404,40 @@ async function seedDemoCandidate(user) {
   return partner
 }
 
+async function semanticRerank(ranked, user, settingsByUserId) {
+  const eligible = ranked.filter((item) => item.quality && item.quality.pass === true)
+  if (!eligible.length) return { applied: false, reason: 'no_candidates', ranked }
+  try {
+    const currentSetting = settingsByUserId[String(user.id)] || {}
+    const request = buildSemanticRerankRequest({
+      topK: 10,
+      candidates: eligible.map((item) => {
+        const partnerSetting = settingsByUserId[String(item.candidate.id)] || {}
+        return {
+          internalUserId: item.candidate.id,
+          quality: item.quality,
+          mutualScore: item.mutualScore,
+          viewSimilarity: item.viewSimilarity,
+          scoreA: item.scoreA,
+          scoreB: item.scoreB,
+          intentA: parseJson(currentSetting.intent_profile_json),
+          intentB: parseJson(partnerSetting.intent_profile_json),
+          supplementA: currentSetting.other_requirements,
+          supplementB: partnerSetting.other_requirements
+        }
+      })
+    })
+    const remote = await rerankMutualMatchCandidates(request)
+    if (!remote || !remote.enabled || !remote.response) {
+      return { applied: false, reason: 'disabled', ranked }
+    }
+    const validated = validateSemanticRerankResponse(remote.response, request)
+    return mergeSemanticRerank(ranked, validated, { minConfidence: 0.65, maxWeight: 0.2 })
+  } catch (err) {
+    return { applied: false, reason: 'fallback', ranked }
+  }
+}
+
 async function start(data, wxContext) {
   const enabled = await flagEnabled('cloud_demo_match_enabled')
   if (!enabled) {
@@ -440,7 +480,8 @@ async function start(data, wxContext) {
   })
   const blockedIds = new Set(Object.keys(seenPartnerIds).map(Number).concat(claimBlockedIds))
   const ranked = rankCandidates(user, candidates, settingsByUserId, { blockedIds })
-  const eligible = ranked.filter((item) => item.quality.pass)
+  const reranked = await semanticRerank(ranked, user, settingsByUserId)
+  const eligible = reranked.ranked.filter((item) => item.quality.pass)
   if (!eligible.length) {
     return {
       matched: 0,
@@ -466,8 +507,24 @@ async function start(data, wxContext) {
     let logB = null
     try {
       const abTestRunId = String(partner.ab_test_run_id || '')
-      const detailJsonA = scoreDetailFor(best, 'a', ranked.indexOf(best) + 1)
-      const detailJsonB = scoreDetailFor(best, 'b', ranked.indexOf(best) + 1)
+      const detailJsonA = Object.assign(scoreDetailFor(best, 'a', ranked.indexOf(best) + 1), {
+        ai_rank: best.ai_rank || null,
+        ai_weight: best.ai_weight || 0,
+        semantic_score: best.semantic_score || null,
+        mutual_semantic_score: best.mutual_semantic_score || null,
+        semantic_confidence: best.semantic_confidence || null,
+        asymmetric_risks: best.asymmetric_risks || [],
+        confirmation_questions: best.confirmation_questions || []
+      })
+      const detailJsonB = Object.assign(scoreDetailFor(best, 'b', ranked.indexOf(best) + 1), {
+        ai_rank: best.ai_rank || null,
+        ai_weight: best.ai_weight || 0,
+        semantic_score: best.semantic_score || null,
+        mutual_semantic_score: best.mutual_semantic_score || null,
+        semantic_confidence: best.semantic_confidence || null,
+        asymmetric_risks: best.asymmetric_risks || [],
+        confirmation_questions: best.confirmation_questions || []
+      })
       logA = await addWithId('user_match_log', {
         user_id: user.id,
         match_user_id: partner.id,

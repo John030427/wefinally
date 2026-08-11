@@ -133,7 +133,11 @@ const handler = fs.readFileSync(path.resolve(
   '../../miniprogram/cloudfunctions/api/handlers/match.js'
 ), 'utf8')
 const startBody = handler.split('async function start')[1].split('module.exports')[0]
-assert(startBody.includes('const eligible = ranked.filter((item) => item.quality.pass)'))
+assert(startBody.includes('const eligible = reranked.ranked.filter((item) => item.quality.pass)'))
+assert(startBody.includes('const reranked = await semanticRerank(ranked, user, settingsByUserId)'))
+assert(handler.includes('validateSemanticRerankResponse'))
+assert(handler.includes('mergeSemanticRerank'))
+assert(handler.includes('rerankMutualMatchCandidates'))
 assert(startBody.indexOf('claimPair') < startBody.indexOf("addWithId('user_match_log'"))
 assert(startBody.includes('if (!eligible.length)'))
 assert(startBody.includes('可用候选已被其他匹配占用'))
