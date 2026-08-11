@@ -51,6 +51,23 @@ const response = validateSemanticRerankResponse({
 }, request)
 assert.strictEqual(response[0].internalUserId, 31)
 assert.strictEqual(response[0].mutualSemanticScore, 79)
+assert.throws(() => validateSemanticRerankResponse({
+  version: RERANK_VERSION,
+  ranking: [{
+    candidate_ref: 'candidate_1',
+    rank: 1,
+    a_to_b_semantic_score: 86,
+    b_to_a_semantic_score: 73,
+    mutual_semantic_score: 79,
+    mutual_strengths: ['手机号 13800138000'],
+    asymmetric_risks: [],
+    confirmation_questions: [],
+    evidence_tags: ['life_plan_alignment'],
+    data_completeness: 0.8,
+    confidence: 0.84
+  }],
+  request
+}, request), /隐私信息/)
 
 const merged = mergeSemanticRerank(ranked, response, { minConfidence: 0.7, maxWeight: 0.2 })
 assert.strictEqual(merged.applied, true)

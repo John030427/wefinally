@@ -8,6 +8,7 @@ const ALLOWED_EVIDENCE_TAGS = new Set([
   'appearance_preference',
   'missing_evidence'
 ])
+const FORBIDDEN_OUTPUT_PATTERN = /(?:1[3-9]\d{9}|[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}|\b(?:openid|unionid|session[_ -]?key|token)\b|手机号|手机号码|微信号|联系方式|精确地址)/i
 
 function integer(value, min, max, label) {
   const number = Number(value)
@@ -93,7 +94,9 @@ function buildSemanticRerankRequest(input = {}) {
 
 function textList(value, label) {
   if (!Array.isArray(value) || value.length > 6) throw new Error(`${label}无效`)
-  return value.map((item) => String(item || '').trim().slice(0, 80)).filter(Boolean)
+  const values = value.map((item) => String(item || '').trim().slice(0, 80)).filter(Boolean)
+  if (values.some((item) => FORBIDDEN_OUTPUT_PATTERN.test(item))) throw new Error(`${label}包含隐私信息`)
+  return values
 }
 
 function validateSemanticRerankResponse(response, request) {
