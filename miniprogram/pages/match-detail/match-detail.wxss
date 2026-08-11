@@ -102,6 +102,32 @@
   line-height: 1.5;
 }
 
+.semantic-score-row,
+.semantic-metrics {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+  color: #555;
+  font-size: 24rpx;
+  line-height: 1.5;
+}
+
+.semantic-score-row {
+  color: #ff6b8a;
+  font-weight: 600;
+}
+
+.semantic-metrics {
+  margin-top: 12rpx;
+  color: #888;
+  font-size: 22rpx;
+}
+
+.semantic-group {
+  margin-top: 18rpx;
+}
+
 .breakdown-card {
   margin-top: 0;
 }

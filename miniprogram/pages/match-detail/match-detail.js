@@ -73,6 +73,12 @@ function shortDate(value) {
   return formatDateOnly(value)
 }
 
+function nullableNumber(value) {
+  if (value === null || value === undefined || value === '') return null
+  const number = Number(value)
+  return Number.isFinite(number) ? number : null
+}
+
 function selectionMap(items) {
   const map = {}
   ;(items || []).forEach((item) => { map[item] = true })
@@ -227,6 +233,22 @@ Page({
         psychText: buildPsychText((scoreDetail || {}).side
           ? (scoreDetail || {}).side.psych_score
           : null),
+        semanticScore: nullableNumber(scoreDetail && scoreDetail.mutual_semantic_score) === null
+          ? null : Math.round(nullableNumber(scoreDetail.mutual_semantic_score)),
+        aToBSemanticScore: nullableNumber(scoreDetail && scoreDetail.a_to_b_semantic_score) === null
+          ? null : Math.round(nullableNumber(scoreDetail.a_to_b_semantic_score)),
+        bToASemanticScore: nullableNumber(scoreDetail && scoreDetail.b_to_a_semantic_score) === null
+          ? null : Math.round(nullableNumber(scoreDetail.b_to_a_semantic_score)),
+        semanticStrengths: Array.isArray(scoreDetail && scoreDetail.semantic_strengths)
+          ? scoreDetail.semantic_strengths : [],
+        asymmetricRisks: Array.isArray(scoreDetail && scoreDetail.asymmetric_risks)
+          ? scoreDetail.asymmetric_risks : [],
+        confirmationQuestions: Array.isArray(scoreDetail && scoreDetail.confirmation_questions)
+          ? scoreDetail.confirmation_questions : [],
+        dataCompleteness: nullableNumber(scoreDetail && scoreDetail.data_completeness) === null
+          ? null : Math.round(nullableNumber(scoreDetail.data_completeness) * 100),
+        semanticConfidence: nullableNumber(scoreDetail && scoreDetail.semantic_confidence) === null
+          ? null : Math.round(nullableNumber(scoreDetail.semantic_confidence) * 100),
         aiReportText,
         aiReport: detail.ai_report || detail.aiReport || null,
         localReportText,

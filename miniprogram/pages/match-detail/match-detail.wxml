@@ -130,6 +130,30 @@
       <view class="compat-hint">基于资料、择偶条件、三观文本和关系偏好测算，仅作优先了解参考</view>
     </view>
 
+    <view class="compat-card card" wx:if="{{detail.semanticScore !== null || detail.semanticConfidence !== null}}">
+      <view class="compat-title">双向语义理解（辅助参考）</view>
+      <view class="semantic-score-row" wx:if="{{detail.semanticScore !== null}}">
+        <text>双向语义分 {{detail.semanticScore}}</text>
+        <text wx:if="{{detail.aToBSemanticScore !== null && detail.bToASemanticScore !== null}}">A→B {{detail.aToBSemanticScore}} · B→A {{detail.bToASemanticScore}}</text>
+      </view>
+      <view class="semantic-metrics">
+        <text wx:if="{{detail.dataCompleteness !== null}}">数据完整度 {{detail.dataCompleteness}}%</text>
+        <text wx:if="{{detail.semanticConfidence !== null}}">AI置信度 {{detail.semanticConfidence}}%</text>
+      </view>
+      <view wx:if="{{detail.semanticStrengths.length}}" class="semantic-group">
+        <view class="local-report-title">共同满足点</view>
+        <view wx:for="{{detail.semanticStrengths}}" wx:key="*this" class="compat-hint">{{item}}</view>
+      </view>
+      <view wx:if="{{detail.asymmetricRisks.length}}" class="semantic-group">
+        <view class="local-report-title">潜在不对称</view>
+        <view wx:for="{{detail.asymmetricRisks}}" wx:key="*this" class="compat-hint">{{item}}</view>
+      </view>
+      <view wx:if="{{detail.confirmationQuestions.length}}" class="semantic-group">
+        <view class="local-report-title">待确认问题</view>
+        <view wx:for="{{detail.confirmationQuestions}}" wx:key="*this" class="compat-hint">{{item}}</view>
+      </view>
+    </view>
+
     <view class="report-card card" wx:if="{{!detail.locked}}">
       <view class="report-header">
         <view class="meet-title">AI匹配报告</view>

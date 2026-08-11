@@ -511,8 +511,12 @@ async function start(data, wxContext) {
         ai_rank: best.ai_rank || null,
         ai_weight: best.ai_weight || 0,
         semantic_score: best.semantic_score || null,
+        a_to_b_semantic_score: best.a_to_b_semantic_score || null,
+        b_to_a_semantic_score: best.b_to_a_semantic_score || null,
         mutual_semantic_score: best.mutual_semantic_score || null,
+        semantic_strengths: best.semantic_strengths || [],
         semantic_confidence: best.semantic_confidence || null,
+        data_completeness: best.data_completeness || null,
         asymmetric_risks: best.asymmetric_risks || [],
         confirmation_questions: best.confirmation_questions || []
       })
@@ -520,8 +524,12 @@ async function start(data, wxContext) {
         ai_rank: best.ai_rank || null,
         ai_weight: best.ai_weight || 0,
         semantic_score: best.semantic_score || null,
+        a_to_b_semantic_score: best.a_to_b_semantic_score || null,
+        b_to_a_semantic_score: best.b_to_a_semantic_score || null,
         mutual_semantic_score: best.mutual_semantic_score || null,
+        semantic_strengths: best.semantic_strengths || [],
         semantic_confidence: best.semantic_confidence || null,
+        data_completeness: best.data_completeness || null,
         asymmetric_risks: best.asymmetric_risks || [],
         confirmation_questions: best.confirmation_questions || []
       })
