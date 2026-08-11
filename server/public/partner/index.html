@@ -142,7 +142,7 @@
   const CLOUD_MEMBER_API = (window.WF_CLOUD_BACKOFFICE_API || new URLSearchParams(location.search).get('cloudApi') || DEFAULT_CLOUD_MEMBER_API).replace(/\/$/, '');
   const CLOUD_ONLY = window.WF_CLOUD_ONLY === true || new URLSearchParams(location.search).get('cloudOnly') === '1';
   const API = CLOUD_ONLY ? CLOUD_MEMBER_API + '/api' : '/api';
-  const CLOUD_ONLY_PAGES = ['audit', 'promote'];
+  const CLOUD_ONLY_PAGES = ['dashboard', 'audit', 'promote'];
   const TOKEN_KEY = 'wf_partner_token';
   const CLOUD_TOKEN_KEY = 'wf_cloud_partner_token';
   const TITLES = { dashboard:'数据看板', audit:'用户审核', users:'推广用户', orders:'分润订单', promote:'推广工具', withdraw:'资金提现', profile:'账号设置' };
@@ -256,6 +256,10 @@
 
   async function renderDashboard() {
     const data = await api('/partner/dashboard');
+    if (data.metrics) {
+      renderCloudDashboard(data);
+      return;
+    }
     state.partner = data.partner;
     document.getElementById('partnerInfo').textContent = data.partner.username + ' · ' + data.partner.promote_code;
     const s = data.stats;
@@ -278,6 +282,46 @@
         : await api('/partner/users?member_status=pending_review&pageSize=1');
       document.getElementById('pendingAudit').textContent = CLOUD_MEMBER_API ? (pending.list || []).length : pending.total;
     } catch (e) {}
+  }
+
+  function renderCloudDashboard(data) {
+    const partner = data.partner || {};
+    const metrics = data.metrics || {};
+    const rule = data.rule || {};
+    const trends = data.trends || {};
+    state.partner = partner;
+    document.getElementById('partnerInfo').textContent = (partner.name || partner.username || '') + ' · ' + (partner.promote_code || '');
+    document.getElementById('pageContent').innerHTML =
+      '<div class="stats-grid">' +
+      statCard('归因注册', metrics.attributed_registrations || 0) +
+      statCard('资料已填', metrics.profile_completed || 0) +
+      statCard('审核通过', metrics.approved_members || 0) +
+      statCard('已购买会员', metrics.paid_members || 0) +
+      statCard('累计佣金(元)', Number(metrics.total_commission || 0).toFixed(2)) +
+      statCard('待结算(元)', Number(metrics.pending_amount || 0).toFixed(2)) +
+      statCard('已结算(元)', Number(metrics.settled_amount || 0).toFixed(2)) +
+      statCard('可用余额(元)', Number(metrics.available_amount || 0).toFixed(2)) +
+      '</div>' +
+      '<div class="card"><div class="card-header"><h4>转化与分享行为</h4></div><div class="card-body">' +
+      '<p>分享触发：<strong>' + esc(metrics.share_triggers || 0) + '</strong>（行为事件，不等于注册人数）</p>' +
+      '<p style="margin-top:.5rem">注册转化率：<strong>' + esc(metrics.registration_conversion_rate || 0) + '%</strong> · 付费转化率：<strong>' + esc(metrics.paid_conversion_rate || 0) + '%</strong></p>' +
+      '</div></div>' +
+      '<div class="card"><div class="card-header"><h4>当前分成规则</h4></div><div class="card-body">' +
+      '<p>类型：' + esc(rule.rule_type || '--') + ' · 版本：' + esc(rule.version || '--') + ' · 生效日：' + esc(rule.effective_date || '--') + '</p>' +
+      '<p style="margin-top:.5rem">条件：' + esc(rule.commission_condition || '--') + '</p>' +
+      '<p style="margin-top:.5rem">退款冲正：' + esc(rule.refund_adjustment || '--') + ' · 预计结算：' + esc(rule.settlement_cycle || '--') + '</p>' +
+      '</div></div>' +
+      trendTable('最近 7 天趋势', trends.days_7 || []) +
+      trendTable('最近 30 天趋势', trends.days_30 || []);
+  }
+
+  function trendTable(title, rows) {
+    const body = rows.length
+      ? rows.map(function (row) {
+        return '<tr><td>' + esc(row.date) + '</td><td>' + esc(row.registered || 0) + '</td><td>' + esc(row.paid || 0) + '</td><td>¥' + Number(row.commission || 0).toFixed(2) + '</td></tr>';
+      }).join('')
+      : '<tr><td colspan="4" class="empty">暂无趋势数据</td></tr>';
+    return '<div class="card"><div class="card-header"><h4>' + esc(title) + '</h4></div><div class="card-body"><table><thead><tr><th>日期</th><th>注册</th><th>付费</th><th>佣金</th></tr></thead><tbody>' + body + '</tbody></table></div></div>';
   }
 
   function statCard(label, value) {
