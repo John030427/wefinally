@@ -11,7 +11,7 @@ const {
   CITY_OPTIONS,
   HEIGHT_RANGE_OPTIONS
 } = require('../../utils/constants')
-const { parsePromoteCode } = require('../../utils/util')
+const { parsePromoteCode, normalizePromoteCode } = require('../../utils/util')
 
 Page({
   data: {
@@ -103,7 +103,7 @@ Page({
       code = wx.getStorageSync(STORAGE_KEYS.PROMOTE_CODE) || ''
     }
     if (code) {
-      const normalized = String(code).trim().toUpperCase()
+      const normalized = normalizePromoteCode(code)
       wx.setStorageSync(STORAGE_KEYS.PROMOTE_CODE, normalized)
       this.setData({
         'form.promote_code': normalized,
@@ -300,7 +300,7 @@ Page({
   },
 
   onPromoteInput(e) {
-    const code = String(e.detail.value || '').replace(/\s/g, '').toUpperCase()
+    const code = normalizePromoteCode(e.detail.value)
     const update = {
       'form.promote_code': code,
       promoStatus: code ? 'pending' : '',
@@ -338,7 +338,7 @@ Page({
   },
 
   async checkPromoteCode(options = {}) {
-    const code = String(this.data.form.promote_code || '').trim().toUpperCase()
+    const code = normalizePromoteCode(this.data.form.promote_code)
     if (!code) {
       this.setData({ promoStatus: '', promoMessage: '' })
       wx.removeStorageSync(STORAGE_KEYS.PROMOTE_CODE)
@@ -467,7 +467,7 @@ Page({
         appearance_description: form.appearanceDescription.trim(),
         circle_id: form.circleId,
         occupation_description: String(form.occupationDescription || '').trim(),
-        promote_code: String(form.promote_code || '').trim().toUpperCase(),
+        promote_code: normalizePromoteCode(form.promote_code),
         agreements: ['user_service', 'privacy', 'data_auth'],
         device_info: `${wx.getSystemInfoSync().model || ''} ${wx.getSystemInfoSync().system || ''}`
       }, { showLoading: true, loadingText: '提交中...' })

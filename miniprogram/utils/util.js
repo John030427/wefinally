@@ -105,6 +105,13 @@ function parsePromoteCode(scene, query) {
   return ''
 }
 
+function normalizePromoteCode(value) {
+  const compact = String(value || '').replace(/\s/g, '').trim()
+  if (!compact) return ''
+  if (/^wf1\./i.test(compact)) return `wf1.${compact.slice(compact.indexOf('.') + 1)}`
+  return compact.toUpperCase()
+}
+
 function validateTextLength(text, min, max) {
   const len = (text || '').trim().length
   return len >= min && len <= max
@@ -161,6 +168,7 @@ module.exports = {
   getTotalMatchDisplayText,
   getCompatibilityTagClass,
   parsePromoteCode,
+  normalizePromoteCode,
   validateTextLength,
   calcAge,
   genderText,
