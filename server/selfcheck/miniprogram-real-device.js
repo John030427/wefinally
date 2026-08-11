@@ -60,8 +60,24 @@ function methodBody(source, name) {
   return '';
 }
 
-const jsFiles = walk(miniRoot).filter((file) => file.endsWith('.js'));
-const miniFiles = walk(miniRoot);
+// Cloud functions are deployed as a separate Node.js runtime and are not part
+// of the WeChat app-service JavaScript package.  Keep the device-compatibility
+// scan focused on the client entrypoint and client source directories; scanning
+// cloudfunction dist/node_modules produces false failures for valid server JS.
+const clientJsRoots = [
+  appPath,
+  ...['pages', 'components', 'utils'].map((name) => path.join(miniRoot, name)),
+];
+const jsFiles = clientJsRoots.flatMap((root) => {
+  if (!fs.existsSync(root)) return [];
+  if (fs.statSync(root).isFile()) return [root];
+  return walk(root).filter((file) => file.endsWith('.js'));
+});
+const cloudFunctionsRoot = path.resolve(miniRoot, projectConfig.cloudfunctionRoot || 'cloudfunctions');
+const miniFiles = walk(miniRoot).filter((file) => {
+  const relative = path.relative(cloudFunctionsRoot, file);
+  return relative === '' || (relative.startsWith('..') && !path.isAbsolute(relative));
+});
 const sourcePackageBytes = miniFiles.reduce((sum, file) => sum + fs.statSync(file).size, 0);
 const modernSyntaxFiles = jsFiles.filter((file) => {
   const text = fs.readFileSync(file, 'utf8');
@@ -150,7 +166,11 @@ ok('original cover visual remains outside mini program package', fs.existsSync(c
 ok('branded cover source remains outside mini program package', fs.existsSync(brandedCoverSourcePath));
 ok('mini program uses optimized branded JPG cover', fs.existsSync(brandedCoverPath) && fs.statSync(brandedCoverPath).size < 350 * 1024);
 ok('mini program assets do not include oversized cover PNG sources', !fs.existsSync(path.join(miniRoot, 'assets', 'wefinally-cover-generated.png')) && !fs.existsSync(path.join(miniRoot, 'assets', 'wefinally-cover-branded.png')));
-ok('login is the only launch login screen', appJson.pages[0] === 'pages/login/login');
+ok(
+  'welcome is the launch onboarding and logged-out users continue to login',
+  appJson.pages[0] === 'pages/welcome/welcome'
+    && welcomeJs.includes("wx.redirectTo({ url: '/pages/login/login' })")
+);
 ok('true-device smoke diagnostic page exists', appJson.pages.includes('pages/smoke/smoke') && fs.existsSync(path.join(miniRoot, 'pages', 'smoke', 'smoke.js')));
 ok('devtools fragile lazy code loading is disabled for stable startup', appJson.lazyCodeLoading === undefined);
 ok('devtools base library avoids timeout-prone 3.16.x', !String(projectConfig.libVersion || '').startsWith('3.16.') && !String(privateConfig.libVersion || '').startsWith('3.16.'));
