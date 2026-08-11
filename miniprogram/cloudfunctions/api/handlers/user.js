@@ -1,6 +1,7 @@
 const { col, first, byId, addWithId, updateByDoc, authError, now } = require('../lib/db')
 const { tokenFor } = require('./auth')
 const { isVipActive } = require('../lib/format')
+const { ensureReferralAttribution } = require('../lib/partnerReferralAttributionPolicy')
 const {
   MEMBER_STATUS,
   memberStatus,
@@ -43,6 +44,14 @@ async function register(data, wxContext) {
   if (!openid) throw new Error('缺少 openid')
   const existing = await first('user', { openid })
   if (existing) {
+    if (Number(existing.promote_partner_id || 0) > 0) {
+      await ensureReferralAttribution(
+        existing,
+        { id: existing.promote_partner_id, promote_code: existing.promote_code },
+        existing.promote_code,
+        { first, addWithId, now }
+      )
+    }
     return {
       token: tokenFor(openid),
       user: await profilePayload(existing)
@@ -85,6 +94,8 @@ async function register(data, wxContext) {
     appearance_want_tags: '',
     last_match_setting_time: null
   }, 'user')
+
+  await ensureReferralAttribution(user, partner, data.promote_code, { first, addWithId, now })
 
   await addWithId('user_match_setting', {
     user_id: user.id,
