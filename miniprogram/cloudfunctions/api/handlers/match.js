@@ -505,6 +505,19 @@ async function start(data, wxContext) {
     if (!claim.claimed) continue
     let logA = null
     let logB = null
+    let claimAudit = null
+    let userUpdated = false
+    let partnerUpdated = false
+    const previousUserState = {
+      match_status: user.match_status,
+      matched_partner_id: user.matched_partner_id,
+      matched_at: user.matched_at
+    }
+    const previousPartnerState = {
+      match_status: partner.match_status,
+      matched_partner_id: partner.matched_partner_id,
+      matched_at: partner.matched_at
+    }
     try {
       const abTestRunId = String(partner.ab_test_run_id || '')
       const detailJsonA = Object.assign(scoreDetailFor(best, 'a', ranked.indexOf(best) + 1), {
@@ -567,6 +580,26 @@ async function start(data, wxContext) {
         ab_test_run_id: abTestRunId,
         pair_key: claim.claim.pair_key
       }, 'match_log')
+      await updateByDoc('user', user, {
+        match_status: 'matched',
+        matched_partner_id: partner.id,
+        matched_at: now()
+      })
+      userUpdated = true
+      await updateByDoc('user', partner, {
+        match_status: 'matched',
+        matched_partner_id: user.id,
+        matched_at: now()
+      })
+      partnerUpdated = true
+      claimAudit = await addWithId('match_claim_audit', {
+        request_id: claim.claim.request_id,
+        pair_key: claim.claim.pair_key,
+        user_id: user.id,
+        match_user_id: partner.id,
+        status: 'matched',
+        action: 'claim_and_deliver'
+      }, 'match_audit')
       await reportTask.ensureTaskForMatch(logA, 'auto')
       return {
         matched: 1,
@@ -580,6 +613,9 @@ async function start(data, wxContext) {
         algorithm_version: 'algo_evidence_v2'
       }
     } catch (err) {
+      if (claimAudit) await removeByDoc('match_claim_audit', claimAudit).catch(() => {})
+      if (partnerUpdated) await updateByDoc('user', partner, previousPartnerState).catch(() => {})
+      if (userUpdated) await updateByDoc('user', user, previousUserState).catch(() => {})
       if (logB) await removeByDoc('user_match_log', logB).catch(() => {})
       if (logA) await removeByDoc('user_match_log', logA).catch(() => {})
       await releasePair(claimInput, claimStore).catch(() => {})

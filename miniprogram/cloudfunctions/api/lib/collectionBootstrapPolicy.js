@@ -18,7 +18,8 @@ const BOOTSTRAP_COLLECTIONS = new Set([
   'date_coordination_event',
   'match_experience_feedback',
   'date_experience_feedback',
-  'match_claim'
+  'match_claim',
+  'match_claim_audit'
 ])
 
 function canBootstrapCollection(name) {

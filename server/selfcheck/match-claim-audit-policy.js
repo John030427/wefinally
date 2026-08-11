@@ -1,0 +1,15 @@
+const assert = require('assert')
+const fs = require('fs')
+const path = require('path')
+
+const handler = fs.readFileSync(path.resolve(__dirname, '../../miniprogram/cloudfunctions/api/handlers/match.js'), 'utf8')
+const collections = fs.readFileSync(path.resolve(__dirname, '../../miniprogram/cloudfunctions/api/lib/collections.js'), 'utf8')
+const bootstrap = fs.readFileSync(path.resolve(__dirname, '../../miniprogram/cloudfunctions/api/lib/collectionBootstrapPolicy.js'), 'utf8')
+assert(handler.includes("updateByDoc('user', user"))
+assert(handler.includes("updateByDoc('user', partner"))
+assert(handler.includes("addWithId('match_claim_audit'"))
+assert(handler.includes("removeByDoc('match_claim_audit'"))
+assert(collections.includes("match_claim_audit: 'match_claim_audits'"))
+assert(bootstrap.includes("'match_claim_audit'"))
+
+console.log('PASS successful match updates both users and writes rollback-safe claim audit')
