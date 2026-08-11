@@ -49,6 +49,15 @@ const confirmProfile = compileIntentProfile({
 assert.strictEqual(confirmProfile.mode, 'confirm')
 assert.strictEqual(confirmProfile.requires_confirmation, true)
 
+const explicitProfile = compileIntentProfile({
+  target_view_text: '必须尊重边界；不接受长期异地；希望一起规划生活。',
+  other_requirements: '未来必须在华南发展。',
+  mode: 'automatic'
+})
+assert(explicitProfile.must_have.some((item) => item.value.includes('必须尊重边界')))
+assert(explicitProfile.must_have.some((item) => item.value.includes('未来必须在华南发展')))
+assert(explicitProfile.deal_breakers.some((item) => item.value.includes('不接受长期异地')))
+
 const normalized = normalizeMatchSettingInput({
   prefer_age: '25-30岁',
   prefer_height: '160-170cm',
@@ -73,6 +82,12 @@ assert(matchWxml.includes('我对你的理解'))
 assert(handler.includes('other_requirements: normalized.other_requirements'))
 assert(handler.includes('intent_profile_json'))
 assert(handler.includes('intent_profile_confirmed_at'))
+assert(handler.includes('intent_confirmation_required'))
+assert(handler.includes("intentProfile.mode === 'confirm'"))
 assert(fs.readFileSync(path.resolve(__dirname, '../../miniprogram/cloudfunctions/api/handlers/route.js'), 'utf8').includes("POST /api/match/intent/confirm"))
+assert(matchPage.includes('onEditIntent'))
+assert(matchPage.includes("memberStatus === 'approved'"))
+assert(matchWxml.includes('返回修改补充'))
+assert(matchWxml.includes('确认理解并保存'))
 
 console.log('PASS other requirements and AI intent profile automatic/confirm policy')

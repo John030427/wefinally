@@ -62,6 +62,14 @@ function inferredItems(values, evidenceKey, strength, confidence) {
   }))
 }
 
+function explicitClauses(text, patterns) {
+  return String(text || '')
+    .split(/[；;。！？!？\n\r]/)
+    .map((item) => normalizedText(item, MAX_EVIDENCE_LENGTH))
+    .filter((item) => item && patterns.some((pattern) => pattern.test(item)))
+    .slice(0, 6)
+}
+
 function compileIntentProfile(input = {}) {
   const mode = normalizeMode(input.mode)
   const supplement = sanitizeSupplement(input.other_requirements || input.otherRequirements)
@@ -74,6 +82,22 @@ function compileIntentProfile(input = {}) {
   const lifestyle = matchedKeywords(`${combined}；${input.city || ''}；${input.baby_plan || ''}`, KEYWORD_GROUPS.lifestyle)
   const appearancePreferences = matchedKeywords(`${appearance}；${supplement}`, KEYWORD_GROUPS.appearance)
   const uncertainties = matchedKeywords(combined, KEYWORD_GROUPS.uncertainty)
+  const explicitText = `${targetValues}；${supplement}`
+  const mustHaveClauses = explicitClauses(explicitText, [
+    /必须/,
+    /一定要/,
+    /务必/,
+    /不可缺少/,
+    /需要(?:对方|另一半)/
+  ])
+  const dealBreakerClauses = explicitClauses(explicitText, [
+    /不能接受/,
+    /不接受/,
+    /拒绝/,
+    /绝不/,
+    /不考虑/,
+    /不要(?:孩子|小孩|吸烟|抽烟|异地|离异|婚后)/
+  ])
   const contradictions = []
   if (/(不要|不考虑)/.test(targetValues) && /(希望|重视)/.test(selfValues) && /孩子|婚育/.test(`${selfValues}${targetValues}`)) {
     contradictions.push('婚育表达存在方向差异，需由用户确认')
@@ -96,7 +120,7 @@ function compileIntentProfile(input = {}) {
   return {
     mode,
     requires_confirmation: mode === 'confirm',
-    must_have: [],
+    must_have: inferredItems(mustHaveClauses, 'explicit_must_have', 'explicit', 0.95),
     preferences: inferredItems([
       input.min_education ? `学历不低于${input.min_education}` : '',
       input.like_baby_plan ? `婚育节奏：${input.like_baby_plan}` : ''
@@ -104,7 +128,7 @@ function compileIntentProfile(input = {}) {
     values: inferredItems(values, 'values.self_view', 'explicit', 0.85),
     lifestyle: inferredItems(lifestyle, 'lifestyle', 'explicit', 0.8),
     appearance_preferences: inferredItems(appearancePreferences, 'appearance', 'explicit', 0.8),
-    deal_breakers: [],
+    deal_breakers: inferredItems(dealBreakerClauses, 'explicit_deal_breaker', 'explicit', 0.95),
     uncertainties: inferredItems(uncertainties, 'uncertainty', 'explicit', 0.75),
     contradictions: inferredItems(contradictions, 'contradiction', 'derived', 0.55),
     clarification_questions: clarificationQuestions.slice(0, 3),

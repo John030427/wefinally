@@ -59,6 +59,7 @@ Page({
     otherRequirementsLen: 0,
     otherRequirementsMaxLen: 500,
     intentConfirmation: null,
+    memberStatus: '',
     textMinLen: TEXT_MIN_LEN,
     textMaxLen: TEXT_MAX_LEN,
     cooldownActive: false,
@@ -156,7 +157,8 @@ Page({
       form,
       myValuesLen: form.myValues.length,
       expectValuesLen: form.expectValues.length,
-      otherRequirementsLen: form.otherRequirements.length
+      otherRequirementsLen: form.otherRequirements.length,
+      intentConfirmation: data.intent_confirmation_required ? (data.intent_profile || null) : null
     })
   },
 
@@ -166,6 +168,7 @@ Page({
     this.setData({
       appearanceDescription,
       appearanceWant,
+      memberStatus: data.member_status || '',
       appearanceDescriptionLen: appearanceDescription.length,
       appearanceWantLen: appearanceWant.length
     })
@@ -282,7 +285,13 @@ Page({
     this.setData({ submitting: true })
     try {
       await post(API_PATHS.MATCH_INTENT_CONFIRM, {}, { showError: false })
-      await this.submitApplication()
+      if (this.data.memberStatus === 'approved') {
+        this.setData({ intentConfirmation: null })
+        wx.showToast({ title: '理解已确认', icon: 'success' })
+        setTimeout(() => wx.navigateBack({ delta: 1 }), 600)
+      } else {
+        await this.submitApplication()
+      }
     } catch (err) {
       wx.showModal({
         title: '提交失败',
@@ -292,6 +301,11 @@ Page({
     } finally {
       this.setData({ submitting: false })
     }
+  },
+
+  onEditIntent() {
+    if (this.data.submitting) return
+    this.setData({ intentConfirmation: null })
   },
 
   async onSubmit() {

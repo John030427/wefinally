@@ -172,7 +172,16 @@ function ensureScoreDetailDimensions(scoreDetail, row, viewer, partner) {
 
 async function getSetting(data, wxContext) {
   const user = await currentUser(wxContext)
-  return settingDefaults(await first('user_match_setting', { user_id: user.id }))
+  const setting = settingDefaults(await first('user_match_setting', { user_id: user.id }))
+  const intentProfile = parseJson(setting.intent_profile_json)
+  return Object.assign(setting, {
+    intent_profile: intentProfile,
+    intent_confirmation_required: Boolean(
+      intentProfile
+      && intentProfile.mode === 'confirm'
+      && !setting.intent_profile_confirmed_at
+    )
+  })
 }
 
 async function cooldown(data, wxContext) {
