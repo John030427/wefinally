@@ -88,6 +88,13 @@ function eduRank(education, config) {
 
 function hardOk(settings, candidate, config) {
   const cfg = config || MATCH_CONFIG
+  const matchStatus = String(candidate.match_status || '').trim().toLowerCase()
+  const matchedPartnerId = candidate.matched_partner_id
+  const hasMatchedPartner = matchedPartnerId !== undefined
+    && matchedPartnerId !== null
+    && String(matchedPartnerId).trim() !== ''
+    && Number(matchedPartnerId) !== 0
+  if (matchStatus === 'matched' || hasMatchedPartner) return false
   const requiredText = (keys) => {
     for (let index = 0; index < keys.length; index += 1) {
       const value = String(settings[keys[index]] || '').trim()
