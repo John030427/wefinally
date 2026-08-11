@@ -1,0 +1,68 @@
+.partner-login-page {
+  padding-top: 28rpx;
+}
+
+.hero-card {
+  background: linear-gradient(135deg, #fff0f4, #fff8f5);
+  margin-bottom: 24rpx;
+}
+
+.hero-kicker {
+  color: #d54f70;
+  font-size: 22rpx;
+  letter-spacing: 2rpx;
+  text-transform: uppercase;
+}
+
+.hero-title {
+  color: #422833;
+  font-size: 42rpx;
+  font-weight: 700;
+  margin-top: 12rpx;
+}
+
+.hero-desc {
+  color: #805c68;
+  font-size: 25rpx;
+  line-height: 1.7;
+  margin-top: 18rpx;
+}
+
+.form-card {
+  padding: 30rpx;
+}
+
+.form-item + .form-item {
+  margin-top: 24rpx;
+}
+
+.form-label {
+  color: #5b3e49;
+  display: block;
+  font-size: 26rpx;
+  margin-bottom: 12rpx;
+}
+
+.form-input {
+  background: #fff8fa;
+  border: 1rpx solid #f0d9df;
+  border-radius: 14rpx;
+  box-sizing: border-box;
+  color: #3d2b33;
+  font-size: 28rpx;
+  height: 86rpx;
+  padding: 0 22rpx;
+  width: 100%;
+}
+
+.error-text {
+  color: #c43d5d;
+  font-size: 24rpx;
+  line-height: 1.5;
+  margin-top: 18rpx;
+}
+
+.full-btn {
+  margin-top: 28rpx;
+  width: 100%;
+}

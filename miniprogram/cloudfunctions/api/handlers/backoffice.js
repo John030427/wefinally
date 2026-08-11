@@ -184,6 +184,30 @@ async function recordShareEvent(body, actor) {
   return { recorded: true, channel: normalizedChannel }
 }
 
+function miniPartnerToken(data = {}) {
+  return String(data.__partner_token || data.partner_token || data.__token || '').trim()
+}
+
+async function actorFromMiniProgram(data) {
+  const actor = verifyBackofficeToken(miniPartnerToken(data), secret())
+  if (actor.role !== 'partner') throw new Error('仅合伙人可以使用邀请功能')
+  const partner = await db.byId('partner', actor.id)
+  if (!partner || Number(partner.status) !== 1) throw new Error('后台账号已停用')
+  return actor
+}
+
+async function partnerLoginForMiniProgram(data) {
+  return loginPartner(data)
+}
+
+async function partnerInviteAssetsForMiniProgram(data) {
+  return inviteAssets(await actorFromMiniProgram(data))
+}
+
+async function recordShareEventForMiniProgram(data) {
+  return recordShareEvent(data, await actorFromMiniProgram(data))
+}
+
 async function partnerDashboard(actor) {
   const partner = await db.byId('partner', actor.id)
   if (!partner) throw new Error('合伙人不存在')
@@ -392,4 +416,9 @@ async function handleBackofficeHttp(event = {}) {
   }
 }
 
-module.exports = { handleBackofficeHttp }
+module.exports = {
+  handleBackofficeHttp,
+  partnerLoginForMiniProgram,
+  partnerInviteAssetsForMiniProgram,
+  recordShareEventForMiniProgram
+}

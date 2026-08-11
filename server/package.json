@@ -12,6 +12,7 @@
     "selfcheck:partner-dashboard": "node selfcheck/partner-dashboard-policy.js",
     "selfcheck:partner-dashboard-ui": "node selfcheck/partner-dashboard-cloud-ui.js",
     "selfcheck:partner-share-event": "node selfcheck/partner-share-event.js",
+    "selfcheck:partner-invite-page": "node selfcheck/partner-invite-page.js",
     "selfcheck": "node selfcheck/run-all.js",
     "selfcheck:cloudbase": "node selfcheck/cloudbase-migration.js",
     "selfcheck:agent-core": "node selfcheck/agent-core.js",

@@ -11,6 +11,7 @@ const agent = require('./agent')
 const dateCoordination = require('./dateCoordination')
 const dateApplicationPatch = require('./dateApplicationPatch')
 const experienceFeedback = require('./experienceFeedback')
+const backoffice = require('./backoffice')
 
 function methodOf(value) {
   return String(value || 'GET').toUpperCase()
@@ -32,6 +33,7 @@ function route(method, path) {
   const exact = `${method} ${path}`
   const map = {
     'POST /api/auth/wx-login': auth.wxLogin,
+    'POST /api/auth/partner-login': backoffice.partnerLoginForMiniProgram,
     'GET /api/common/circles': common.circles,
     'GET /api/common/promote-code': common.promoteCode,
     'GET /api/common/stats': common.marryStat,
@@ -83,6 +85,8 @@ function route(method, path) {
     'GET /api/meet/existing': meet.existing,
     'GET /api/meet/list': meet.meetList
   }
+  if (exact === 'GET /api/partner/invite-assets') return backoffice.partnerInviteAssetsForMiniProgram
+  if (exact === 'POST /api/partner/share-event') return backoffice.recordShareEventForMiniProgram
   if (map[exact]) return map[exact]
 
   let m = path.match(/^\/api\/agent\/sessions\/(\d+)\/messages$/)

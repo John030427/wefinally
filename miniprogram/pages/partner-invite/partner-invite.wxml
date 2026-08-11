@@ -1,0 +1,36 @@
+<view class="partner-invite-page container">
+  <block wx:if="{{pageState === 'loading'}}">
+    <view class="state-wrap"><view class="state-icon">⏳</view><view class="state-text">正在加载邀请工具...</view></view>
+  </block>
+
+  <block wx:elif="{{pageState === 'error'}}">
+    <view class="state-wrap"><view class="state-icon">⚠️</view><view class="state-text">{{errorMsg}}</view><view class="state-btn" bindtap="onRetry">重试</view></view>
+  </block>
+
+  <block wx:else>
+    <view class="partner-head card">
+      <view class="eyebrow">WeFinally Partner</view>
+      <view class="title">邀请更多认真认识的人</view>
+      <view class="desc">分享行为只记录为推广事件；注册、资料审核和会员购买资格仍按平台规则执行。</view>
+    </view>
+
+    <view class="share-card card">
+      <button class="primary-btn full-btn" open-type="share">一键分享给微信好友</button>
+      <view class="share-path">分享会带入安全归因参数，不包含手机号、OpenID 或后台 Token。</view>
+    </view>
+
+    <view class="code-card card">
+      <view class="section-title">备用推广码</view>
+      <view class="code-value">{{assets.promote_code}}</view>
+      <button class="outline-btn full-btn" bindtap="copyCode">复制推广码</button>
+    </view>
+
+    <view class="qr-card card" wx:if="{{qrcodePath}}">
+      <view class="section-title">备用小程序码</view>
+      <image class="qrcode" src="{{qrcodePath}}" mode="widthFix"></image>
+      <button class="outline-btn full-btn" bindtap="saveQrCode">保存小程序码</button>
+    </view>
+
+    <button class="logout-btn" bindtap="logout">退出合伙人邀请中心</button>
+  </block>
+</view>

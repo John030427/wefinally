@@ -5,6 +5,8 @@
     "pages/smoke/smoke",
     "pages/agreement/agreement",
     "pages/register/register",
+    "pages/partner-login/partner-login",
+    "pages/partner-invite/partner-invite",
     "pages/divorce-review/divorce-review",
     "pages/match-setting/match-setting",
     "pages/member-application/member-application",

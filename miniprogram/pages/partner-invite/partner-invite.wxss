@@ -1,0 +1,80 @@
+.partner-invite-page {
+  padding-top: 24rpx;
+}
+
+.partner-head {
+  background: linear-gradient(135deg, #fff0f4, #fff8f5);
+}
+
+.eyebrow {
+  color: #d54f70;
+  font-size: 22rpx;
+  letter-spacing: 2rpx;
+  text-transform: uppercase;
+}
+
+.title {
+  color: #422833;
+  font-size: 40rpx;
+  font-weight: 700;
+  line-height: 1.3;
+  margin-top: 12rpx;
+}
+
+.desc,
+.share-path {
+  color: #805c68;
+  font-size: 25rpx;
+  line-height: 1.7;
+  margin-top: 18rpx;
+}
+
+.share-card,
+.code-card,
+.qr-card {
+  margin-top: 24rpx;
+}
+
+.full-btn {
+  width: 100%;
+}
+
+.section-title {
+  color: #5b3e49;
+  font-size: 28rpx;
+  font-weight: 600;
+}
+
+.code-value {
+  background: #fff8fa;
+  border: 1rpx dashed #efb7c6;
+  border-radius: 14rpx;
+  color: #b6385a;
+  font-size: 40rpx;
+  letter-spacing: 4rpx;
+  margin-top: 22rpx;
+  padding: 22rpx;
+  text-align: center;
+}
+
+.qrcode {
+  display: block;
+  margin: 22rpx auto 0;
+  max-height: 520rpx;
+  max-width: 520rpx;
+  width: 100%;
+}
+
+.outline-btn,
+.logout-btn {
+  margin-top: 22rpx;
+  width: 100%;
+}
+
+.logout-btn {
+  background: transparent;
+  border: 0;
+  color: #9b707d;
+  font-size: 24rpx;
+  padding: 20rpx;
+}

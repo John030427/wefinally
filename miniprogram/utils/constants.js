@@ -5,6 +5,8 @@ const STORAGE_KEYS = {
   AGREEMENT_ACCEPTED: 'wf_agreement_accepted',
   MATCH_SETTING_COOLDOWN: 'wf_match_setting_cooldown',
   PROMOTE_CODE: 'wf_promote_code',
+  PARTNER_TOKEN: 'wf_partner_token',
+  PARTNER_INFO: 'wf_partner_info',
   TRUST_ONBOARDING: 'wf_trust_onboarding_v1'
 }
 
