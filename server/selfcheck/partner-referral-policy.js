@@ -4,6 +4,7 @@ const path = require('path')
 const { createReferralToken, verifyReferralToken, referralInput } = require('../../miniprogram/cloudfunctions/api/lib/partnerReferralPolicy')
 const { normalizePromoteCode } = require('../../miniprogram/utils/util')
 const registerPage = fs.readFileSync(path.resolve(__dirname, '../../miniprogram/pages/register/register.js'), 'utf8')
+const commonHandler = fs.readFileSync(path.resolve(__dirname, '../../miniprogram/cloudfunctions/api/handlers/common.js'), 'utf8')
 
 const secret = 'selfcheck-partner-secret'
 const token = createReferralToken(17, { secret, now: 1700000000000, ttlMs: 86400000 })
@@ -16,6 +17,8 @@ assert.strictEqual(referralInput('PLAIN17', { secret, now: 1700000000000 }).code
 assert.strictEqual(normalizePromoteCode(token), token)
 assert.strictEqual(normalizePromoteCode('  plain17  '), 'PLAIN17')
 assert(registerPage.includes('normalizePromoteCode'))
+assert(commonHandler.includes('referralInput(code)'))
+assert(!commonHandler.includes("String(data.code || '').trim().toUpperCase()"))
 
 const memberPolicy = fs.readFileSync(path.resolve(__dirname, '../../miniprogram/cloudfunctions/api/lib/memberPolicy.js'), 'utf8')
 const cloudBackoffice = fs.readFileSync(path.resolve(__dirname, '../../miniprogram/cloudfunctions/api/handlers/backoffice.js'), 'utf8')
