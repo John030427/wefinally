@@ -83,7 +83,7 @@ function parseHeightCm(heightRange) {
 }
 
 function eduRank(education, config) {
-  return (config || MATCH_CONFIG).educationRank[education] ?? 0
+  return (config || MATCH_CONFIG).educationRank[education] || 0
 }
 
 function hardOk(settings, candidate, config) {

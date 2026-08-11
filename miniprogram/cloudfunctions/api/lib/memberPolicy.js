@@ -128,7 +128,8 @@ function normalizeMatchSettingInput(data = {}) {
     height_max: Number(data.height_max || height.max) || null,
     min_education: data.min_education || data.prefer_education || '',
     self_view_text: data.self_view_text || data.my_values || '',
-    target_view_text: data.target_view_text || data.expect_values || ''
+    target_view_text: data.target_view_text || data.expect_values || '',
+    other_requirements: String(data.other_requirements || data.otherRequirements || '').trim().slice(0, 500)
   }
 }
 

@@ -46,7 +46,8 @@ Page({
       likeBabyPlan: '',
       likeBabyPlanIndex: -1,
       myValues: '',
-      expectValues: ''
+      expectValues: '',
+      otherRequirements: ''
     },
     myValuesLen: 0,
     expectValuesLen: 0,
@@ -55,6 +56,9 @@ Page({
     appearanceDescriptionLen: 0,
     appearanceWantLen: 0,
     appearanceMaxLen: 500,
+    otherRequirementsLen: 0,
+    otherRequirementsMaxLen: 500,
+    intentConfirmation: null,
     textMinLen: TEXT_MIN_LEN,
     textMaxLen: TEXT_MAX_LEN,
     cooldownActive: false,
@@ -147,10 +151,12 @@ Page({
     pick(LIKE_BABY_PLAN_OPTIONS, data.like_baby_plan, 'likeBabyPlan', 'likeBabyPlanIndex')
     form.myValues = data.my_values || data.myValues || data.self_view_text || ''
     form.expectValues = data.expect_values || data.expectValues || data.target_view_text || ''
+    form.otherRequirements = data.other_requirements || data.otherRequirements || ''
     this.setData({
       form,
       myValuesLen: form.myValues.length,
-      expectValuesLen: form.expectValues.length
+      expectValuesLen: form.expectValues.length,
+      otherRequirementsLen: form.otherRequirements.length
     })
   },
 
@@ -211,6 +217,11 @@ Page({
     this.setData({ 'form.expectValues': val, expectValuesLen: val.length })
   },
 
+  onOtherRequirementsInput(e) {
+    const val = e.detail.value || ''
+    this.setData({ 'form.otherRequirements': val, otherRequirementsLen: val.length })
+  },
+
   onAppearanceDescriptionInput(e) {
     const val = e.detail.value || ''
     this.setData({ appearanceDescription: val, appearanceDescriptionLen: val.length })
@@ -247,7 +258,40 @@ Page({
       })
       return false
     }
+    if (String(form.otherRequirements || '').trim().length > this.data.otherRequirementsMaxLen) {
+      wx.showToast({ title: '其他补充需求最多500字', icon: 'none' })
+      return false
+    }
     return true
+  },
+
+  async submitApplication() {
+    await post(API_PATHS.MEMBER_APPLICATION_SUBMIT, {}, {
+      showLoading: true,
+      loadingText: '提交审核中...'
+    })
+    if (SUBSCRIBE_TMPL_IDS.length) {
+      wx.requestSubscribeMessage({ tmplIds: SUBSCRIBE_TMPL_IDS, complete: () => {} })
+    }
+    wx.showToast({ title: '申请已提交', icon: 'success' })
+    setTimeout(() => wx.redirectTo({ url: '/pages/member-application/member-application' }), 1000)
+  },
+
+  async onConfirmIntent() {
+    if (!this.data.intentConfirmation || this.data.submitting) return
+    this.setData({ submitting: true })
+    try {
+      await post(API_PATHS.MATCH_INTENT_CONFIRM, {}, { showError: false })
+      await this.submitApplication()
+    } catch (err) {
+      wx.showModal({
+        title: '提交失败',
+        content: (err && err.message) || '请稍后重试',
+        showCancel: false
+      })
+    } finally {
+      this.setData({ submitting: false })
+    }
   },
 
   async onSubmit() {
@@ -264,7 +308,7 @@ Page({
       app.globalData.userInfo = profile
       wx.setStorageSync(STORAGE_KEYS.USER_INFO, profile)
 
-      await post(API_PATHS.MATCH_SETTING, {
+      const savedSetting = await post(API_PATHS.MATCH_SETTING, {
         prefer_age: form.preferAge,
         prefer_education: form.preferEducation,
         prefer_height: form.preferHeight,
@@ -272,18 +316,14 @@ Page({
         like_baby_plan: form.likeBabyPlan,
         psych_profile: null,
         my_values: form.myValues.trim(),
-        expect_values: form.expectValues.trim()
+        expect_values: form.expectValues.trim(),
+        other_requirements: form.otherRequirements.trim()
       }, { showLoading: true, loadingText: '保存中...' })
-      await post(API_PATHS.MEMBER_APPLICATION_SUBMIT, {}, {
-        showLoading: true,
-        loadingText: '提交审核中...'
-      })
-      if (SUBSCRIBE_TMPL_IDS.length) {
-        wx.requestSubscribeMessage({ tmplIds: SUBSCRIBE_TMPL_IDS, complete: () => {} })
+      if (savedSetting && savedSetting.intent_confirmation_required) {
+        this.setData({ intentConfirmation: savedSetting.intent_profile || null })
+      } else {
+        await this.submitApplication()
       }
-
-      wx.showToast({ title: '申请已提交', icon: 'success' })
-      setTimeout(() => wx.redirectTo({ url: '/pages/member-application/member-application' }), 1000)
     } catch (err) {
       wx.showModal({
         title: '保存失败',

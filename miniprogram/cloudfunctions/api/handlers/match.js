@@ -4,6 +4,7 @@ const { isVipActive, ageBand, dateOnly } = require('../lib/format')
 const { flagEnabled } = require('../lib/flags')
 const { MEMBER_STATUS, memberStatus, canUseMatching, normalizeMatchSettingInput } = require('../lib/memberPolicy')
 const { rankCandidates, scoreDetailFor } = require('../lib/matchPolicy')
+const { compileIntentProfile, normalizeMode } = require('../lib/intentProfile')
 const reportTask = require('./reportTask')
 
 function parseJson(value) {
@@ -30,6 +31,9 @@ function settingDefaults(row) {
     like_house_car: '',
     self_view_text: '',
     target_view_text: '',
+    other_requirements: '',
+    intent_profile_json: null,
+    intent_profile_confirmed_at: null,
     last_edit_time: null
   }
 }
@@ -175,6 +179,13 @@ async function saveSetting(data, wxContext) {
   const user = await currentUser(wxContext)
   const existing = await first('user_match_setting', { user_id: user.id })
   const normalized = normalizeMatchSettingInput(data)
+  const intentProfile = compileIntentProfile(Object.assign({}, user, normalized, {
+    mode: normalizeMode()
+  }))
+  const intentProfileJson = JSON.stringify(intentProfile)
+  const alreadyConfirmed = Boolean(
+    existing && existing.intent_profile_confirmed_at && existing.intent_profile_json === intentProfileJson
+  )
   const payload = {
     user_id: user.id,
     age_min: normalized.age_min,
@@ -189,11 +200,36 @@ async function saveSetting(data, wxContext) {
     like_house_car: data.like_house_car || '',
     self_view_text: normalized.self_view_text,
     target_view_text: normalized.target_view_text,
+    other_requirements: normalized.other_requirements,
+    intent_profile_json: intentProfileJson,
+    intent_profile_confirmed_at: alreadyConfirmed ? existing.intent_profile_confirmed_at : null,
     psych_profile_json: data.psych_profile_json || data.psych_profile || null,
     last_edit_time: memberStatus(user) === MEMBER_STATUS.APPROVED ? now() : null
   }
-  if (existing) return updateByDoc('user_match_setting', existing, payload)
-  return addWithId('user_match_setting', payload, 'match_setting')
+  const saved = existing
+    ? await updateByDoc('user_match_setting', existing, payload)
+    : await addWithId('user_match_setting', payload, 'match_setting')
+  return Object.assign(saved, {
+    intent_profile: intentProfile,
+    intent_confirmation_required: intentProfile.requires_confirmation && !alreadyConfirmed
+  })
+}
+
+async function confirmIntent(data, wxContext) {
+  const user = await currentUser(wxContext)
+  const setting = await first('user_match_setting', { user_id: user.id })
+  if (!setting || !setting.intent_profile_json) throw new Error('请先保存匹配设置')
+  const profile = parseJson(setting.intent_profile_json)
+  if (!profile || profile.mode !== 'confirm') throw new Error('当前无需确认 AI 理解')
+  const confirmedAt = now()
+  await updateByDoc('user_match_setting', setting, {
+    intent_profile_confirmed_at: confirmedAt
+  })
+  return {
+    confirmed: true,
+    confirmed_at: confirmedAt,
+    intent_profile: profile
+  }
 }
 
 async function formatMatch(row, viewer) {
@@ -453,6 +489,7 @@ module.exports = {
   getSetting,
   cooldown,
   saveSetting,
+  confirmIntent,
   latest,
   matchList,
   detail,

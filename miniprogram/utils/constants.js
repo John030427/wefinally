@@ -14,6 +14,7 @@ const API_PATHS = {
   USER_PROFILE: '/api/user/profile',
   USER_PROFILE_UPDATE: '/api/user/profile',
   MATCH_SETTING: '/api/match/setting',
+  MATCH_INTENT_CONFIRM: '/api/match/intent/confirm',
   MATCH_SETTING_COOLDOWN: '/api/match/setting/cooldown',
   MATCH_START: '/api/match/start',
   MATCH_LIST: '/api/match/list',

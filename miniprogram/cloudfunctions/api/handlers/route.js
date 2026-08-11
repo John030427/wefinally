@@ -53,6 +53,7 @@ function route(method, path) {
     'POST /api/member/application/submit': member.submit,
     'GET /api/match/setting': match.getSetting,
     'POST /api/match/setting': match.saveSetting,
+    'POST /api/match/intent/confirm': match.confirmIntent,
     'GET /api/match/setting/cooldown': match.cooldown,
     'POST /api/match/start': match.start,
     'POST /api/match/report': match.generateReport,
