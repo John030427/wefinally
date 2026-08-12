@@ -50,6 +50,25 @@
   border-bottom: none;
 }
 
+.partner-workspace {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border: 2rpx solid #dfeee7;
+}
+
+.partner-workspace-title {
+  color: #2f7357;
+  font-size: 29rpx;
+  font-weight: 600;
+}
+
+.partner-workspace-desc {
+  margin-top: 8rpx;
+  color: #7b8881;
+  font-size: 23rpx;
+}
+
 .menu-icon {
   font-size: 36rpx;
   margin-right: 20rpx;

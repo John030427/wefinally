@@ -60,6 +60,14 @@
       <view class="readiness-ready" wx:else>资料会用于硬性筛选和双向评分，你可以随时更新。</view>
     </view>
 
+    <view class="partner-workspace card" wx:if="{{hasPartnerWorkspace}}" bindtap="openPartnerWorkspace">
+      <view>
+        <view class="partner-workspace-title">合伙人工作台</view>
+        <view class="partner-workspace-desc">查看邀请素材、分享归因与合伙人数据</view>
+      </view>
+      <text class="menu-arrow">›</text>
+    </view>
+
     <view class="menu-card card">
       <view
         class="menu-item"

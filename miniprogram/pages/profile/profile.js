@@ -1,5 +1,5 @@
 const { get, post } = require('../../utils/request')
-const { API_PATHS } = require('../../utils/constants')
+const { API_PATHS, STORAGE_KEYS } = require('../../utils/constants')
 const { genderText, calcAge } = require('../../utils/util')
 const { buildProfileReadiness } = require('../../utils/productExperience')
 
@@ -9,6 +9,7 @@ Page({
     errorMsg: '',
     userInfo: null,
     isVip: false,
+    hasPartnerWorkspace: false,
     readiness: null,
     menuList: [
       { icon: '⚙️', title: '择偶配置', url: '/pages/match-setting/match-setting' },
@@ -26,6 +27,7 @@ Page({
   },
 
   onShow() {
+    this.setData({ hasPartnerWorkspace: Boolean(wx.getStorageSync(STORAGE_KEYS.PARTNER_TOKEN)) })
     this.loadProfile()
   },
 
@@ -48,7 +50,7 @@ Page({
       const userInfo = profile || app.globalData.userInfo || {}
       if (profile) {
         app.globalData.userInfo = profile
-        wx.setStorageSync(require('../../utils/constants').STORAGE_KEYS.USER_INFO, profile)
+        wx.setStorageSync(STORAGE_KEYS.USER_INFO, profile)
       }
 
       const display = {
@@ -85,6 +87,11 @@ Page({
 
   editMatchProfile() {
     wx.navigateTo({ url: '/pages/match-setting/match-setting' })
+  },
+
+  openPartnerWorkspace() {
+    if (!this.data.hasPartnerWorkspace) return
+    wx.navigateTo({ url: '/pages/partner-invite/partner-invite' })
   },
 
   onMenuTap(e) {
