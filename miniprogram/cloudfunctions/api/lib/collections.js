@@ -7,6 +7,8 @@ module.exports = {
   occupation_circle: 'occupation_circles',
   user_order: 'user_orders',
   partner_commission_ledger: 'partner_commission_ledgers',
+  partner_commission_rule: 'partner_commission_rules',
+  partner_dashboard_daily: 'partner_dashboard_daily',
   partner_referral_attribution: 'partner_referral_attributions',
   partner_share_event: 'partner_share_events',
   marry_report: 'marry_reports',
