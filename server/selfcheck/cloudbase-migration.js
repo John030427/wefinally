@@ -70,7 +70,7 @@ ok('cloud manual match uses bilateral ranking policy', matchStartBody.includes('
 ok('cloud manual match does not persist a fixed demo score', !matchStartBody.includes('total_score: 88') && !matchStartBody.includes('view_similarity: 88'));
 ok('cloud manual match refuses quality fallback', matchStartBody.includes('本轮暂无通过严格质量门槛的匹配'));
 ok('cloud DeepSeek report helper exists', exists('miniprogram/cloudfunctions/api/lib/deepseek.js'));
-ok('cloud match report uses durable async task', cloudMatchJs.includes("require('./reportTask')") && cloudMatchJs.includes("ensureTaskForMatch(logA, 'auto')"));
+ok('cloud match report uses durable async task', cloudMatchJs.includes("require('./reportTask')") && cloudMatchJs.includes("ensureTaskForMatch(deliveredLog, 'auto')") && cloudMatchJs.indexOf('deliverPair') < cloudMatchJs.indexOf("ensureTaskForMatch(deliveredLog, 'auto')"));
 ok('cloud DeepSeek key is read only from server environment', read('miniprogram/cloudfunctions/api/lib/deepseek.js').includes("envValue(['DEEPSEEK_API_KEY', 'LLM_API_KEY'])") && !read('miniprogram/cloudfunctions/api/lib/deepseek.js').includes('systemValue('));
 ok('cloud DeepSeek has no hardcoded key fallback', !read('miniprogram/cloudfunctions/api/lib/deepseek.js').includes(deepseekHardcodedKeySymbol));
 ok('cloud DeepSeek request timeout stays below worker function limit', read('miniprogram/cloudfunctions/api/lib/deepseek.js').includes('CLOUD_FUNCTION_SAFE_TIMEOUT_MS'));

@@ -1,11 +1,11 @@
-const { first, list, byId, addWithId, updateByDoc, removeByDoc, authError, now } = require('../lib/db')
+const { first, list, byId, nextId, addWithId, updateByDoc, authError, now } = require('../lib/db')
 const { currentUser } = require('./user')
 const { isVipActive, ageBand, dateOnly } = require('../lib/format')
 const { flagEnabled } = require('../lib/flags')
 const { MEMBER_STATUS, memberStatus, canUseMatching, normalizeMatchSettingInput } = require('../lib/memberPolicy')
 const { rankCandidates, scoreDetailFor } = require('../lib/matchPolicy')
 const { compileIntentProfile, normalizeMode } = require('../lib/intentProfile')
-const { claimPair, releasePair, createCloudClaimStore, CLAIM_STATUS } = require('../lib/matchClaim')
+const { canonicalPairKey, deliverPair, createCloudClaimStore, CLAIM_STATUS } = require('../lib/matchClaim')
 const {
   buildSemanticRerankRequest,
   validateSemanticRerankResponse,
@@ -60,13 +60,15 @@ function fallbackMatchReportText(viewer, partner) {
   ].join('\n\n')
 }
 
-function matchStateSnapshot(row) {
-  const source = row || {}
-  return {
-    match_status: source.match_status == null ? null : source.match_status,
-    matched_partner_id: source.matched_partner_id == null ? null : source.matched_partner_id,
-    matched_at: source.matched_at == null ? null : source.matched_at
-  }
+async function transactionDocument(name, prefix, data) {
+  const id = await nextId(name)
+  const timestamp = now()
+  return Object.assign({}, data, {
+    _id: `${prefix || name}_${id}`,
+    id,
+    create_time: data.create_time || timestamp,
+    update_time: data.update_time || timestamp
+  })
 }
 
 function withReportStatus(scoreDetail, status, report) {
@@ -547,18 +549,9 @@ async function start(data, wxContext) {
       partnerId: partner.id,
       requestId: String(data.request_id || `match:${user.id}:${Date.now()}`)
     }
-    const claim = await claimPair(claimInput, claimStore)
-    if (!claim.claimed) continue
-    let logA = null
-    let logB = null
-    let claimAudit = null
-    let userUpdated = false
-    let partnerUpdated = false
-    const previousUserState = matchStateSnapshot(user)
-    const previousPartnerState = matchStateSnapshot(partner)
-    try {
-      const abTestRunId = String(partner.ab_test_run_id || '')
-      const detailJsonA = Object.assign(scoreDetailFor(best, 'a', ranked.indexOf(best) + 1), {
+    const pairKey = canonicalPairKey(user.id, partner.id)
+    const abTestRunId = String(partner.ab_test_run_id || '')
+    const detailJsonA = Object.assign(scoreDetailFor(best, 'a', ranked.indexOf(best) + 1), {
         ai_rank: best.ai_rank || null,
         ai_weight: best.ai_weight || 0,
         semantic_score: best.semantic_score || null,
@@ -570,8 +563,8 @@ async function start(data, wxContext) {
         data_completeness: best.data_completeness || null,
         asymmetric_risks: best.asymmetric_risks || [],
         confirmation_questions: best.confirmation_questions || []
-      })
-      const detailJsonB = Object.assign(scoreDetailFor(best, 'b', ranked.indexOf(best) + 1), {
+    })
+    const detailJsonB = Object.assign(scoreDetailFor(best, 'b', ranked.indexOf(best) + 1), {
         ai_rank: best.ai_rank || null,
         ai_weight: best.ai_weight || 0,
         semantic_score: best.semantic_score || null,
@@ -583,8 +576,8 @@ async function start(data, wxContext) {
         data_completeness: best.data_completeness || null,
         asymmetric_risks: best.asymmetric_risks || [],
         confirmation_questions: best.confirmation_questions || []
-      })
-      logA = await addWithId('user_match_log', {
+    })
+    const logA = await transactionDocument('user_match_log', 'match_log', {
         user_id: user.id,
         match_user_id: partner.id,
         view_similarity: best.viewSimilarity,
@@ -599,9 +592,9 @@ async function start(data, wxContext) {
         match_date: today,
         match_type: abTestRunId ? 'A/B内测' : '双向算法测试',
         ab_test_run_id: abTestRunId,
-        pair_key: claim.claim.pair_key
-      }, 'match_log')
-      logB = await addWithId('user_match_log', {
+      pair_key: pairKey
+    })
+    const logB = await transactionDocument('user_match_log', 'match_log', {
         user_id: partner.id,
         match_user_id: user.id,
         view_similarity: best.viewSimilarity,
@@ -616,48 +609,51 @@ async function start(data, wxContext) {
         match_date: today,
         match_type: abTestRunId ? 'A/B内测' : '双向算法测试',
         ab_test_run_id: abTestRunId,
-        pair_key: claim.claim.pair_key
-      }, 'match_log')
-      await updateByDoc('user', user, {
+      pair_key: pairKey
+    })
+    const deliveredAt = now()
+    const claimAudit = await transactionDocument('match_claim_audit', 'match_audit', {
+      request_id: claimInput.requestId,
+      pair_key: pairKey,
+      user_id: user.id,
+      match_user_id: partner.id,
+      status: 'matched',
+      action: 'claim_and_deliver'
+    })
+    const delivery = await deliverPair(Object.assign({}, claimInput, {
+      logA,
+      logB,
+      audit: claimAudit,
+      userDoc: user,
+      partnerDoc: partner,
+      userPatch: {
         match_status: 'matched',
         matched_partner_id: partner.id,
-        matched_at: now()
-      })
-      userUpdated = true
-      await updateByDoc('user', partner, {
+        matched_at: deliveredAt,
+        update_time: deliveredAt
+      },
+      partnerPatch: {
         match_status: 'matched',
         matched_partner_id: user.id,
-        matched_at: now()
-      })
-      partnerUpdated = true
-      claimAudit = await addWithId('match_claim_audit', {
-        request_id: claim.claim.request_id,
-        pair_key: claim.claim.pair_key,
-        user_id: user.id,
-        match_user_id: partner.id,
-        status: 'matched',
-        action: 'claim_and_deliver'
-      }, 'match_audit')
-      await reportTask.ensureTaskForMatch(logA, 'auto')
-      return {
-        matched: 1,
-        users: ranked.length + 1,
-        evaluated_candidates: ranked.length,
-        match_id: logA.id,
-        match_user_id: partner.id,
-        view_similarity: best.viewSimilarity,
-        mutual_score: best.mutualScore,
-        pair_key: claim.claim.pair_key,
-        algorithm_version: 'algo_evidence_v2'
+        matched_at: deliveredAt,
+        update_time: deliveredAt
       }
-    } catch (err) {
-      if (claimAudit) await removeByDoc('match_claim_audit', claimAudit).catch(() => {})
-      if (partnerUpdated) await updateByDoc('user', partner, previousPartnerState).catch(() => {})
-      if (userUpdated) await updateByDoc('user', user, previousUserState).catch(() => {})
-      if (logB) await removeByDoc('user_match_log', logB).catch(() => {})
-      if (logA) await removeByDoc('user_match_log', logA).catch(() => {})
-      await releasePair(claimInput, claimStore).catch(() => {})
-      throw err
+    }), claimStore)
+    if (!delivery.delivered) continue
+    const deliveredLog = delivery.replayed
+      ? await byId('user_match_log', delivery.claim.match_log_ids.a)
+      : logA
+    if (deliveredLog) await reportTask.ensureTaskForMatch(deliveredLog, 'auto').catch(() => null)
+    return {
+      matched: 1,
+      users: ranked.length + 1,
+      evaluated_candidates: ranked.length,
+      match_id: deliveredLog ? deliveredLog.id : delivery.claim.match_log_ids.a,
+      match_user_id: partner.id,
+      view_similarity: best.viewSimilarity,
+      mutual_score: best.mutualScore,
+      pair_key: delivery.claim.pair_key,
+      algorithm_version: 'algo_evidence_v2'
     }
   }
   return {

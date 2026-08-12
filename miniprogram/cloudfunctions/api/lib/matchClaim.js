@@ -60,6 +60,54 @@ async function claimPair(input, store) {
   })
 }
 
+function deliveryPayload(input) {
+  const claim = claimPayload(input)
+  const logA = input && input.logA
+  const logB = input && input.logB
+  const audit = input && input.audit
+  if (!logA || !logA._id || !Number(logA.id)) throw new Error('发起方匹配记录无效')
+  if (!logB || !logB._id || !Number(logB.id)) throw new Error('候选方匹配记录无效')
+  if (!audit || !audit._id || !Number(audit.id)) throw new Error('匹配审计记录无效')
+  if (!input.userDoc || !input.userDoc._id || !input.partnerDoc || !input.partnerDoc._id) {
+    throw new Error('匹配用户文档无效')
+  }
+  return {
+    claim,
+    logA,
+    logB,
+    audit,
+    userDoc: input.userDoc,
+    partnerDoc: input.partnerDoc,
+    userPatch: input.userPatch || {},
+    partnerPatch: input.partnerPatch || {}
+  }
+}
+
+async function deliverPair(input, store) {
+  const delivery = deliveryPayload(input)
+  const claim = delivery.claim
+  const adapter = store && typeof store.runAtomic === 'function' ? store : createCloudClaimStore()
+  return adapter.runAtomic(async (transaction) => {
+    const existingUsers = await transaction.findByUserIds([claim.user_id, claim.match_user_id])
+    const existingPair = await transaction.findByPairKey(claim.pair_key)
+    const existing = existingUsers[0] || existingPair
+    if (existing) {
+      if (existing.request_id === claim.request_id && existing.pair_key === claim.pair_key) {
+        return { delivered: true, replayed: true, claim: existing }
+      }
+      return { delivered: false, replayed: false, reason: 'already_matched', claim: existing }
+    }
+    const created = Object.assign({}, claim, {
+      match_log_ids: { a: Number(delivery.logA.id), b: Number(delivery.logB.id) },
+      create_time: new Date(),
+      update_time: new Date()
+    })
+    if (typeof transaction.createDelivery !== 'function') throw new Error('原子匹配交付依赖未配置')
+    await transaction.createDelivery(created, delivery)
+    return { delivered: true, replayed: false, claim: created, logA: delivery.logA, logB: delivery.logB }
+  })
+}
+
 async function releasePair(input, store) {
   const claim = claimPayload(input)
   const adapter = store && typeof store.runAtomic === 'function' ? store : createCloudClaimStore()
@@ -78,6 +126,11 @@ async function readDocument(transaction, id) {
 
 function createCloudClaimStore() {
   const { db, withCollection } = require('./db')
+  function documentData(doc) {
+    const data = Object.assign({}, doc)
+    delete data._id
+    return data
+  }
   return {
     runAtomic(work) {
       return withCollection('match_claim', () => db.runTransaction(async (transaction) => work({
@@ -103,6 +156,22 @@ function createCloudClaimStore() {
           await transaction.collection(CLAIM_COLLECTION).doc(ids.partner).set({ data })
           await transaction.collection(CLAIM_COLLECTION).doc(ids.pair).set({ data })
           return data
+        },
+        createDelivery: async (claim, delivery) => {
+          const ids = claimDocumentIds(claim.pair_key, claim.user_id, claim.match_user_id)
+          const claimData = Object.assign({}, claim, {
+            claim_id: ids.pair,
+            pair_key: claim.pair_key
+          })
+          await transaction.collection(CLAIM_COLLECTION).doc(ids.user).set({ data: claimData })
+          await transaction.collection(CLAIM_COLLECTION).doc(ids.partner).set({ data: claimData })
+          await transaction.collection(CLAIM_COLLECTION).doc(ids.pair).set({ data: claimData })
+          await transaction.collection(collections.user_match_log).doc(delivery.logA._id).set({ data: documentData(delivery.logA) })
+          await transaction.collection(collections.user_match_log).doc(delivery.logB._id).set({ data: documentData(delivery.logB) })
+          await transaction.collection(collections.user).doc(delivery.userDoc._id).update({ data: delivery.userPatch })
+          await transaction.collection(collections.user).doc(delivery.partnerDoc._id).update({ data: delivery.partnerPatch })
+          await transaction.collection(collections.match_claim_audit).doc(delivery.audit._id).set({ data: documentData(delivery.audit) })
+          return claimData
         }
       })))
     },
@@ -124,6 +193,7 @@ module.exports = {
   CLAIM_STATUS,
   canonicalPairKey,
   claimPair,
+  deliverPair,
   releasePair,
   createCloudClaimStore
 }
