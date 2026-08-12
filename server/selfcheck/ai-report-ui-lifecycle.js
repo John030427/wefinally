@@ -12,7 +12,7 @@ const generateBody = match.slice(match.indexOf('async function generateReport'),
 assert(generateBody.includes('reportTask.create'))
 assert(!generateBody.includes('generateMutualMatchReports'))
 assert(match.includes("ensureTaskForMatch(row, 'history_open')"))
-assert(match.includes("ensureTaskForMatch(logA, 'auto')"))
+assert(match.includes("ensureTaskForMatch(deliveredLog, 'auto')"))
 assert(match.includes('const canViewReport = canUseMatching'))
 assert(match.includes("locked: true"))
 assert(page.includes("status === 'queued'"))
