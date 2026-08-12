@@ -13,6 +13,7 @@ const {
 } = require('../lib/matchSemanticRerank')
 const { rerankMutualMatchCandidates } = require('../lib/deepseek')
 const reportTask = require('./reportTask')
+const { isMatchOnlyFixture, canUseFixtureForMatch } = require('../lib/testFixturePolicy')
 
 function parseJson(value) {
   if (!value) return null
@@ -305,7 +306,8 @@ async function formatMatch(row, viewer) {
     ai_report_task: taskView,
     local_report_text: localReportText,
     matched_user_id: row.match_user_id,
-    match_user_id: row.match_user_id
+    match_user_id: row.match_user_id,
+    match_only_fixture: isMatchOnlyFixture(partner)
   }
   if (!vip) return base
   return Object.assign(base, {
@@ -513,6 +515,7 @@ async function start(data, wxContext) {
   })
   const candidates = (await list('user', { status: 1 }, 100))
     .filter((item) => memberStatus(item) === MEMBER_STATUS.APPROVED)
+    .filter((item) => canUseFixtureForMatch(user, item, now()))
   if (data.dev_seed_current_user_candidates && candidates.length === 0) {
     candidates.push(await seedDemoCandidate(user))
   }

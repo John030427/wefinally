@@ -252,7 +252,13 @@
     </view>
     </block>
 
-    <view class="meet-card card">
+    <view class="meet-card card" wx:if="{{detail.matchOnlyFixture}}">
+      <view class="meet-title">匹配效果测试</view>
+      <view class="meet-desc">测试画像仅用于匹配效果验证，不能发起约会或线下见面。</view>
+      <button class="meet-action-btn" open-type="contact">匹配异常联系人工客服</button>
+    </view>
+
+    <view class="meet-card card" wx:else>
       <view class="meet-title">官方第一次约会</view>
       <view class="meet-desc">匹配成功后，由平台协助双方分别填写偏好、生成共同方案并确认。双方不开放私聊，也不会展示对方原始回答。</view>
       <view class="meet-actions">
