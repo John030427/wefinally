@@ -14,7 +14,16 @@ const ranked = [
     viewSimilarity: 88,
     scoreA: { normalizedTotal: 86, maxTotal: 100, dimensions: {} },
     scoreB: { normalizedTotal: 78, maxTotal: 100, dimensions: {} },
-    intentA: { values: [{ value: '稳定沟通' }], lifestyle: [{ value: '未来城市规划' }], appearance_preferences: [{ value: '自然' }] },
+    intentA: {
+      must_have: [{ value: '未来必须在杭州生活' }],
+      preferences: [{ value: '喜欢安静生活' }],
+      values: [{ value: '稳定沟通' }],
+      lifestyle: [{ value: '未来城市规划' }],
+      appearance_preferences: [{ value: '自然' }],
+      deal_breakers: [{ value: '不接受长期异地' }],
+      contradictions: [{ value: '城市计划待确认' }],
+      evidence: [{ excerpt: '微信号 test_user，未来希望在杭州生活' }]
+    },
     intentB: { values: [{ value: '尊重边界' }], lifestyle: [{ value: '共同规划生活' }], appearance_preferences: [{ value: '清爽' }] },
     supplementA: '手机号 13800138000，未来希望在杭州生活',
     supplementB: '不发送联系方式，重视公共场所见面'
@@ -41,9 +50,15 @@ assert.strictEqual(request.candidates.length, 2)
 const serialized = JSON.stringify(request)
 assert(!serialized.includes('must-not-leak'))
 assert(!serialized.includes('13800138000'))
+assert(!serialized.includes('test_user'))
 assert(serialized.includes('稳定沟通'))
 assert(serialized.includes('自然'))
-assert(serialized.includes('补充需求已脱敏'))
+assert(serialized.includes('未来希望在杭州生活'))
+assert(serialized.includes('不发送联系方式'))
+assert(serialized.includes('未来必须在杭州生活'))
+assert(serialized.includes('不接受长期异地'))
+assert(serialized.includes('城市计划待确认'))
+assert(serialized.includes('[已脱敏]'))
 
 const response = validateSemanticRerankResponse({
   version: RERANK_VERSION,

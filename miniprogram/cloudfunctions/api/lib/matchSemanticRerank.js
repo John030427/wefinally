@@ -1,5 +1,6 @@
 const RERANK_VERSION = 'match_semantic_rerank_v1'
 const INTERNAL_REF_MAP = Symbol('semanticInternalRefMap')
+const { sanitizeSupplement } = require('./intentProfile')
 const ALLOWED_EVIDENCE_TAGS = new Set([
   'bilateral_score',
   'psych_compatibility',
@@ -28,21 +29,40 @@ function confidence(value, label) {
   return number
 }
 
+function safeText(value, maxLength = 120) {
+  return sanitizeSupplement(value)
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, maxLength)
+}
+
 function safeItems(value) {
   const values = Array.isArray(value) ? value : []
   return values.map((item) => {
     const text = typeof item === 'string' ? item : (item && item.value)
-    return String(text || '').replace(/[\u0000-\u001F]/g, '').trim().slice(0, 80)
+    return safeText(text, 80)
   }).filter(Boolean).slice(0, 8)
+}
+
+function safeEvidence(value) {
+  const values = Array.isArray(value) ? value : []
+  return values.map((item) => safeText(item && (item.excerpt || item.value), 120))
+    .filter(Boolean)
+    .slice(0, 8)
 }
 
 function intentSummary(profile) {
   const input = profile || {}
   return {
+    must_have: safeItems(input.must_have),
+    preferences: safeItems(input.preferences),
     values: safeItems(input.values),
     lifestyle: safeItems(input.lifestyle),
     appearance_preferences: safeItems(input.appearance_preferences),
+    deal_breakers: safeItems(input.deal_breakers),
     uncertainties: safeItems(input.uncertainties),
+    contradictions: safeItems(input.contradictions),
+    evidence: safeEvidence(input.evidence),
     profile_confidence: confidence(input.profile_confidence === undefined ? 0 : input.profile_confidence, '画像置信度')
   }
 }
@@ -68,8 +88,8 @@ function buildSemanticRerankRequest(input = {}) {
       view_similarity: Math.max(0, Math.min(100, Math.round(Number(item.viewSimilarity || 0)))),
       intent_a: intentSummary(item.intentA),
       intent_b: intentSummary(item.intentB),
-      supplement_a: item.supplementA ? '补充需求已脱敏' : '',
-      supplement_b: item.supplementB ? '补充需求已脱敏' : ''
+      supplement_a: safeText(item.supplementA, 240),
+      supplement_b: safeText(item.supplementB, 240)
     }
   })
   const request = {
