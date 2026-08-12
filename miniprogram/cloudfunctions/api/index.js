@@ -9,11 +9,12 @@ const { handleHttp } = require('./handlers/paymentNotify')
 const { processQueuedTasks } = require('./handlers/reportTask')
 const { processNotificationJobs } = require('./agent/notificationJobs')
 const { processCoordinationDeadlines } = require('./handlers/dateCoordination')
+const { isHttpEvent } = require('./lib/httpEvent')
 
 const ENV_ID = 'cloud1-d4gy8l52g08bba326'
 
 exports.main = async (event = {}) => {
-  if (event.httpMethod || event.requestContext) {
+  if (isHttpEvent(event)) {
     return handleHttp(event)
   }
   const action = event.action

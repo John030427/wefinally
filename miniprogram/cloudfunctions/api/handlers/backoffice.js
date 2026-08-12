@@ -9,6 +9,7 @@ const { changeAbMatchFixture } = require('./abMatchFixture')
 const { createAgentBackofficeService } = require('../agent/backofficeService')
 const { buildPartnerDashboard } = require('../lib/partnerDashboardPolicy')
 const { createReferralToken, createReferralScene } = require('../lib/partnerReferralPolicy')
+const { httpMethod, httpPath, queryParameters } = require('../lib/httpEvent')
 
 const AGENT_BACKOFFICE_PATHS = Object.freeze({
   tickets: '/api/admin/agent/tickets',
@@ -287,8 +288,9 @@ async function createPartner(body) {
 }
 
 async function handleBackofficeHttp(event = {}) {
-  const method = String(event.httpMethod || '').toUpperCase()
-  const path = String(event.path || event.requestContext?.path || '').replace(/\/$/, '')
+  const method = httpMethod(event)
+  const path = httpPath(event)
+  const query = queryParameters(event)
   if (method === 'OPTIONS') return response(204, {})
   const body = parseBody(event)
   try {
@@ -300,27 +302,27 @@ async function handleBackofficeHttp(event = {}) {
     if (/\/api\/admin\//.test(path)) actor = await actorFrom(event, 'admin')
 
     if (method === 'GET' && /\/api\/partner\/member-applications$/.test(path)) {
-      return ok({ list: await applicationList(actor, event.queryStringParameters?.status || '') })
+      return ok({ list: await applicationList(actor, query.status || '') })
     }
     if (method === 'GET' && /\/api\/partner\/dashboard$/.test(path)) return ok(await partnerDashboard(actor))
     if (method === 'POST' && /\/api\/partner\/share-event$/.test(path)) return ok(await recordShareEvent(body, actor))
     if (method === 'GET' && /\/api\/admin\/member-applications$/.test(path)) {
-      return ok({ list: await applicationList(actor, event.queryStringParameters?.status || '') })
+      return ok({ list: await applicationList(actor, query.status || '') })
     }
     if (method === 'GET' && path.endsWith(AGENT_BACKOFFICE_PATHS.tickets)) {
-      return ok({ list: await agentService().listTickets(actor, event.queryStringParameters || {}) })
+      return ok({ list: await agentService().listTickets(actor, query) })
     }
     if (method === 'GET' && path.endsWith(AGENT_BACKOFFICE_PATHS.conversations)) {
-      return ok({ list: await agentService().listConversations(actor, event.queryStringParameters || {}) })
+      return ok({ list: await agentService().listConversations(actor, query) })
     }
     if (method === 'GET' && path.endsWith(AGENT_BACKOFFICE_PATHS.knowledge)) {
-      return ok({ list: await agentService().listKnowledge(actor, event.queryStringParameters || {}) })
+      return ok({ list: await agentService().listKnowledge(actor, query) })
     }
     if (method === 'POST' && path.endsWith(AGENT_BACKOFFICE_PATHS.knowledge)) {
       return ok(await agentService().saveKnowledge(actor, body), '知识草稿已保存')
     }
     if (method === 'GET' && path.endsWith(AGENT_BACKOFFICE_PATHS.coordinations)) {
-      return ok({ list: await agentService().listCoordinations(actor, event.queryStringParameters || {}) })
+      return ok({ list: await agentService().listCoordinations(actor, query) })
     }
     if (method === 'GET' && /\/api\/partner\/invite-assets$/.test(path)) return ok(await inviteAssets(actor))
 
