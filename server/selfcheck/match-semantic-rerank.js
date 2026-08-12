@@ -8,7 +8,6 @@ const {
 
 const ranked = [
   {
-    internalUserId: 31,
     candidate: { id: 31, openid: 'must-not-leak' },
     quality: { pass: true },
     mutualScore: 82,
@@ -19,12 +18,26 @@ const ranked = [
     intentB: { values: [{ value: '尊重边界' }], lifestyle: [{ value: '共同规划生活' }], appearance_preferences: [{ value: '清爽' }] },
     supplementA: '手机号 13800138000，未来希望在杭州生活',
     supplementB: '不发送联系方式，重视公共场所见面'
+  },
+  {
+    candidate: { id: 32, openid: 'also-must-not-leak' },
+    quality: { pass: true },
+    mutualScore: 81,
+    viewSimilarity: 84,
+    scoreA: { normalizedTotal: 83, maxTotal: 100, dimensions: {} },
+    scoreB: { normalizedTotal: 79, maxTotal: 100, dimensions: {} },
+    intentA: { values: [{ value: '稳定沟通' }], lifestyle: [], appearance_preferences: [] },
+    intentB: { values: [{ value: '坦诚交流' }], lifestyle: [], appearance_preferences: [] }
   }
 ]
 
-const request = buildSemanticRerankRequest({ evaluationId: 'offline_eval_20260812', candidates: ranked, topK: 5 })
+const request = buildSemanticRerankRequest({
+  evaluationId: 'offline_eval_20260812',
+  candidates: ranked.map((item) => ({ ...item, internalUserId: item.candidate.id })),
+  topK: 5
+})
 assert.strictEqual(request.version, RERANK_VERSION)
-assert.strictEqual(request.candidates.length, 1)
+assert.strictEqual(request.candidates.length, 2)
 const serialized = JSON.stringify(request)
 assert(!serialized.includes('must-not-leak'))
 assert(!serialized.includes('13800138000'))
@@ -36,7 +49,7 @@ const response = validateSemanticRerankResponse({
   version: RERANK_VERSION,
   ranking: [{
     candidate_ref: 'candidate_1',
-    rank: 1,
+    rank: 2,
     a_to_b_semantic_score: 86,
     b_to_a_semantic_score: 73,
     mutual_semantic_score: 79,
@@ -46,11 +59,25 @@ const response = validateSemanticRerankResponse({
     evidence_tags: ['life_plan_alignment'],
     data_completeness: 0.8,
     confidence: 0.84
+  }, {
+    candidate_ref: 'candidate_2',
+    rank: 1,
+    a_to_b_semantic_score: 94,
+    b_to_a_semantic_score: 91,
+    mutual_semantic_score: 93,
+    mutual_strengths: ['沟通节奏一致'],
+    asymmetric_risks: [],
+    confirmation_questions: [],
+    evidence_tags: ['bilateral_score'],
+    data_completeness: 0.86,
+    confidence: 0.88
   }],
   request
 }, request)
-assert.strictEqual(response[0].internalUserId, 31)
-assert.strictEqual(response[0].mutualSemanticScore, 79)
+assert.strictEqual(response[0].internalUserId, 32)
+assert.strictEqual(response[0].mutualSemanticScore, 93)
+assert.strictEqual(response[1].internalUserId, 31)
+assert.strictEqual(response[1].mutualSemanticScore, 79)
 assert.throws(() => validateSemanticRerankResponse({
   version: RERANK_VERSION,
   ranking: [{
@@ -65,13 +92,28 @@ assert.throws(() => validateSemanticRerankResponse({
     evidence_tags: ['life_plan_alignment'],
     data_completeness: 0.8,
     confidence: 0.84
+  }, {
+    candidate_ref: 'candidate_2',
+    rank: 2,
+    a_to_b_semantic_score: 82,
+    b_to_a_semantic_score: 81,
+    mutual_semantic_score: 81,
+    mutual_strengths: [],
+    asymmetric_risks: [],
+    confirmation_questions: [],
+    evidence_tags: ['bilateral_score'],
+    data_completeness: 0.8,
+    confidence: 0.84
   }],
   request
 }, request), /隐私信息/)
 
 const merged = mergeSemanticRerank(ranked, response, { minConfidence: 0.7, maxWeight: 0.2 })
 assert.strictEqual(merged.applied, true)
+assert.strictEqual(merged.ranked[0].candidate.id, 32)
 assert.strictEqual(merged.ranked[0].ai_rank, 1)
+assert.strictEqual(merged.ranked[1].candidate.id, 31)
+assert.strictEqual(merged.ranked[1].ai_rank, 2)
 assert(merged.ranked[0].ai_weight <= 0.2)
 
 const fallback = mergeSemanticRerank(ranked, [{ ...response[0], confidence: 0.2 }], { minConfidence: 0.7 })

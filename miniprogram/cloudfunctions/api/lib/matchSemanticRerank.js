@@ -146,7 +146,10 @@ function mergeSemanticRerank(ranked, validated, options = {}) {
   }
   const byUserId = new Map(rows.map((row) => [String(row.internalUserId), row]))
   const merged = (Array.isArray(ranked) ? ranked : []).map((item) => {
-    const row = byUserId.get(String(item.internalUserId))
+    const internalUserId = item && item.internalUserId !== undefined
+      ? item.internalUserId
+      : (item && item.candidate && item.candidate.id)
+    const row = byUserId.get(String(internalUserId))
     if (!row) return item
     const base = Number(item.mutualScore || 0)
     const semantic = Number(row.mutualSemanticScore || 0)
