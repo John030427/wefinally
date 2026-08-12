@@ -8,7 +8,7 @@ const { changeInternalTestVip } = require('./internalTestVip')
 const { changeAbMatchFixture } = require('./abMatchFixture')
 const { createAgentBackofficeService } = require('../agent/backofficeService')
 const { buildPartnerDashboard } = require('../lib/partnerDashboardPolicy')
-const { createReferralToken } = require('../lib/partnerReferralPolicy')
+const { createReferralToken, createReferralScene } = require('../lib/partnerReferralPolicy')
 
 const AGENT_BACKOFFICE_PATHS = Object.freeze({
   tickets: '/api/admin/agent/tickets',
@@ -141,28 +141,36 @@ async function inviteAssets(actor) {
   const partner = await db.byId('partner', actor.id)
   const code = partner && partner.promote_code || ''
   let referral = code
+  let referralScene = ''
   if (process.env.PARTNER_REFERRAL_SECRET) {
-    try { referral = createReferralToken(actor.id) } catch (err) { referral = code }
+    try {
+      referral = createReferralToken(actor.id)
+      referralScene = createReferralScene(actor.id)
+    } catch (err) {
+      referral = code
+    }
   }
   let qrcodeBase64 = ''
-  let qrcodeError = ''
-  try {
-    const result = await cloud.openapi.wxacode.getUnlimited({
-      scene: code,
-      page: 'pages/register/register',
-      checkPath: false,
-      envVersion: process.env.MINIPROGRAM_ENV_VERSION || 'trial'
-    })
-    const buffer = result && (result.buffer || result)
-    if (Buffer.isBuffer(buffer)) qrcodeBase64 = buffer.toString('base64')
-  } catch (err) {
-    qrcodeError = err.message || '小程序码生成失败'
+  let qrcodeError = referralScene ? '' : '合伙人归因签名密钥未配置'
+  if (referralScene) {
+    try {
+      const result = await cloud.openapi.wxacode.getUnlimited({
+        scene: referralScene,
+        page: 'pages/register/register',
+        checkPath: false,
+        envVersion: process.env.MINIPROGRAM_ENV_VERSION || 'trial'
+      })
+      const buffer = result && (result.buffer || result)
+      if (Buffer.isBuffer(buffer)) qrcodeBase64 = buffer.toString('base64')
+    } catch (err) {
+      qrcodeError = err.message || '小程序码生成失败'
+    }
   }
   return {
     promote_code: code,
     attribution_token: referral === code ? '' : referral,
     miniprogram_path: `/pages/register/register?promote_code=${encodeURIComponent(referral)}`,
-    scene: referral,
+    scene: referralScene,
     qrcode_base64: qrcodeBase64,
     qrcode_error: qrcodeError
   }

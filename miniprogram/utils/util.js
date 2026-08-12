@@ -87,6 +87,7 @@ function getCompatibilityTagClass(score) {
 function parseScenePromoteCode(scene) {
   if (!scene) return ''
   const decoded = decodeURIComponent(String(scene))
+  if (/^w1\.[a-z0-9]+\.[a-z0-9]+\.[a-z0-9_-]+$/i.test(decoded)) return decoded
   const match = decoded.match(/promote[_=]?(\w+)/i)
   if (match) return match[1]
   if (/^[A-Za-z0-9_]{4,50}$/.test(decoded) && !/^\d+$/.test(decoded)) return decoded
@@ -109,6 +110,7 @@ function normalizePromoteCode(value) {
   const compact = String(value || '').replace(/\s/g, '').trim()
   if (!compact) return ''
   if (/^wf1\./i.test(compact)) return `wf1.${compact.slice(compact.indexOf('.') + 1)}`
+  if (/^w1\./i.test(compact)) return `w1.${compact.slice(compact.indexOf('.') + 1).toLowerCase()}`
   return compact.toUpperCase()
 }
 
