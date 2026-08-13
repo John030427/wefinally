@@ -11,6 +11,7 @@
     "selfcheck:admin-user-identity": "node selfcheck/admin-user-identity.js",
     "selfcheck:admin-user-cloud": "node selfcheck/admin-user-cloud-service.js",
     "selfcheck:admin-customer-context": "node selfcheck/admin-customer-context.js",
+    "selfcheck:admin-cloud-ui": "node selfcheck/admin-cloud-consolidation-ui.js && node selfcheck/admin-cloud-consolidation-browser.js",
     "selfcheck:cloudbase-partner": "node selfcheck/cloudbase-partner-connection.js",
     "selfcheck:partner-dashboard": "node selfcheck/partner-dashboard-policy.js",
     "selfcheck:partner-dashboard-ui": "node selfcheck/partner-dashboard-cloud-ui.js",

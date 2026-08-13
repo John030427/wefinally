@@ -211,12 +211,13 @@
   const CLOUD_TK = 'wf_cloud_admin_token';
   const RK = 'wf_admin_role';
   const TITLES = { dashboard:'数据看板', service:'客服工作台', users:'用户管理', members:'会员审核', matches:'匹配记录', partners:'合伙人管理', orders:'订单对账', withdrawals:'提现审核', marry:'婚姻报备', cancel:'注销/离异审核', stats:'公示数据配置', knowledge:'AI 知识库', chat:'客服会话', handoff:'奔现工单', privacy:'合规授权日志', whitelist:'单位白名单', export:'数据导出', logs:'系统日志' };
-  const ROLE_PAGES = { customer_service: ['service', 'orders', 'chat', 'handoff'] };
-  const CLOUD_ONLY_PAGES = ['service', 'members', 'partners', 'knowledge'];
+  const ROLE_PAGES = { customer_service: ['service', 'orders'] };
+  const CLOUD_ONLY_PAGES = ['dashboard', 'service', 'users', 'members', 'matches', 'partners', 'orders', 'knowledge'];
   let page = 'dashboard', dashRange = 'today', cacheUsers = [], cacheOrders = [];
   let serviceTickets = [], serviceCoordinations = [], serviceSelectedTicketId = 0, serviceTicketDetail = null;
   let serviceConversations = [], serviceSelectedConversationId = 0, serviceConversationDetail = null, serviceAuditQuery = '';
   let serviceFilter = 'active', serviceQuery = '';
+  let usersIncludeTest = false, serviceIncludeTest = false;
 
   function authStorage() { return CLOUD_ONLY ? sessionStorage : localStorage; }
   function token() { return authStorage().getItem(TK); }
@@ -251,6 +252,52 @@
 
   function esc(s) { if (s == null) return ''; const d = document.createElement('div'); d.textContent = String(s); return d.innerHTML; }
   function sourceText(s) { return ({ public: '公职', edu: '教师', med: '医护' })[s] || s || '-'; }
+  function renderUserIdentity(user, options) {
+    user = user || {};
+    options = options || {};
+    const label = user.display_label || [user.support_code || 'WF-待分配', user.gender_text, user.city].filter(Boolean).join(' · ') || 'WF-待分配 · 资料未完善';
+    const badge = user.is_test ? ' <span class="badge b-pending">测试</span>' : '';
+    if (options.link !== false && user.id) return '<button class="btn btn-sm btn-outline" onclick="openUserContext(' + Number(user.id) + ')">' + esc(label) + '</button>' + badge;
+    return '<span class="user-identity">' + esc(label) + '</span>' + badge;
+  }
+
+  function contextList(title, rows, formatter) {
+    rows = rows || [];
+    return '<section class="member-detail-section"><div class="member-detail-title">' + esc(title) + '（' + rows.length + '）</div>' +
+      (rows.length ? '<div class="member-detail-grid">' + rows.slice(0, 8).map(formatter).join('') + '</div>' : '<p class="empty">暂无记录</p>') + '</section>';
+  }
+
+  async function openUserContext(id) {
+    modal('用户业务全景', '<div class="loading">正在汇总用户资料、订单、匹配和服务记录...</div>');
+    try {
+      const data = await api('/admin/users/' + Number(id));
+      const user = data.user || {};
+      const membership = [user.member_status || '未申请会员', Number(user.is_vip) === 1 ? 'VIP' : '非VIP', user.vip_source].filter(Boolean).join(' · ');
+      const body = memberDetailSection('用户身份', [
+        memberDetailItem('用户编号', user.display_label || user.support_code || 'WF-待分配'),
+        memberDetailItem('会员状态', membership),
+        memberDetailItem('会员到期', user.vip_expire_time || '-'),
+        memberDetailItem('推广合伙人', data.partner ? data.partner.name + ' · ' + data.partner.promote_code : '-'),
+        memberDetailItem('归因来源', data.attribution ? data.attribution.source || data.attribution.promote_code : '-'),
+        memberDetailItem('内部用户 ID', adminRole() === 'super_admin' ? user.id : '-'),
+        memberDetailItem('OpenID', adminRole() === 'super_admin' ? user.openid : '-', true)
+      ]) +
+      contextList('最近订单', data.orders, row => memberDetailItem(row.pay_status === 1 ? '已支付' : '待支付', '¥' + Number(row.amount || 0).toFixed(2) + ' · ' + (row.pay_time || row.create_time || '-'), true)) +
+      contextList('最近匹配', data.matches, row => memberDetailItem('匹配 #' + row.id, renderPlainIdentity(row.owner) + ' ↔ ' + renderPlainIdentity(row.matched) + ' · ' + Number(row.total_score || 0).toFixed(1) + '分', true)) +
+      contextList('AI 会话', data.conversations, row => memberDetailItem(row.agent_type || 'Agent会话', (row.summary || '-') + ' · ' + (row.status || '-'), true)) +
+      contextList('人工工单', data.tickets, row => memberDetailItem(row.category || '客服工单', (row.summary || '-') + ' · ' + (row.status || '-'), true)) +
+      contextList('约会协调', data.coordinations, row => memberDetailItem('协调 #' + row.id, row.status || '-', true)) +
+      contextList('通知记录', data.notification_jobs, row => memberDetailItem(row.stage || '通知', (row.status || '-') + ' · ' + (row.sent_at || row.create_time || '-'), true));
+      document.querySelector('#modalRoot .modal').classList.add('modal-wide');
+      document.querySelector('#modalRoot .modal-bd').innerHTML = body;
+    } catch (e) { document.querySelector('#modalRoot .modal-bd').innerHTML = '<div class="error-box">' + esc(e.message) + '</div>'; }
+  }
+  window.openUserContext = openUserContext;
+
+  function renderPlainIdentity(user) {
+    user = user || {};
+    return user.display_label || [user.support_code || 'WF-待分配', user.gender_text, user.city].filter(Boolean).join(' · ');
+  }
 
   function modal(title, body, foot) {
     document.getElementById('modalRoot').innerHTML = '<div class="modal-bg" onclick="if(event.target===this)closeM()"><div class="modal"><div class="modal-hd">' + title + '</div><div class="modal-bd">' + body + '</div><div class="modal-ft">' + (foot || '<button class="btn btn-outline" onclick="closeM()">关闭</button>') + '</div></div></div>';
@@ -590,6 +637,16 @@
   };
 
   async function pgDashboard() {
+    if (CLOUD_ONLY) {
+      const dash = await api('/admin/dashboard');
+      document.getElementById('content').innerHTML =
+        '<div class="stats-grid">' +
+        sc('正式用户', dash.users) + sc('VIP用户', dash.vip_users) + sc('合伙人', dash.partners) +
+        sc('已付订单', dash.paid_orders) + sc('累计营收', Number(dash.revenue || 0).toFixed(2)) +
+        sc('待审会员', dash.pending_member_applications) + sc('待处理工单', dash.open_service_tickets) +
+        '</div><div class="card"><div class="card-hd"><strong>CloudBase 业务总览</strong></div><div class="card-bd"><p style="font-size:.875rem">数据来自 CloudBase 正式业务集合；测试账号默认不计入统计。</p></div></div>';
+      return;
+    }
     const [dash, users, orders, pub] = await Promise.all([
       api('/admin/dashboard'),
       api('/admin/users?pageSize=500'),
@@ -623,7 +680,18 @@
     const kw = document.getElementById('uKw')?.value || '';
     const st = document.getElementById('uSt')?.value ?? '';
     const pg = Number(document.getElementById('uPg')?.value || 1);
-    const data = await api('/admin/users?page=' + pg + '&keyword=' + encodeURIComponent(kw) + (st !== '' ? '&status=' + st : ''));
+    const data = await api('/admin/users?page=' + pg + '&keyword=' + encodeURIComponent(kw) + (st !== '' ? '&status=' + st : '') + (usersIncludeTest ? '&include_test=1' : ''));
+    if (CLOUD_ONLY) {
+      const rows = data.list.length ? data.list.map(u =>
+        '<tr><td>' + renderUserIdentity(u) + '</td><td>' + statusBadge(u.status) + '</td><td>' + esc(u.member_status || '-') + '</td><td>' + (Number(u.is_vip) === 1 ? '<span class="badge b-ok">VIP</span>' : '-') + '</td><td>' + esc(u.vip_expire_time || '-') + '</td><td>' + esc(u.create_time || '-') + '</td><td>' + (u.id ? '<button class="btn btn-sm btn-primary" onclick="openUserContext(' + Number(u.id) + ')">业务全景</button>' : '-') + '</td></tr>'
+      ).join('') : '<tr><td colspan="7" class="empty">暂无数据</td></tr>';
+      document.getElementById('content').innerHTML =
+        '<div class="toolbar"><input id="uKw" placeholder="搜索用户编号/城市/会员状态" value="' + esc(kw) + '" /><select id="uSt"><option value="">全部</option><option value="0">待审核</option><option value="1">正常</option><option value="2">封号</option><option value="3">已结婚</option></select><label style="font-size:.8125rem"><input id="usersIncludeTest" type="checkbox" onchange="setUsersIncludeTest(this.checked)" ' + (usersIncludeTest ? 'checked' : '') + ' /> 包含测试数据</label><button class="btn btn-primary btn-sm" onclick="pgUsers()">搜索</button></div>' +
+        '<div class="card"><div class="card-bd"><table><thead><tr><th>可识别用户</th><th>状态</th><th>会员审核</th><th>VIP</th><th>VIP到期</th><th>注册</th><th>操作</th></tr></thead><tbody>' + rows + '</tbody></table>' +
+        pag(data.page, data.totalPages || Math.max(1, Math.ceil(data.total / data.pageSize)), 'uPg') + '</div></div>';
+      if (st !== '') document.getElementById('uSt').value = st;
+      return;
+    }
     let rows = data.list.length ? data.list.map(u =>
       '<tr><td>' + u.id + '</td><td>' + esc(u.nickname || '-') + '</td><td>' + esc(u.phone || '-') + '</td><td>' + statusBadge(u.status) + '</td><td>' + (u.vip_expire_at ? esc(u.vip_expire_at) : '-') + '</td><td>' + esc(u.partner_name || '-') + '</td><td>' + esc(u.created_at) + '</td><td><button class="btn btn-sm btn-outline" onclick="editUser(' + u.id + ')">编辑</button></td></tr>'
     ).join('') : '<tr><td colspan="8" class="empty">暂无数据</td></tr>';
@@ -634,10 +702,16 @@
     if (st !== '') document.getElementById('uSt').value = st;
   }
   window.pgUsers = pgUsers;
+  window.setUsersIncludeTest = function (value) { usersIncludeTest = value === true; pgUsers(); };
 
   async function pgMatches() {
     const pg = Number(document.getElementById('mPg')?.value || 1);
     const data = await api('/admin/matches?page=' + pg + '&pageSize=50');
+    if (CLOUD_ONLY) {
+      const rows = data.list.length ? data.list.map(m => '<tr><td>' + m.id + '</td><td>' + renderUserIdentity(m.owner) + '</td><td>' + renderUserIdentity(m.matched) + '</td><td>' + esc(m.match_date || '-') + '</td><td>' + Number(m.total_score || 0).toFixed(1) + '</td><td>' + Number(m.view_similarity || 0).toFixed(0) + '</td><td>' + esc(m.score_version || '-') + '</td><td><button class="btn btn-sm btn-outline" onclick="viewMatch(' + Number(m.id) + ')">诊断</button></td></tr>').join('') : '<tr><td colspan="8" class="empty">暂无匹配记录</td></tr>';
+      document.getElementById('content').innerHTML = '<div class="card"><div class="card-hd"><strong>全量匹配记录</strong><button class="btn btn-sm btn-outline" onclick="pgMatches()">刷新</button></div><div class="card-bd"><table><thead><tr><th>ID</th><th>用户</th><th>匹配对象</th><th>批次日期</th><th>总分</th><th>三观</th><th>版本</th><th>操作</th></tr></thead><tbody>' + rows + '</tbody></table>' + pag(data.page, data.totalPages || Math.max(1, Math.ceil(data.total / data.pageSize)), 'mPg') + '</div></div>';
+      return;
+    }
     let rows = data.list.length ? data.list.map(m => {
       const report = Number(m.ai_report_status || 0) === 1 ? '已生成' : Number(m.ai_report_status || 0) === 3 ? '关闭/失败' : '待生成';
       const score = m.total_score == null ? '-' : Number(m.total_score).toFixed(1);
@@ -668,7 +742,8 @@
   function settingHtml(title, user) {
     const s = user.match_settings || {};
     return '<div class="card" style="margin-bottom:.75rem"><div class="card-hd"><strong>' + title + '</strong></div><div class="card-bd">' +
-      fieldLine('openid', user.openid) +
+      fieldLine('用户编号', renderPlainIdentity(user)) +
+      (adminRole() === 'super_admin' ? fieldLine('内部 ID / openid', [user.id, user.openid].filter(Boolean).join(' / ')) : '') +
       fieldLine('性别', user.gender === 1 ? '男' : user.gender === 2 ? '女' : user.gender) +
       fieldLine('出生年/城市', [user.birth_year, user.city].filter(Boolean).join(' / ')) +
       fieldLine('身高/学历/圈层', [user.height_range, user.education, user.circle_name || user.circle_id].filter(Boolean).join(' / ')) +
@@ -808,8 +883,9 @@
   window.pgService = pgService;
 
   async function pgCloudAgentService() {
+    const includeTest = serviceIncludeTest ? '?include_test=1' : '';
     const results = await Promise.all([
-      memberApi('/admin/agent/tickets'),
+      memberApi('/admin/agent/tickets' + includeTest),
       memberApi('/admin/date-coordinations')
     ]);
     serviceTickets = results[0].list || [];
@@ -891,7 +967,7 @@
       return '<button class="service-ticket' + active + '" onclick="selectCloudConversation(' + Number(session.id) + ')">' +
         '<span class="service-ticket-line"><span class="service-ticket-ref">' + esc(session.session_ref) + '</span><span class="service-status' + (ticket?.status === 'closed' ? ' closed' : '') + '">' + esc(ticket ? serviceStatusText(ticket.status) : '未建工单') + '</span></span>' +
         '<span class="service-ticket-summary">' + esc(session.summary || session.agent_type || '用户与 AI 会话') + '</span>' +
-        '<span class="service-ticket-meta"><span>' + esc(session.user_ref) + '</span><span>' + esc(session.coordination_ref || '未关联协调') + '</span></span>' +
+        '<span class="service-ticket-meta"><span>' + renderUserIdentity(session.user, { link:false }) + '</span><span>' + esc(session.coordination_ref || '未关联协调') + '</span></span>' +
         '</button>';
     }).join('');
   }
@@ -925,15 +1001,20 @@
     const ticket = detail.ticket || {};
     const session = detail.session || {};
     const coordination = detail.coordination;
+    const context = detail.user_context || {};
+    const contextUser = context.user || session.user || ticket.user || {};
     return '<div class="service-pane-head"><strong>业务上下文</strong><small>仅展示脱敏编号与必要状态</small></div>' +
       '<section class="service-context-section"><h4>用户与会话</h4><dl class="service-context-grid">' +
-      '<dt>用户编号</dt><dd>' + esc(ticket.user_ref || session.user_ref || '-') + '</dd>' +
+      '<dt>用户编号</dt><dd>' + renderUserIdentity(contextUser, { link:false }) + '</dd>' +
+      '<dt>会员状态</dt><dd>' + esc([contextUser.member_status || '未申请会员', Number(contextUser.is_vip) === 1 ? 'VIP' : '非VIP'].join(' · ')) + '</dd>' +
+      '<dt>推广归因</dt><dd>' + esc(context.partner ? context.partner.name + ' · ' + context.partner.promote_code : (context.attribution?.source || '-')) + '</dd>' +
       '<dt>会话编号</dt><dd>' + esc(session.session_ref || ticket.session_ref || '-') + '</dd>' +
       '<dt>Agent类型</dt><dd>' + esc(session.agent_type || '-') + '</dd>' +
       '<dt>会话状态</dt><dd>' + esc(session.status || '-') + '</dd>' +
       '<dt>处理工单</dt><dd>' + esc(ticket.ticket_ref ? (ticket.ticket_ref + ' · ' + serviceStatusText(ticket.status)) : '首次回复时自动建立') + '</dd>' +
       '<dt>接管客服</dt><dd>' + esc(ticket.assigned_admin_ref || '尚未领取') + '</dd></dl></section>' +
       '<section class="service-context-section"><h4>AI摘要</h4><div class="service-summary">' + esc(ticket.summary || session.summary || '暂无摘要') + '</div></section>' +
+      '<section class="service-context-section"><h4>用户业务汇总</h4><dl class="service-context-grid"><dt>订单</dt><dd>' + (context.orders || []).length + '</dd><dt>匹配</dt><dd>' + (context.matches || []).length + '</dd><dt>AI会话</dt><dd>' + (context.conversations || []).length + '</dd><dt>人工工单</dt><dd>' + (context.tickets || []).length + '</dd><dt>协调</dt><dd>' + (context.coordinations || []).length + '</dd><dt>通知</dt><dd>' + (context.notification_jobs || []).length + '</dd></dl></section>' +
       '<section class="service-context-section"><h4>约会协调</h4>' + (coordination
         ? '<dl class="service-context-grid"><dt>协调编号</dt><dd>' + esc(coordination.coordination_ref) + '</dd><dt>参与者</dt><dd>' + esc((coordination.participant_refs || []).join(' / ')) + '</dd><dt>当前状态</dt><dd>' + esc(coordination.status) + '</dd><dt>业务版本</dt><dd>v' + Number(coordination.coordination_version || 1) + '</dd><dt>缺失信息</dt><dd>' + esc((coordination.missing_dimensions || []).join('、') || '-') + '</dd></dl>'
         : '<div class="service-event"><span>未关联约会协调任务</span><span>-</span></div>') + '</section>' +
@@ -952,12 +1033,12 @@
       : null;
     if (conversationDetail) conversationDetail.ticket = linkedTicket || null;
     const conversation = selectedConversation
-      ? '<div class="service-conversation-head"><div><div class="service-conversation-title">' + esc(selectedConversation.session_ref) + '</div><div class="service-conversation-sub">' + esc(selectedConversation.user_ref) + ' · ' + esc(selectedConversation.agent_type || 'Agent会话') + '</div></div><span class="service-status' + (linkedTicket?.status === 'closed' ? ' closed' : '') + '">' + esc(linkedTicket ? serviceStatusText(linkedTicket.status) : '未建工单') + '</span></div>' +
+      ? '<div class="service-conversation-head"><div><div class="service-conversation-title">' + esc(selectedConversation.session_ref) + '</div><div class="service-conversation-sub">' + renderUserIdentity(selectedConversation.user, { link:false }) + ' · ' + esc(selectedConversation.agent_type || 'Agent会话') + '</div></div><span class="service-status' + (linkedTicket?.status === 'closed' ? ' closed' : '') + '">' + esc(linkedTicket ? serviceStatusText(linkedTicket.status) : '未建工单') + '</span></div>' +
         '<div class="service-messages" id="serviceMessages">' + (conversationDetail ? serviceMessagesHtml(conversationDetail) : '<div class="service-empty-pane">正在读取完整时间线...</div>') + '</div>' +
         '<div class="service-composer"><textarea id="serviceConversationReplyText" aria-label="人工客服回复" maxlength="1000" placeholder="以人工客服身份回复；没有工单时会自动建立"></textarea><div class="service-composer-actions"><small>查看行为自动审计；发送回复会建立或更新处理工单</small><div class="service-action-group">' + (linkedTicket && linkedTicket.status !== 'closed' ? '<button class="service-btn danger" onclick="cloudAgentClose(' + Number(linkedTicket.id) + ')">关闭工单</button>' : '') + '<button id="serviceConversationReplyButton" class="service-btn primary" onclick="sendCloudConversationReply(' + Number(selectedConversation.id) + ')">' + (linkedTicket && linkedTicket.status !== 'closed' ? '发送回复' : '建工单并回复') + '</button></div></div></div>'
       : '<div class="service-empty-pane">选择左侧会话后查看真实用户—AI聊天</div>';
     const search = '<div class="service-search"><input id="serviceAuditSearch" aria-label="搜索会话与工单" value="' + esc(serviceAuditQuery) + '" onkeydown="if(event.key===\'Enter\')searchCloudConversations()" placeholder="搜索会话、用户、协调编号或摘要" /></div>';
-    const queueBody = '<div class="service-pane-head"><strong>会话与工单</strong><small>' + serviceConversations.length + ' 个会话 · ' + openCount + ' 个待处理工单</small></div><div class="service-filters"><button class="service-filter active" onclick="searchCloudConversations()">查询</button><button class="service-filter" onclick="clearCloudConversationSearch()">最近会话</button></div><div id="serviceTicketQueue">' + serviceConversationQueueHtml() + '</div>';
+    const queueBody = '<div class="service-pane-head"><strong>会话与工单</strong><small>' + serviceConversations.length + ' 个会话 · ' + openCount + ' 个待处理工单</small></div><div class="service-filters"><button class="service-filter active" onclick="searchCloudConversations()">查询</button><button class="service-filter" onclick="clearCloudConversationSearch()">最近会话</button><label style="font-size:.75rem;white-space:nowrap"><input id="serviceIncludeTest" type="checkbox" onchange="setServiceIncludeTest(this.checked)" ' + (serviceIncludeTest ? 'checked' : '') + ' /> 包含测试数据</label></div><div id="serviceTicketQueue">' + serviceConversationQueueHtml() + '</div>';
     document.getElementById('content').innerHTML = '<div class="service-workbench">' +
       '<div class="service-topbar">' + search + '<div class="service-metrics">' +
       '<div class="service-metric urgent"><strong>' + urgentCount + '</strong><span>紧急 P0/P1</span></div><div class="service-metric"><strong>' + openCount + '</strong><span>待处理工单</span></div><div class="service-metric"><strong>' + manualCount + '</strong><span>人工协调</span></div></div></div>' +
@@ -969,6 +1050,7 @@
     const input = document.getElementById('serviceAuditSearch');
     serviceAuditQuery = String(input?.value ?? serviceAuditQuery).trim();
     const params = new URLSearchParams();
+    if (serviceIncludeTest) params.set('include_test', '1');
     if (/^WF-D-/i.test(serviceAuditQuery)) params.set('coordination_ref', serviceAuditQuery);
     else if (/^WF-U-/i.test(serviceAuditQuery)) params.set('user_ref', serviceAuditQuery);
     else if (/^WF-S-/i.test(serviceAuditQuery)) params.set('session_ref', serviceAuditQuery);
@@ -982,6 +1064,7 @@
       if (serviceSelectedConversationId) await loadCloudConversation(serviceSelectedConversationId);
     } catch (e) { toast(e.message || '会话查询失败', false); }
   };
+  window.setServiceIncludeTest = async function (value) { serviceIncludeTest = value === true; await pgCloudAgentService(); };
   window.clearCloudConversationSearch = async function () {
     serviceAuditQuery = '';
     const input = document.getElementById('serviceAuditSearch');
@@ -1094,6 +1177,12 @@
 
   async function pgOrders() {
     const data = await api('/admin/orders?pageSize=50');
+    if (CLOUD_ONLY) {
+      const rows = data.list.length ? data.list.map(o => '<tr><td>' + esc(o.order_no || ('#' + o.id)) + '</td><td>' + renderUserIdentity(o.user) + '</td><td>¥' + Number(o.amount || 0).toFixed(2) + '</td><td>' + (Number(o.pay_status) === 1 ? '<span class="badge b-ok">已付</span>' : '待付') + '</td><td>' + (Number(o.settle_status) === 1 ? '已结算' : '未结算') + '</td><td>' + esc(o.pay_time || o.create_time || '-') + '</td></tr>').join('') : '<tr><td colspan="6" class="empty">暂无订单</td></tr>';
+      const paid = data.list.filter(o => Number(o.pay_status) === 1);
+      document.getElementById('content').innerHTML = '<div class="stats-grid">' + sc('订单总数', data.total) + sc('本页已付', paid.length) + sc('本页已付金额', paid.reduce((sum, row) => sum + Number(row.amount || 0), 0).toFixed(2)) + '</div><div class="card"><div class="card-bd"><table><thead><tr><th>订单</th><th>用户</th><th>金额</th><th>支付</th><th>结算</th><th>时间</th></tr></thead><tbody>' + rows + '</tbody></table></div></div>';
+      return;
+    }
     const service = adminRole() === 'customer_service';
     let rows = data.list.length ? data.list.map(o => service
       ? '<tr><td>' + esc(o.order_no) + '</td><td>' + o.user_id + '</td><td>¥' + Number(o.amount).toFixed(2) + '</td><td>' + (o.status === 1 ? '已付' : '待付') + '</td><td>' + (o.settled ? '已结算' : '未结算') + '</td><td>' + esc(o.paid_at || o.created_at) + '</td></tr>'
