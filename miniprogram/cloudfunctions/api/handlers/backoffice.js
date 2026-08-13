@@ -28,7 +28,7 @@ function userService() {
 }
 
 function agentService() {
-  if (!agentBackoffice) agentBackoffice = createAgentBackofficeService(db)
+  if (!agentBackoffice) agentBackoffice = createAgentBackofficeService(db, { userBackoffice: userService() })
   return agentBackoffice
 }
 

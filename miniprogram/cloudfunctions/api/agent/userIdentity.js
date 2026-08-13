@@ -7,6 +7,7 @@ function numericUserId(value) {
 }
 
 function isTestUser(user = {}) {
+  user = user || {}
   if (Number(user.is_test_fixture || 0) === 1) return true
   if (numericUserId(user.ab_test_owner_user_id)) return true
   return TEST_OPENID.test(String(user.openid || '').trim())

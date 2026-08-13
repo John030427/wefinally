@@ -9,6 +9,7 @@ const KNOWLEDGE_CATEGORIES = Object.freeze([
   'relationship_boundaries',
   'original_articles'
 ])
+const { isTestUser, projectUserIdentity, supportCodeFor } = require('./userIdentity')
 
 function adminRole(actor) {
   if (!actor || actor.role !== 'admin') throw new Error('无权访问Agent后台')
@@ -32,12 +33,13 @@ function refId(value, prefix) {
   return /^\d+$/.test(text) ? Number(text) : 0
 }
 
-function ticketDto(row) {
+function ticketDto(row, user) {
   return {
     id: row.id,
     ticket_ref: ref('T', row.id),
     session_ref: ref('S', row.session_id),
-    user_ref: ref('U', row.user_id),
+    user_ref: user ? (supportCodeFor(user) || ref('U', row.user_id)) : ref('U', row.user_id),
+    user: user ? projectUserIdentity(user, { includeSensitive: false }) : undefined,
     coordination_ref: row.coordination_id ? ref('D', row.coordination_id) : '',
     priority: row.priority,
     category: row.category,
@@ -51,11 +53,12 @@ function ticketDto(row) {
   }
 }
 
-function sessionDto(row) {
+function sessionDto(row, user) {
   return {
     id: row.id,
     session_ref: ref('S', row.id),
-    user_ref: ref('U', row.user_id),
+    user_ref: user ? (supportCodeFor(user) || ref('U', row.user_id)) : ref('U', row.user_id),
+    user: user ? projectUserIdentity(user, { includeSensitive: false }) : undefined,
     coordination_ref: row.coordination_id ? ref('D', row.coordination_id) : '',
     agent_type: String(row.agent_type || ''),
     status: String(row.status || ''),
@@ -203,14 +206,31 @@ function coordinationDto(row) {
   }
 }
 
-function createAgentBackofficeService(deps) {
+function createAgentBackofficeService(deps, options = {}) {
   if (!deps) throw new Error('Agent backoffice dependencies are required')
+  const userBackoffice = options.userBackoffice || null
+
+  async function userRowsById(rows) {
+    const result = new Map()
+    for (const id of Array.from(new Set(rows.map((row) => Number(row.user_id || 0)).filter(Boolean)))) {
+      result.set(id, await deps.byId('user', id))
+    }
+    return result
+  }
+
+  function includeTest(filters) {
+    return filters.include_test === true || String(filters.include_test || '') === '1'
+  }
 
   async function listTickets(actor, filters = {}) {
     requireRole(actor, ['super_admin', 'customer_service', 'auditor'])
     const query = filters.status ? { status: filters.status } : {}
     const rows = await deps.list('agent_human_ticket', query, 200)
-    return rows.sort((a, b) => Number(b.id || 0) - Number(a.id || 0)).map(ticketDto)
+    const users = await userRowsById(rows)
+    return rows
+      .filter((row) => includeTest(filters) || !isTestUser(users.get(Number(row.user_id))))
+      .sort((a, b) => Number(b.id || 0) - Number(a.id || 0))
+      .map((row) => ticketDto(row, users.get(Number(row.user_id))))
   }
 
   async function ticketDetail(actor, ticketId) {
@@ -219,6 +239,7 @@ function createAgentBackofficeService(deps) {
     if (!ticket) throw new Error('人工工单不存在')
     const session = await deps.byId('agent_session', ticket.session_id)
     if (!session) throw new Error('Agent会话不存在')
+    const user = await deps.byId('user', ticket.user_id)
     const messages = await deps.list('agent_message', { session_id: session.id }, 200)
     const runs = await deps.list('agent_run', { session_id: session.id }, 50)
     const coordination = ticket.coordination_id
@@ -230,9 +251,9 @@ function createAgentBackofficeService(deps) {
     const coordinationEvents = ticket.coordination_id
       ? await deps.list('date_coordination_event', { coordination_id: ticket.coordination_id }, 200)
       : []
-    return {
-      ticket: ticketDto(ticket),
-      session: sessionDto(session),
+    const result = {
+      ticket: ticketDto(ticket, user),
+      session: sessionDto(session, user),
       messages: messages
         .sort((a, b) => Number(a.id || 0) - Number(b.id || 0))
         .map(messageDto),
@@ -245,6 +266,8 @@ function createAgentBackofficeService(deps) {
         .sort((a, b) => Number(b.id || 0) - Number(a.id || 0))
         .map(notificationJobDto)
     }
+    if (userBackoffice) result.user_context = await userBackoffice.userContext(actor, ticket.user_id)
+    return result
   }
 
   async function listConversations(actor, filters = {}) {
@@ -263,24 +286,31 @@ function createAgentBackofficeService(deps) {
     } else {
       rows = await deps.list('agent_session', {}, 200)
     }
+    const users = await userRowsById(rows)
     const query = String(filters.query || '').trim().toLowerCase()
     return rows
-      .filter((row) => !query || [
-        ref('S', row.id),
-        ref('U', row.user_id),
-        row.coordination_id ? ref('D', row.coordination_id) : '',
-        row.agent_type,
-        row.status,
-        row.summary
-      ].join(' ').toLowerCase().includes(query))
+      .filter((row) => includeTest(filters) || !isTestUser(users.get(Number(row.user_id))))
+      .filter((row) => {
+        const user = users.get(Number(row.user_id))
+        return !query || [
+          ref('S', row.id),
+          user ? (supportCodeFor(user) || ref('U', row.user_id)) : ref('U', row.user_id),
+          user ? projectUserIdentity(user, { includeSensitive: false }).display_label : '',
+          row.coordination_id ? ref('D', row.coordination_id) : '',
+          row.agent_type,
+          row.status,
+          row.summary
+        ].join(' ').toLowerCase().includes(query)
+      })
       .sort((a, b) => Number(b.id || 0) - Number(a.id || 0))
-      .map(sessionDto)
+      .map((row) => sessionDto(row, users.get(Number(row.user_id))))
   }
 
   async function conversationDetail(actor, sessionId) {
     const viewerRole = requireRole(actor, ['super_admin', 'customer_service', 'auditor'])
     const session = await deps.byId('agent_session', Number(sessionId || 0))
     if (!session) throw new Error('Agent会话不存在')
+    const user = await deps.byId('user', session.user_id)
     const messages = await deps.list('agent_message', { session_id: session.id }, 500)
     const runs = await deps.list('agent_run', { session_id: session.id }, 100)
     const coordination = session.coordination_id
@@ -302,9 +332,9 @@ function createAgentBackofficeService(deps) {
       user_id: session.user_id,
       reason: 'authorized_backoffice_read'
     }, 'member_audit')
-    return {
+    const result = {
       read_only: true,
-      session: sessionDto(session),
+      session: sessionDto(session, user),
       messages: messages
         .sort((a, b) => Number(a.id || 0) - Number(b.id || 0))
         .map(messageDto),
@@ -317,6 +347,8 @@ function createAgentBackofficeService(deps) {
         .sort((a, b) => Number(b.id || 0) - Number(a.id || 0))
         .map(notificationJobDto)
     }
+    if (userBackoffice) result.user_context = await userBackoffice.userContext(actor, session.user_id)
+    return result
   }
 
   async function replyTicket(actor, ticketId, content) {

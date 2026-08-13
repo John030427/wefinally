@@ -81,6 +81,7 @@ async function main() {
   }
 
   assert.strictEqual(isTestUser(official), false)
+  assert.strictEqual(isTestUser(null), false)
   assert.strictEqual(isTestUser(legacy), true)
   assert.strictEqual(isTestUser({ id: 9, is_test_fixture: 1 }), true)
   assert.strictEqual(isTestUser({ id: 10, ab_test_owner_user_id: 7 }), true)
