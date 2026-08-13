@@ -8,6 +8,7 @@
     "dev": "node --watch src/app.js",
     "admin:cloudbase": "node tools/cloudbase-admin-local.js",
     "selfcheck:cloudbase-admin": "node selfcheck/cloudbase-admin-connection.js",
+    "selfcheck:admin-user-identity": "node selfcheck/admin-user-identity.js",
     "selfcheck:cloudbase-partner": "node selfcheck/cloudbase-partner-connection.js",
     "selfcheck:partner-dashboard": "node selfcheck/partner-dashboard-policy.js",
     "selfcheck:partner-dashboard-ui": "node selfcheck/partner-dashboard-cloud-ui.js",

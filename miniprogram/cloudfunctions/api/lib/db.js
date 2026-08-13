@@ -1,6 +1,7 @@
 const cloud = require('wx-server-sdk')
 const collections = require('./collections')
 const { withCollectionBootstrap } = require('./collectionBootstrapPolicy')
+const { OFFICIAL_SUPPORT_CODE, isTestUser, testSupportCode } = require('../agent/userIdentity')
 
 const db = cloud.database()
 const _ = db.command
@@ -122,6 +123,41 @@ async function removeByDoc(name, doc) {
   return { removed }
 }
 
+async function ensureUserSupportCode(userDoc) {
+  if (!userDoc || !userDoc._id || !Number(userDoc.id)) throw new Error('用户记录无效')
+  if (isTestUser(userDoc)) return testSupportCode(userDoc)
+
+  return db.runTransaction(async (transaction) => {
+    const userRef = transaction.collection(collections.user).doc(String(userDoc._id))
+    const userResult = await userRef.get()
+    const current = userResult && userResult.data
+    if (!current) throw new Error('用户不存在')
+    if (isTestUser(current)) return testSupportCode(current)
+
+    const existing = String(current.support_code || '').trim().toUpperCase()
+    if (existing) {
+      if (!OFFICIAL_SUPPORT_CODE.test(existing)) throw new Error('用户编号格式无效')
+      return existing
+    }
+
+    const counterRef = transaction.collection('system_counters').doc('user_support_code')
+    const counterResult = await counterRef.get()
+    const counter = counterResult && counterResult.data
+    const next = Number(counter && counter.seq || 0) + 1
+    if (!Number.isSafeInteger(next) || next <= 0 || next > 999999) throw new Error('用户编号已耗尽')
+
+    const timestamp = now()
+    if (counter) {
+      await counterRef.update({ data: { seq: next, update_time: timestamp } })
+    } else {
+      await counterRef.set({ data: { seq: next, create_time: timestamp, update_time: timestamp } })
+    }
+    const supportCode = `WF-${String(next).padStart(6, '0')}`
+    await userRef.update({ data: { support_code: supportCode, update_time: timestamp } })
+    return supportCode
+  })
+}
+
 function authError(message) {
   const err = new Error(message || '登录已过期，请重新登录')
   err.code = 401
@@ -140,6 +176,7 @@ module.exports = {
   addWithId,
   updateByDoc,
   removeByDoc,
+  ensureUserSupportCode,
   authError,
   withCollection
 }
