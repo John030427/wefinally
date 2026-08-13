@@ -7,6 +7,7 @@ const { reviewMemberApplication } = require('./member')
 const { changeInternalTestVip } = require('./internalTestVip')
 const { changeAbMatchFixture } = require('./abMatchFixture')
 const { createAgentBackofficeService } = require('../agent/backofficeService')
+const { createUserBackofficeService, dispatchUserBackofficeRoute } = require('../agent/userBackofficeService')
 const { buildPartnerDashboard } = require('../lib/partnerDashboardPolicy')
 const { createReferralToken, createReferralScene } = require('../lib/partnerReferralPolicy')
 const { httpMethod, httpPath, queryParameters } = require('../lib/httpEvent')
@@ -19,6 +20,12 @@ const AGENT_BACKOFFICE_PATHS = Object.freeze({
 })
 
 let agentBackoffice
+let userBackoffice
+
+function userService() {
+  if (!userBackoffice) userBackoffice = createUserBackofficeService(db)
+  return userBackoffice
+}
 
 function agentService() {
   if (!agentBackoffice) agentBackoffice = createAgentBackofficeService(db)
@@ -301,6 +308,11 @@ async function handleBackofficeHttp(event = {}) {
     if (/\/api\/partner\//.test(path)) actor = await actorFrom(event, 'partner')
     if (/\/api\/admin\//.test(path)) actor = await actorFrom(event, 'admin')
 
+    if (/\/api\/admin\//.test(path)) {
+      const routed = await dispatchUserBackofficeRoute({ method, path, query, body, actor, service: userService() })
+      if (routed.handled) return ok(routed.data, routed.message)
+    }
+
     if (method === 'GET' && /\/api\/partner\/member-applications$/.test(path)) {
       return ok({ list: await applicationList(actor, query.status || '') })
     }
@@ -422,7 +434,9 @@ async function handleBackofficeHttp(event = {}) {
     }
     return response(404, { code: 404, message: '接口不存在', data: null })
   } catch (err) {
-    return fail(err.message || '后台服务错误', /Token|无权|停用/.test(err.message || '') ? 401 : 400)
+    const explicit = [400, 401, 403, 404].includes(Number(err.code)) ? Number(err.code) : 0
+    const statusCode = explicit || (/Token|停用/.test(err.message || '') ? 401 : (/无权/.test(err.message || '') ? 403 : 400))
+    return fail(err.message || '后台服务错误', statusCode)
   }
 }
 
