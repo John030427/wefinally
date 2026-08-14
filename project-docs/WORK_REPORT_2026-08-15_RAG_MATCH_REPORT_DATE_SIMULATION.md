@@ -4,7 +4,7 @@
 - **工作树**：`D:\wefinal\.worktrees\wefinally-ai-agent`
 - **分支**：`feature/partner-gated-aigc-plan`
 - **计划起点**：`0368fc7`（`docs(plan): define RAG matching and date simulation`）
-- **终点提交**：见下方（本报告独立提交后更新）
+- **终点提交**：`e5b4796`
 - **需求真源**：根目录 `plan.md`
 - **未做**：真实 embedding provider、CloudBase 集合创建、生产回填、部署、小程序上传、开发者工具截图
 
