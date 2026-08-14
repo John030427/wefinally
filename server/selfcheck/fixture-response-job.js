@@ -244,6 +244,10 @@ async function main() {
   const dateView = fs.readFileSync(path.join(root, 'miniprogram/pages/date-coordination/date-coordination.wxml'), 'utf8')
   assert(datePage.includes('refreshFixtureSimulation'))
   assert(datePage.includes('fixture-applications'))
+  assert(datePage.includes("role: 'initiator'"))
+  assert(datePage.includes('can_submit_application: true'))
+  assert(dateView.includes('提交测试约会申请'))
+  assert(dateView.includes('不会向真人发送邀请'))
   assert(dateView.includes('等待测试对象回应') || dateView.includes('测试约会申请'))
   console.log('PASS synthetic fixture declines are delayed, idempotent and never notify for real')
 }

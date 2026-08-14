@@ -59,7 +59,7 @@
 
     <view class="form-card card" wx:if="{{coordination.can_submit_application}}">
       <view class="section-title">填写我的偏好</view>
-      <view class="form-hint" wx:if="{{coordination.status === 'collecting_initiator'}}">先告诉我们你的理想安排，保存后才会邀请对方参与协调。</view>
+      <view class="form-hint" wx:if="{{coordination.status === 'collecting_initiator'}}">{{coordination.test_simulation ? '填写完整偏好后进入模拟等待，不会向真人发送邀请。' : '先告诉我们你的理想安排，保存后才会邀请对方参与协调。'}}</view>
       <view class="form-item">
         <view class="form-label required">📅 可约时间</view>
         <picker mode="date" start="{{dateMin}}" end="{{dateMax}}" value="{{selectedDate}}" bindchange="onDateChange">
@@ -113,7 +113,7 @@
         <view>{{form.share_message || '尚未填写'}}</view>
       </view>
       <view class="public-note">建议选择白天、公共场所，尊重彼此的边界和节奏。</view>
-      <button class="primary-btn full-btn" bindtap="submitApplication" loading="{{submitting}}" disabled="{{submitting}}">{{coordination.status === 'collecting_initiator' ? '💌 保存偏好并邀请对方' : '💗 提交我的偏好'}}</button>
+      <button class="primary-btn full-btn" bindtap="submitApplication" loading="{{submitting}}" disabled="{{submitting}}">{{coordination.test_simulation ? '提交测试约会申请' : (coordination.status === 'collecting_initiator' ? '💌 保存偏好并邀请对方' : '💗 提交我的偏好')}}</button>
     </view>
 
     <view class="proposal-card card" wx:if="{{proposal}}">

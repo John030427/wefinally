@@ -154,6 +154,8 @@ Page({
         pageState: 'success',
         coordination: Object.assign({}, coordination, {
           status: 'collecting_initiator',
+          role: 'initiator',
+          can_submit_application: true,
           simulation_badge: coordination.simulation_badge || '测试画像 / 模拟流程'
         }),
         coordinationId: '',
