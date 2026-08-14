@@ -7,6 +7,11 @@ const DEFAULT_RULE = {
   settlement_cycle: '以平台结算规则为准'
 }
 
+function partnerDisplayName(partner = {}) {
+  const name = String(partner && partner.name || '').trim()
+  return name || '合伙人'
+}
+
 function number(value) {
   const result = Number(value)
   return Number.isFinite(result) ? result : 0
@@ -95,6 +100,7 @@ function buildPartnerDashboard(input = {}) {
     partner: {
       id: partnerId,
       name: partner.name || '',
+      display_name: partnerDisplayName(partner),
       partner_code: partner.partner_code || '',
       promote_code: partner.promote_code || '',
       phone_masked: partner.phone_masked || '',
@@ -123,4 +129,4 @@ function buildPartnerDashboard(input = {}) {
   }
 }
 
-module.exports = { buildPartnerDashboard }
+module.exports = { buildPartnerDashboard, partnerDisplayName }

@@ -4,7 +4,7 @@
 
   <block wx:else>
     <view class="identity-card card">
-      <view><view class="eyebrow">WEFINALLY PARTNER</view><view class="identity-name">{{partner.name || 'WeFinally 合伙人'}}</view><view class="identity-code">{{partner.partner_code}}</view></view>
+      <view><view class="eyebrow">WEFINALLY PARTNER</view><view class="identity-name">{{partner.name || '合伙人'}}</view><view class="identity-code">{{partner.partner_code}}</view></view>
       <view class="identity-invite"><text>公开邀请码</text><strong>{{assets.promote_code}}</strong></view>
     </view>
 
@@ -28,7 +28,7 @@
       <view class="section-title">分享与邀请</view>
       <view class="share-path">分享只记录归因，不会跳过平台审核；链接不包含手机号、OpenID 或后台 Token。</view>
       <button class="primary-btn full-btn" open-type="share">一键分享给微信好友</button>
-      <button class="outline-btn full-btn" bindtap="copyCode">复制邀请码 {{assets.promote_code}}</button>
+      <button class="outline-btn full-btn" bindtap="copyCode">复制公开邀请码（可多人使用） {{assets.promote_code}}</button>
     </view>
 
     <view class="qr-card card" wx:if="{{qrcodePath}}"><view class="section-title">专属小程序码</view><image class="qrcode" src="{{qrcodePath}}" mode="widthFix"></image><button class="outline-btn full-btn" bindtap="saveQrCode">保存小程序码</button></view>
