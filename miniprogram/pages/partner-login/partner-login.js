@@ -3,11 +3,13 @@ const {
   activatePartner,
   restorePartnerSession
 } = require('../../utils/partnerApi')
+const { activationErrorMessage } = require('../../utils/partnerActivationView')
 
 Page({
   data: {
     pageState: 'loading',
     status: { state: 'loading', allowed_actions: [] },
+    showStatusCard: false,
     phone: '',
     submitting: false,
     errorMsg: ''
@@ -19,9 +21,13 @@ Page({
     this.setData({ pageState: 'loading', errorMsg: '' })
     try {
       const status = await onboardingStatus()
-      this.setData({ pageState: 'success', status })
+      this.setData({
+        pageState: 'success',
+        status,
+        showStatusCard: !['not_applied', 'needs_verification'].includes(status.state)
+      })
     } catch (err) {
-      this.setData({ pageState: 'error', errorMsg: (err && err.message) || '合伙人状态加载失败' })
+      this.setData({ pageState: 'error', errorMsg: activationErrorMessage(err) })
     }
   },
 
@@ -39,7 +45,7 @@ Page({
       wx.showToast({ title: '合伙人身份已激活', icon: 'success' })
       setTimeout(() => wx.redirectTo({ url: '/pages/partner-invite/partner-invite' }), 500)
     } catch (err) {
-      this.setData({ errorMsg: (err && err.message) || '手机号未获资格或验证不一致' })
+      this.setData({ errorMsg: activationErrorMessage(err) })
     } finally {
       this.setData({ submitting: false })
     }

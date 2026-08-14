@@ -11,6 +11,7 @@ const activationJs = read('miniprogram/pages/partner-login/partner-login.js')
 const activationWxml = read('miniprogram/pages/partner-login/partner-login.wxml')
 const dashboardJs = read('miniprogram/pages/partner-invite/partner-invite.js')
 const dashboardWxml = read('miniprogram/pages/partner-invite/partner-invite.wxml')
+const { activationErrorMessage } = require('../../miniprogram/utils/partnerActivationView')
 
 for (const route of ['/api/partner/onboarding/status', '/api/partner/activation', '/api/partner/session']) assert.ok(api.includes(route))
 assert.ok(!api.includes('/api/partner/applications'))
@@ -24,8 +25,21 @@ assert.ok(!activationJs.includes('submitPartnerApplication'))
 assert.ok(!activationJs.includes('submitApplication'))
 assert.ok(!activationJs.includes('onVerifyPhone'))
 assert.ok(!activationWxml.includes('申请成为合伙人'))
+assert.ok(activationWxml.includes('受邀合伙人激活'))
+assert.ok(activationWxml.includes('验证合作身份'))
+assert.ok(activationWxml.includes('验证并进入工作台'))
+assert.ok(!activationWxml.includes('请输入合作名单手机号'))
 assert.ok(!activationWxml.includes('password'))
 assert.ok(!activationJs.includes('loginPartner'))
+assert.ok(activationJs.includes('activationErrorMessage'))
+assert.strictEqual(
+  activationErrorMessage(new Error('document.get:fail document with _id partner_activation_test does not exist')),
+  '激活未完成，请稍后重试；如仍失败请联系平台'
+)
+assert.strictEqual(
+  activationErrorMessage(new Error('手机号未获资格或验证不一致')),
+  '手机号未获资格或验证不一致'
+)
 assert.ok(dashboardJs.includes("'/api/partner/dashboard'"))
 assert.ok(dashboardJs.includes('restorePartnerSession'))
 assert.ok(dashboardWxml.includes('metrics.available_amount'))

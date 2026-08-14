@@ -1,15 +1,15 @@
 <view class="partner-activation-page container">
   <view class="hero-card card">
     <view class="hero-kicker">WEFINALLY PARTNER</view>
-    <view class="hero-title">合作合伙人入口</view>
-    <view class="hero-desc">仅限平台已有合作名单。输入名单手机号后绑定当前微信账号，首次激活后无需密码。</view>
+    <view class="hero-title">受邀合伙人激活</view>
+    <view class="hero-desc">仅面向已与平台确认合作的合伙人。输入预留手机号，核验通过后将绑定当前微信账号。</view>
   </view>
 
   <view class="state-card card" wx:if="{{pageState === 'loading'}}">正在读取合伙人资格...</view>
   <view class="state-card card error-text" wx:elif="{{pageState === 'error'}}">{{errorMsg}}<button class="outline-btn" bindtap="loadStatus">重试</button></view>
 
   <block wx:else>
-    <view class="state-card card">
+    <view class="state-card card" wx:if="{{showStatusCard}}">
       <view class="state-label">当前状态</view>
       <view class="state-title" wx:if="{{status.state === 'active'}}">已激活 · {{status.partner_code}}</view>
       <view class="state-title" wx:elif="{{status.state === 'pending'}}">历史申请待平台处理</view>
@@ -17,16 +17,16 @@
       <view class="state-title" wx:elif="{{status.state === 'rejected'}}">当前没有可激活资格</view>
       <view class="state-title" wx:elif="{{status.state === 'suspended'}}">合伙人权限已暂停</view>
       <view class="state-title" wx:elif="{{status.state === 'revoked'}}">合伙人资格已撤销</view>
-      <view class="state-title" wx:else>请输入合作名单手机号</view>
       <view class="state-note" wx:if="{{status.phone_masked}}">资格手机号：{{status.phone_masked}}</view>
       <view class="state-note" wx:if="{{status.review_note}}">{{status.review_note}}</view>
     </view>
 
     <view class="verify-card card" wx:if="{{status.state === 'needs_verification' || status.state === 'not_applied'}}">
-      <view class="section-title">我已在平台认可名单中</view>
-      <view class="section-desc">手机号仅用于与老板名单核对。成功后资格会绑定当前微信账号；系统不提供普通用户申请入口。</view>
-      <view class="form-item"><text class="form-label">合作名单手机号</text><input class="form-input" type="number" maxlength="11" value="{{phone}}" data-key="phone" bindinput="onInput" placeholder="请输入11位手机号" /></view>
-      <button class="primary-btn full-btn" bindtap="activateByPhone" loading="{{submitting}}" disabled="{{submitting}}">核对名单并进入</button>
+      <view class="section-title">验证合作身份</view>
+      <view class="section-desc">请输入与平台预留一致的手机号。验证通过后，即可查看邀请转化与收入数据。</view>
+      <view class="form-item"><text class="form-label">预留手机号</text><input class="form-input" type="number" maxlength="11" value="{{phone}}" data-key="phone" bindinput="onInput" placeholder="请输入11位手机号" /></view>
+      <button class="primary-btn full-btn" bindtap="activateByPhone" loading="{{submitting}}" disabled="{{submitting}}">验证并进入工作台</button>
+      <view class="section-desc">暂未受邀？请联系平台工作人员。</view>
     </view>
 
     <button class="primary-btn full-btn" wx:if="{{status.state === 'active'}}" bindtap="goDashboard">进入合伙人工作台</button>
