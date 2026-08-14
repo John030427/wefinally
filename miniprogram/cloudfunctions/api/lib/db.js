@@ -2,6 +2,7 @@ const cloud = require('wx-server-sdk')
 const collections = require('./collections')
 const { withCollectionBootstrap } = require('./collectionBootstrapPolicy')
 const { OFFICIAL_SUPPORT_CODE, isTestUser, testSupportCode } = require('../agent/userIdentity')
+const { documentOrNull } = require('./documentReadPolicy')
 
 const db = cloud.database()
 const _ = db.command
@@ -127,8 +128,7 @@ function transactionAdapter(rawTransaction) {
   const collection = (name) => rawTransaction.collection(collections[name] || name)
 
   async function txByDocId(name, documentId) {
-    const result = await collection(name).doc(String(documentId)).get()
-    return result.data || null
+    return documentOrNull(() => collection(name).doc(String(documentId)).get())
   }
 
   async function txById(name, id) {
@@ -139,8 +139,7 @@ function transactionAdapter(rawTransaction) {
 
   async function txNextCounter(name) {
     const ref = collection('system_counters').doc(String(name))
-    const result = await ref.get()
-    const current = result && result.data
+    const current = await documentOrNull(() => ref.get())
     const sequence = Number(current && current.seq || 0) + 1
     const timestamp = now()
     if (current) await ref.update({ data: { seq: sequence, update_time: timestamp } })
