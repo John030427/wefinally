@@ -13,7 +13,7 @@ const {
 const { createDateCoordinationHandlers } = require('../../miniprogram/cloudfunctions/api/handlers/dateCoordination')
 
 const now = new Date('2026-08-12T08:00:00.000Z')
-const owner = { id: 10 }
+const owner = { id: 10, account_mode: 'internal_qa', profile_origin: 'real_user' }
 const fixture = {
   id: 20,
   is_test_fixture: 1,

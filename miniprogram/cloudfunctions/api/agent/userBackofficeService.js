@@ -1,4 +1,5 @@
 const { isTestUser, projectUserIdentity, supportCodeFor } = require('./userIdentity')
+const { resolveTestIdentity, isSyntheticFixture } = require('../lib/testIdentityPolicy')
 
 const USER_MUTABLE_FIELDS = new Set(['status', 'is_vip', 'vip_expire_time', 'marry_status'])
 
@@ -156,8 +157,17 @@ function createUserBackofficeService(deps) {
     return deps.list('user', {}, 500)
   }
 
-  function officialRows(rows, includeTest) {
-    return includeTest ? rows : rows.filter((row) => !isTestUser(row))
+  function officialRows(rows, filters = {}) {
+    const includeTest = filters.include_test === true || String(filters.include_test) === '1'
+      || filters.include_tests === true || String(filters.include_tests) === '1'
+    const kind = String(filters.identity_kind || '').trim()
+    return rows.filter((row) => {
+      const identity = resolveTestIdentity(row)
+      if (isSyntheticFixture(row) && !includeTest && kind !== 'synthetic_fixture') return false
+      if (!includeTest && !kind && isTestUser(row)) return false
+      if (kind && identity.kind !== kind) return false
+      return true
+    })
   }
 
   async function dashboard(actor) {
@@ -169,7 +179,7 @@ function createUserBackofficeService(deps) {
       deps.list('member_application', {}, 500),
       deps.list('agent_human_ticket', {}, 500)
     ])
-    const users = officialRows(usersRaw, false)
+    const users = officialRows(usersRaw, {})
     const officialIds = new Set(users.map((row) => number(row.id)))
     const officialOrders = orders.filter((row) => officialIds.has(number(row.user_id)))
     return {
@@ -187,7 +197,7 @@ function createUserBackofficeService(deps) {
     requireRole(actor, ['super_admin', 'customer_service', 'auditor'])
     const keyword = String(filters.keyword || '').trim().toLowerCase()
     const statusSet = filters.status !== undefined && filters.status !== ''
-    const rows = officialRows(await allUsers(), filters.include_test === true || String(filters.include_test) === '1')
+    const rows = officialRows(await allUsers(), filters)
       .filter((row) => !statusSet || number(row.status) === number(filters.status))
       .filter((row) => {
         if (!keyword) return true

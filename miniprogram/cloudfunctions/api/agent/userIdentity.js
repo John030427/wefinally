@@ -1,5 +1,6 @@
+const { resolveTestIdentity, isSyntheticFixture, isInternalQaAccount } = require('../lib/testIdentityPolicy')
+
 const OFFICIAL_SUPPORT_CODE = /^WF-\d{6}$/
-const TEST_OPENID = /^(dev|test|fixture|mock)[_-]/i
 
 function numericUserId(value) {
   const id = Number(value)
@@ -7,10 +8,7 @@ function numericUserId(value) {
 }
 
 function isTestUser(user = {}) {
-  user = user || {}
-  if (Number(user.is_test_fixture || 0) === 1) return true
-  if (numericUserId(user.ab_test_owner_user_id)) return true
-  return TEST_OPENID.test(String(user.openid || '').trim())
+  return isSyntheticFixture(user) || isInternalQaAccount(user)
 }
 
 function testSupportCode(user) {
@@ -20,7 +18,9 @@ function testSupportCode(user) {
 }
 
 function supportCodeFor(user = {}) {
-  if (isTestUser(user)) return testSupportCode(user)
+  if (isSyntheticFixture(user) || /^(dev|test|fixture|mock)[_-]/i.test(String(user.openid || '').trim())) {
+    return testSupportCode(user)
+  }
   const code = String(user.support_code || '').trim().toUpperCase()
   if (!code) return ''
   if (!OFFICIAL_SUPPORT_CODE.test(code)) throw new Error('用户编号格式无效')
@@ -42,13 +42,24 @@ function userLabel(user = {}) {
 }
 
 function projectUserIdentity(user = {}, options = {}) {
+  const identity = resolveTestIdentity(user)
   const projected = {
     support_code: supportCodeFor(user),
     display_label: userLabel(user),
     gender: Number(user.gender || 0),
     gender_text: genderText(user.gender),
     city: String(user.city || '').trim(),
-    is_test: isTestUser(user)
+    is_test: isTestUser(user),
+    identity_kind: identity.kind,
+    identity_badge: identity.identity_badge,
+    profile_origin: identity.profile_origin,
+    account_mode: identity.account_mode,
+    test_scope: identity.test_scope
+  }
+  if (identity.kind === 'synthetic_fixture') {
+    projected.fixture_owner_user_id = identity.fixture_owner_user_id
+    projected.fixture_expires_at = identity.fixture_expires_at
+    projected.allow_date_coordination = false
   }
   if (options.includeSensitive === true) {
     projected.id = numericUserId(user.id)

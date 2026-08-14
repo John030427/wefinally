@@ -99,7 +99,12 @@ async function main() {
     gender: 2,
     gender_text: '女',
     city: '深圳',
-    is_test: false
+    is_test: false,
+    identity_kind: 'real_user',
+    identity_badge: '真人用户',
+    profile_origin: 'real_user',
+    account_mode: 'production',
+    test_scope: 'none'
   })
   const adminView = projectUserIdentity(official, { includeSensitive: true })
   assert.strictEqual(adminView.id, official.id)

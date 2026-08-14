@@ -265,7 +265,9 @@
     user = user || {};
     options = options || {};
     const label = user.display_label || [user.support_code || 'WF-待分配', user.gender_text, user.city].filter(Boolean).join(' · ') || 'WF-待分配 · 资料未完善';
-    const badge = user.is_test ? ' <span class="badge b-pending">测试</span>' : '';
+    const badge = user.identity_badge
+      ? ' <span class="badge b-pending">' + esc(user.identity_badge) + '</span>'
+      : (user.is_test ? ' <span class="badge b-pending">内部测试账号</span>' : ' <span class="badge b-ok">真人用户</span>');
     if (options.link !== false && user.id) return '<button class="btn btn-sm btn-outline" onclick="openUserContext(' + Number(user.id) + ')">' + esc(label) + '</button>' + badge;
     return '<span class="user-identity">' + esc(label) + '</span>' + badge;
   }
@@ -689,16 +691,18 @@
     const kw = document.getElementById('uKw')?.value || '';
     const st = document.getElementById('uSt')?.value ?? '';
     const pg = Number(document.getElementById('uPg')?.value || 1);
-    const data = await api('/admin/users?page=' + pg + '&keyword=' + encodeURIComponent(kw) + (st !== '' ? '&status=' + st : '') + (usersIncludeTest ? '&include_test=1' : ''));
+    const kind = document.getElementById('uKind')?.value || '';
+    const data = await api('/admin/users?page=' + pg + '&keyword=' + encodeURIComponent(kw) + (st !== '' ? '&status=' + st : '') + (usersIncludeTest ? '&include_test=1' : '') + (kind ? '&identity_kind=' + encodeURIComponent(kind) : ''));
     if (CLOUD_ONLY) {
       const rows = data.list.length ? data.list.map(u =>
         '<tr><td>' + renderUserIdentity(u) + '</td><td>' + statusBadge(u.status) + '</td><td>' + esc(u.member_status || '-') + '</td><td>' + (Number(u.is_vip) === 1 ? '<span class="badge b-ok">VIP</span>' : '-') + '</td><td>' + esc(u.vip_expire_time || '-') + '</td><td>' + esc(u.create_time || '-') + '</td><td>' + (u.id ? '<button class="btn btn-sm btn-primary" onclick="openUserContext(' + Number(u.id) + ')">业务全景</button>' : '-') + '</td></tr>'
       ).join('') : '<tr><td colspan="7" class="empty">暂无数据</td></tr>';
       document.getElementById('content').innerHTML =
-        '<div class="toolbar"><input id="uKw" placeholder="搜索用户编号/城市/会员状态" value="' + esc(kw) + '" /><select id="uSt"><option value="">全部</option><option value="0">待审核</option><option value="1">正常</option><option value="2">封号</option><option value="3">已结婚</option></select><label style="font-size:.8125rem"><input id="usersIncludeTest" type="checkbox" onchange="setUsersIncludeTest(this.checked)" ' + (usersIncludeTest ? 'checked' : '') + ' /> 包含测试数据</label><button class="btn btn-primary btn-sm" onclick="pgUsers()">搜索</button></div>' +
+        '<div class="toolbar"><input id="uKw" placeholder="搜索用户编号/城市/会员状态" value="' + esc(kw) + '" /><select id="uSt"><option value="">全部</option><option value="0">待审核</option><option value="1">正常</option><option value="2">封号</option><option value="3">已结婚</option></select><select id="uKind"><option value="">身份</option><option value="real_user">真人用户</option><option value="internal_qa">内部测试账号</option><option value="synthetic_fixture">合成测试画像</option></select><label style="font-size:.8125rem"><input id="usersIncludeTest" type="checkbox" onchange="setUsersIncludeTest(this.checked)" ' + (usersIncludeTest ? 'checked' : '') + ' /> 包含测试数据</label><button class="btn btn-primary btn-sm" onclick="pgUsers()">搜索</button></div>' +
         '<div class="card"><div class="card-bd"><table><thead><tr><th>可识别用户</th><th>状态</th><th>会员审核</th><th>VIP</th><th>VIP到期</th><th>注册</th><th>操作</th></tr></thead><tbody>' + rows + '</tbody></table>' +
         pag(data.page, data.totalPages || Math.max(1, Math.ceil(data.total / data.pageSize)), 'uPg') + '</div></div>';
       if (st !== '') document.getElementById('uSt').value = st;
+      if (kind) document.getElementById('uKind').value = kind;
       return;
     }
     let rows = data.list.length ? data.list.map(u =>

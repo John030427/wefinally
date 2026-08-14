@@ -13,7 +13,7 @@ const {
 } = require('../lib/matchSemanticRerank')
 const { rerankMutualMatchCandidates } = require('../lib/deepseek')
 const reportTask = require('./reportTask')
-const { isMatchOnlyFixture, canUseFixtureForMatch } = require('../lib/testFixturePolicy')
+const { isMatchOnlyFixture, canUseFixtureForMatch, canEnterFormalCandidatePool } = require('../lib/testFixturePolicy')
 
 function parseJson(value) {
   if (!value) return null
@@ -515,6 +515,7 @@ async function start(data, wxContext) {
   })
   const candidates = (await list('user', { status: 1 }, 100))
     .filter((item) => memberStatus(item) === MEMBER_STATUS.APPROVED)
+    .filter((item) => canEnterFormalCandidatePool(item))
     .filter((item) => canUseFixtureForMatch(user, item, now()))
   if (data.dev_seed_current_user_candidates && candidates.length === 0) {
     candidates.push(await seedDemoCandidate(user))
