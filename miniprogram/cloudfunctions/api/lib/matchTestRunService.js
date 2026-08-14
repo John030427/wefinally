@@ -9,8 +9,9 @@ function deny(message, code = 403) {
   throw error
 }
 
-function assertQa(user) {
-  if (!isInternalQaAccount(user)) deny('仅内部测试账号可以运行测试匹配', 403)
+async function assertTestAccess(user, deps) {
+  const publicEnabled = deps.publicEnabled && await deps.publicEnabled()
+  if (!isInternalQaAccount(user) && !publicEnabled) deny('仅内部测试账号可以运行测试匹配', 403)
 }
 
 function publicRun(row) {
@@ -33,7 +34,7 @@ function publicRun(row) {
 function createMatchTestRunHandlers(deps) {
   async function create(data, wxContext) {
     const user = await deps.currentUser(wxContext)
-    assertQa(user)
+    await assertTestAccess(user, deps)
     const requestId = String(data.request_id || '').trim()
     if (requestId.length < 8) throw new Error('请求编号无效')
     const batchKey = `test:${user.id}:${requestId}`
@@ -61,7 +62,7 @@ function createMatchTestRunHandlers(deps) {
 
   async function execute(data, wxContext) {
     const user = await deps.currentUser(wxContext)
-    assertQa(user)
+    await assertTestAccess(user, deps)
     const run = await loadOwned(data.id || data.run_id, user)
     if (['completed_matched', 'completed_no_match', 'blocked'].includes(run.status)) {
       return publicRun(run)
@@ -118,7 +119,7 @@ function createMatchTestRunHandlers(deps) {
 
   async function get(data, wxContext) {
     const user = await deps.currentUser(wxContext)
-    assertQa(user)
+    await assertTestAccess(user, deps)
     if (data.latest === true || data.latest === '1') {
       const rows = (await deps.list('match_batch_run', { requester_user_id: Number(user.id), mode: 'internal_test' }, 50) || [])
         .sort((a, b) => Number(b.id) - Number(a.id))

@@ -39,6 +39,18 @@
   line-height: 1.6;
 }
 
+.user-support-code {
+  display: inline-block;
+  margin-top: 10rpx;
+  padding: 6rpx 14rpx;
+  border: 1rpx solid #ead8d2;
+  border-radius: 999rpx;
+  background: #fff8f5;
+  color: #8c675d;
+  font-size: 21rpx;
+  letter-spacing: 1rpx;
+}
+
 .menu-item {
   display: flex;
   align-items: center;

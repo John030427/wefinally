@@ -1,4 +1,4 @@
-const { col, first, byId, addWithId, updateByDoc, authError, now } = require('../lib/db')
+const { col, first, byId, addWithId, updateByDoc, ensureUserSupportCode, authError, now } = require('../lib/db')
 const { tokenFor } = require('./auth')
 const { isVipActive } = require('../lib/format')
 const { ensureReferralAttribution } = require('../lib/partnerReferralAttributionPolicy')
@@ -9,6 +9,7 @@ const {
   resolveInvitation
 } = require('../lib/memberPolicy')
 const { resolveTestIdentity } = require('../lib/testIdentityPolicy')
+const { flagEnabled } = require('../lib/flags')
 
 async function currentUser(wxContext) {
   const openid = wxContext.OPENID
@@ -24,9 +25,14 @@ async function circleName(circleId) {
 }
 
 async function profilePayload(user) {
-  const setting = await first('user_match_setting', { user_id: user.id })
+  const [setting, supportCode, publicTestRunEnabled] = await Promise.all([
+    first('user_match_setting', { user_id: user.id }),
+    ensureUserSupportCode(user),
+    flagEnabled('match_test_run_public_enabled')
+  ])
   const identity = resolveTestIdentity(user)
   return Object.assign({}, user, {
+    support_code: supportCode,
     circle_name: user.circle_name || await circleName(user.circle_id),
     is_vip: isVipActive(user) ? 1 : 0,
     isVip: isVipActive(user),
@@ -34,7 +40,7 @@ async function profilePayload(user) {
     member_status: memberStatus(user),
     account_mode: identity.account_mode,
     identity_kind: identity.kind,
-    qa_test_run_enabled: identity.kind === 'internal_qa'
+    qa_test_run_enabled: identity.kind === 'internal_qa' || publicTestRunEnabled
   })
 }
 

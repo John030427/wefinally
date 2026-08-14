@@ -629,6 +629,7 @@ module.exports = {
     acquireRun: require('../lib/db').acquireMatchTestRun,
     claimRun: require('../lib/db').claimMatchTestRun,
     completeRun: require('../lib/db').completeMatchTestRun,
-    now
+    now,
+    publicEnabled: () => flagEnabled('match_test_run_public_enabled')
   })
 }

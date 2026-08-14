@@ -49,7 +49,7 @@ const fixture = {
 assert.strictEqual(isInternalQaAccount(qa), true)
 assert.strictEqual(isInternalQaAccount(production), false)
 
-function memory(user, extraUsers = []) {
+function memory(user, extraUsers = [], options = {}) {
   let clock = new Date(initialNow)
   const psych = JSON.stringify({
     marriage_pace: '稳定推进', conflict_style: '及时沟通', security_space: '亲密也独立',
@@ -110,7 +110,8 @@ function memory(user, extraUsers = []) {
     acquireRun,
     claimRun,
     completeRun,
-    now: () => new Date(clock)
+    now: () => new Date(clock),
+    publicEnabled: async () => options.publicEnabled === true
   })
   return { tables, handlers, advance: (milliseconds) => { clock = new Date(clock.getTime() + milliseconds) } }
 }
@@ -120,6 +121,14 @@ async function main() {
   await assert.rejects(() => prod.handlers.create({ request_id: 'req-aaaaaaaa' }, {}), /内部测试账号/)
   const spoofed = memory({ ...production, openid: 'test_spoofed_user' })
   await assert.rejects(() => spoofed.handlers.create({ request_id: 'req-spoofed1' }, {}), /内部测试账号/)
+
+  const publicRun = memory(production, [], { publicEnabled: true })
+  const publicCreated = await publicRun.handlers.create({ request_id: 'req-public01' }, {})
+  assert.strictEqual(publicCreated.status, 'queued')
+  publicRun.advance(10000)
+  const publicCompleted = await publicRun.handlers.execute({ id: publicCreated.id }, {})
+  assert.strictEqual(publicCompleted.status, 'blocked')
+  assert.strictEqual(publicRun.tables.match_claim.length, 0)
 
   const qaMem = memory(qa)
   const [created, concurrentCreate] = await Promise.all([
@@ -163,12 +172,16 @@ async function main() {
   const route = fs.readFileSync(path.join(root, 'miniprogram/cloudfunctions/api/handlers/route.js'), 'utf8')
   const indexJs = fs.readFileSync(path.join(root, 'miniprogram/pages/index/index.js'), 'utf8')
   const indexWxml = fs.readFileSync(path.join(root, 'miniprogram/pages/index/index.wxml'), 'utf8')
+  const profileWxml = fs.readFileSync(path.join(root, 'miniprogram/pages/profile/profile.wxml'), 'utf8')
+  const userHandler = fs.readFileSync(path.join(root, 'miniprogram/cloudfunctions/api/handlers/user.js'), 'utf8')
   assert(route.includes('/api/match/test-runs'))
   assert(indexWxml.includes('10 秒测试匹配') || indexWxml.includes('10秒测试匹配'))
   assert(indexWxml.includes('qaTestRunEnabled'))
   assert(indexJs.includes('testRunStatus'))
   assert(!indexJs.includes('reset_user_batch'))
   assert(indexJs.includes('MATCH_TEST_RUN') || indexJs.includes('/api/match/test-runs'))
+  assert(profileWxml.includes('userInfo.support_code'))
+  assert(userHandler.includes('match_test_run_public_enabled'))
   console.log('PASS isolated ten-second QA match runs never write formal claims')
 }
 
