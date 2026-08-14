@@ -13,6 +13,7 @@ const { processFixtureResponseJobs } = require('./lib/fixtureResponseService')
 const { isHttpEvent } = require('./lib/httpEvent')
 const { runFormalMatchBatch } = require('./lib/matchingRunService')
 const { executeFormalMatching } = require('./lib/formalMatching')
+const { assertInternalWorkerSecret } = require('./lib/internalWorkerAuth')
 const db = require('./lib/db')
 
 const ENV_ID = 'cloud1-d4gy8l52g08bba326'
@@ -60,6 +61,7 @@ exports.main = async (event = {}) => {
         return { success: true, data: { reports, notifications, coordinations, fixtureResponses } }
       }
       case 'runFormalMatchBatch':
+        assertInternalWorkerSecret(payload.worker_secret)
         return {
           success: true,
           data: await runFormalMatchBatch({
@@ -67,8 +69,7 @@ exports.main = async (event = {}) => {
             requestId: payload.request_id,
             triggerSource: payload.trigger_source || 'timer'
           }, {
-            first: db.first,
-            addWithId: db.addWithId,
+            acquireBatch: db.acquireFormalMatchBatch,
             updateByDoc: db.updateByDoc,
             list: db.list,
             byId: db.byId,

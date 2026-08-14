@@ -51,7 +51,7 @@ async function persistResult(deps, batch, result) {
 }
 
 async function runFormalMatchBatch(input = {}, deps) {
-  if (!deps || typeof deps.first !== 'function') throw new Error('匹配批次依赖未配置')
+  if (!deps || typeof deps.acquireBatch !== 'function') throw new Error('匹配批次依赖未配置')
   const clock = shanghaiBusinessClock(input.now || (deps.now && deps.now()) || new Date())
   if (!clock.isMatchDay) {
     return {
@@ -62,24 +62,13 @@ async function runFormalMatchBatch(input = {}, deps) {
     }
   }
 
-  let batch = await deps.first('match_batch_run', { batch_key: clock.batchKey })
-  if (batch && TERMINAL.has(batch.status)) return batch
-  if (batch && batch.status === 'failed' && Number(batch.retry_count || 0) >= 1) return batch
-
-  if (!batch) {
-    batch = await deps.addWithId('match_batch_run', batchRecord(input, clock, {
-      status: 'queued',
-      started_at: deps.now()
-    }), 'match_batch')
-  }
-
-  const existing = await deps.first('match_batch_run', { batch_key: clock.batchKey })
-  if (existing && existing.id !== batch.id && TERMINAL.has(existing.status)) return existing
-
-  batch = await deps.updateByDoc('match_batch_run', batch, {
+  const acquisition = await deps.acquireBatch(batchRecord(input, clock, {
     status: 'running',
-    request_id: String(input.requestId || batch.request_id || '').slice(0, 120)
-  })
+    started_at: deps.now()
+  }))
+  let batch = acquisition && acquisition.batch
+  if (!batch) throw new Error('匹配批次占用失败')
+  if (!acquisition.acquired) return batch
 
   const attempt = async () => persistResult(deps, batch, await runMatcher(deps, input, clock))
   try {

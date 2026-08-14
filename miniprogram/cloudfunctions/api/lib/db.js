@@ -128,6 +128,46 @@ async function claimIfStatus(name, doc, expectedStatus, data) {
   return Object.assign({}, doc, data, { update_time: now() })
 }
 
+async function acquireFormalMatchBatch(data) {
+  const businessDate = String(data && data.business_date || '')
+  const batchKey = String(data && data.batch_key || '')
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(businessDate) || batchKey !== `formal:${businessDate}`) {
+    throw new Error('正式匹配批次编号无效')
+  }
+  const documentId = `match_batch_formal_${businessDate}`
+  return withCollection('match_batch_run', () => db.runTransaction(async (transaction) => {
+    const ref = transaction.collection(collections.match_batch_run).doc(documentId)
+    const current = await documentOrNull(() => ref.get())
+    const timestamp = now()
+    if (current) {
+      const leaseExpired = current.status === 'running'
+        && current.lease_expires_at
+        && new Date(current.lease_expires_at).getTime() <= timestamp.getTime()
+      if (!leaseExpired || Number(current.retry_count || 0) >= 1) {
+        return { acquired: false, batch: Object.assign({ _id: documentId }, current) }
+      }
+      const resumed = Object.assign({}, current, {
+        status: 'running',
+        retry_count: Number(current.retry_count || 0) + 1,
+        request_id: String(data.request_id || current.request_id || '').slice(0, 120),
+        lease_expires_at: new Date(timestamp.getTime() + 2 * 60 * 1000),
+        update_time: timestamp
+      })
+      await ref.update({ data: resumed })
+      return { acquired: true, batch: Object.assign({ _id: documentId }, resumed) }
+    }
+    const created = Object.assign({}, data, {
+      id: Number(businessDate.replace(/-/g, '')),
+      status: 'running',
+      lease_expires_at: new Date(timestamp.getTime() + 2 * 60 * 1000),
+      create_time: timestamp,
+      update_time: timestamp
+    })
+    await ref.set({ data: created })
+    return { acquired: true, batch: Object.assign({ _id: documentId }, created) }
+  }))
+}
+
 async function removeByDoc(name, doc) {
   if (!doc || !doc._id) throw new Error('记录不存在')
   const result = await withCollection(name, () => col(name).doc(doc._id).remove())
@@ -264,6 +304,7 @@ module.exports = {
   addWithId,
   updateByDoc,
   claimIfStatus,
+  acquireFormalMatchBatch,
   removeByDoc,
   transaction,
   ensureUserSupportCode,
