@@ -65,9 +65,10 @@ function canEnterFormalCandidatePool(user) {
 
 function canUseFixtureForMatch(viewer, candidate, now = new Date()) {
   if (!isSyntheticFixture(candidate)) return true
+  if (!fixtureNotExpired(candidate, now)) return false
+  if (text(candidate.fixture_access_mode) === 'public_test_pool') return true
   return isInternalQaAccount(viewer)
     && fixtureOwnerId(candidate) === number(viewer && viewer.id)
-    && fixtureNotExpired(candidate, now)
 }
 
 function assertOfflineDatingAllowed(user) {

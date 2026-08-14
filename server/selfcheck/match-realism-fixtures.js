@@ -18,6 +18,8 @@ for (const row of REALISTIC_MATCH_PROFILES) {
   assert.strictEqual(row.is_test_fixture, 1)
   assert.strictEqual(row.is_match_effect_fixture, 1)
   assert.strictEqual(row.fixture_scope, 'matching_only')
+  assert.strictEqual(row.fixture_access_mode, 'public_test_pool')
+  assert.strictEqual(row.profile_origin, 'synthetic_fixture')
   assert.strictEqual(row.allow_date_coordination, 0)
   assert.strictEqual(row.allow_meet_safety, 0)
   assert.strictEqual(row.member_status, 'approved')

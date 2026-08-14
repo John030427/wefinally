@@ -45,6 +45,7 @@ const fixture = {
   appearance_description: '干净清爽',
   appearance_want: '干净清爽'
 }
+const publicUser = { ...qa, id: 1, account_mode: 'production', openid: 'omOfficial' }
 
 assert.strictEqual(isInternalQaAccount(qa), true)
 assert.strictEqual(isInternalQaAccount(production), false)
@@ -72,7 +73,7 @@ function memory(user, extraUsers = [], options = {}) {
     user: [user, fixture].concat(extraUsers),
     match_batch_run: [],
     match_claim: [],
-    user_match_setting: [compatibleSetting(10), compatibleSetting(20)],
+    user_match_setting: [compatibleSetting(user.id), compatibleSetting(20)],
     user_match_log: []
   }
   let seq = 1
@@ -122,12 +123,14 @@ async function main() {
   const spoofed = memory({ ...production, openid: 'test_spoofed_user' })
   await assert.rejects(() => spoofed.handlers.create({ request_id: 'req-spoofed1' }, {}), /内部测试账号/)
 
-  const publicRun = memory(production, [], { publicEnabled: true })
+  const publicRun = memory(publicUser, [], { publicEnabled: true })
+  publicRun.tables.user.find((row) => row.id === fixture.id).fixture_access_mode = 'public_test_pool'
   const publicCreated = await publicRun.handlers.create({ request_id: 'req-public01' }, {})
   assert.strictEqual(publicCreated.status, 'queued')
   publicRun.advance(10000)
   const publicCompleted = await publicRun.handlers.execute({ id: publicCreated.id }, {})
-  assert.strictEqual(publicCompleted.status, 'blocked')
+  assert.strictEqual(publicCompleted.status, 'completed_matched')
+  assert.strictEqual(publicCompleted.matched_count, 1)
   assert.strictEqual(publicRun.tables.match_claim.length, 0)
 
   const qaMem = memory(qa)

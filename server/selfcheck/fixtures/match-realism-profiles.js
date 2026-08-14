@@ -12,6 +12,8 @@ function profile(fixtureKey, data) {
     fixture_key: fixtureKey,
     fixture_batch_key: FIXTURE_BATCH_KEY,
     fixture_scope: 'matching_only',
+    fixture_access_mode: 'public_test_pool',
+    profile_origin: 'synthetic_fixture',
     fixture_notice: '纯虚构测试画像，仅用于匹配效果评估，禁止消息、约会、支付、分润及真实运营',
     is_test_fixture: 1,
     is_match_effect_fixture: 1,

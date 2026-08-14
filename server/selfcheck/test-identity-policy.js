@@ -33,6 +33,11 @@ const legacySynthetic = {
   ab_test_owner_user_id: 10,
   ab_test_expires_at: '2026-08-15T08:00:00.000Z'
 }
+const publicSynthetic = {
+  ...synthetic,
+  id: 22,
+  fixture_access_mode: 'public_test_pool'
+}
 
 assert.deepStrictEqual(resolveTestIdentity(real).kind, 'real_user')
 assert.strictEqual(identityBadge(real), '真人用户')
@@ -54,6 +59,8 @@ assert.strictEqual(canEnterFormalCandidatePool(qa), true)
 assert.strictEqual(canEnterFormalCandidatePool(synthetic), false)
 assert.strictEqual(canUseFixtureForMatch(qa, synthetic, now), true)
 assert.strictEqual(canUseFixtureForMatch(real, synthetic, now), false)
+assert.strictEqual(canUseFixtureForMatch(real, publicSynthetic, now), true)
+assert.strictEqual(canUseFixtureForMatch(real, Object.assign({}, publicSynthetic, { fixture_expires_at: '2026-08-13T08:00:00.000Z' }), now), false)
 assert.strictEqual(canUseFixtureForMatch(qa, Object.assign({}, synthetic, { fixture_expires_at: '2026-08-13T08:00:00.000Z' }), now), false)
 assert.strictEqual(canUseFixtureForMatch({ id: 11, account_mode: 'internal_qa' }, synthetic, now), false)
 assert.throws(() => assertOfflineDatingAllowed(synthetic), /测试画像仅用于匹配效果验证/)
