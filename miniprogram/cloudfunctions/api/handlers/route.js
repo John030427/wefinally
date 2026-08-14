@@ -100,6 +100,8 @@ function route(method, path) {
   if (method === 'POST' && m) return withParams(agent.send, { id: Number(m[1]), session_id: Number(m[1]) })
   m = path.match(/^\/api\/date-coordinations\/(\d+)$/)
   if (method === 'GET' && m) return withParams(dateCoordination.detail, { id: Number(m[1]), coordination_id: Number(m[1]) })
+  m = path.match(/^\/api\/date-coordinations\/fixture-responses\/(\d+)$/)
+  if (method === 'GET' && m) return withParams(dateCoordination.fixtureResponse, { id: Number(m[1]), job_id: Number(m[1]) })
   m = path.match(/^\/api\/date-coordinations\/(\d+)\/invitation-response$/)
   if (method === 'POST' && m) return withParams(dateCoordination.respondInvitation, { coordination_id: Number(m[1]) })
   m = path.match(/^\/api\/date-coordinations\/(\d+)\/application$/)

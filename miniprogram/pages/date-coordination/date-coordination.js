@@ -30,6 +30,10 @@ Page({
     errorMsg: '',
     coordinationId: '',
     coordination: null,
+    fixtureSimulation: null,
+    fixtureStatusText: '',
+    fixtureResponseMessage: '',
+    refreshingFixture: false,
     dateMin: '',
     dateMax: '',
     selectedDate: '',
@@ -98,6 +102,11 @@ Page({
   },
 
   onShow() {
+    if (this.hasShown && this.data.fixtureSimulation) {
+      this.refreshFixtureSimulation()
+      this.hasShown = true
+      return
+    }
     if (this.hasShown && this.data.coordinationId && this.data.pageState === 'success') {
       this.refreshCoordination()
     }
@@ -132,6 +141,10 @@ Page({
   },
 
   applyCoordination(coordination) {
+    if (coordination.test_simulation && coordination.fixture_response_job) {
+      this.applyFixtureSimulation(coordination)
+      return
+    }
     const status = String(coordination.status || '')
     const id = coordination.id || coordination.coordination_id || coordination.coordinationId || ''
     const application = coordination.application || coordination.my_application || {}
@@ -149,6 +162,33 @@ Page({
       proposal,
       pageState: status === 'expired' ? 'expired' : 'success'
     })
+  },
+
+  applyFixtureSimulation(result) {
+    const job = result.fixture_response_job || {}
+    const statusText = job.status === 'delivered'
+      ? '对方已婉拒本次邀请'
+      : (job.status === 'processing' ? '对方正在回复' : '邀请已发出，等待对方回复')
+    this.setData({
+      pageState: 'fixture-simulation',
+      fixtureSimulation: job,
+      fixtureStatusText: statusText,
+      fixtureResponseMessage: result.response_message || ''
+    })
+  },
+
+  async refreshFixtureSimulation() {
+    const job = this.data.fixtureSimulation
+    if (!job || !job.id || this.data.refreshingFixture) return
+    this.setData({ refreshingFixture: true })
+    try {
+      const result = await get(`${API_PATHS.DATE_COORDINATIONS}/fixture-responses/${job.id}`, {}, { showError: false })
+      this.applyFixtureSimulation(result)
+    } catch (err) {
+      wx.showToast({ title: (err && err.message) || '刷新失败', icon: 'none' })
+    } finally {
+      this.setData({ refreshingFixture: false })
+    }
   },
 
   onRetry() {

@@ -42,15 +42,6 @@ function publicJob(job) {
   }
 }
 
-async function claimScheduled(job, deps, now) {
-  const patch = { status: 'processing', lease_owner: `worker:${now.getTime()}` }
-  if (typeof deps.claimIfStatus === 'function') {
-    return deps.claimIfStatus('fixture_response_job', job, 'scheduled', patch)
-  }
-  if (!job || job.status !== 'scheduled') return null
-  return deps.updateByDoc('fixture_response_job', job, patch)
-}
-
 async function scheduleFixtureDecline(input, deps) {
   const actor = input.actor
   const target = input.target
@@ -62,11 +53,9 @@ async function scheduleFixtureDecline(input, deps) {
   }
   const interactionId = String(input.interaction_id || input.interactionId || '').slice(0, 120)
   if (!interactionId) throw new Error('互动编号无效')
-  const existing = await deps.first('fixture_response_job', { interaction_id: interactionId })
-  if (existing) return existing
   const runId = String(target.fixture_run_id || target.ab_test_run_id || '')
   const hours = delayHours(interactionId, runId, deps.hmacSecret || HMAC_SECRET)
-  return deps.addWithId('fixture_response_job', {
+  const acquired = await deps.acquireJob({
     interaction_id: interactionId,
     actor_user_id: Number(actor.id),
     fixture_user_id: Number(target.id),
@@ -76,21 +65,22 @@ async function scheduleFixtureDecline(input, deps) {
     scheduled_at: new Date(now.getTime() + hours * 3600 * 1000),
     delay_hours: hours,
     message_template_version: TEMPLATE_VERSION
-  }, 'fixture_job')
+  })
+  return acquired.job
 }
 
 async function processFixtureResponseJobs(deps, { now = deps.now(), limit = 20 } = {}) {
-  const due = (await deps.list('fixture_response_job', { status: 'scheduled' }, limit) || [])
-    .filter((row) => new Date(row.scheduled_at).getTime() <= now.getTime())
+  const due = await deps.listDue(now, limit)
   let delivered = 0
   let failed = 0
   for (const job of due) {
-    const claimed = await claimScheduled(job, deps, now)
+    const claimed = await deps.claimJob(job, now)
     if (!claimed || claimed.status !== 'processing') continue
     try {
-      await deps.addWithId('date_coordination_event', {
+      await deps.completeJob(claimed, {
         source_type: 'fixture_simulation',
         event_type: 'polite_decline',
+        interaction_id: job.interaction_id,
         actor_user_id: job.actor_user_id,
         fixture_user_id: job.fixture_user_id,
         job_id: job.id,
@@ -99,17 +89,10 @@ async function processFixtureResponseJobs(deps, { now = deps.now(), limit = 20 }
         notify_sms: false,
         notify_subscribe: false,
         create_human_ticket: false
-      }, 'date_event')
-      await deps.updateByDoc('fixture_response_job', claimed, {
-        status: 'delivered',
-        delivered_at: now
-      })
+      }, now)
       delivered += 1
     } catch (err) {
-      await deps.updateByDoc('fixture_response_job', claimed, {
-        status: 'failed',
-        error_class: String(err && err.message || 'deliver_failed').slice(0, 80)
-      })
+      await deps.retryJob(claimed, err, now)
       failed += 1
     }
   }

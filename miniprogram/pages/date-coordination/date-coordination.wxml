@@ -15,6 +15,20 @@
     <view class="state-wrap"><view class="state-text">协调邀请已过期</view><view class="state-btn" bindtap="goService">联系平台客服</view></view>
   </block>
 
+  <block wx:elif="{{pageState === 'fixture-simulation'}}">
+    <view class="date-head card">
+      <view class="date-title">约会邀请进度</view>
+      <view class="date-desc">{{fixtureStatusText}}</view>
+      <view class="status-pill">{{fixtureSimulation.status === 'delivered' ? '已回复' : '等待回复'}}</view>
+    </view>
+    <view class="invite-card card">
+      <view class="section-title">对方回复</view>
+      <view class="invite-text" wx:if="{{fixtureResponseMessage}}">{{fixtureResponseMessage}}</view>
+      <view class="muted" wx:else>平台会在对方回复后更新这里。测试画像不会进入真实约会或线下见面流程。</view>
+      <button class="outline-btn full-btn" bindtap="refreshFixtureSimulation" loading="{{refreshingFixture}}">刷新回复状态</button>
+    </view>
+  </block>
+
   <block wx:else>
     <view class="date-head card">
       <view class="date-title">第一次约会协调</view>

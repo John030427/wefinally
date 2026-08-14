@@ -45,16 +45,16 @@ exports.main = async (event = {}) => {
           data: await processQueuedTasks(Number(payload.limit || 2))
         }
       case 'processWorkerTasks': {
+        assertInternalWorkerSecret(payload.worker_secret)
         const [reports, notifications, coordinations, fixtureResponses] = await Promise.all([
           processQueuedTasks(Number(payload.report_limit || 2)),
           processNotificationJobs({ limit: Number(payload.notification_limit || 10) }),
           processCoordinationDeadlines({ limit: Number(payload.coordination_limit || 50) }),
           processFixtureResponseJobs({
-            first: db.first,
-            list: db.list,
-            addWithId: db.addWithId,
-            updateByDoc: db.updateByDoc,
-            claimIfStatus: db.claimIfStatus,
+            listDue: db.listDueFixtureResponseJobs,
+            claimJob: db.claimFixtureResponseJob,
+            completeJob: db.completeFixtureResponseJob,
+            retryJob: db.retryFixtureResponseJob,
             now: db.now
           }, { limit: Number(payload.fixture_limit || 20) })
         ])

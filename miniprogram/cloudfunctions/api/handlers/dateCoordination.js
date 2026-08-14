@@ -2,7 +2,7 @@ const { STATUS, normalizeApplication, computeOverlap, nextStatus, applyConfirmat
 const { MEMBER_STATUS, memberStatus } = require('../lib/memberPolicy')
 const { createReminderJob, deliverProposalNotification } = require('../agent/notificationJobs')
 const { assertOfflineDatingAllowed } = require('../lib/testFixturePolicy')
-const { canScheduleFixtureDecline, scheduleFixtureDecline, publicJob } = require('../lib/fixtureResponseService')
+const { canScheduleFixtureDecline, scheduleFixtureDecline, publicJob, politeDeclineMessage } = require('../lib/fixtureResponseService')
 
 async function upsertConfirmation(existing, data) {
   const db = require('../lib/db')
@@ -58,6 +58,7 @@ function defaultDeps() {
     byId: db.byId,
     addWithId: db.addWithId,
     updateByDoc: db.updateByDoc,
+    acquireFixtureResponseJob: db.acquireFixtureResponseJob,
     upsertConfirmation,
     updateConfirmationState,
     expireIfCurrent: expireCoordinationIfCurrent,
@@ -152,8 +153,7 @@ function createDateCoordinationHandlers(overrides = {}) {
         target: partner,
         interaction_id: `match:${match.id}`
       }, {
-        first: (name, query) => dep('first')(name, query),
-        addWithId: (name, data, prefix) => dep('addWithId')(name, data, prefix),
+        acquireJob: (jobData) => dep('acquireFixtureResponseJob')(jobData),
         now: () => dep('now')()
       })
       return { test_simulation: true, fixture_response_job: publicJob(job) }
@@ -174,6 +174,17 @@ function createDateCoordinationHandlers(overrides = {}) {
       final_proposal_id: 0
     }, 'date_coordination')
     return detailFor(created, user)
+  }
+
+  async function fixtureResponse(data, wxContext) {
+    const user = await dep('currentUser')(wxContext)
+    const job = await dep('byId')('fixture_response_job', Number(data.id || data.job_id || 0))
+    if (!job || Number(job.actor_user_id) !== Number(user.id)) throw new Error('测试回复任务不存在')
+    return {
+      test_simulation: true,
+      fixture_response_job: publicJob(job),
+      response_message: job.status === 'delivered' ? politeDeclineMessage() : ''
+    }
   }
 
   async function respondInvitation(data, wxContext) {
@@ -507,7 +518,7 @@ function createDateCoordinationHandlers(overrides = {}) {
     return detailFor(updated, user)
   }
 
-  return { create, respondInvitation, saveApplication, saveApplicationForUser, detail, confirmProposal, recoordinate }
+  return { create, fixtureResponse, respondInvitation, saveApplication, saveApplicationForUser, detail, confirmProposal, recoordinate }
 }
 
 const handlers = {}
@@ -524,6 +535,7 @@ module.exports = {
   respondInvitation: handler('respondInvitation'),
   saveApplication: handler('saveApplication'),
   detail: handler('detail'),
+  fixtureResponse: handler('fixtureResponse'),
   confirmProposal: handler('confirmProposal'),
   recoordinate: handler('recoordinate'),
   createDateCoordinationHandlers,

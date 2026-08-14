@@ -203,6 +203,99 @@ async function completeMatchTestRun(run, outcome) {
   }))
 }
 
+async function acquireFixtureResponseJob(data) {
+  const interactionId = String(data && data.interaction_id || '')
+  if (!interactionId) throw new Error('互动编号无效')
+  const digest = crypto.createHash('sha256').update(interactionId).digest('hex').slice(0, 32)
+  const documentId = `fixture_response_${digest}`
+  return withCollection('fixture_response_job', () => db.runTransaction(async (rawTransaction) => {
+    const adapter = transactionAdapter(rawTransaction)
+    const current = await adapter.byDocId('fixture_response_job', documentId)
+    if (current) return { created: false, job: current }
+    const id = await adapter.nextCounter('fixture_response_job')
+    const timestamp = now()
+    const job = Object.assign({}, data, { _id: documentId, id, create_time: timestamp, update_time: timestamp })
+    await adapter.setByDocId('fixture_response_job', documentId, job)
+    return { created: true, job }
+  }))
+}
+
+async function listDueFixtureResponseJobs(timestamp = now(), limit = 20) {
+  const bounded = Math.max(1, Math.min(Number(limit || 20), 100))
+  const scheduled = await withCollection('fixture_response_job', () => col('fixture_response_job')
+    .where({ status: 'scheduled', scheduled_at: _.lte(timestamp) })
+    .orderBy('scheduled_at', 'asc')
+    .limit(bounded)
+    .get())
+  const rows = scheduled.data || []
+  if (rows.length >= bounded) return rows
+  const expired = await withCollection('fixture_response_job', () => col('fixture_response_job')
+    .where({ status: 'processing', lease_expires_at: _.lte(timestamp) })
+    .orderBy('lease_expires_at', 'asc')
+    .limit(bounded - rows.length)
+    .get())
+  return rows.concat(expired.data || [])
+}
+
+async function claimFixtureResponseJob(job, timestamp = now()) {
+  if (!job || !job._id) throw new Error('测试回复任务无效')
+  return withCollection('fixture_response_job', () => db.runTransaction(async (rawTransaction) => {
+    const adapter = transactionAdapter(rawTransaction)
+    const current = await adapter.byDocId('fixture_response_job', job._id)
+    if (!current) return null
+    const leaseExpired = current.status === 'processing'
+      && current.lease_expires_at
+      && new Date(current.lease_expires_at).getTime() <= new Date(timestamp).getTime()
+    if (current.status !== 'scheduled' && !leaseExpired) return null
+    if (current.status === 'scheduled' && new Date(current.scheduled_at).getTime() > new Date(timestamp).getTime()) return null
+    const claimed = Object.assign({}, current, {
+      status: 'processing',
+      lease_token: crypto.randomBytes(16).toString('hex'),
+      lease_expires_at: new Date(new Date(timestamp).getTime() + 5 * 60 * 1000),
+      update_time: timestamp
+    })
+    await adapter.setByDocId('fixture_response_job', job._id, claimed)
+    return claimed
+  }))
+}
+
+async function completeFixtureResponseJob(job, eventData, timestamp = now()) {
+  if (!job || !job._id || !job.lease_token) throw new Error('测试回复任务执行权无效')
+  return withCollection('fixture_response_job', () => db.runTransaction(async (rawTransaction) => {
+    const adapter = transactionAdapter(rawTransaction)
+    const current = await adapter.byDocId('fixture_response_job', job._id)
+    if (!current) throw new Error('测试回复任务不存在')
+    if (current.status === 'delivered') return current
+    if (current.status !== 'processing' || current.lease_token !== job.lease_token) throw new Error('测试回复任务执行权已失效')
+    await adapter.addWithId('date_coordination_event', eventData, 'date_event')
+    const completed = Object.assign({}, current, {
+      status: 'delivered', delivered_at: timestamp, lease_token: '', lease_expires_at: null, update_time: timestamp
+    })
+    await adapter.setByDocId('fixture_response_job', job._id, completed)
+    return completed
+  }))
+}
+
+async function retryFixtureResponseJob(job, error, timestamp = now()) {
+  if (!job || !job._id || !job.lease_token) return null
+  return withCollection('fixture_response_job', () => db.runTransaction(async (rawTransaction) => {
+    const adapter = transactionAdapter(rawTransaction)
+    const current = await adapter.byDocId('fixture_response_job', job._id)
+    if (!current || current.status !== 'processing' || current.lease_token !== job.lease_token) return current
+    const retry = Object.assign({}, current, {
+      status: 'scheduled',
+      scheduled_at: new Date(new Date(timestamp).getTime() + 5 * 60 * 1000),
+      attempts: Number(current.attempts || 0) + 1,
+      error_class: String(error && error.message || 'deliver_failed').slice(0, 80),
+      lease_token: '',
+      lease_expires_at: null,
+      update_time: timestamp
+    })
+    await adapter.setByDocId('fixture_response_job', job._id, retry)
+    return retry
+  }))
+}
+
 async function acquireFormalMatchBatch(data) {
   const businessDate = String(data && data.business_date || '')
   const batchKey = String(data && data.batch_key || '')
@@ -382,6 +475,11 @@ module.exports = {
   acquireMatchTestRun,
   claimMatchTestRun,
   completeMatchTestRun,
+  acquireFixtureResponseJob,
+  listDueFixtureResponseJobs,
+  claimFixtureResponseJob,
+  completeFixtureResponseJob,
+  retryFixtureResponseJob,
   acquireFormalMatchBatch,
   removeByDoc,
   transaction,
