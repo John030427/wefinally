@@ -68,7 +68,7 @@ async function main() {
   const service = createPartnerOnboardingService(deps, { phoneSecret: secret })
   const result = await service.activate({
     candidate_id: 10,
-    verified_phone: '+86 138 0000 1234',
+    roster_phone: '+86 138 0000 1234',
     current_user_id: 7,
     request_id: 'activate-10-user-7'
   })
@@ -93,7 +93,7 @@ async function main() {
 
   const repeated = await service.activate({
     candidate_id: 10,
-    verified_phone: '13800001234',
+    roster_phone: '13800001234',
     current_user_id: 7,
     request_id: 'activate-10-user-7'
   })
@@ -103,7 +103,7 @@ async function main() {
 
   await assert.rejects(() => service.activate({
     candidate_id: 10,
-    verified_phone: '13800001234',
+    roster_phone: '13800001234',
     current_user_id: 8,
     request_id: 'activate-other-user'
   }), /已绑定其他微信用户|未获资格或验证不一致/)

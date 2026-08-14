@@ -13,13 +13,14 @@ const backoffice = source('../../miniprogram/cloudfunctions/api/handlers/backoff
 
 for (const endpoint of [
   'GET /api/partner/onboarding/status',
-  'POST /api/partner/applications',
   'POST /api/partner/activation',
   'POST /api/partner/session',
   'GET /api/partner/dashboard'
 ]) assert.ok(route.includes(endpoint), `missing route ${endpoint}`)
 
-assert.match(cloudHandler, /phonenumber\.getPhoneNumber/)
+assert.ok(!route.includes('POST /api/partner/applications'))
+assert.doesNotMatch(cloudHandler, /phonenumber\.getPhoneNumber/)
+assert.doesNotMatch(cloudHandler, /consumePhoneCode/)
 assert.match(cloudHandler, /createPartnerOnboardingService/)
 assert.match(cloudHandler, /ttlSeconds:\s*86400/)
 assert.match(db, /async function transaction/)

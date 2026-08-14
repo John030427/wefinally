@@ -62,7 +62,7 @@ function createPartnerOnboardingService(deps, options = {}) {
         candidate,
         partner,
         partnerForUser,
-        verifiedPhone: input.verified_phone,
+        rosterPhone: input.roster_phone,
         currentUserId,
         secret: phoneSecret
       })
@@ -131,7 +131,7 @@ function createPartnerOnboardingService(deps, options = {}) {
         from_status: 'needs_verification',
         to_status: 'active',
         request_id: activationRequestId,
-        reason: 'verified_phone_binding',
+        reason: 'roster_phone_binding',
         create_time: timestamp
       })
       return partnerDto(activated)

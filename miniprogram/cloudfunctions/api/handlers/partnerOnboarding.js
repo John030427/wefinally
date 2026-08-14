@@ -1,11 +1,7 @@
 const {
-  REVIEW_STATUS,
-  ACTIVATION_STATUS,
   normalizePhone,
-  maskPhone,
   phoneDigest,
-  onboardingState,
-  candidateDto
+  onboardingState
 } = require('../lib/partnerOnboardingPolicy')
 
 function number(value) {
@@ -36,10 +32,10 @@ function partnerDto(row = {}) {
 
 function actionsFor(state) {
   const actions = {
-    not_applied: ['apply', 'verify'],
+    not_applied: ['verify'],
     pending: [],
     needs_verification: ['verify'],
-    rejected: ['apply'],
+    rejected: ['contact_support'],
     active: ['dashboard'],
     suspended: ['contact_support'],
     revoked: ['contact_support']
@@ -87,63 +83,6 @@ function createPartnerOnboardingHandlers(deps, options = {}) {
     return statusDto(user, context.candidate, context.partner)
   }
 
-  async function apply(data = {}, wxContext) {
-    const user = await currentUser(wxContext)
-    const applyRequestId = requestId(data.request_id)
-    const prior = await deps.first('partner_audit_log', {
-      action: 'application_submit',
-      request_id: applyRequestId
-    })
-    if (prior) {
-      if (number(prior.actor_user_id) !== number(user.id)) throw new Error('请求编号冲突')
-      const priorCandidate = await deps.byId('partner_candidate', prior.candidate_id)
-      if (!priorCandidate) throw new Error('申请幂等记录无效')
-      return candidateDto(priorCandidate)
-    }
-
-    const normalizedPhone = normalizePhone(data.phone)
-    const digest = phoneDigest(normalizedPhone, phoneSecret)
-    const candidateForPhone = await deps.first('partner_candidate', { phone_digest: digest })
-    const candidateForUser = await deps.first('partner_candidate', { applicant_user_id: number(user.id) })
-    if (candidateForPhone && number(candidateForPhone.id) !== number(candidateForUser && candidateForUser.id)) {
-      throw new Error('该手机号暂不能提交合伙人申请')
-    }
-    if (candidateForUser && candidateForUser.review_status === REVIEW_STATUS.APPROVED) {
-      throw new Error('当前合伙人资格已通过，请完成手机号验证')
-    }
-    const fromStatus = candidateForUser ? String(candidateForUser.review_status || '') : 'not_applied'
-    const timestamp = deps.now()
-    const payload = {
-      source: 'application',
-      phone_digest: digest,
-      phone_masked: maskPhone(normalizedPhone),
-      applicant_user_id: number(user.id),
-      city: text(data.city || user.city, 100),
-      circle_note: text(data.circle_note, 500),
-      reason: text(data.reason, 1000),
-      review_status: REVIEW_STATUS.PENDING,
-      activation_status: ACTIVATION_STATUS.UNBOUND,
-      review_note: '',
-      update_time: timestamp
-    }
-    const candidate = candidateForUser
-      ? await deps.updateByDoc('partner_candidate', candidateForUser, payload)
-      : await deps.addWithId('partner_candidate', { ...payload, create_time: timestamp }, 'partner_candidate')
-    await deps.addWithId('partner_audit_log', {
-      actor_type: 'user',
-      actor_user_id: number(user.id),
-      candidate_id: number(candidate.id),
-      partner_id: number(candidate.partner_id),
-      action: 'application_submit',
-      from_status: fromStatus,
-      to_status: REVIEW_STATUS.PENDING,
-      request_id: applyRequestId,
-      reason: 'self_application',
-      create_time: timestamp
-    }, 'partner_audit')
-    return candidateDto(candidate)
-  }
-
   async function sessionFor(partner) {
     if (!partner || number(partner.status) !== 1) throw new Error('合伙人权限不存在或已停用')
     const safePartner = partnerDto(partner)
@@ -158,16 +97,20 @@ function createPartnerOnboardingHandlers(deps, options = {}) {
   async function activate(data = {}, wxContext) {
     const user = await currentUser(wxContext)
     const activationRequestId = requestId(data.request_id)
-    const code = text(data.phone_code, 256)
-    if (!code) throw new Error('请授权微信手机号')
-    const verifiedPhone = await deps.consumePhoneCode(code)
-    const digest = phoneDigest(verifiedPhone, phoneSecret)
-    const candidate = await deps.first('partner_candidate', { phone_digest: digest })
+    let rosterPhone
+    let digest
+    try {
+      rosterPhone = normalizePhone(data.phone)
+      digest = phoneDigest(rosterPhone, phoneSecret)
+    } catch (err) {
+      throw new Error('手机号未获资格或验证不一致')
+    }
+    const candidate = await deps.first('partner_candidate', { source: 'roster', phone_digest: digest })
     if (!candidate) throw new Error('手机号未获资格或验证不一致')
     const partner = await deps.activate({
       candidate_id: number(candidate.id),
       current_user_id: number(user.id),
-      verified_phone: verifiedPhone,
+      roster_phone: rosterPhone,
       request_id: activationRequestId
     })
     return {
@@ -183,7 +126,7 @@ function createPartnerOnboardingHandlers(deps, options = {}) {
     return sessionFor(partner)
   }
 
-  return { status, apply, activate, session }
+  return { status, activate, session }
 }
 
 module.exports = { createPartnerOnboardingHandlers, partnerDto, actionsFor }

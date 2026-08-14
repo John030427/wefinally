@@ -36,7 +36,6 @@ function route(method, path) {
     'POST /api/auth/wx-login': auth.wxLogin,
     'POST /api/auth/partner-login': backoffice.partnerLoginForMiniProgram,
     'GET /api/partner/onboarding/status': partnerOnboarding.status,
-    'POST /api/partner/applications': partnerOnboarding.apply,
     'POST /api/partner/activation': partnerOnboarding.activate,
     'POST /api/partner/session': partnerOnboarding.session,
     'GET /api/common/circles': common.circles,

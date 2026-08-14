@@ -74,11 +74,11 @@ function assertActivation(input = {}) {
   const candidate = input.candidate || null
   const currentUserId = number(input.currentUserId)
   const allowedActivationStates = new Set([ACTIVATION_STATUS.UNBOUND, ACTIVATION_STATUS.UNBOUND_BY_ADMIN])
-  if (!candidate || candidate.review_status !== REVIEW_STATUS.APPROVED || !allowedActivationStates.has(String(candidate.activation_status || ''))) {
+  if (!candidate || candidate.source !== 'roster' || candidate.review_status !== REVIEW_STATUS.APPROVED || !allowedActivationStates.has(String(candidate.activation_status || ''))) {
     throw activationError('手机号未获资格或验证不一致')
   }
   if (!currentUserId) throw activationError('当前用户身份无效')
-  if (phoneDigest(input.verifiedPhone, input.secret) !== String(candidate.phone_digest || '')) {
+  if (phoneDigest(input.rosterPhone, input.secret) !== String(candidate.phone_digest || '')) {
     throw activationError('手机号未获资格或验证不一致')
   }
   if (input.partner && number(input.partner.user_id) > 0 && number(input.partner.user_id) !== currentUserId) {

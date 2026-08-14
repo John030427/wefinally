@@ -4,7 +4,16 @@ const { createPartnerOnboardingHandlers } = require('../../miniprogram/cloudfunc
 function fakeDeps() {
   const tables = {
     user: [{ _id: 'user_15', id: 15, openid: 'openid-15', city: '汕头' }],
-    partner_candidate: [],
+    partner_candidate: [{
+      _id: 'partner_candidate_10',
+      id: 10,
+      source: 'roster',
+      phone_digest: require('../../miniprogram/cloudfunctions/api/lib/partnerOnboardingPolicy').phoneDigest('13800001234', 'partner-handler-phone-lookup-secret-for-selfcheck'),
+      phone_masked: '138****1234',
+      review_status: 'approved',
+      activation_status: 'unbound',
+      partner_id: 0
+    }],
     partner: [],
     partner_audit_log: []
   }
@@ -12,7 +21,6 @@ function fakeDeps() {
   const matches = (row, query) => Object.keys(query || {}).every((key) => row[key] === query[key])
   return {
     tables,
-    consumedCodes: [],
     now: () => new Date('2026-08-14T12:00:00.000Z'),
     async first(name, query) {
       return (tables[name] || []).find((row) => matches(row, query || {})) || null
@@ -28,11 +36,6 @@ function fakeDeps() {
     async updateByDoc(name, row, data) {
       Object.assign(row, data)
       return row
-    },
-    async consumePhoneCode(code) {
-      this.consumedCodes.push(code)
-      if (code !== 'wx-phone-code') throw new Error('手机号授权已失效')
-      return '13800001234'
     },
     async activate(input) {
       const candidate = tables.partner_candidate.find((row) => row.id === input.candidate_id)
@@ -57,40 +60,27 @@ async function main() {
 
   const initial = await handlers.status({}, wxContext)
   assert.strictEqual(initial.state, 'not_applied')
-  assert.deepStrictEqual(initial.allowed_actions, ['apply', 'verify'])
+  assert.deepStrictEqual(initial.allowed_actions, ['verify'])
+  assert.strictEqual(handlers.apply, undefined)
 
-  const application = await handlers.apply({
-    phone: '138 0000 1234',
-    city: '汕头',
-    circle_note: '本地创业者圈层',
-    reason: '愿意协助审核',
-    request_id: 'apply-1'
-  }, wxContext)
-  assert.strictEqual(application.review_status, 'pending')
-  assert.strictEqual(application.phone_masked, '138****1234')
-  assert.strictEqual(application.phone_digest, undefined)
-  assert.strictEqual(deps.tables.partner_candidate[0].phone, undefined)
-  assert.strictEqual(deps.tables.partner_audit_log[0].request_id, 'apply-1')
-  assert.strictEqual(deps.tables.partner_audit_log[0].phone_digest, undefined)
+  await assert.rejects(
+    () => handlers.activate({ phone: '13900005678', request_id: 'activate-wrong' }, wxContext),
+    /手机号未获资格或验证不一致/
+  )
 
-  const pending = await handlers.status({}, wxContext)
-  assert.strictEqual(pending.state, 'pending')
-  deps.tables.partner_candidate[0].review_status = 'approved'
-
-  const active = await handlers.activate({ phone_code: 'wx-phone-code', request_id: 'activate-1' }, wxContext)
+  const active = await handlers.activate({ phone: '138 0000 1234', request_id: 'activate-1' }, wxContext)
   assert.strictEqual(active.state, 'active')
   assert.strictEqual(active.partner.partner_code, 'WF-P-0007')
   assert.strictEqual(active.session.token, 'session:7:v1')
   assert.strictEqual(active.session.binding_version, 1)
-  assert.deepStrictEqual(deps.consumedCodes, ['wx-phone-code'])
-  assert.strictEqual(JSON.stringify(deps.tables).includes('wx-phone-code'), false)
+  assert.strictEqual(JSON.stringify(deps.tables).includes('13800001234'), false)
 
   const restored = await handlers.session({}, wxContext)
   assert.strictEqual(restored.token, 'session:7:v1')
   deps.tables.partner[0].status = 2
   await assert.rejects(() => handlers.session({}, wxContext), /停用/)
 
-  console.log('PASS partner onboarding status, application, activation and session handlers')
+  console.log('PASS roster-only manual-phone activation and session handlers')
 }
 
 main().catch((err) => {

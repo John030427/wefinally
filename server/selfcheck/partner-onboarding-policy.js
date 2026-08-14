@@ -43,14 +43,14 @@ assert.strictEqual(onboardingState({ candidate: { ...approved, review_status: 'r
 
 assert.deepStrictEqual(assertActivation({
   candidate: approved,
-  verifiedPhone: '13800001234',
+  rosterPhone: '13800001234',
   currentUserId: 7,
   secret
 }), { candidate_id: 10, user_id: 7, phone_digest: approved.phone_digest })
-assert.throws(() => assertActivation({ candidate: approved, verifiedPhone: '13900005678', currentUserId: 7, secret }), /未获资格或验证不一致/)
-assert.throws(() => assertActivation({ candidate: { ...approved, review_status: 'pending' }, verifiedPhone: '13800001234', currentUserId: 7, secret }), /未获资格或验证不一致/)
-assert.throws(() => assertActivation({ candidate: approved, partner: { user_id: 8 }, verifiedPhone: '13800001234', currentUserId: 7, secret }), /已绑定其他微信用户/)
-assert.throws(() => assertActivation({ candidate: approved, partnerForUser: { id: 99 }, verifiedPhone: '13800001234', currentUserId: 7, secret }), /当前用户已有合伙人身份/)
+assert.throws(() => assertActivation({ candidate: approved, rosterPhone: '13900005678', currentUserId: 7, secret }), /未获资格或验证不一致/)
+assert.throws(() => assertActivation({ candidate: { ...approved, review_status: 'pending' }, rosterPhone: '13800001234', currentUserId: 7, secret }), /未获资格或验证不一致/)
+assert.throws(() => assertActivation({ candidate: approved, partner: { user_id: 8 }, rosterPhone: '13800001234', currentUserId: 7, secret }), /已绑定其他微信用户/)
+assert.throws(() => assertActivation({ candidate: approved, partnerForUser: { id: 99 }, rosterPhone: '13800001234', currentUserId: 7, secret }), /当前用户已有合伙人身份/)
 
 assert.deepStrictEqual(candidateDto({
   ...approved,
