@@ -101,11 +101,13 @@ function syntheticWriteDefaults(input = {}) {
 }
 
 function planProfileProvenance(users = []) {
+  // ponytail: dry-run only. Production backfill waits for explicit user confirmation.
   return (users || []).map((user) => {
     const id = number(user && user.id)
     if (!id) return null
     const origin = text(user.profile_origin)
     if (origin === 'synthetic_fixture' || origin === 'real_user') return null
+    if (text(user.account_mode) === 'internal_qa') return null
     if (Number(user.is_test_fixture || 0) !== 1) return null
     const owner = fixtureOwnerId(user)
     if (!owner) {

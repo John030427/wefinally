@@ -79,15 +79,24 @@ const plan = planProfileProvenance([
   real,
   qa,
   { id: 30, is_test_fixture: 1, ab_test_owner_user_id: 10, name: 'Grace' },
-  { id: 31, profile_origin: 'synthetic_fixture', fixture_owner_user_id: 10, is_test_fixture: 1 }
+  { id: 31, profile_origin: 'synthetic_fixture', fixture_owner_user_id: 10, is_test_fixture: 1 },
+  { id: 40, account_mode: 'internal_qa', is_test_fixture: 1, fixture_owner_user_id: 10 },
+  { id: 41, profile_origin: 'real_user', is_test_fixture: 1, fixture_owner_user_id: 10 },
+  { id: 32, is_test_fixture: 1 }
 ])
 assert.strictEqual(plan.find((row) => row.id === 1), undefined)
 assert.strictEqual(plan.find((row) => row.id === 31), undefined)
+assert.strictEqual(plan.find((row) => row.id === 40), undefined)
+assert.strictEqual(plan.find((row) => row.id === 41), undefined)
 const fixturePlan = plan.find((row) => row.id === 30)
 assert.strictEqual(fixturePlan.proposed.profile_origin, 'synthetic_fixture')
 assert.strictEqual(fixturePlan.proposed.fixture_owner_user_id, 10)
 assert.ok(!JSON.stringify(fixturePlan).includes('姓名'))
 assert.ok(!plan.some((row) => /Grace|手机号|openid/i.test(JSON.stringify(row.reason || ''))))
+assert.strictEqual(plan.find((row) => row.id === 32).proposed, null)
+assert.ok(plan.find((row) => row.id === 32).conflicts.includes('missing_fixture_owner'))
+const afterApply = Object.assign({}, { id: 30, is_test_fixture: 1, ab_test_owner_user_id: 10 }, fixturePlan.proposed)
+assert.strictEqual(planProfileProvenance([afterApply]).length, 0)
 
 async function main() {
   const tables = {
