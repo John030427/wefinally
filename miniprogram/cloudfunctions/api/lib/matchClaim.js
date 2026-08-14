@@ -65,9 +65,12 @@ function deliveryPayload(input) {
   const logA = input && input.logA
   const logB = input && input.logB
   const audit = input && input.audit
-  if (!logA || !logA._id || !Number(logA.id)) throw new Error('发起方匹配记录无效')
-  if (!logB || !logB._id || !Number(logB.id)) throw new Error('候选方匹配记录无效')
-  if (!audit || !audit._id || !Number(audit.id)) throw new Error('匹配审计记录无效')
+  const deliveryData = input && input.deliveryData
+  if (!deliveryData) {
+    if (!logA || !logA._id || !Number(logA.id)) throw new Error('发起方匹配记录无效')
+    if (!logB || !logB._id || !Number(logB.id)) throw new Error('候选方匹配记录无效')
+    if (!audit || !audit._id || !Number(audit.id)) throw new Error('匹配审计记录无效')
+  }
   if (!input.userDoc || !input.userDoc._id || !input.partnerDoc || !input.partnerDoc._id) {
     throw new Error('匹配用户文档无效')
   }
@@ -76,6 +79,7 @@ function deliveryPayload(input) {
     logA,
     logB,
     audit,
+    deliveryData,
     userDoc: input.userDoc,
     partnerDoc: input.partnerDoc,
     userPatch: input.userPatch || {},
@@ -84,7 +88,7 @@ function deliveryPayload(input) {
 }
 
 async function deliverPair(input, store) {
-  const delivery = deliveryPayload(input)
+  let delivery = deliveryPayload(input)
   const claim = delivery.claim
   const adapter = store && typeof store.runAtomic === 'function' ? store : createCloudClaimStore()
   return adapter.runAtomic(async (transaction) => {
@@ -97,6 +101,10 @@ async function deliverPair(input, store) {
       }
       return { delivered: false, replayed: false, reason: 'already_matched', claim: existing }
     }
+    if (delivery.deliveryData) {
+      if (typeof transaction.prepareDelivery !== 'function') throw new Error('原子匹配记录准备依赖未配置')
+      delivery = Object.assign({}, delivery, await transaction.prepareDelivery(delivery.deliveryData))
+    }
     const created = Object.assign({}, claim, {
       match_log_ids: { a: Number(delivery.logA.id), b: Number(delivery.logB.id) },
       create_time: new Date(),
@@ -104,7 +112,7 @@ async function deliverPair(input, store) {
     })
     if (typeof transaction.createDelivery !== 'function') throw new Error('原子匹配交付依赖未配置')
     await transaction.createDelivery(created, delivery)
-    return { delivered: true, replayed: false, claim: created, logA: delivery.logA, logB: delivery.logB }
+    return { delivered: true, replayed: false, claim: created, logA: delivery.logA, logB: delivery.logB, audit: delivery.audit }
   })
 }
 
@@ -118,6 +126,15 @@ async function releasePair(input, store) {
 async function readDocument(transaction, id) {
   try {
     const result = await transaction.collection(CLAIM_COLLECTION).doc(id).get()
+    return result && result.data ? result.data : null
+  } catch (err) {
+    return null
+  }
+}
+
+async function readCollectionDocument(transaction, collectionName, id) {
+  try {
+    const result = await transaction.collection(collectionName).doc(id).get()
     return result && result.data ? result.data : null
   } catch (err) {
     return null
@@ -156,6 +173,33 @@ function createCloudClaimStore() {
           await transaction.collection(CLAIM_COLLECTION).doc(ids.partner).set({ data })
           await transaction.collection(CLAIM_COLLECTION).doc(ids.pair).set({ data })
           return data
+        },
+        prepareDelivery: async (data) => {
+          async function allocate(logicalName, count) {
+            const counterRef = transaction.collection('system_counters').doc(logicalName)
+            const counter = await readCollectionDocument(transaction, 'system_counters', logicalName)
+            const start = Number(counter && counter.seq || 0) + 1
+            const end = start + count - 1
+            const timestamp = new Date()
+            if (counter) await counterRef.update({ data: { seq: end, update_time: timestamp } })
+            else await counterRef.set({ data: { seq: end, create_time: timestamp, update_time: timestamp } })
+            return { start, timestamp }
+          }
+          function document(prefix, id, payload, timestamp) {
+            return Object.assign({}, payload, {
+              _id: `${prefix}_${id}`,
+              id,
+              create_time: payload.create_time || timestamp,
+              update_time: payload.update_time || timestamp
+            })
+          }
+          const logs = await allocate('user_match_log', 2)
+          const audits = await allocate('match_claim_audit', 1)
+          return {
+            logA: document('match_log', logs.start, data.logA, logs.timestamp),
+            logB: document('match_log', logs.start + 1, data.logB, logs.timestamp),
+            audit: document('match_audit', audits.start, data.audit, audits.timestamp)
+          }
         },
         createDelivery: async (claim, delivery) => {
           const ids = claimDocumentIds(claim.pair_key, claim.user_id, claim.match_user_id)

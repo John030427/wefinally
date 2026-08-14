@@ -54,6 +54,11 @@ function createDeliveryStore(options = {}) {
         const result = await work({
           findByUserIds: async (ids) => ids.map((id) => draft.claims.get(`user:${id}`)).filter(Boolean),
           findByPairKey: async (pairKey) => draft.claims.get(`pair:${pairKey}`) || null,
+          prepareDelivery: async (data) => ({
+            logA: { _id: 'match_log_301', id: 301, ...data.logA },
+            logB: { _id: 'match_log_302', id: 302, ...data.logB },
+            audit: { _id: 'match_audit_401', id: 401, ...data.audit }
+          }),
           createDelivery: async (claim, delivery) => {
             draft.claims.set(`user:${claim.user_id}`, claim)
             draft.claims.set(`user:${claim.match_user_id}`, claim)
@@ -120,6 +125,27 @@ function deliveryFixture(requestId) {
   assert.strictEqual(delivered.filter((item) => item.delivered).length, 1)
   assert.strictEqual(deliveryStore.state.logs.size, 2)
   assert.strictEqual(deliveryStore.state.audits.size, 1)
+
+  const preparedStore = createDeliveryStore()
+  const prepared = await deliverPair({
+    userId: 3,
+    partnerId: 20,
+    requestId: 'prepared-delivery',
+    deliveryData: {
+      logA: { user_id: 3, match_user_id: 20 },
+      logB: { user_id: 20, match_user_id: 3 },
+      audit: { action: 'formal_batch' }
+    },
+    userDoc: { _id: 'user_3', id: 3 },
+    partnerDoc: { _id: 'user_20', id: 20 },
+    userPatch: { match_status: 'matched', matched_partner_id: 20 },
+    partnerPatch: { match_status: 'matched', matched_partner_id: 3 }
+  }, preparedStore)
+  assert.strictEqual(prepared.delivered, true)
+  assert.strictEqual(prepared.logA.id, 301)
+  assert.notStrictEqual(prepared.logA.id, prepared.logB.id)
+  assert.strictEqual(preparedStore.state.logs.size, 2)
+  assert.strictEqual(preparedStore.state.audits.size, 1)
   assert.strictEqual(deliveryStore.state.users.get(3).match_status, 'matched')
   assert.strictEqual(deliveryStore.state.users.get(20).match_status, 'matched')
   const replay = await deliverPair(deliveryFixture('delivery-a'), deliveryStore)

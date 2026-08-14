@@ -74,7 +74,11 @@ exports.main = async (event = {}) => {
             list: db.list,
             byId: db.byId,
             now: db.now,
-            executeMatching: executeFormalMatching
+            executeMatching: (ctx) => executeFormalMatching(Object.assign({}, ctx, {
+              deps: Object.assign({}, ctx.deps, {
+                ensureReportTask: require('./handlers/reportTask').ensureTaskForMatch
+              })
+            }))
           })
         }
       default:
