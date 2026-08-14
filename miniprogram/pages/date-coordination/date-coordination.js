@@ -187,7 +187,7 @@ Page({
     const job = result.fixture_response_job || {}
     const statusText = job.status === 'delivered'
       ? '测试对象未接受本次约会申请'
-      : '等待测试对象回应'
+      : '申请已记录，等待测试对象回应'
     this.setData({
       pageState: 'fixture-simulation',
       fixtureSimulation: job,
@@ -378,6 +378,10 @@ Page({
   },
 
   goCoordinator() {
+    if (!this.data.coordinationId) {
+      wx.showToast({ title: '测试约会请先填写上方表单', icon: 'none', duration: 3000 })
+      return
+    }
     wx.navigateTo({
       url: `/pages/chat/chat?agentType=date_coordinator&coordinationId=${this.data.coordinationId}`
     })

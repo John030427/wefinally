@@ -131,7 +131,7 @@
       <button class="primary-btn full-btn" bindtap="recoordinate" loading="{{submitting}}">重新协调</button>
     </view>
 
-    <view class="support-card support-card-ai" bindtap="goCoordinator" hover-class="support-card-pressed">
+    <view class="support-card support-card-ai" wx:if="{{coordinationId}}" bindtap="goCoordinator" hover-class="support-card-pressed">
       <view class="support-icon">💗</view>
       <view class="support-content">
         <view class="support-title">AI约会协调员</view>

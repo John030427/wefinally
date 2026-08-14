@@ -248,6 +248,9 @@ async function main() {
   assert(datePage.includes('can_submit_application: true'))
   assert(dateView.includes('提交测试约会申请'))
   assert(dateView.includes('不会向真人发送邀请'))
+  assert(dateView.includes('wx:if="{{coordinationId}}"'))
+  assert(datePage.includes('测试约会请先填写上方表单'))
+  assert(datePage.includes('申请已记录，等待测试对象回应'))
   assert(dateView.includes('等待测试对象回应') || dateView.includes('测试约会申请'))
   console.log('PASS synthetic fixture declines are delayed, idempotent and never notify for real')
 }
