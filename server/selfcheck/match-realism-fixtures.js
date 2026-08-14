@@ -58,4 +58,35 @@ assert.strictEqual(rankedPair('high_fit').quality.pass, true)
 assert.strictEqual(rankedPair('hard_reject'), null)
 assert.strictEqual(rankedPair('missing_data').quality.pass, false)
 
+const publicViewer = {
+  id: 1784818962143965,
+  gender: 1,
+  birth_year: 2000,
+  height_range: '190cm以上',
+  education: '博士',
+  circle_id: 6,
+  city: '深圳',
+  marry_status: '未婚',
+  baby_plan: '5年后',
+  appearance_description: '日常穿搭简洁，肌肉男。帅',
+  appearance_want: '对方普普通通'
+}
+const publicViewerSetting = {
+  user_id: publicViewer.id,
+  age_min: 20,
+  age_max: 25,
+  height_min: 160,
+  height_max: 170,
+  min_education: '大专',
+  like_circle_ids: '',
+  like_marry_status: '不限',
+  like_baby_plan: '3-5年内',
+  self_view_text: '三观无敌爆炸好，很善良，乐于助人，可以付出一切',
+  target_view_text: '普普通通，善解人意，对我好，不做作，不矫情'
+}
+const publicSettings = Object.fromEntries(owned.map((row) => [String(row.id), row.setting]))
+publicSettings[String(publicViewer.id)] = publicViewerSetting
+const publicRanked = rankCandidates(publicViewer, owned, publicSettings)
+assert(publicRanked.some((item) => item.quality && item.quality.pass), '公开测试池应至少有一个画像与 WF-000020 双向通过')
+
 console.log('PASS 20 realistic matching-only profiles cover gender, tiers and Shantou requirements')
