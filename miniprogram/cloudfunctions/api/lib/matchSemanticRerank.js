@@ -94,6 +94,10 @@ function buildSemanticRerankRequest(input = {}) {
       side_b_percent: Math.max(0, Math.min(100, Math.round(Number(item.scoreB && item.scoreB.normalizedTotal || 0)))),
       mutual_score_percent: normalizedMutualScore(item),
       view_similarity: Math.max(0, Math.min(100, Math.round(Number(item.viewSimilarity || 0)))),
+      retrieval_a_to_b: Math.max(0, Math.min(100, Math.round(Number(item.retrieval && item.retrieval.a_to_b && item.retrieval.a_to_b.score || 0)))),
+      retrieval_b_to_a: Math.max(0, Math.min(100, Math.round(Number(item.retrieval && item.retrieval.b_to_a && item.retrieval.b_to_a.score || 0)))),
+      retrieval_mutual: Math.max(0, Math.min(100, Math.round(Number(item.retrieval && item.retrieval.mutual_score || 0)))),
+      allowed_evidence_keys: Array.isArray(item.allowedEvidenceKeys) ? item.allowedEvidenceKeys.slice(0, 24) : [],
       intent_a: intentSummary(item.intentA),
       intent_b: intentSummary(item.intentB),
       supplement_a: safeText(item.supplementA, 240),
@@ -108,7 +112,8 @@ function buildSemanticRerankRequest(input = {}) {
       database_access: false,
       database_write: false,
       direct_identity_access: false,
-      reject_unknown_candidate_ref: true
+      reject_unknown_candidate_ref: true,
+      reject_unknown_evidence_key: true
     },
     candidates: safeCandidates
   }
@@ -145,6 +150,19 @@ function validateSemanticRerankResponse(response, request) {
     ranks.add(rank)
     const evidenceTags = textList(row.evidence_tags, '语义重排证据')
       .filter((tag) => ALLOWED_EVIDENCE_TAGS.has(tag))
+    const allowedKeys = new Set(
+      ((request.candidates || []).find((candidate) => candidate.candidate_ref === candidateRef) || {}).allowed_evidence_keys || []
+    )
+    const strengthKeys = textList(row.strength_evidence_keys || [], '优势证据键')
+      .filter((key) => allowedKeys.has(key))
+    const riskKeys = textList(row.risk_evidence_keys || [], '风险证据键')
+      .filter((key) => allowedKeys.has(key))
+    if (Array.isArray(row.strength_evidence_keys) && row.strength_evidence_keys.some((key) => !allowedKeys.has(String(key || '').trim()))) {
+      throw new Error('语义重排包含检索结果外 evidence_key')
+    }
+    if (Array.isArray(row.risk_evidence_keys) && row.risk_evidence_keys.some((key) => !allowedKeys.has(String(key || '').trim()))) {
+      throw new Error('语义重排包含检索结果外 evidence_key')
+    }
     return {
       internalUserId: internalByRef.get(candidateRef),
       candidateRef,
@@ -156,6 +174,8 @@ function validateSemanticRerankResponse(response, request) {
       asymmetricRisks: textList(row.asymmetric_risks, '不对称风险'),
       confirmationQuestions: textList(row.confirmation_questions, '待确认问题'),
       evidenceTags,
+      strengthEvidenceKeys: strengthKeys,
+      riskEvidenceKeys: riskKeys,
       dataCompleteness: confidence(row.data_completeness, '数据完整度'),
       confidence: confidence(row.confidence, '语义重排置信度')
     }
