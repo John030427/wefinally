@@ -54,7 +54,6 @@ Page({
     try {
       const profile = await get(API_PATHS.USER_PROFILE, {}, { showError: false })
       const latest = await get(API_PATHS.MATCH_LATEST, {}, { showError: false }).catch(() => null)
-      const latest = await get(API_PATHS.MATCH_LATEST, {}, { showError: false }).catch(() => null)
 
       const isVip = profile && (profile.isVip || profile.is_vip === 1)
       let latestMatch = null
@@ -213,6 +212,20 @@ Page({
         testRunStatusText: `倒计时 ${left} 秒`
       })
     }, 1000)
+  },
+
+  clearTestRunTimer() {
+    if (!this._testRunTimer) return
+    clearInterval(this._testRunTimer)
+    this._testRunTimer = null
+  },
+
+  onHide() {
+    this.clearTestRunTimer()
+  },
+
+  onUnload() {
+    this.clearTestRunTimer()
   },
 
   async startQaTestRun() {

@@ -44,5 +44,7 @@ assert.ok(dashboardJs.includes("'/api/partner/dashboard'"))
 assert.ok(dashboardJs.includes('restorePartnerSession'))
 assert.ok(dashboardWxml.includes('metrics.available_amount'))
 assert.ok(dashboardWxml.includes('metrics.attributed_registrations'))
+assert.ok(dashboardWxml.includes("partner.display_name || '合伙人'"))
+assert.ok(!dashboardWxml.includes("partner.name || '合伙人'"))
 
 console.log('PASS state-driven partner mini program activation and dashboard UI contract')

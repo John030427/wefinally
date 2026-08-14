@@ -8,8 +8,7 @@ const DEFAULT_RULE = {
 }
 
 function partnerDisplayName(partner = {}) {
-  const name = String(partner && partner.name || '').trim()
-  return name || '合伙人'
+  return '合伙人'
 }
 
 function number(value) {

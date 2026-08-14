@@ -212,7 +212,7 @@
   box-shadow: 0 0 0 7rpx rgba(124, 203, 163, 0.12);
 }
 
-    dev-match-row {
+.dev-match-row {
   position: relative;
   z-index: 1;
   display: flex;

@@ -4,7 +4,7 @@ const path = require('path')
 const { buildPartnerDashboard } = require('../../miniprogram/cloudfunctions/api/lib/partnerDashboardPolicy')
 
 const snapshot = buildPartnerDashboard({
-  partner: { id: 7, name: '合伙人', promote_code: 'WF7', balance: 18.5 },
+  partner: { id: 7, name: 'Grace', promote_code: 'WF7', balance: 18.5 },
   users: [
     { id: 1, promote_partner_id: 7, member_status: 'approved', is_vip: 1, vip_expire_time: '2099-01-01' },
     { id: 2, promote_partner_id: 7, member_status: 'pending_review', is_vip: 0 },
@@ -27,6 +27,7 @@ const snapshot = buildPartnerDashboard({
 })
 
 assert.strictEqual(snapshot.partner.id, 7)
+assert.strictEqual(snapshot.partner.display_name, '合伙人')
 assert.strictEqual(snapshot.metrics.attributed_registrations, 2)
 assert.strictEqual(snapshot.metrics.profile_completed, 2)
 assert.strictEqual(snapshot.metrics.approved_members, 1)
