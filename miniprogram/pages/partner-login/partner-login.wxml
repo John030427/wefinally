@@ -11,7 +11,7 @@
   <block wx:else>
     <view class="state-card card" wx:if="{{showStatusCard}}">
       <view class="state-label">当前状态</view>
-      <view class="state-title" wx:if="{{status.state === 'active'}}">已激活 · {{status.partner_code}}</view>
+      <view class="state-title" wx:if="{{status.state === 'active'}}">已激活</view>
       <view class="state-title" wx:elif="{{status.state === 'pending'}}">历史申请待平台处理</view>
       <view class="state-title" wx:elif="{{status.state === 'needs_verification'}}">名单资格已确认，等待绑定</view>
       <view class="state-title" wx:elif="{{status.state === 'rejected'}}">当前没有可激活资格</view>

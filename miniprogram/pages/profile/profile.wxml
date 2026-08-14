@@ -63,7 +63,7 @@
     <view class="partner-workspace card state-{{partnerStatus.state}}" bindtap="openPartnerWorkspace">
       <view>
         <view class="partner-workspace-kicker">WEFINALLY PARTNER</view>
-        <view class="partner-workspace-title" wx:if="{{partnerStatus.state === 'active'}}">合伙人工作台 · {{partnerStatus.partner_code}}</view>
+        <view class="partner-workspace-title" wx:if="{{partnerStatus.state === 'active'}}">合伙人工作台</view>
         <view class="partner-workspace-title" wx:elif="{{partnerStatus.state === 'pending'}}">合伙人申请审核中</view>
         <view class="partner-workspace-title" wx:elif="{{partnerStatus.state === 'needs_verification'}}">合伙人资格待手机号验证</view>
         <view class="partner-workspace-title" wx:elif="{{partnerStatus.state === 'suspended'}}">合伙人权限已暂停</view>

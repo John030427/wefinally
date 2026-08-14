@@ -4,7 +4,7 @@
 
   <block wx:else>
     <view class="identity-card card">
-      <view><view class="eyebrow">WEFINALLY PARTNER</view><view class="identity-name">{{partner.display_name || '合伙人'}}</view><view class="identity-code">{{partner.partner_code}}</view></view>
+      <view><view class="eyebrow">WEFINALLY PARTNER</view><view class="identity-name">{{partner.display_name || '合伙人'}}</view></view>
       <view class="identity-invite"><text>公开邀请码</text><strong>{{assets.promote_code}}</strong></view>
     </view>
 
