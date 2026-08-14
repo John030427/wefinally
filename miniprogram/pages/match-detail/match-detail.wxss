@@ -565,3 +565,44 @@
   border-color: #3e8e6b;
   color: #fff;
 }
+
+.match-detail-page {
+  background: linear-gradient(180deg, #FFF9F7 0%, #ffffff 42%);
+  color: #2B2729;
+  font-family: "PingFang SC", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+  padding-bottom: calc(48rpx + env(safe-area-inset-bottom));
+}
+
+.summary-title {
+  font-size: 34rpx;
+  font-weight: 650;
+  color: #2B2729;
+}
+
+.summary-kicker,
+.meet-desc,
+.summary-line {
+  color: #746B70;
+  line-height: 1.65;
+}
+
+.meet-badge {
+  display: inline-block;
+  margin-bottom: 12rpx;
+  padding: 6rpx 14rpx;
+  border: 1rpx solid #EDE4E6;
+  color: #A86F32;
+  font-size: 22rpx;
+}
+
+.sticky-cta {
+  position: sticky;
+  bottom: calc(16rpx + env(safe-area-inset-bottom));
+  z-index: 5;
+  box-shadow: 0 -8rpx 24rpx rgba(43, 39, 41, 0.06);
+  background: #FFF9F7;
+}
+
+.state-icon {
+  display: none;
+}
