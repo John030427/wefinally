@@ -40,6 +40,7 @@ exports.main = async (event = {}) => {
           data: await handleRoute(payload, cloud.getWXContext())
         }
       case 'processReportTasks':
+        assertInternalWorkerSecret(payload.worker_secret)
         return {
           success: true,
           data: await processQueuedTasks(Number(payload.limit || 2))
