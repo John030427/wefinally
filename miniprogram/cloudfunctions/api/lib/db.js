@@ -116,6 +116,18 @@ async function updateByDoc(name, doc, data) {
   return Object.assign({}, doc, data, { update_time: now() })
 }
 
+async function claimIfStatus(name, doc, expectedStatus, data) {
+  if (!doc || !doc._id) return null
+  const update = await withCollection(name, () => col(name).where({
+    _id: doc._id,
+    status: expectedStatus
+  }).update({
+    data: Object.assign({}, data, { update_time: now() })
+  }))
+  if (!update.stats || !update.stats.updated) return null
+  return Object.assign({}, doc, data, { update_time: now() })
+}
+
 async function removeByDoc(name, doc) {
   if (!doc || !doc._id) throw new Error('记录不存在')
   const result = await withCollection(name, () => col(name).doc(doc._id).remove())
@@ -251,6 +263,7 @@ module.exports = {
   nextId,
   addWithId,
   updateByDoc,
+  claimIfStatus,
   removeByDoc,
   transaction,
   ensureUserSupportCode,

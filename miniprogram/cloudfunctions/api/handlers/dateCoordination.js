@@ -2,6 +2,7 @@ const { STATUS, normalizeApplication, computeOverlap, nextStatus, applyConfirmat
 const { MEMBER_STATUS, memberStatus } = require('../lib/memberPolicy')
 const { createReminderJob, deliverProposalNotification } = require('../agent/notificationJobs')
 const { assertOfflineDatingAllowed } = require('../lib/testFixturePolicy')
+const { canScheduleFixtureDecline, scheduleFixtureDecline, publicJob } = require('../lib/fixtureResponseService')
 
 async function upsertConfirmation(existing, data) {
   const db = require('../lib/db')
@@ -145,6 +146,18 @@ function createDateCoordinationHandlers(overrides = {}) {
     if (!match) throw new Error('仅可与当前匹配对象发起日期协调')
     const partner = await dep('byId')('user', partnerId)
     if (!isEligible(partner, now)) throw new Error('匹配对象暂不满足日期协调条件')
+    if (canScheduleFixtureDecline(user, partner, now)) {
+      const job = await scheduleFixtureDecline({
+        actor: user,
+        target: partner,
+        interaction_id: `match:${match.id}`
+      }, {
+        first: (name, query) => dep('first')(name, query),
+        addWithId: (name, data, prefix) => dep('addWithId')(name, data, prefix),
+        now: () => dep('now')()
+      })
+      return { test_simulation: true, fixture_response_job: publicJob(job) }
+    }
     assertOfflineDatingAllowed(partner)
 
     const created = await dep('addWithId')('date_coordination', {
