@@ -10,6 +10,7 @@ const { createAgentBackofficeService } = require('../agent/backofficeService')
 const { createUserBackofficeService, dispatchUserBackofficeRoute } = require('../agent/userBackofficeService')
 const { buildPartnerDashboard } = require('../lib/partnerDashboardPolicy')
 const { createReferralToken, createReferralScene } = require('../lib/partnerReferralPolicy')
+const { createPartnerAdminService } = require('../lib/partnerAdminService')
 const { httpMethod, httpPath, queryParameters } = require('../lib/httpEvent')
 
 const AGENT_BACKOFFICE_PATHS = Object.freeze({
@@ -21,6 +22,16 @@ const AGENT_BACKOFFICE_PATHS = Object.freeze({
 
 let agentBackoffice
 let userBackoffice
+let partnerAdminBackoffice
+
+function partnerAdminService() {
+  if (!partnerAdminBackoffice) {
+    partnerAdminBackoffice = createPartnerAdminService(db, {
+      phoneSecret: process.env.PARTNER_PHONE_LOOKUP_SECRET || process.env.PARTNER_REFERRAL_SECRET || ''
+    })
+  }
+  return partnerAdminBackoffice
+}
 
 function userService() {
   if (!userBackoffice) userBackoffice = createUserBackofficeService(db)
@@ -418,8 +429,34 @@ async function handleBackofficeHttp(event = {}) {
       return ok(await agentService().unpublishKnowledge(actor, Number(matched[1])), '知识文章已下线')
     }
 
+    if (method === 'GET' && /\/api\/admin\/partner-candidates$/.test(path)) {
+      return ok({ list: await partnerAdminService().listCandidates(actor, query) })
+    }
+    if (method === 'POST' && /\/api\/admin\/partner-candidates\/import$/.test(path)) {
+      return ok(await partnerAdminService().importRoster(actor, body), '合伙人名单已导入')
+    }
+    if (method === 'POST' && /\/api\/admin\/partner-candidates$/.test(path)) {
+      return ok(await partnerAdminService().createRosterCandidate(actor, body), '合伙人名单已添加')
+    }
+    matched = path.match(/\/api\/admin\/partner-candidates\/(\d+)\/(approve|reject)$/)
+    if (method === 'POST' && matched) {
+      return ok(await partnerAdminService().reviewCandidate(actor, Number(matched[1]), {
+        action: matched[2],
+        reason: body.reason,
+        request_id: body.request_id
+      }), matched[2] === 'approve' ? '合伙人申请已通过' : '合伙人申请已拒绝')
+    }
+    matched = path.match(/\/api\/admin\/partners\/(\d+)\/(suspend|resume|unbind|revoke)$/)
+    if (method === 'POST' && matched) {
+      return ok(await partnerAdminService().changePartner(actor, Number(matched[1]), {
+        action: matched[2],
+        reason: body.reason,
+        request_id: body.request_id
+      }), '合伙人状态已更新')
+    }
+
     if (method === 'GET' && /\/api\/admin\/partners$/.test(path)) {
-      return ok({ list: await db.list('partner', {}, 200) })
+      return ok({ list: await partnerAdminService().listPartners(actor, query) })
     }
     if (method === 'POST' && /\/api\/admin\/partners$/.test(path)) return ok(await createPartner(body))
     matched = path.match(/\/api\/admin\/partners\/(\d+)$/)
