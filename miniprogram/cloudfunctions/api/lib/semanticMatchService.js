@@ -18,6 +18,16 @@ function intentFor(user, setting) {
   }))
 }
 
+function classifySemanticRerankError(error) {
+  const message = String(error && error.message || '').toLowerCase()
+  if (message.includes('timeout') || message.includes('timed out')) return 'timeout'
+  if (message.includes('429') || message.includes('rate limit')) return 'rate_limited'
+  if (message.includes('401') || message.includes('403') || message.includes('api key')) return 'provider_auth'
+  if (message.includes('json invalid')) return 'invalid_json'
+  if (message.includes('响应') || message.includes('候选') || message.includes('隐私') || message.includes('无效')) return 'invalid_response'
+  return 'provider_error'
+}
+
 async function semanticRerank(ranked, user, settingsByUserId) {
   const eligible = ranked.filter((item) => item.quality && item.quality.pass === true)
   if (!eligible.length) return { applied: false, reason: 'no_candidates', ranked }
@@ -49,7 +59,7 @@ async function semanticRerank(ranked, user, settingsByUserId) {
       { model: remote.model || '' }
     )
   } catch (err) {
-    return { applied: false, reason: 'fallback', model: '', ranked }
+    return { applied: false, reason: classifySemanticRerankError(err), model: '', ranked }
   }
 }
 
@@ -65,4 +75,4 @@ function intentMatchGate(setting) {
   return null
 }
 
-module.exports = { semanticRerank, intentMatchGate }
+module.exports = { semanticRerank, intentMatchGate, classifySemanticRerankError }

@@ -141,7 +141,11 @@ async function rerankMutualMatchCandidates(request) {
     '你是 WeFinally 匹配语义校验器，只能在给定候选内重排，不能新增、删除或修改候选。',
     '基于 A→B 与 B→A 的双向理解，关注价值观、生活规划、外貌气质偏好和补充需求的明确度。',
     '不得访问数据库，不得输出联系方式、openid、手机号、精确地址、单位或收入；只输出合法 JSON。',
-    '输出字段：version、ranking；每项包含 candidate_ref、rank、a_to_b_semantic_score、b_to_a_semantic_score、mutual_semantic_score、mutual_strengths、asymmetric_risks、confirmation_questions、evidence_tags、data_completeness、confidence。',
+    'version 必须严格等于 match_semantic_rerank_v1。ranking 中输入的每个 candidate_ref 必须各出现一次，不得遗漏或重复；rank 必须是从 1 到候选数的不重复整数。',
+    'a_to_b_semantic_score、b_to_a_semantic_score、mutual_semantic_score 必须为 0-100；data_completeness、confidence 必须为 0-1 小数。',
+    'mutual_strengths、asymmetric_risks、confirmation_questions、evidence_tags 均为数组且最多 6 项。',
+    'evidence_tags 只能使用 bilateral_score、psych_compatibility、life_plan_alignment、preference_coverage、appearance_preference、missing_evidence。',
+    '输出字段仅限 version、ranking；ranking 每项仅包含 candidate_ref、rank、a_to_b_semantic_score、b_to_a_semantic_score、mutual_semantic_score、mutual_strengths、asymmetric_risks、confirmation_questions、evidence_tags、data_completeness、confidence。',
     `输入：${JSON.stringify(request).slice(0, 16000)}`
   ].join('\n')
   const body = {
@@ -151,7 +155,7 @@ async function rerankMutualMatchCandidates(request) {
       { role: 'user', content: prompt }
     ],
     response_format: { type: 'json_object' },
-    max_tokens: 1800,
+    max_tokens: 3200,
     temperature: 0.1,
     stream: false
   }

@@ -24,8 +24,9 @@ function score(value, label) {
 }
 
 function confidence(value, label) {
-  const number = Number(value)
-  if (!Number.isFinite(number) || number < 0 || number > 1) throw new Error(`${label}无效`)
+  let number = Number(value)
+  if (!Number.isFinite(number) || number < 0 || number > 100) throw new Error(`${label}无效`)
+  if (number > 1) number /= 100
   return number
 }
 
@@ -142,10 +143,8 @@ function validateSemanticRerankResponse(response, request) {
     const rank = integer(row.rank, 1, internalByRef.size, '语义重排名次')
     if (ranks.has(rank)) throw new Error('语义重排名次重复')
     ranks.add(rank)
-    const evidenceTags = textList(row.evidence_tags, '语义重排证据').map((tag) => {
-      if (!ALLOWED_EVIDENCE_TAGS.has(tag)) throw new Error('语义重排包含未允许证据')
-      return tag
-    })
+    const evidenceTags = textList(row.evidence_tags, '语义重排证据')
+      .filter((tag) => ALLOWED_EVIDENCE_TAGS.has(tag))
     return {
       internalUserId: internalByRef.get(candidateRef),
       candidateRef,

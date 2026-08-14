@@ -149,6 +149,16 @@ assert(handler.includes("require('../lib/semanticMatchService')"))
 assert(semanticService.includes('validateSemanticRerankResponse'))
 assert(semanticService.includes('mergeSemanticRerank'))
 assert(semanticService.includes('rerankMutualMatchCandidates'))
+assert(semanticService.includes('classifySemanticRerankError'))
+assert(!semanticService.includes("reason: err.message"))
+const deepseekSource = fs.readFileSync(path.resolve(
+  __dirname,
+  '../../miniprogram/cloudfunctions/api/lib/deepseek.js'
+), 'utf8')
+assert(deepseekSource.includes('match_semantic_rerank_v1'))
+assert(deepseekSource.includes('life_plan_alignment'))
+assert(deepseekSource.includes('candidate_ref 必须各出现一次'))
+assert(deepseekSource.includes('max_tokens: 3200'))
 assert(startBody.indexOf("transactionDocument('user_match_log'") < startBody.indexOf('deliverPair'))
 assert(!startBody.includes("addWithId('user_match_log'"))
 assert(startBody.includes('if (!eligible.length)'))

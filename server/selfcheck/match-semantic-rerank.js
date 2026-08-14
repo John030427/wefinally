@@ -5,6 +5,12 @@ const {
   validateSemanticRerankResponse,
   mergeSemanticRerank
 } = require('../../miniprogram/cloudfunctions/api/lib/matchSemanticRerank')
+const { classifySemanticRerankError } = require('../../miniprogram/cloudfunctions/api/lib/semanticMatchService')
+
+assert.strictEqual(classifySemanticRerankError(new Error('DeepSeek match rerank JSON invalid')), 'invalid_json')
+assert.strictEqual(classifySemanticRerankError(new Error('request timeout')), 'timeout')
+assert.strictEqual(classifySemanticRerankError(new Error('HTTP 429')), 'rate_limited')
+assert.strictEqual(classifySemanticRerankError(new Error('secret internal upstream detail')), 'provider_error')
 
 const ranked = [
   {
@@ -108,6 +114,38 @@ assert.strictEqual(response[0].internalUserId, 32)
 assert.strictEqual(response[0].mutualSemanticScore, 93)
 assert.strictEqual(response[1].internalUserId, 31)
 assert.strictEqual(response[1].mutualSemanticScore, 79)
+
+const tolerantResponse = validateSemanticRerankResponse({
+  version: RERANK_VERSION,
+  ranking: [{
+    candidate_ref: 'candidate_1',
+    rank: 1,
+    a_to_b_semantic_score: 86,
+    b_to_a_semantic_score: 73,
+    mutual_semantic_score: 79,
+    mutual_strengths: [],
+    asymmetric_risks: [],
+    confirmation_questions: [],
+    evidence_tags: ['life_plan_alignment', 'model_explanation'],
+    data_completeness: 80,
+    confidence: 84
+  }, {
+    candidate_ref: 'candidate_2',
+    rank: 2,
+    a_to_b_semantic_score: 82,
+    b_to_a_semantic_score: 81,
+    mutual_semantic_score: 81,
+    mutual_strengths: [],
+    asymmetric_risks: [],
+    confirmation_questions: [],
+    evidence_tags: ['bilateral_score'],
+    data_completeness: 0.8,
+    confidence: 0.84
+  }]
+}, request)
+assert.strictEqual(tolerantResponse[0].dataCompleteness, 0.8)
+assert.strictEqual(tolerantResponse[0].confidence, 0.84)
+assert.deepStrictEqual(tolerantResponse[0].evidenceTags, ['life_plan_alignment'])
 assert.throws(() => validateSemanticRerankResponse({
   version: RERANK_VERSION,
   ranking: [{
