@@ -205,7 +205,7 @@
 (function () {
   const DEFAULT_CLOUD_MEMBER_API = 'https://cloud1-d4gy8l52g08bba326.service.tcloudbase.com';
   const CLOUD_MEMBER_API = (window.WF_CLOUD_BACKOFFICE_API || new URLSearchParams(location.search).get('cloudApi') || DEFAULT_CLOUD_MEMBER_API).replace(/\/$/, '');
-  const CLOUD_ONLY = window.WF_CLOUD_ONLY === true || new URLSearchParams(location.search).get('cloudOnly') === '1';
+  const CLOUD_ONLY = window.WF_CLOUD_ONLY === true || new URLSearchParams(location.search).get('cloudOnly') === '1' || /\.tcloudbaseapp\.com$/i.test(location.hostname);
   const API = CLOUD_ONLY ? CLOUD_MEMBER_API + '/api' : '/api';
   const TK = 'wf_admin_token';
   const CLOUD_TK = 'wf_cloud_admin_token';

@@ -12,6 +12,7 @@ function ok(label, condition) {
 }
 
 ok('admin supports explicit CloudBase-only mode', html.includes('WF_CLOUD_ONLY'))
+ok('CloudBase hosted admin defaults to CloudBase-only mode without a query flag', html.includes("/\\.tcloudbaseapp\\.com$/i.test(location.hostname)"))
 ok('CloudBase-only mode sends the primary API client to the cloud function', html.includes("const API = CLOUD_ONLY ? CLOUD_MEMBER_API + '/api' : '/api'"))
 ok('CloudBase service base does not duplicate the api path', html.includes("DEFAULT_CLOUD_MEMBER_API = 'https://cloud1-d4gy8l52g08bba326.service.tcloudbase.com'"))
 ok('CloudBase-only mode limits navigation to migrated cloud pages', html.includes("const CLOUD_ONLY_PAGES = ['dashboard', 'service', 'users', 'members', 'matches', 'partners', 'orders', 'knowledge']"))
