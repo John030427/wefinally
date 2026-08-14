@@ -60,7 +60,17 @@
 .compat-score-row {
   display: flex;
   align-items: baseline;
+  justify-content: space-between;
+  gap: 20rpx;
   margin-bottom: 16rpx;
+}
+
+.total-score-value {
+  flex: 0 0 auto;
+  color: #ff6b8a;
+  font-size: 42rpx;
+  font-weight: 700;
+  line-height: 1;
 }
 
 .compat-score-num {
@@ -458,6 +468,13 @@
   flex-wrap: wrap;
   gap: 14rpx;
   margin-top: 24rpx;
+}
+
+.feedback-purpose {
+  margin-top: 18rpx;
+  color: #948b8d;
+  font-size: 21rpx;
+  line-height: 1.55;
 }
 
 .feedback-option,

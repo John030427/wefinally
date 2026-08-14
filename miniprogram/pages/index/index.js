@@ -56,23 +56,7 @@ Page({
       const latest = await get(API_PATHS.MATCH_LATEST, {}, { showError: false }).catch(() => null)
 
       const isVip = profile && (profile.isVip || profile.is_vip === 1)
-      let latestMatch = null
-      if (latest && (latest.id || latest.matchId)) {
-        const age = latest.age || calcAge(latest.birth_year)
-        const score = latest.view_similarity !== null && latest.view_similarity !== undefined
-          ? latest.view_similarity
-          : (latest.compatibilityScore !== null && latest.compatibilityScore !== undefined ? latest.compatibilityScore : null)
-        latestMatch = {
-          id: latest.id || latest.matchId,
-          matchType: latest.match_type || latest.matchType || '',
-          matchDate: formatDateOnly(latest.match_date || latest.matchDate),
-          score,
-          scoreText: getCompatibilityDisplayText(score !== null && score !== undefined ? score : 0),
-          gender: genderText(latest.gender),
-          ageText: latest.age_band || (age === '--' ? '--' : `${age}岁`),
-          city: latest.city || '--'
-        }
-      }
+      const latestMatch = this.normalizeLatestMatch(latest)
 
       const readiness = buildProfileReadiness(profile)
       const journeyState = buildJourneyState({
@@ -106,6 +90,30 @@ Page({
 
   onRetry() {
     this.loadPage()
+  },
+
+  normalizeLatestMatch(latest) {
+    if (!latest || (!latest.id && !latest.matchId)) return null
+    const age = latest.age || calcAge(latest.birth_year)
+    const score = latest.view_similarity !== null && latest.view_similarity !== undefined
+      ? latest.view_similarity
+      : (latest.compatibilityScore !== null && latest.compatibilityScore !== undefined ? latest.compatibilityScore : null)
+    return {
+      id: latest.id || latest.matchId,
+      matchType: latest.match_type || latest.matchType || '',
+      matchDate: formatDateOnly(latest.match_date || latest.matchDate),
+      score,
+      scoreText: getCompatibilityDisplayText(score !== null && score !== undefined ? score : 0),
+      gender: genderText(latest.gender),
+      ageText: latest.age_band || (age === '--' ? '--' : `${age}岁`),
+      city: latest.city || '--'
+    }
+  },
+
+  async refreshLatestMatch() {
+    const latest = await get(API_PATHS.MATCH_LATEST, {}, { showError: false })
+    const latestMatch = this.normalizeLatestMatch(latest)
+    this.setData({ latestMatch, hasLatest: !!latestMatch })
   },
 
   goMatchSetting() {
@@ -256,6 +264,7 @@ Page({
       const run = await post(`${API_PATHS.MATCH_TEST_RUNS}/${id}/execute`, {}, { showError: false })
       this.applyTestRun(run, { testRunBusy: run.status === 'queued', countdownLeft: 0 })
       if (run.status === 'queued') this.resumeCountdown(run)
+      if (run.status === 'completed_matched') await this.refreshLatestMatch()
     } catch (err) {
       this.setData({
         testRunBusy: false,
