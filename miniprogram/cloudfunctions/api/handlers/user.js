@@ -8,6 +8,7 @@ const {
   normalizeOccupation,
   resolveInvitation
 } = require('../lib/memberPolicy')
+const { resolveTestIdentity } = require('../lib/testIdentityPolicy')
 
 async function currentUser(wxContext) {
   const openid = wxContext.OPENID
@@ -24,12 +25,16 @@ async function circleName(circleId) {
 
 async function profilePayload(user) {
   const setting = await first('user_match_setting', { user_id: user.id })
+  const identity = resolveTestIdentity(user)
   return Object.assign({}, user, {
     circle_name: user.circle_name || await circleName(user.circle_id),
     is_vip: isVipActive(user) ? 1 : 0,
     isVip: isVipActive(user),
     match_settings: setting || null,
-    member_status: memberStatus(user)
+    member_status: memberStatus(user),
+    account_mode: identity.account_mode,
+    identity_kind: identity.kind,
+    qa_test_run_enabled: identity.kind === 'internal_qa'
   })
 }
 

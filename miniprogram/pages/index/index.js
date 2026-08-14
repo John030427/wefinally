@@ -13,8 +13,13 @@ Page({
     scheduleDesc: MATCH_SCHEDULE.desc,
     latestMatch: null,
     hasLatest: false,
-    devMatchStartEnabled: false,
-    devMatchStarting: false,
+    qaTestRunEnabled: false,
+    testRunBusy: false,
+    testRunStatus: '',
+    testRunStatusText: '',
+    testRunId: 0,
+    testRunMatchId: 0,
+    countdownLeft: 0,
     readiness: null,
     journeyState: null
   },
@@ -42,17 +47,13 @@ Page({
     }
 
     const next = getNextMatchTime()
-    const apiBase = (app.globalData && app.globalData.API_BASE_URL) || ''
-    const localApi = /\/\/(127\.0\.0\.1|localhost|192\.168\.|10\.|172\.(1[6-9]|2\d|3[0-1])\.)/.test(apiBase)
     this.setData({
-      nextMatchText: next ? next.text : '每周三、周五 00:00',
-      devMatchStartEnabled: Boolean(app.globalData.DEV_MATCH_BUTTON_ENABLED || localApi)
+      nextMatchText: next ? next.text : '每周三、周五 00:00'
     })
 
     try {
-      const commonConfig = await get(API_PATHS.COMMON_CONFIG, {}, { showError: false }).catch(() => null)
-      const demoFlags = commonConfig && commonConfig.demo ? commonConfig.demo : {}
       const profile = await get(API_PATHS.USER_PROFILE, {}, { showError: false })
+      const latest = await get(API_PATHS.MATCH_LATEST, {}, { showError: false }).catch(() => null)
       const latest = await get(API_PATHS.MATCH_LATEST, {}, { showError: false }).catch(() => null)
 
       const isVip = profile && (profile.isVip || profile.is_vip === 1)
@@ -82,6 +83,7 @@ Page({
         latestMatch,
         nextMatchText: next ? next.text : ''
       })
+      const qaTestRunEnabled = profile && (profile.qa_test_run_enabled === true || profile.account_mode === 'internal_qa')
       this.setData({
         pageState: 'success',
         isVip,
@@ -92,8 +94,9 @@ Page({
         hasLatest: !!latestMatch,
         readiness,
         journeyState,
-        devMatchStartEnabled: Boolean(app.globalData.DEV_MATCH_BUTTON_ENABLED || localApi || demoFlags.matchStartEnabled)
+        qaTestRunEnabled
       })
+      if (qaTestRunEnabled) await this.restoreQaTestRun()
     } catch (err) {
       this.setData({
         pageState: 'error',
@@ -142,33 +145,123 @@ Page({
     wx.navigateTo({ url: '/pages/love-advisor/love-advisor' })
   },
 
-  async devStartMatch() {
-    if (this.data.devMatchStarting) return
-    this.setData({ devMatchStarting: true })
-    try {
-      const result = await post(API_PATHS.MATCH_START, {
-        allow_rematch: false,
-        allow_quality_fallback: true,
-        reset_user_batch: true,
-        dev_seed_current_user_candidates: true
-      }, { showLoading: true, loadingText: '正在匹配...' })
-      const matched = result.matched || 0
-      if (matched > 0 && result.match_id) {
-        wx.showToast({ title: '匹配完成，生成报告中', icon: 'none' })
-        wx.navigateTo({ url: `/pages/match-detail/match-detail?id=${result.match_id}&autoReport=1` })
-      } else {
-        wx.showToast({ title: '暂无可用候选', icon: 'none' })
-        this.loadPage()
-      }
-    } catch (err) {
-      wx.showModal({
-        title: '测试匹配未开启',
-        content: (err && err.message) || '后端需设置 DEV_MATCH_START_ENABLED=true 后重启',
-        showCancel: false
-      })
-    } finally {
-      this.setData({ devMatchStarting: false })
+  testRunLabel(run) {
+    const status = run && run.status || this.data.testRunStatus
+    const messages = {
+      queued: this.data.countdownLeft > 0 ? `倒计时 ${this.data.countdownLeft} 秒` : '已创建，等待倒计时结束',
+      countdown: `倒计时 ${this.data.countdownLeft} 秒`,
+      running: '正在执行测试匹配',
+      completed_matched: '测试匹配成功，可进入详情',
+      matched: '测试匹配成功，可进入详情',
+      completed_no_match: run && run.message || '本轮无匹配结果',
+      no_match: '本轮无匹配结果',
+      blocked: run && run.message || '当前无法测试匹配',
+      failed: '测试运行失败，可安全重试'
     }
+    return messages[status] || ''
+  },
+
+  applyTestRun(run, extra = {}) {
+    if (!run) return
+    const status = run.status === 'completed_matched' ? 'matched' : (run.status === 'completed_no_match' ? 'no_match' : run.status)
+    this.setData(Object.assign({
+      testRunId: run.id || run.run_id || 0,
+      testRunStatus: status,
+      testRunMatchId: run.match_id || 0,
+      testRunBusy: status === 'queued' || status === 'countdown' || status === 'running',
+      testRunStatusText: this.testRunLabel(Object.assign({}, run, { status }))
+    }, extra))
+    if (run.id || run.run_id) wx.setStorageSync('wf_test_run_id', run.id || run.run_id)
+  },
+
+  async restoreQaTestRun() {
+    const storedId = wx.getStorageSync('wf_test_run_id')
+    try {
+      const run = storedId
+        ? await get(`${API_PATHS.MATCH_TEST_RUNS}/${storedId}`, {}, { showError: false })
+        : await get(API_PATHS.MATCH_TEST_RUNS, { latest: 1 }, { showError: false })
+      if (run && run.id) {
+        this.applyTestRun(run)
+        if (run.status === 'queued') this.resumeCountdown(run)
+      }
+    } catch (err) {}
+  },
+
+  resumeCountdown(run) {
+    const remainMs = new Date(run.execute_after || 0).getTime() - Date.now()
+    if (remainMs <= 0) {
+      this.executeQaTestRun()
+      return
+    }
+    this.setData({ countdownLeft: Math.ceil(remainMs / 1000), testRunBusy: true, testRunStatus: 'countdown' })
+    this.tickCountdown()
+  },
+
+  tickCountdown() {
+    if (this._testRunTimer) clearInterval(this._testRunTimer)
+    this._testRunTimer = setInterval(() => {
+      const left = Number(this.data.countdownLeft || 0) - 1
+      if (left <= 0) {
+        clearInterval(this._testRunTimer)
+        this._testRunTimer = null
+        this.setData({ countdownLeft: 0 })
+        this.executeQaTestRun()
+        return
+      }
+      this.setData({
+        countdownLeft: left,
+        testRunStatusText: `倒计时 ${left} 秒`
+      })
+    }, 1000)
+  },
+
+  async startQaTestRun() {
+    if (this.data.testRunBusy) return
+    this.setData({ testRunBusy: true, testRunStatus: 'countdown', countdownLeft: 10, testRunStatusText: '倒计时 10 秒' })
+    try {
+      const requestId = `qa-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+      const run = await post(API_PATHS.MATCH_TEST_RUNS, { request_id: requestId }, { showError: false })
+      this.applyTestRun(run, { countdownLeft: 10, testRunStatus: 'countdown', testRunBusy: true, testRunStatusText: '倒计时 10 秒' })
+      this.tickCountdown()
+    } catch (err) {
+      this.setData({
+        testRunBusy: false,
+        testRunStatus: 'failed',
+        testRunStatusText: (err && err.message) || '测试运行失败，可安全重试'
+      })
+    }
+  },
+
+  async executeQaTestRun() {
+    const id = this.data.testRunId
+    if (!id) {
+      this.setData({ testRunBusy: false })
+      return
+    }
+    this.setData({ testRunStatus: 'running', testRunStatusText: '正在执行测试匹配', testRunBusy: true })
+    try {
+      const run = await post(`${API_PATHS.MATCH_TEST_RUNS}/${id}/execute`, {}, { showError: false })
+      this.applyTestRun(run, { testRunBusy: false, countdownLeft: 0 })
+    } catch (err) {
+      this.setData({
+        testRunBusy: false,
+        testRunStatus: 'failed',
+        testRunStatusText: (err && err.message) || '测试运行失败，可安全重试'
+      })
+    }
+  },
+
+  onTestRunAction() {
+    if (this.data.testRunStatus === 'matched' || this.data.testRunStatus === 'completed_matched') {
+      this.goTestMatchDetail()
+      return
+    }
+    if (this.data.testRunStatus === 'failed') this.executeQaTestRun()
+  },
+
+  goTestMatchDetail() {
+    if (!this.data.testRunMatchId) return
+    wx.navigateTo({ url: `/pages/match-detail/match-detail?id=${this.data.testRunMatchId}&autoReport=1` })
   },
 
   devResetRegistration() {

@@ -54,9 +54,10 @@
         <view class="match-stage-note-dot"></view>
         <text>按双方条件依次筛选，不需要反复刷新</text>
       </view>
-      <view wx:if="{{isVip && devMatchStartEnabled}}" class="dev-match-row">
-        <text class="dev-match-label">测试环境</text>
-        <button class="dev-match-btn" loading="{{devMatchStarting}}" bindtap="devStartMatch">立即生成匹配</button>
+      <view wx:if="{{qaTestRunEnabled}}" class="dev-match-row">
+        <text class="dev-match-label">内部测试</text>
+        <button class="dev-match-btn" disabled="{{testRunBusy}}" loading="{{testRunBusy}}" bindtap="startQaTestRun">10秒测试匹配</button>
+        <view class="dev-match-status" wx:if="{{testRunStatus}}" bindtap="onTestRunAction">{{testRunStatusText}}</view>
       </view>
     </view>
 

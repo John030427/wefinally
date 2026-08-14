@@ -19,6 +19,7 @@ const API_PATHS = {
   MATCH_INTENT_CONFIRM: '/api/match/intent/confirm',
   MATCH_SETTING_COOLDOWN: '/api/match/setting/cooldown',
   MATCH_START: '/api/match/start',
+  MATCH_TEST_RUNS: '/api/match/test-runs',
   MATCH_LIST: '/api/match/list',
   MATCH_DETAIL: '/api/match/detail',
   MATCH_HANDOFF: '/api/match/handoff',

@@ -212,16 +212,24 @@
   box-shadow: 0 0 0 7rpx rgba(124, 203, 163, 0.12);
 }
 
-.dev-match-row {
+    dev-match-row {
   position: relative;
   z-index: 1;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 20rpx;
   margin-top: 28rpx;
   padding-top: 24rpx;
   border-top: 2rpx solid rgba(169, 67, 90, 0.12);
+}
+
+.dev-match-status {
+  flex: 1 0 100%;
+  color: #5c5148;
+  font-size: 22rpx;
+  line-height: 1.5;
 }
 
 .dev-match-label {

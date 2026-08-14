@@ -86,7 +86,7 @@ ok('cloud meet reports are scoped to match user', cloudMeetJs.includes('findExis
 ok('cloud customer service stores handoff context', cloudChatJs.includes('handoff_ticket_id') && cloudChatJs.includes('match_log_id'));
 ok('match handoff navigates into customer service chat', matchDetailJs.includes('/pages/chat/chat') && matchDetailJs.includes('handoffTicketId'));
 ok('meet safety can load existing report for selected match', meetSafetyJs.includes('loadExistingForMatch') && meetSafetyJs.includes('matchUserId'));
-ok('home manual match does not request rematch by default', indexJs.includes('allow_rematch: false'));
+ok('home QA test match does not use formal rematch reset', indexJs.includes('MATCH_TEST_RUNS') && !indexJs.includes('reset_user_batch') && !indexJs.includes('allow_rematch'));
 ok('cloud demo vip grant is guarded by demo flag', cloudVipJs.includes('cloud_demo_vip_grant_enabled') && !cloudVipJs.includes('data.devGrant === true'));
 ok('cloud WeChat Pay utility uses API v3 RSA signing', cloudWechatPayJs.includes('WECHATPAY2-SHA256-RSA2048') && cloudWechatPayJs.includes('RSA-SHA256'));
 ok('cloud WeChat Pay utility decrypts APIv3 callback resources', cloudWechatPayJs.includes('aes-256-gcm') && cloudWechatPayJs.includes('decryptResource'));

@@ -62,6 +62,7 @@ function route(method, path) {
     'POST /api/match/intent/confirm': match.confirmIntent,
     'GET /api/match/setting/cooldown': match.cooldown,
     'POST /api/match/start': match.start,
+    'POST /api/match/test-runs': match.create,
     'POST /api/match/report': match.generateReport,
     'POST /api/match/report-tasks': reportTask.create,
     'GET /api/match/report-tasks/status': reportTask.status,
@@ -134,6 +135,11 @@ function route(method, path) {
   if (method === 'POST' && m) return withParams(meet.cancel, { id: Number(m[1]) })
   m = path.match(/^\/api\/meet\/(\d+)\/sos$/)
   if (method === 'POST' && m) return withParams(meet.sos, { id: Number(m[1]) })
+  m = path.match(/^\/api\/match\/test-runs\/(\d+)\/execute$/)
+  if (method === 'POST' && m) return withParams(match.execute, { id: Number(m[1]) })
+  m = path.match(/^\/api\/match\/test-runs\/(\d+)$/)
+  if (method === 'GET' && m) return withParams(match.get, { id: Number(m[1]) })
+  if (method === 'GET' && path === '/api/match/test-runs') return match.get
   m = path.match(/^\/api\/match\/(\d+)$/)
   if (method === 'GET' && m) return withParams(match.detail, { id: Number(m[1]) })
 

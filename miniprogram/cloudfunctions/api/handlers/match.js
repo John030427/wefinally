@@ -14,6 +14,7 @@ const {
 const { rerankMutualMatchCandidates } = require('../lib/deepseek')
 const reportTask = require('./reportTask')
 const { isMatchOnlyFixture, canUseFixtureForMatch, canEnterFormalCandidatePool } = require('../lib/testFixturePolicy')
+const { createMatchTestRunHandlers } = require('../lib/matchTestRunService')
 
 function parseJson(value) {
   if (!value) return null
@@ -678,5 +679,14 @@ module.exports = {
   detail,
   handoff,
   generateReport,
-  start
+  start,
+  ...createMatchTestRunHandlers({
+    currentUser,
+    first,
+    list,
+    byId,
+    addWithId,
+    updateByDoc,
+    now
+  })
 }
