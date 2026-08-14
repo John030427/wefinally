@@ -339,7 +339,9 @@ function buildInputSnapshot(input) {
 }
 
 function validateStructuredReport(report, allowedEvidenceKeys) {
-  return normalizeStructuredReport(report, allowedEvidenceKeys)
+  const keys = allowedEvidenceKeys instanceof Set ? allowedEvidenceKeys : new Set(allowedEvidenceKeys || [])
+  const hasPsychEvidence = [...keys].some((key) => /psych|relationship/i.test(String(key || '')))
+  return normalizeStructuredReport(report, keys, { hasPsychEvidence })
 }
 
 async function generateStructuredMatchReports(input) {
