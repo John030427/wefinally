@@ -6,7 +6,17 @@ const { canonicalPairKey, deliverPair, createCloudClaimStore, CLAIM_STATUS } = r
 const { semanticRerank, intentMatchGate } = require('./semanticMatchService')
 
 function semanticDetail(best, side, rank) {
-  return Object.assign(scoreDetailFor(best, side, rank), {
+  const detail = scoreDetailFor(best, side, rank)
+  const canonical = Number(best && best.canonical_score)
+  const finalMatchScore = Number.isFinite(canonical)
+    ? Math.max(0, Math.min(100, Math.round(canonical)))
+    : Number(detail.normalized_total || detail.normalizedTotal || 0)
+  return Object.assign(detail, {
+    base_normalized_total: Number(detail.normalized_total || detail.normalizedTotal || 0),
+    final_match_score: finalMatchScore,
+    canonical_score: finalMatchScore,
+    normalized_total: finalMatchScore,
+    normalizedTotal: finalMatchScore,
     ai_rank: best.ai_rank || null,
     ai_weight: best.ai_weight || 0,
     semantic_score: best.semantic_score || null,
@@ -17,7 +27,10 @@ function semanticDetail(best, side, rank) {
     semantic_confidence: best.semantic_confidence || null,
     data_completeness: best.data_completeness || null,
     asymmetric_risks: best.asymmetric_risks || [],
-    confirmation_questions: best.confirmation_questions || []
+    confirmation_questions: best.confirmation_questions || [],
+    semantic_strength_evidence_keys: best.semantic_strength_evidence_keys || [],
+    semantic_risk_evidence_keys: best.semantic_risk_evidence_keys || [],
+    semantic_missing_categories: best.semantic_missing_categories || []
   })
 }
 
@@ -56,6 +69,7 @@ async function executeFormalMatching(ctx = {}) {
     const ranked = rankCandidates(user, remaining, settingsByUserId, { blockedIds: claimed })
     evaluated += ranked.length
     const reranked = await rerank(ranked, user, settingsByUserId)
+    if (!reranked || reranked.applied !== true) continue
     const best = reranked.ranked.find((item) => item.quality && item.quality.pass)
     if (!best) continue
     const partner = best.candidate

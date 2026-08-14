@@ -2,6 +2,7 @@ const assert = require('assert')
 const { hardOk, MATCH_CONFIG } = require('../../miniprogram/cloudfunctions/api/lib/matchPolicy')
 const { retrieveBidirectional } = require('../../miniprogram/cloudfunctions/api/lib/matchSemanticRetrieval')
 const { createEmbeddingProvider } = require('../../miniprogram/cloudfunctions/api/lib/embeddingProvider')
+const { semanticRerank } = require('../../miniprogram/cloudfunctions/api/lib/semanticMatchService')
 
 async function main() {
   const synonymPair = {
@@ -28,6 +29,7 @@ async function main() {
   assert.ok(synonym.b_to_a.score >= 60, `B→A synonym recall got ${synonym.b_to_a.score}`)
   assert.ok(synonym.mutual_score >= 60)
   assert.ok(synonym.a_to_b.top_evidence.length >= 1)
+  assert.ok(synonym.a_to_b.top_evidence.every((item) => item.evidence_text && item.query_evidence_text))
 
   const asymmetric = await retrieveBidirectional({
     userA: { id: 1, gender: 1, birth_year: 1990, city: '汕头', baby_plan: '不要孩子', appearance_description: '安静气质' },
@@ -45,6 +47,7 @@ async function main() {
   }, { providerName: 'stub' })
   assert.ok(conflict.a_to_b.conflict_signals.some((item) => item.code === 'marriage_and_baby_conflict')
     || conflict.b_to_a.conflict_signals.some((item) => item.code === 'marriage_and_baby_conflict'))
+  assert.ok(conflict.mutual_score <= 20, `opposing baby plans must not score highly: ${conflict.mutual_score}`)
 
   const sparse = await retrieveBidirectional({
     userA: { id: 1, gender: 1 },
@@ -58,6 +61,23 @@ async function main() {
     () => retrieveBidirectional(synonymPair, { provider: createEmbeddingProvider({ provider: 'none' }) }),
     /semantic_retrieval_unavailable/
   )
+  const previousProvider = process.env.MATCH_EMBEDDING_PROVIDER
+  delete process.env.MATCH_EMBEDDING_PROVIDER
+  await assert.rejects(() => retrieveBidirectional(synonymPair), /semantic_retrieval_unavailable/)
+  const unavailableRerank = await semanticRerank([{
+    candidate: synonymPair.userB,
+    quality: { pass: true },
+    scoreA: { normalizedTotal: 80 },
+    scoreB: { normalizedTotal: 80 },
+    mutualScore: 80
+  }], synonymPair.userA, {
+    '1': synonymPair.settingsA,
+    '2': synonymPair.settingsB
+  })
+  assert.strictEqual(unavailableRerank.applied, false)
+  assert.strictEqual(unavailableRerank.reason, 'semantic_retrieval_unavailable')
+  if (previousProvider === undefined) delete process.env.MATCH_EMBEDDING_PROVIDER
+  else process.env.MATCH_EMBEDDING_PROVIDER = previousProvider
 
   console.log('PASS bidirectional semantic retrieval')
 }

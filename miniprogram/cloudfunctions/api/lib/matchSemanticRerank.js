@@ -1,6 +1,7 @@
 const RERANK_VERSION = 'match_semantic_rerank_v1'
 const INTERNAL_REF_MAP = Symbol('semanticInternalRefMap')
 const { sanitizeSupplement } = require('./intentProfile')
+const { CHUNK_CATEGORIES } = require('./matchEvidenceChunks')
 const ALLOWED_EVIDENCE_TAGS = new Set([
   'bilateral_score',
   'psych_compatibility',
@@ -75,6 +76,28 @@ function intentSummary(profile) {
   }
 }
 
+function retrievalEvidence(side) {
+  return ((side && side.top_evidence) || []).map((item) => ({
+    evidence_key: safeText(item.evidence_key, 100),
+    category: safeText(item.category, 40),
+    score: Math.max(0, Math.min(100, Math.round(Number(item.score || 0)))),
+    evidence_text: safeText(item.evidence_text, 180),
+    query_evidence_key: safeText(item.query_evidence_key, 100),
+    query_category: safeText(item.query_category, 40),
+    query_evidence_text: safeText(item.query_evidence_text, 180)
+  })).filter((item) => item.evidence_key && item.query_evidence_key && item.evidence_text && item.query_evidence_text)
+}
+
+function retrievalConflicts(side, allowedKeys) {
+  const allowed = new Set(allowedKeys)
+  return ((side && side.conflict_signals) || []).map((item) => ({
+    code: safeText(item && item.code, 60),
+    evidence_keys: (Array.isArray(item && item.evidence_keys) ? item.evidence_keys : [])
+      .map((key) => safeText(key, 100))
+      .filter((key) => allowed.has(key))
+  })).filter((item) => item.code && item.evidence_keys.length)
+}
+
 function buildSemanticRerankRequest(input = {}) {
   const topK = integer(input.topK === undefined ? 10 : input.topK, 1, 50, 'Top-K')
   const candidates = (Array.isArray(input.candidates) ? input.candidates : [])
@@ -87,6 +110,7 @@ function buildSemanticRerankRequest(input = {}) {
     if (item.internalUserId === null || item.internalUserId === undefined) throw new Error('候选内部映射缺失')
     const ref = `candidate_${index + 1}`
     internalByRef.set(ref, item.internalUserId)
+    const allowedEvidenceKeys = Array.isArray(item.allowedEvidenceKeys) ? item.allowedEvidenceKeys.slice(0, 24) : []
     return {
       candidate_ref: ref,
       algorithm_rank: index + 1,
@@ -97,7 +121,19 @@ function buildSemanticRerankRequest(input = {}) {
       retrieval_a_to_b: Math.max(0, Math.min(100, Math.round(Number(item.retrieval && item.retrieval.a_to_b && item.retrieval.a_to_b.score || 0)))),
       retrieval_b_to_a: Math.max(0, Math.min(100, Math.round(Number(item.retrieval && item.retrieval.b_to_a && item.retrieval.b_to_a.score || 0)))),
       retrieval_mutual: Math.max(0, Math.min(100, Math.round(Number(item.retrieval && item.retrieval.mutual_score || 0)))),
-      allowed_evidence_keys: Array.isArray(item.allowedEvidenceKeys) ? item.allowedEvidenceKeys.slice(0, 24) : [],
+      allowed_evidence_keys: allowedEvidenceKeys,
+      retrieved_evidence: {
+        a_to_b: retrievalEvidence(item.retrieval && item.retrieval.a_to_b),
+        b_to_a: retrievalEvidence(item.retrieval && item.retrieval.b_to_a)
+      },
+      conflict_signals: {
+        a_to_b: retrievalConflicts(item.retrieval && item.retrieval.a_to_b, allowedEvidenceKeys),
+        b_to_a: retrievalConflicts(item.retrieval && item.retrieval.b_to_a, allowedEvidenceKeys)
+      },
+      missing_categories: {
+        a_to_b: ((item.retrieval && item.retrieval.a_to_b && item.retrieval.a_to_b.missing_categories) || []).filter((key) => CHUNK_CATEGORIES.includes(key)),
+        b_to_a: ((item.retrieval && item.retrieval.b_to_a && item.retrieval.b_to_a.missing_categories) || []).filter((key) => CHUNK_CATEGORIES.includes(key))
+      },
       intent_a: intentSummary(item.intentA),
       intent_b: intentSummary(item.intentB),
       supplement_a: safeText(item.supplementA, 240),
@@ -163,6 +199,15 @@ function validateSemanticRerankResponse(response, request) {
     if (Array.isArray(row.risk_evidence_keys) && row.risk_evidence_keys.some((key) => !allowedKeys.has(String(key || '').trim()))) {
       throw new Error('语义重排包含检索结果外 evidence_key')
     }
+    const mutualStrengths = textList(row.mutual_strengths, '共同满足点')
+    const asymmetricRisks = textList(row.asymmetric_risks, '不对称风险')
+    if (mutualStrengths.length && !strengthKeys.length) throw new Error('语义重排优势判断缺少 evidence_key')
+    if (asymmetricRisks.length && !riskKeys.length) throw new Error('语义重排风险判断缺少 evidence_key')
+    const missingCategories = textList(row.missing_categories || [], '缺失证据分类')
+      .filter((key) => CHUNK_CATEGORIES.includes(key))
+    if (Array.isArray(row.missing_categories) && row.missing_categories.some((key) => !CHUNK_CATEGORIES.includes(String(key || '').trim()))) {
+      throw new Error('语义重排包含未知缺失证据分类')
+    }
     return {
       internalUserId: internalByRef.get(candidateRef),
       candidateRef,
@@ -170,12 +215,13 @@ function validateSemanticRerankResponse(response, request) {
       aToBSemanticScore: score(row.a_to_b_semantic_score, 'A到B语义分'),
       bToASemanticScore: score(row.b_to_a_semantic_score, 'B到A语义分'),
       mutualSemanticScore: score(row.mutual_semantic_score, '双向语义分'),
-      mutualStrengths: textList(row.mutual_strengths, '共同满足点'),
-      asymmetricRisks: textList(row.asymmetric_risks, '不对称风险'),
+      mutualStrengths,
+      asymmetricRisks,
       confirmationQuestions: textList(row.confirmation_questions, '待确认问题'),
       evidenceTags,
       strengthEvidenceKeys: strengthKeys,
       riskEvidenceKeys: riskKeys,
+      missingCategories,
       dataCompleteness: confidence(row.data_completeness, '数据完整度'),
       confidence: confidence(row.confidence, '语义重排置信度')
     }
@@ -208,6 +254,9 @@ function mergeSemanticRerank(ranked, validated, options = {}) {
       semantic_strengths: row.mutualStrengths,
       asymmetric_risks: row.asymmetricRisks,
       confirmation_questions: row.confirmationQuestions,
+      semantic_strength_evidence_keys: row.strengthEvidenceKeys,
+      semantic_risk_evidence_keys: row.riskEvidenceKeys,
+      semantic_missing_categories: row.missingCategories,
       semantic_confidence: row.confidence,
       semantic_score: base + ((semantic - base) * maxWeight)
     })
@@ -220,5 +269,6 @@ module.exports = {
   RERANK_VERSION,
   buildSemanticRerankRequest,
   validateSemanticRerankResponse,
-  mergeSemanticRerank
+  mergeSemanticRerank,
+  normalizedMutualScore
 }

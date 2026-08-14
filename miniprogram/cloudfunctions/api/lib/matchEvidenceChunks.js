@@ -37,8 +37,9 @@ function parsePsych(value) {
 function chunk(ownerUserId, category, sourceField, text, now) {
   const sanitized = sanitizeText(text)
   if (!sanitized) return null
+  const identityHash = contentHash(`${Number(ownerUserId || 0)}:${category}:${sourceField}:${sanitized}`)
   return {
-    evidence_key: `${category}:${contentHash(sanitized)}`,
+    evidence_key: `${category}:${identityHash}`,
     owner_user_id: Number(ownerUserId || 0),
     category,
     sanitized_text: sanitized,

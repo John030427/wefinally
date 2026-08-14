@@ -32,7 +32,8 @@ const ranked = [
     },
     intentB: { values: [{ value: '尊重边界' }], lifestyle: [{ value: '共同规划生活' }], appearance_preferences: [{ value: '清爽' }] },
     supplementA: '手机号 13800138000，未来希望在杭州生活',
-    supplementB: '不发送联系方式，重视公共场所见面'
+    supplementB: '不发送联系方式，重视公共场所见面',
+    allowedEvidenceKeys: ['values_self:candidate31']
   },
   {
     candidate: { id: 32, openid: 'also-must-not-leak' },
@@ -42,7 +43,8 @@ const ranked = [
     scoreA: { normalizedTotal: 83, maxTotal: 100, dimensions: {} },
     scoreB: { normalizedTotal: 79, maxTotal: 100, dimensions: {} },
     intentA: { values: [{ value: '稳定沟通' }], lifestyle: [], appearance_preferences: [] },
-    intentB: { values: [{ value: '坦诚交流' }], lifestyle: [], appearance_preferences: [] }
+    intentB: { values: [{ value: '坦诚交流' }], lifestyle: [], appearance_preferences: [] },
+    allowedEvidenceKeys: ['values_self:candidate32']
   }
 ]
 
@@ -93,6 +95,9 @@ const response = validateSemanticRerankResponse({
     asymmetric_risks: [],
     confirmation_questions: ['未来城市安排'],
     evidence_tags: ['life_plan_alignment'],
+    strength_evidence_keys: ['values_self:candidate31'],
+    risk_evidence_keys: [],
+    missing_categories: [],
     data_completeness: 0.8,
     confidence: 0.84
   }, {
@@ -105,6 +110,9 @@ const response = validateSemanticRerankResponse({
     asymmetric_risks: [],
     confirmation_questions: [],
     evidence_tags: ['bilateral_score'],
+    strength_evidence_keys: ['values_self:candidate32'],
+    risk_evidence_keys: [],
+    missing_categories: [],
     data_completeness: 0.86,
     confidence: 0.88
   }],

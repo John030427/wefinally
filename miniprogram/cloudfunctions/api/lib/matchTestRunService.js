@@ -36,8 +36,8 @@ function publicRun(row) {
 function semanticDetail(best, side, algorithmRank, reranked) {
   const detail = scoreDetailFor(best, side, algorithmRank)
   const baseNormalizedTotal = detail.normalized_total
-  const semanticScore = best.semantic_score !== null && best.semantic_score !== undefined
-    ? Number(best.semantic_score)
+  const semanticScore = best.canonical_score !== null && best.canonical_score !== undefined
+    ? Number(best.canonical_score)
     : Number(baseNormalizedTotal || 0)
   const finalMatchScore = Math.max(0, Math.min(100, Math.round(semanticScore)))
   return Object.assign(detail, {
@@ -56,6 +56,9 @@ function semanticDetail(best, side, algorithmRank, reranked) {
     data_completeness: best.data_completeness || null,
     asymmetric_risks: best.asymmetric_risks || [],
     confirmation_questions: best.confirmation_questions || [],
+    semantic_strength_evidence_keys: best.semantic_strength_evidence_keys || [],
+    semantic_risk_evidence_keys: best.semantic_risk_evidence_keys || [],
+    semantic_missing_categories: best.semantic_missing_categories || [],
     ai_rerank: {
       applied: reranked.applied === true,
       reason: reranked.reason || '',

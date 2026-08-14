@@ -1,7 +1,8 @@
 const {
   buildSemanticRerankRequest,
   validateSemanticRerankResponse,
-  mergeSemanticRerank
+  mergeSemanticRerank,
+  normalizedMutualScore
 } = require('./matchSemanticRerank')
 const { rerankMutualMatchCandidates } = require('./deepseek')
 const { compileIntentProfile } = require('./intentProfile')
@@ -46,8 +47,13 @@ function allowedKeysFromRetrieval(retrieval) {
 }
 
 async function attachRetrieval(eligible, user, settingsByUserId) {
-  const providerName = process.env.MATCH_EMBEDDING_PROVIDER || 'stub'
+  const providerName = process.env.MATCH_EMBEDDING_PROVIDER || 'none'
   const provider = createEmbeddingProvider({ provider: providerName })
+  if (provider.name === 'none') {
+    const error = new Error('semantic_retrieval_unavailable')
+    error.code = 'semantic_retrieval_unavailable'
+    throw error
+  }
   const enriched = []
   for (const item of eligible.slice(0, 10)) {
     try {
@@ -64,14 +70,6 @@ async function attachRetrieval(eligible, user, settingsByUserId) {
         allowedEvidenceKeys: allowedKeysFromRetrieval(retrieval)
       }))
     } catch (err) {
-      if (String(err && err.code || err && err.message || '').includes('semantic_retrieval_unavailable')) {
-        enriched.push(Object.assign({}, item, {
-          retrieval: null,
-          retrieval_error: 'semantic_retrieval_unavailable',
-          allowedEvidenceKeys: []
-        }))
-        continue
-      }
       throw err
     }
   }
@@ -79,8 +77,8 @@ async function attachRetrieval(eligible, user, settingsByUserId) {
 }
 
 function withFinalScores(ranked) {
-  return (Array.isArray(ranked) ? ranked : []).map((item) => {
-    const structured = Number(item.scoreA && item.scoreA.normalizedTotal || 0)
+  const scored = (Array.isArray(ranked) ? ranked : []).map((item, originalIndex) => {
+    const structured = normalizedMutualScore(item)
     const completeness = Math.round((
       Number(item.scoreA && item.scoreA.completeness || 0)
       + Number(item.scoreB && item.scoreB.completeness || 0)
@@ -95,8 +93,16 @@ function withFinalScores(ranked) {
     return Object.assign({}, item, {
       final_score: finalScore,
       final_match_score: finalScore.final_match_score,
-      canonical_score: finalScore.canonical_score
+      canonical_score: finalScore.canonical_score,
+      canonical_original_index: originalIndex
     })
+  })
+  scored.sort((left, right) => Number(right.canonical_score || 0) - Number(left.canonical_score || 0)
+    || Number(left.canonical_original_index || 0) - Number(right.canonical_original_index || 0))
+  return scored.map((item) => {
+    const copy = Object.assign({}, item)
+    delete copy.canonical_original_index
+    return copy
   })
 }
 
@@ -145,7 +151,7 @@ async function semanticRerank(ranked, user, settingsByUserId) {
       ranked: withFinalScores(merged.ranked)
     })
   } catch (err) {
-    return { applied: false, reason: classifySemanticRerankError(err), model: '', ranked }
+    return { applied: false, reason: classifySemanticRerankError(err), model: '', ranked: withFinalScores(ranked) }
   }
 }
 

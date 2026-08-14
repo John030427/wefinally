@@ -93,8 +93,10 @@ async function retrieveOneWay(queryUser, querySettings, docUser, docSettings, pr
         evidence_key: doc.evidence_key,
         category: doc.category,
         score: hybridScore(query.vector, doc.vector, query.sanitized_text, doc.sanitized_text),
+        evidence_text: doc.sanitized_text,
         query_evidence_key: query.evidence_key,
-        query_category: query.category
+        query_category: query.category,
+        query_evidence_text: query.sanitized_text
       }))
       .sort((left, right) => right.score - left.score || left.evidence_key.localeCompare(right.evidence_key))
       .slice(0, TOP_K)
@@ -102,19 +104,21 @@ async function retrieveOneWay(queryUser, querySettings, docUser, docSettings, pr
   }
   hits.sort((left, right) => right.score - left.score)
   const top = hits.slice(0, TOP_K)
-  const score = top.length ? Math.round(top.reduce((sum, item) => sum + item.score, 0) / top.length) : 0
+  const conflicts = conflictSignals(queryChunks, docChunks)
+  const rawScore = top.length ? Math.round(top.reduce((sum, item) => sum + item.score, 0) / top.length) : 0
+  const score = conflicts.length ? Math.min(rawScore, 20) : rawScore
   return {
     score,
     top_evidence: top,
     missing_categories: missingCategories(docChunks),
-    conflict_signals: conflictSignals(queryChunks, docChunks),
+    conflict_signals: conflicts,
     chunk_count: docChunks.length
   }
 }
 
 async function retrieveBidirectional(pair, options = {}) {
   const provider = options.provider || createEmbeddingProvider({
-    provider: options.providerName || process.env.MATCH_EMBEDDING_PROVIDER || 'stub'
+    provider: options.providerName || process.env.MATCH_EMBEDDING_PROVIDER || 'none'
   })
   if (provider.name === 'none') {
     const error = new Error('semantic_retrieval_unavailable')

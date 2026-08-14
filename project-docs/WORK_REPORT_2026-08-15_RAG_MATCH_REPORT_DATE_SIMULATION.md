@@ -49,18 +49,18 @@
 
 ---
 
-## 3. RAG 实际架构
+## 3. RAG 实现架构（真实 provider 待接入）
 
 ```text
 硬条件过滤
  → buildEvidenceChunks（脱敏 + content_hash）
- → embeddingProvider（默认 stub；none → semantic_retrieval_unavailable）
+ → embeddingProvider（默认 none；stub 仅供显式本地测试）
  → retrieveBidirectional（A→B / B→A 分别检索，Top-K=3）
  → semanticRerank（只重排；evidence_key 白名单）
  → computeFinalMatchScore（structured 0.55 + retrieval 0.25 + prompt 0.2）
 ```
 
-- **Provider**：`MATCH_EMBEDDING_PROVIDER=stub|none|<pending>`；未配置真实厂商。
+- **Provider**：`MATCH_EMBEDDING_PROVIDER=none|stub|<pending>`；线上未配置真实厂商时明确返回 `semantic_retrieval_unavailable`。
 - **Chunk schema**：`evidence_chunk_v1`（categories 见 plan §7.2）。
 - **检索**：函数内 cosine + 同义扩展 lexical hybrid；候选池上限 50；Top-K 3。
 - **失败模式**：`none` → `semantic_retrieval_unavailable`；非法 evidence_key / 未知 candidate_ref 拒绝。
@@ -124,7 +124,7 @@
 见 `matchRagMigrationPlan.planMatchRagInfrastructure()`：
 
 - `user_evidence_chunks` / `user_evidence_embeddings` → **pending_user_confirmation**
-- `MATCH_EMBEDDING_PROVIDER` 默认 stub
+- `MATCH_EMBEDDING_PROVIDER` 默认 `none`；`stub` 仅用于显式 selfcheck
 - 回填 job 仅 dry-run
 
 ---
@@ -146,7 +146,7 @@ PASS selfcheck:agent
 
 ## 11. Review 结论（plan §13）
 
-1. RAG：有 stub embedding + evidence retrieval；非仅改 Prompt。真实 provider 未接。
+1. RAG：已有 provider adapter、双向 evidence retrieval 与受约束 Prompt；stub 只用于本地测试，真实 provider 未接时正式匹配不落库。
 2. 硬条件仍由确定性代码；LLM 不可增候选。
 3. A→B / B→A 分别检索评分。
 4. 缺失字段不再默认契合。
@@ -162,6 +162,19 @@ PASS selfcheck:agent
 14. 用户 dirty 文件未纳入提交。
 
 CloudBase：本阶段无新部署；NoSQL 写入仍走云函数；新集合仅 dry-run。
+
+### 11.1 Codex 复审修正（2026-08-15）
+
+复审发现并修正以下闭环问题：
+
+1. 默认 provider 曾错误回退到 hash stub，现改为默认 `none`，避免伪向量被当成线上语义检索。
+2. Prompt 曾只收到 evidence key 和分数，现同时接收双向脱敏 evidence 正文、缺失分类与冲突信号。
+3. 丁克/要孩子等明确冲突曾只记录、不影响检索分，现对冲突方向设置确定性分数上限。
+4. 最终结构分曾只使用 A→B，现使用 A/B 调和平均，并按 `canonical_score` 重新排序后选人。
+5. AI/RAG 不可用时，手动和定时正式匹配均不再写匹配结论。
+6. 优势/风险文案必须引用检索白名单内的 evidence key；审计键、缺失项随 score detail 保存。
+
+仍未完成：真实 embedding provider、CloudBase chunk/embedding 集合与索引、历史回填、云函数部署及真机验收。上述任一项不得仅凭本报告视为已上线。
 
 ---
 

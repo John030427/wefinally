@@ -171,7 +171,7 @@ function ensureScoreDetailDimensions(scoreDetail, row, viewer, partner) {
 
 function withSemanticRerankDetail(scoreDetail, best, reranked) {
   const baseNormalizedTotal = Number(scoreDetail.normalized_total || scoreDetail.normalizedTotal || 0)
-  const semanticScore = Number(best && best.semantic_score)
+  const semanticScore = Number(best && best.canonical_score)
   const finalMatchScore = reranked && reranked.applied === true && Number.isFinite(semanticScore)
     ? Math.max(0, Math.min(100, Math.round(semanticScore)))
     : Math.max(0, Math.min(100, Math.round(baseNormalizedTotal)))
@@ -494,6 +494,15 @@ async function start(data, wxContext) {
   const blockedIds = new Set(Object.keys(seenPartnerIds).map(Number).concat(claimBlockedIds))
   const ranked = rankCandidates(user, candidates, settingsByUserId, { blockedIds })
   const reranked = await semanticRerank(ranked, user, settingsByUserId)
+  if (!reranked || reranked.applied !== true) {
+    return {
+      matched: 0,
+      users: ranked.length + 1,
+      evaluated_candidates: ranked.length,
+      reason_code: reranked && reranked.reason || 'ai_rerank_unavailable',
+      message: 'AI匹配暂不可用，请稍后重试'
+    }
+  }
   const eligible = reranked.ranked.filter((item) => item.quality.pass)
   if (!eligible.length) {
     return {
@@ -528,7 +537,10 @@ async function start(data, wxContext) {
         semantic_confidence: best.semantic_confidence || null,
         data_completeness: best.data_completeness || null,
         asymmetric_risks: best.asymmetric_risks || [],
-        confirmation_questions: best.confirmation_questions || []
+        confirmation_questions: best.confirmation_questions || [],
+        semantic_strength_evidence_keys: best.semantic_strength_evidence_keys || [],
+        semantic_risk_evidence_keys: best.semantic_risk_evidence_keys || [],
+        semantic_missing_categories: best.semantic_missing_categories || []
     }), best, reranked)
     const detailJsonB = withSemanticRerankDetail(Object.assign(scoreDetailFor(best, 'b', algorithmRank), {
         ai_rank: best.ai_rank || null,
@@ -541,7 +553,10 @@ async function start(data, wxContext) {
         semantic_confidence: best.semantic_confidence || null,
         data_completeness: best.data_completeness || null,
         asymmetric_risks: best.asymmetric_risks || [],
-        confirmation_questions: best.confirmation_questions || []
+        confirmation_questions: best.confirmation_questions || [],
+        semantic_strength_evidence_keys: best.semantic_strength_evidence_keys || [],
+        semantic_risk_evidence_keys: best.semantic_risk_evidence_keys || [],
+        semantic_missing_categories: best.semantic_missing_categories || []
     }), best, reranked)
     const logA = await transactionDocument('user_match_log', 'match_log', {
         user_id: user.id,

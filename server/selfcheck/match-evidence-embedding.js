@@ -51,6 +51,10 @@ async function main() {
   assert.ok(valuesSelf.sanitized_text.includes('真诚'))
   assert.ok(valuesSelf.completeness > 0)
 
+  const sameTextForOtherUser = buildEvidenceChunks({ id: 8 }, settings)
+    .find((chunk) => chunk.category === 'values_self')
+  assert.notStrictEqual(sameTextForOtherUser.evidence_key, valuesSelf.evidence_key)
+
   const cleared = buildEvidenceChunks({ id: 7 }, { self_view_text: '', target_view_text: '' })
   assert.strictEqual(cleared.find((chunk) => chunk.category === 'values_self'), undefined)
 

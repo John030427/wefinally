@@ -79,6 +79,23 @@ async function main() {
   assert.strictEqual(deliveryInput.logA, undefined)
   assert.strictEqual(deliveryInput.deliveryData.audit.action, 'formal_batch')
   assert.strictEqual(reportLog.id, 1)
+
+  let unavailableDelivered = false
+  const unavailable = await executeFormalMatching({
+    clock: { businessDate: '2026-08-14', matchType: '周五' },
+    deps: {
+      list: async (name) => {
+        if (name === 'user') return users
+        if (name === 'match_claim') return []
+        if (name === 'user_match_setting') return settings
+        return []
+      },
+      semanticRerank: async (ranked) => ({ applied: false, reason: 'semantic_retrieval_unavailable', ranked }),
+      deliverPair: async () => { unavailableDelivered = true; return { delivered: true } }
+    }
+  })
+  assert.strictEqual(unavailable.matched_count, 0)
+  assert.strictEqual(unavailableDelivered, false)
   console.log('PASS formal matching reranks then atomically prepares delivery and report task')
 }
 
