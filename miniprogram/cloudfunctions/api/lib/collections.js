@@ -50,5 +50,6 @@ module.exports = {
   date_application_patch: 'date_application_patches',
   date_coordination_event: 'date_coordination_events',
   match_experience_feedback: 'match_experience_feedback',
-  date_experience_feedback: 'date_experience_feedback'
+  date_experience_feedback: 'date_experience_feedback',
+  match_batch_run: 'match_batch_runs'
 }

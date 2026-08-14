@@ -1,0 +1,114 @@
+const { shanghaiBusinessClock } = require('./businessClock')
+
+const TRANSIENT = /timeout|ECONNRESET|unavailable|429|503|ETIMEDOUT/i
+const TERMINAL = new Set(['completed_matched', 'completed_no_match', 'blocked'])
+
+function redactBatchError(error) {
+  const raw = String(error && error.message || error || 'unknown')
+  const errorClass = TRANSIENT.test(raw) ? 'transient' : 'permanent'
+  return {
+    error_class: errorClass,
+    message: errorClass === 'transient' ? 'transient_upstream_error' : 'permanent_match_error'
+  }
+}
+
+function batchRecord(input, clock, extra = {}) {
+  return Object.assign({
+    batch_key: clock.batchKey,
+    mode: 'formal',
+    business_date: clock.businessDate,
+    match_type: clock.matchType,
+    request_id: String(input.requestId || '').slice(0, 120),
+    trigger_source: String(input.triggerSource || 'timer'),
+    algorithm_version: 'algo_evidence_v2',
+    retry_count: 0,
+    users_considered: 0,
+    candidates_evaluated: 0,
+    matched_count: 0,
+    reason_code: '',
+    error_class: ''
+  }, extra)
+}
+
+async function runMatcher(deps, input, clock) {
+  if (typeof deps.executeMatching === 'function') {
+    return deps.executeMatching({ input, clock, deps })
+  }
+  return { matched_count: 0, users_considered: 0, candidates_evaluated: 0 }
+}
+
+async function persistResult(deps, batch, result) {
+  const matchedCount = Number(result && result.matched_count || 0)
+  const status = matchedCount > 0 ? 'completed_matched' : 'completed_no_match'
+  return deps.updateByDoc('match_batch_run', batch, {
+    status,
+    matched_count: matchedCount,
+    users_considered: Number(result && result.users_considered || 0),
+    candidates_evaluated: Number(result && result.candidates_evaluated || 0),
+    completed_at: deps.now(),
+    reason_code: matchedCount > 0 ? 'matched' : 'completed_no_match'
+  })
+}
+
+async function runFormalMatchBatch(input = {}, deps) {
+  if (!deps || typeof deps.first !== 'function') throw new Error('匹配批次依赖未配置')
+  const clock = shanghaiBusinessClock(input.now || (deps.now && deps.now()) || new Date())
+  if (!clock.isMatchDay) {
+    return {
+      status: 'blocked',
+      reason_code: 'not_match_day',
+      business_date: clock.businessDate,
+      batch_key: clock.batchKey
+    }
+  }
+
+  let batch = await deps.first('match_batch_run', { batch_key: clock.batchKey })
+  if (batch && TERMINAL.has(batch.status)) return batch
+  if (batch && batch.status === 'failed' && Number(batch.retry_count || 0) >= 1) return batch
+
+  if (!batch) {
+    batch = await deps.addWithId('match_batch_run', batchRecord(input, clock, {
+      status: 'queued',
+      started_at: deps.now()
+    }), 'match_batch')
+  }
+
+  const existing = await deps.first('match_batch_run', { batch_key: clock.batchKey })
+  if (existing && existing.id !== batch.id && TERMINAL.has(existing.status)) return existing
+
+  batch = await deps.updateByDoc('match_batch_run', batch, {
+    status: 'running',
+    request_id: String(input.requestId || batch.request_id || '').slice(0, 120)
+  })
+
+  const attempt = async () => persistResult(deps, batch, await runMatcher(deps, input, clock))
+  try {
+    return await attempt()
+  } catch (error) {
+    const redacted = redactBatchError(error)
+    if (redacted.error_class === 'transient' && Number(batch.retry_count || 0) < 1) {
+      try {
+        batch = await deps.updateByDoc('match_batch_run', batch, { retry_count: 1 })
+        return await attempt()
+      } catch (retryError) {
+        const retryRedacted = redactBatchError(retryError)
+        return deps.updateByDoc('match_batch_run', batch, {
+          status: 'failed',
+          retry_count: 1,
+          error_class: retryRedacted.error_class,
+          reason_code: 'failed',
+          completed_at: deps.now()
+        })
+      }
+    }
+    return deps.updateByDoc('match_batch_run', batch, {
+      status: 'failed',
+      retry_count: Number(batch.retry_count || 0),
+      error_class: redacted.error_class,
+      reason_code: 'failed',
+      completed_at: deps.now()
+    })
+  }
+}
+
+module.exports = { runFormalMatchBatch, redactBatchError }

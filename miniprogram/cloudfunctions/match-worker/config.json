@@ -1,0 +1,15 @@
+{
+  "timeout": 60,
+  "triggers": [
+    {
+      "name": "formal-match-local-midnight",
+      "type": "timer",
+      "config": "0 0 0 * * WED,FRI *"
+    },
+    {
+      "name": "formal-match-utc-offset",
+      "type": "timer",
+      "config": "0 0 16 * * TUE,THU *"
+    }
+  ]
+}
