@@ -29,6 +29,13 @@ function confidence(value, label) {
   return number
 }
 
+function normalizedMutualScore(item) {
+  const scoreA = Number(item && item.scoreA && item.scoreA.normalizedTotal || 0)
+  const scoreB = Number(item && item.scoreB && item.scoreB.normalizedTotal || 0)
+  if (scoreA > 0 && scoreB > 0) return Math.round((2 * scoreA * scoreB) / (scoreA + scoreB))
+  return Math.max(0, Math.min(100, Math.round(Number(item && item.mutualScore || 0))))
+}
+
 function safeText(value, maxLength = 120) {
   return sanitizeSupplement(value)
     .replace(/\s+/g, ' ')
@@ -84,7 +91,7 @@ function buildSemanticRerankRequest(input = {}) {
       algorithm_rank: index + 1,
       side_a_percent: Math.max(0, Math.min(100, Math.round(Number(item.scoreA && item.scoreA.normalizedTotal || 0)))),
       side_b_percent: Math.max(0, Math.min(100, Math.round(Number(item.scoreB && item.scoreB.normalizedTotal || 0)))),
-      mutual_score_percent: Math.max(0, Math.min(100, Math.round(Number(item.mutualScore || 0)))),
+      mutual_score_percent: normalizedMutualScore(item),
       view_similarity: Math.max(0, Math.min(100, Math.round(Number(item.viewSimilarity || 0)))),
       intent_a: intentSummary(item.intentA),
       intent_b: intentSummary(item.intentB),
@@ -171,7 +178,7 @@ function mergeSemanticRerank(ranked, validated, options = {}) {
       : (item && item.candidate && item.candidate.id)
     const row = byUserId.get(String(internalUserId))
     if (!row) return item
-    const base = Number(item.mutualScore || 0)
+    const base = normalizedMutualScore(item)
     const semantic = Number(row.mutualSemanticScore || 0)
     return Object.assign({}, item, {
       ai_rank: row.rank,

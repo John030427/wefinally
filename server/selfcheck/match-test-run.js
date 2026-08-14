@@ -52,6 +52,7 @@ assert.strictEqual(isInternalQaAccount(production), false)
 
 function memory(user, extraUsers = [], options = {}) {
   let clock = new Date(initialNow)
+  const semanticCalls = []
   const psych = JSON.stringify({
     marriage_pace: '稳定推进', conflict_style: '及时沟通', security_space: '亲密也独立',
     family_boundary: '边界清晰', money_view: '共同规划', career_family: '动态平衡'
@@ -112,9 +113,34 @@ function memory(user, extraUsers = [], options = {}) {
     claimRun,
     completeRun,
     now: () => new Date(clock),
-    publicEnabled: async () => options.publicEnabled === true
+    publicEnabled: async () => options.publicEnabled === true,
+    semanticRerank: async (ranked, currentUser, settingsByUserId) => {
+      semanticCalls.push({ ranked, currentUser, settingsByUserId })
+      if (options.semanticApplied === false) {
+        return { applied: false, reason: 'disabled', model: '', ranked }
+      }
+      return {
+        applied: true,
+        reason: '',
+        model: 'deepseek-chat',
+        ranked: ranked.map((item, index) => ({
+          ...item,
+          ai_rank: index + 1,
+          ai_weight: 0.2,
+          semantic_score: 89,
+          a_to_b_semantic_score: 88,
+          b_to_a_semantic_score: 86,
+          mutual_semantic_score: 87,
+          semantic_strengths: ['双向长期关系目标一致'],
+          semantic_confidence: 0.88,
+          data_completeness: 0.82,
+          asymmetric_risks: ['婚育时间需要确认'],
+          confirmation_questions: ['双方可接受的婚育时间窗口是什么？']
+        }))
+      }
+    }
   })
-  return { tables, handlers, advance: (milliseconds) => { clock = new Date(clock.getTime() + milliseconds) } }
+  return { tables, handlers, semanticCalls, advance: (milliseconds) => { clock = new Date(clock.getTime() + milliseconds) } }
 }
 
 async function main() {
@@ -132,6 +158,26 @@ async function main() {
   assert.strictEqual(publicCompleted.status, 'completed_matched')
   assert.strictEqual(publicCompleted.matched_count, 1)
   assert.strictEqual(publicRun.tables.match_claim.length, 0)
+  assert.strictEqual(publicRun.semanticCalls.length, 1)
+  const publicLog = publicRun.tables.user_match_log[0]
+  assert.strictEqual(publicLog.score_version, 'algo_evidence_v2')
+  const scoreDetail = JSON.parse(publicLog.score_detail_json)
+  const counterpartScoreDetail = JSON.parse(publicLog.counterpart_score_detail_json)
+  assert.strictEqual(scoreDetail.ai_rerank.applied, true)
+  assert.strictEqual(scoreDetail.ai_rerank.model, 'deepseek-chat')
+  assert.strictEqual(scoreDetail.normalized_total, scoreDetail.normalizedTotal)
+  assert(scoreDetail.normalized_total < publicLog.total_score)
+  assert.strictEqual(counterpartScoreDetail.ai_rerank.applied, true)
+  assert.strictEqual(scoreDetail.mutual_semantic_score, 87)
+
+  const unavailable = memory(publicUser, [], { publicEnabled: true, semanticApplied: false })
+  unavailable.tables.user.find((row) => row.id === fixture.id).fixture_access_mode = 'public_test_pool'
+  const unavailableCreated = await unavailable.handlers.create({ request_id: 'req-ai-down1' }, {})
+  unavailable.advance(10000)
+  const unavailableCompleted = await unavailable.handlers.execute({ id: unavailableCreated.id }, {})
+  assert.strictEqual(unavailableCompleted.status, 'failed')
+  assert.strictEqual(unavailableCompleted.reason_code, 'ai_rerank_unavailable')
+  assert.strictEqual(unavailable.tables.user_match_log.length, 0)
 
   const qaMem = memory(qa)
   const [created, concurrentCreate] = await Promise.all([
@@ -188,6 +234,7 @@ async function main() {
   assert(indexJs.includes('refreshLatestMatch'))
   assert(indexJs.includes("run.status === 'completed_matched'"))
   assert(indexJs.includes('await this.refreshLatestMatch()'))
+  assert(indexJs.includes("failed: run && run.message || '测试运行失败，可安全重试'"))
   assert(profileWxml.includes('userInfo.support_code'))
   assert(userHandler.includes('match_test_run_public_enabled'))
   console.log('PASS isolated ten-second QA match runs never write formal claims')

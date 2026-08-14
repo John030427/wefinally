@@ -4,11 +4,18 @@ const {
   mergeSemanticRerank
 } = require('./matchSemanticRerank')
 const { rerankMutualMatchCandidates } = require('./deepseek')
+const { compileIntentProfile } = require('./intentProfile')
 
 function parseJson(value) {
   if (!value) return null
   if (typeof value === 'object') return value
   try { return JSON.parse(value) } catch (err) { return null }
+}
+
+function intentFor(user, setting) {
+  return parseJson(setting && setting.intent_profile_json) || compileIntentProfile(Object.assign({}, user || {}, setting || {}, {
+    mode: 'automatic'
+  }))
 }
 
 async function semanticRerank(ranked, user, settingsByUserId) {
@@ -27,19 +34,22 @@ async function semanticRerank(ranked, user, settingsByUserId) {
           viewSimilarity: item.viewSimilarity,
           scoreA: item.scoreA,
           scoreB: item.scoreB,
-          intentA: parseJson(currentSetting.intent_profile_json),
-          intentB: parseJson(partnerSetting.intent_profile_json),
+          intentA: intentFor(user, currentSetting),
+          intentB: intentFor(item.candidate, partnerSetting),
           supplementA: currentSetting.other_requirements,
           supplementB: partnerSetting.other_requirements
         }
       })
     })
     const remote = await rerankMutualMatchCandidates(request)
-    if (!remote || !remote.enabled || !remote.response) return { applied: false, reason: 'disabled', ranked }
+    if (!remote || !remote.enabled || !remote.response) return { applied: false, reason: 'disabled', model: '', ranked }
     const validated = validateSemanticRerankResponse(remote.response, request)
-    return mergeSemanticRerank(ranked, validated, { minConfidence: 0.65, maxWeight: 0.2 })
+    return Object.assign(
+      mergeSemanticRerank(ranked, validated, { minConfidence: 0.65, maxWeight: 0.2 }),
+      { model: remote.model || '' }
+    )
   } catch (err) {
-    return { applied: false, reason: 'fallback', ranked }
+    return { applied: false, reason: 'fallback', model: '', ranked }
   }
 }
 

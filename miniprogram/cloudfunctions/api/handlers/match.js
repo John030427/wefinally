@@ -169,6 +169,25 @@ function ensureScoreDetailDimensions(scoreDetail, row, viewer, partner) {
   })
 }
 
+function withSemanticRerankDetail(scoreDetail, best, reranked) {
+  const baseNormalizedTotal = Number(scoreDetail.normalized_total || scoreDetail.normalizedTotal || 0)
+  const semanticScore = Number(best && best.semantic_score)
+  const finalMatchScore = reranked && reranked.applied === true && Number.isFinite(semanticScore)
+    ? Math.max(0, Math.min(100, Math.round(semanticScore)))
+    : Math.max(0, Math.min(100, Math.round(baseNormalizedTotal)))
+  return Object.assign({}, scoreDetail, {
+    base_normalized_total: baseNormalizedTotal,
+    final_match_score: finalMatchScore,
+    normalized_total: finalMatchScore,
+    normalizedTotal: finalMatchScore,
+    ai_rerank: {
+      applied: Boolean(reranked && reranked.applied),
+      reason: reranked && reranked.reason || '',
+      model: reranked && reranked.model || ''
+    }
+  })
+}
+
 async function getSetting(data, wxContext) {
   const user = await currentUser(wxContext)
   const setting = settingDefaults(await first('user_match_setting', { user_id: user.id }))
@@ -497,7 +516,8 @@ async function start(data, wxContext) {
     }
     const pairKey = canonicalPairKey(user.id, partner.id)
     const abTestRunId = String(partner.ab_test_run_id || '')
-    const detailJsonA = Object.assign(scoreDetailFor(best, 'a', ranked.indexOf(best) + 1), {
+    const algorithmRank = ranked.findIndex((item) => Number(item.candidate.id) === Number(partner.id)) + 1
+    const detailJsonA = withSemanticRerankDetail(Object.assign(scoreDetailFor(best, 'a', algorithmRank), {
         ai_rank: best.ai_rank || null,
         ai_weight: best.ai_weight || 0,
         semantic_score: best.semantic_score || null,
@@ -509,8 +529,8 @@ async function start(data, wxContext) {
         data_completeness: best.data_completeness || null,
         asymmetric_risks: best.asymmetric_risks || [],
         confirmation_questions: best.confirmation_questions || []
-    })
-    const detailJsonB = Object.assign(scoreDetailFor(best, 'b', ranked.indexOf(best) + 1), {
+    }), best, reranked)
+    const detailJsonB = withSemanticRerankDetail(Object.assign(scoreDetailFor(best, 'b', algorithmRank), {
         ai_rank: best.ai_rank || null,
         ai_weight: best.ai_weight || 0,
         semantic_score: best.semantic_score || null,
@@ -522,7 +542,7 @@ async function start(data, wxContext) {
         data_completeness: best.data_completeness || null,
         asymmetric_risks: best.asymmetric_risks || [],
         confirmation_questions: best.confirmation_questions || []
-    })
+    }), best, reranked)
     const logA = await transactionDocument('user_match_log', 'match_log', {
         user_id: user.id,
         match_user_id: partner.id,
@@ -630,6 +650,7 @@ module.exports = {
     claimRun: require('../lib/db').claimMatchTestRun,
     completeRun: require('../lib/db').completeMatchTestRun,
     now,
-    publicEnabled: () => flagEnabled('match_test_run_public_enabled')
+    publicEnabled: () => flagEnabled('match_test_run_public_enabled'),
+    semanticRerank
   })
 }

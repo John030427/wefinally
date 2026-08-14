@@ -163,7 +163,7 @@ Page({
       completed_no_match: run && run.message || '本轮无匹配结果',
       no_match: '本轮无匹配结果',
       blocked: run && run.message || '当前无法测试匹配',
-      failed: '测试运行失败，可安全重试'
+      failed: run && run.message || '测试运行失败，可安全重试'
     }
     return messages[status] || ''
   },

@@ -201,9 +201,16 @@ function compactScore(scoreDetail) {
         compatibility_score: dim.compatibility_score || null
       }
     })
+  const totalCandidates = [
+    scoreDetail.final_match_score,
+    scoreDetail.normalized_total,
+    scoreDetail.normalizedTotal,
+    scoreDetail.total
+  ]
+  const total = totalCandidates.find((value) => value !== null && value !== undefined && value !== '')
   return {
     version: scoreDetail.version || '',
-    total: scoreDetail.total || scoreDetail.normalizedTotal || null,
+    total: total === undefined ? null : total,
     quality_gate: scoreDetail.quality_gate || null,
     dimensions: Array.isArray(scoreDetail.dimensions)
       ? scoreDetail.dimensions.map((item) => ({

@@ -1,7 +1,7 @@
 const { isInternalQaAccount, canUseFixtureForMatch, isSyntheticFixture } = require('./testIdentityPolicy')
 const { memberStatus, MEMBER_STATUS, canUseMatching } = require('./memberPolicy')
 const { isVipActive } = require('./format')
-const { rankCandidates } = require('./matchPolicy')
+const { rankCandidates, scoreDetailFor } = require('./matchPolicy')
 
 function deny(message, code = 403) {
   const error = new Error(message)
@@ -27,8 +27,41 @@ function publicRun(row) {
     reason_code: row.reason_code || '',
     matched_count: Number(row.matched_count || 0),
     match_id: row.match_id || null,
+    ai_applied: row.ai_rerank_applied === true,
+    ai_model: row.ai_rerank_model || '',
     message: row.message || ''
   }
+}
+
+function semanticDetail(best, side, algorithmRank, reranked) {
+  const detail = scoreDetailFor(best, side, algorithmRank)
+  const baseNormalizedTotal = detail.normalized_total
+  const semanticScore = best.semantic_score !== null && best.semantic_score !== undefined
+    ? Number(best.semantic_score)
+    : Number(baseNormalizedTotal || 0)
+  const finalMatchScore = Math.max(0, Math.min(100, Math.round(semanticScore)))
+  return Object.assign(detail, {
+    base_normalized_total: baseNormalizedTotal,
+    final_match_score: finalMatchScore,
+    normalized_total: finalMatchScore,
+    normalizedTotal: finalMatchScore,
+    ai_rank: best.ai_rank || null,
+    ai_weight: best.ai_weight || 0,
+    semantic_score: best.semantic_score || null,
+    a_to_b_semantic_score: best.a_to_b_semantic_score || null,
+    b_to_a_semantic_score: best.b_to_a_semantic_score || null,
+    mutual_semantic_score: best.mutual_semantic_score || null,
+    semantic_strengths: best.semantic_strengths || [],
+    semantic_confidence: best.semantic_confidence || null,
+    data_completeness: best.data_completeness || null,
+    asymmetric_risks: best.asymmetric_risks || [],
+    confirmation_questions: best.confirmation_questions || [],
+    ai_rerank: {
+      applied: reranked.applied === true,
+      reason: reranked.reason || '',
+      model: reranked.model || ''
+    }
+  })
 }
 
 function createMatchTestRunHandlers(deps) {
@@ -90,25 +123,48 @@ function createMatchTestRunHandlers(deps) {
       const settingsByUserId = {}
       ;(settings || []).forEach((row) => { settingsByUserId[String(row.user_id)] = row })
       const ranked = rankCandidates(user, candidates, settingsByUserId)
-      const best = ranked.find((item) => item.quality && item.quality.pass)
+      const reranked = await deps.semanticRerank(ranked, user, settingsByUserId)
+      if (!reranked || reranked.applied !== true) {
+        return publicRun(await deps.completeRun(claimedRun, { patch: {
+          status: 'failed',
+          reason_code: 'ai_rerank_unavailable',
+          ai_rerank_applied: false,
+          ai_rerank_reason: reranked && reranked.reason || 'unavailable',
+          message: 'AI匹配暂不可用，请稍后重试'
+        } }))
+      }
+      const best = reranked.ranked.find((item) => item.quality && item.quality.pass)
       if (!best) {
         return publicRun(await deps.completeRun(claimedRun, { patch: {
           status: 'completed_no_match', reason_code: 'completed_no_match', matched_count: 0, message: '本轮无匹配结果'
         } }))
       }
       const partner = best.candidate
+      const algorithmRank = ranked.findIndex((item) => Number(item.candidate.id) === Number(partner.id)) + 1
+      const scoreDetailA = semanticDetail(best, 'a', algorithmRank, reranked)
+      const scoreDetailB = semanticDetail(best, 'b', algorithmRank, reranked)
       return publicRun(await deps.completeRun(claimedRun, {
         log: {
           user_id: user.id,
           match_user_id: partner.id,
           view_similarity: best.viewSimilarity,
           total_score: best.scoreA && best.scoreA.total,
+          score_detail_json: JSON.stringify(scoreDetailA),
+          counterpart_score_detail_json: JSON.stringify(scoreDetailB),
+          score_version: 'algo_evidence_v2',
           match_date: deps.now(),
-          match_type: '内部测试',
+          match_type: 'AI测试匹配',
           internal_test_run_id: claimedRun.id,
           pair_key: `test:${claimedRun.id}`
         },
-        patch: { status: 'completed_matched', reason_code: 'matched', matched_count: 1, message: '测试匹配成功' }
+        patch: {
+          status: 'completed_matched',
+          reason_code: 'matched',
+          matched_count: 1,
+          ai_rerank_applied: true,
+          ai_rerank_model: reranked.model || '',
+          message: 'AI测试匹配成功'
+        }
       }))
     } catch (error) {
       return publicRun(await deps.completeRun(claimedRun, { patch: {

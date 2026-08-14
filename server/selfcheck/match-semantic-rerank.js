@@ -60,6 +60,21 @@ assert(serialized.includes('不接受长期异地'))
 assert(serialized.includes('城市计划待确认'))
 assert(serialized.includes('[已脱敏]'))
 
+const normalizedRequest = buildSemanticRerankRequest({
+  candidates: [{
+    candidate: { id: 99 },
+    internalUserId: 99,
+    quality: { pass: true },
+    mutualScore: 120,
+    viewSimilarity: 90,
+    scoreA: { normalizedTotal: 80 },
+    scoreB: { normalizedTotal: 70 },
+    intentA: {},
+    intentB: {}
+  }]
+})
+assert.strictEqual(normalizedRequest.candidates[0].mutual_score_percent, 75)
+
 const response = validateSemanticRerankResponse({
   version: RERANK_VERSION,
   ranking: [{
@@ -130,6 +145,7 @@ assert.strictEqual(merged.ranked[0].ai_rank, 1)
 assert.strictEqual(merged.ranked[1].candidate.id, 31)
 assert.strictEqual(merged.ranked[1].ai_rank, 2)
 assert(merged.ranked[0].ai_weight <= 0.2)
+assert(merged.ranked.every((item) => item.semantic_score >= 0 && item.semantic_score <= 100))
 
 const fallback = mergeSemanticRerank(ranked, [{ ...response[0], confidence: 0.2 }], { minConfidence: 0.7 })
 assert.strictEqual(fallback.applied, false)

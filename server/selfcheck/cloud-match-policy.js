@@ -139,6 +139,12 @@ const semanticService = fs.readFileSync(path.resolve(
 const startBody = handler.split('async function start')[1].split('module.exports')[0]
 assert(startBody.includes('const eligible = reranked.ranked.filter((item) => item.quality.pass)'))
 assert(startBody.includes('const reranked = await semanticRerank(ranked, user, settingsByUserId)'))
+assert(handler.includes('final_match_score'))
+assert(startBody.includes('withSemanticRerankDetail'))
+assert(handler.includes('ai_rerank'))
+assert(handler.includes('reranked.model'))
+assert(startBody.includes('const algorithmRank = ranked.findIndex'))
+assert(!startBody.includes('ranked.indexOf(best)'))
 assert(handler.includes("require('../lib/semanticMatchService')"))
 assert(semanticService.includes('validateSemanticRerankResponse'))
 assert(semanticService.includes('mergeSemanticRerank'))
