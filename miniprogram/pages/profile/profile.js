@@ -2,6 +2,7 @@ const { get, post } = require('../../utils/request')
 const { API_PATHS, STORAGE_KEYS } = require('../../utils/constants')
 const { genderText, calcAge } = require('../../utils/util')
 const { buildProfileReadiness } = require('../../utils/productExperience')
+const { onboardingStatus, restorePartnerSession } = require('../../utils/partnerApi')
 
 Page({
   data: {
@@ -9,7 +10,7 @@ Page({
     errorMsg: '',
     userInfo: null,
     isVip: false,
-    hasPartnerWorkspace: false,
+    partnerStatus: { state: 'loading', allowed_actions: [] },
     readiness: null,
     menuList: [
       { icon: '⚙️', title: '择偶配置', url: '/pages/match-setting/match-setting' },
@@ -27,8 +28,17 @@ Page({
   },
 
   onShow() {
-    this.setData({ hasPartnerWorkspace: Boolean(wx.getStorageSync(STORAGE_KEYS.PARTNER_TOKEN)) })
     this.loadProfile()
+    this.loadPartnerStatus()
+  },
+
+  async loadPartnerStatus() {
+    try {
+      const status = await onboardingStatus()
+      this.setData({ partnerStatus: status || { state: 'not_applied', allowed_actions: ['apply', 'verify'] } })
+    } catch (err) {
+      this.setData({ partnerStatus: { state: 'error', review_note: (err && err.message) || '暂时无法读取合伙人状态', allowed_actions: [] } })
+    }
   },
 
   async loadProfile() {
@@ -89,9 +99,19 @@ Page({
     wx.navigateTo({ url: '/pages/match-setting/match-setting' })
   },
 
-  openPartnerWorkspace() {
-    if (!this.data.hasPartnerWorkspace) return
-    wx.navigateTo({ url: '/pages/partner-invite/partner-invite' })
+  async openPartnerWorkspace() {
+    const state = this.data.partnerStatus && this.data.partnerStatus.state
+    if (state !== 'active') {
+      wx.navigateTo({ url: '/pages/partner-login/partner-login' })
+      return
+    }
+    try {
+      await restorePartnerSession()
+      wx.navigateTo({ url: '/pages/partner-invite/partner-invite' })
+    } catch (err) {
+      wx.showToast({ title: (err && err.message) || '会话恢复失败', icon: 'none' })
+      this.loadPartnerStatus()
+    }
   },
 
   onMenuTap(e) {

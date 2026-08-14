@@ -1,80 +1,8 @@
-.partner-invite-page {
-  padding-top: 24rpx;
-}
-
-.partner-head {
-  background: linear-gradient(135deg, #fff0f4, #fff8f5);
-}
-
-.eyebrow {
-  color: #d54f70;
-  font-size: 22rpx;
-  letter-spacing: 2rpx;
-  text-transform: uppercase;
-}
-
-.title {
-  color: #422833;
-  font-size: 40rpx;
-  font-weight: 700;
-  line-height: 1.3;
-  margin-top: 12rpx;
-}
-
-.desc,
-.share-path {
-  color: #805c68;
-  font-size: 25rpx;
-  line-height: 1.7;
-  margin-top: 18rpx;
-}
-
-.share-card,
-.code-card,
-.qr-card {
-  margin-top: 24rpx;
-}
-
-.full-btn {
-  width: 100%;
-}
-
-.section-title {
-  color: #5b3e49;
-  font-size: 28rpx;
-  font-weight: 600;
-}
-
-.code-value {
-  background: #fff8fa;
-  border: 1rpx dashed #efb7c6;
-  border-radius: 14rpx;
-  color: #b6385a;
-  font-size: 40rpx;
-  letter-spacing: 4rpx;
-  margin-top: 22rpx;
-  padding: 22rpx;
-  text-align: center;
-}
-
-.qrcode {
-  display: block;
-  margin: 22rpx auto 0;
-  max-height: 520rpx;
-  max-width: 520rpx;
-  width: 100%;
-}
-
-.outline-btn,
-.logout-btn {
-  margin-top: 22rpx;
-  width: 100%;
-}
-
-.logout-btn {
-  background: transparent;
-  border: 0;
-  color: #9b707d;
-  font-size: 24rpx;
-  padding: 20rpx;
-}
+.partner-invite-page { padding-top:24rpx; }
+.identity-card { display:flex; justify-content:space-between; align-items:flex-end; gap:20rpx; background:#fff9f7; border:2rpx solid #eadcda; position:relative; }
+.eyebrow { color:#c89b52; font-size:19rpx; font-weight:650; letter-spacing:2rpx; }
+.identity-name { color:#242126; font-size:36rpx; font-weight:700; margin-top:12rpx; }.identity-code,.identity-invite strong,.code-value { font-family:"DIN Alternate"; letter-spacing:2rpx; }
+.identity-code { color:#2f7d62; font-size:24rpx; margin-top:8rpx; }.identity-invite { text-align:right; }.identity-invite text { color:#82777a; display:block; font-size:20rpx; }.identity-invite strong { color:#ff4f78; display:block; font-size:30rpx; margin-top:8rpx; }
+.money-grid { display:grid; grid-template-columns:7fr 5fr; gap:16rpx; margin-top:20rpx; }.money-card { background:#fff; border:2rpx solid #eadfdd; border-radius:16rpx; padding:24rpx; }.money-card.available { background:#2f7d62; color:#fff; grid-row:span 2; min-height:190rpx; }.money-card text { display:block; font-size:21rpx; opacity:.74; }.money-card strong { display:block; font-family:"DIN Alternate"; font-size:38rpx; margin-top:16rpx; }.money-card.available strong { font-size:48rpx; }
+.conversion-card,.share-card,.qr-card,.rule-card { margin-top:22rpx; }.section-title { color:#242126; font-size:28rpx; font-weight:650; }.conversion-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:18rpx; margin-top:22rpx; }.conversion-grid view { border-left:5rpx solid #c89b52; padding-left:16rpx; }.conversion-grid strong { color:#242126; display:block; font-family:"DIN Alternate"; font-size:34rpx; }.conversion-grid text { color:#82777a; display:block; font-size:20rpx; margin-top:5rpx; }
+.share-path,.rule-line { color:#766b6f; font-size:23rpx; line-height:1.65; margin-top:14rpx; }.full-btn { margin-top:20rpx; width:100%; }.qrcode { display:block; margin:22rpx auto 0; max-height:520rpx; max-width:520rpx; width:100%; }.logout-btn { background:transparent; border:0; color:#8c7f83; font-size:23rpx; margin-top:18rpx; width:100%; }

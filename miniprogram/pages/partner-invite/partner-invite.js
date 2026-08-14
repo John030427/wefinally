@@ -1,4 +1,4 @@
-const { requestPartner, partnerToken } = require('../../utils/partnerApi')
+const { requestPartner, partnerToken, restorePartnerSession } = require('../../utils/partnerApi')
 const { STORAGE_KEYS } = require('../../utils/constants')
 
 function sharePath(assets) {
@@ -17,39 +17,53 @@ Page({
     pageState: 'loading',
     errorMsg: '',
     partner: null,
+    dashboard: null,
+    metrics: {},
     assets: null,
     qrcodePath: '',
     sharePath: ''
   },
 
-  onLoad() {
+  async onLoad() {
     if (!partnerToken()) {
-      wx.redirectTo({ url: '/pages/partner-login/partner-login' })
-      return
+      try { await restorePartnerSession() } catch (err) {
+        wx.redirectTo({ url: '/pages/partner-login/partner-login' })
+        return
+      }
     }
-    this.loadAssets()
+    this.loadWorkspace()
   },
 
-  async loadAssets() {
+  async loadWorkspace(retried) {
     this.setData({ pageState: 'loading', errorMsg: '' })
     try {
-      const assets = await requestPartner('/api/partner/invite-assets')
-      const info = wx.getStorageSync(STORAGE_KEYS.PARTNER_INFO) || {}
+      const results = await Promise.all([
+        requestPartner('/api/partner/dashboard'),
+        requestPartner('/api/partner/invite-assets')
+      ])
+      const dashboard = results[0] || {}, assets = results[1] || {}
+      const info = Object.assign({}, dashboard.partner || {}, wx.getStorageSync(STORAGE_KEYS.PARTNER_INFO) || {})
+      const rawMetrics = dashboard.metrics || {}
+      const metrics = Object.assign({}, rawMetrics, {
+        available_amount: Number(rawMetrics.available_amount || 0).toFixed(2),
+        total_commission: Number(rawMetrics.total_commission || 0).toFixed(2),
+        pending_amount: Number(rawMetrics.pending_amount || 0).toFixed(2)
+      })
       this.setData({
         pageState: 'success',
         partner: info,
+        dashboard,
+        metrics,
         assets,
         sharePath: assets.miniprogram_path || sharePath(assets)
       })
       this.prepareQrCode(assets.qrcode_base64)
     } catch (err) {
-      if (err && err.code === 401) {
+      if (err && err.code === 401 && !retried) {
         wx.removeStorageSync(STORAGE_KEYS.PARTNER_TOKEN)
-        wx.removeStorageSync(STORAGE_KEYS.PARTNER_INFO)
-        wx.redirectTo({ url: '/pages/partner-login/partner-login' })
-        return
+        try { await restorePartnerSession(); return this.loadWorkspace(true) } catch (_) {}
       }
-      this.setData({ pageState: 'error', errorMsg: (err && err.message) || '邀请信息加载失败' })
+      this.setData({ pageState: 'error', errorMsg: (err && err.message) || '合伙人工作台加载失败' })
     }
   },
 
@@ -65,7 +79,7 @@ Page({
   },
 
   onRetry() {
-    this.loadAssets()
+    this.loadWorkspace()
   },
 
   onShareAppMessage() {
@@ -98,7 +112,6 @@ Page({
 
   logout() {
     wx.removeStorageSync(STORAGE_KEYS.PARTNER_TOKEN)
-    wx.removeStorageSync(STORAGE_KEYS.PARTNER_INFO)
-    wx.redirectTo({ url: '/pages/partner-login/partner-login' })
+    wx.switchTab({ url: '/pages/profile/profile' })
   }
 })

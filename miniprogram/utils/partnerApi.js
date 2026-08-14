@@ -27,8 +27,41 @@ function loginPartner(phone, password) {
   })
 }
 
+function savePartnerSession(result) {
+  if (!result || !result.token) throw new Error('合伙人会话响应无效')
+  wx.setStorageSync(STORAGE_KEYS.PARTNER_TOKEN, result.token)
+  wx.setStorageSync(STORAGE_KEYS.PARTNER_INFO, result.partner || {})
+  return result
+}
+
+function onboardingStatus() {
+  return requestPartner('/api/partner/onboarding/status', 'GET', {}, { requireToken: false })
+}
+
+function submitPartnerApplication(data) {
+  return requestPartner('/api/partner/applications', 'POST', data, { requireToken: false })
+}
+
+function activatePartner(phoneCode, requestId) {
+  return requestPartner('/api/partner/activation', 'POST', { phone_code: phoneCode, request_id: requestId }, { requireToken: false })
+    .then((result) => {
+      savePartnerSession(result.session)
+      if (result.partner) wx.setStorageSync(STORAGE_KEYS.PARTNER_INFO, result.partner)
+      return result
+    })
+}
+
+function restorePartnerSession() {
+  return requestPartner('/api/partner/session', 'POST', {}, { requireToken: false }).then(savePartnerSession)
+}
+
 module.exports = {
   partnerToken,
   requestPartner,
-  loginPartner
+  loginPartner,
+  onboardingStatus,
+  submitPartnerApplication,
+  activatePartner,
+  restorePartnerSession,
+  savePartnerSession
 }

@@ -95,7 +95,9 @@ function buildPartnerDashboard(input = {}) {
     partner: {
       id: partnerId,
       name: partner.name || '',
+      partner_code: partner.partner_code || '',
       promote_code: partner.promote_code || '',
+      phone_masked: partner.phone_masked || '',
       status: Number(partner.status || 0),
       balance: Math.round(number(partner.balance) * 100) / 100
     },

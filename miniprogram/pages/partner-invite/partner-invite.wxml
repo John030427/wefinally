@@ -1,36 +1,39 @@
 <view class="partner-invite-page container">
-  <block wx:if="{{pageState === 'loading'}}">
-    <view class="state-wrap"><view class="state-icon">⏳</view><view class="state-text">正在加载邀请工具...</view></view>
-  </block>
-
-  <block wx:elif="{{pageState === 'error'}}">
-    <view class="state-wrap"><view class="state-icon">⚠️</view><view class="state-text">{{errorMsg}}</view><view class="state-btn" bindtap="onRetry">重试</view></view>
-  </block>
+  <block wx:if="{{pageState === 'loading'}}"><view class="state-wrap"><view class="state-text">正在加载合伙人工作台...</view></view></block>
+  <block wx:elif="{{pageState === 'error'}}"><view class="state-wrap"><view class="state-text">{{errorMsg}}</view><view class="state-btn" bindtap="onRetry">重试</view></view></block>
 
   <block wx:else>
-    <view class="partner-head card">
-      <view class="eyebrow">WeFinally Partner</view>
-      <view class="title">邀请更多认真认识的人</view>
-      <view class="desc">分享行为只记录为推广事件；注册、资料审核和会员购买资格仍按平台规则执行。</view>
+    <view class="identity-card card">
+      <view><view class="eyebrow">WEFINALLY PARTNER</view><view class="identity-name">{{partner.name || 'WeFinally 合伙人'}}</view><view class="identity-code">{{partner.partner_code}}</view></view>
+      <view class="identity-invite"><text>公开邀请码</text><strong>{{assets.promote_code}}</strong></view>
+    </view>
+
+    <view class="money-grid">
+      <view class="money-card available"><text>可提现余额</text><strong>¥{{metrics.available_amount}}</strong></view>
+      <view class="money-card"><text>累计佣金</text><strong>¥{{metrics.total_commission}}</strong></view>
+      <view class="money-card"><text>待结算</text><strong>¥{{metrics.pending_amount}}</strong></view>
+    </view>
+
+    <view class="conversion-card card">
+      <view class="section-title">邀请转化</view>
+      <view class="conversion-grid">
+        <view><strong>{{metrics.attributed_registrations}}</strong><text>邀请注册</text></view>
+        <view><strong>{{metrics.profile_completed}}</strong><text>资料完成</text></view>
+        <view><strong>{{metrics.approved_members}}</strong><text>会员审核通过</text></view>
+        <view><strong>{{metrics.paid_members}}</strong><text>VIP 转化</text></view>
+      </view>
     </view>
 
     <view class="share-card card">
+      <view class="section-title">分享与邀请</view>
+      <view class="share-path">分享只记录归因，不会跳过平台审核；链接不包含手机号、OpenID 或后台 Token。</view>
       <button class="primary-btn full-btn" open-type="share">一键分享给微信好友</button>
-      <view class="share-path">分享会带入安全归因参数，不包含手机号、OpenID 或后台 Token。</view>
+      <button class="outline-btn full-btn" bindtap="copyCode">复制邀请码 {{assets.promote_code}}</button>
     </view>
 
-    <view class="code-card card">
-      <view class="section-title">备用推广码</view>
-      <view class="code-value">{{assets.promote_code}}</view>
-      <button class="outline-btn full-btn" bindtap="copyCode">复制推广码</button>
-    </view>
+    <view class="qr-card card" wx:if="{{qrcodePath}}"><view class="section-title">专属小程序码</view><image class="qrcode" src="{{qrcodePath}}" mode="widthFix"></image><button class="outline-btn full-btn" bindtap="saveQrCode">保存小程序码</button></view>
 
-    <view class="qr-card card" wx:if="{{qrcodePath}}">
-      <view class="section-title">备用小程序码</view>
-      <image class="qrcode" src="{{qrcodePath}}" mode="widthFix"></image>
-      <button class="outline-btn full-btn" bindtap="saveQrCode">保存小程序码</button>
-    </view>
-
-    <button class="logout-btn" bindtap="logout">退出合伙人邀请中心</button>
+    <view class="rule-card card"><view class="section-title">结算规则</view><view class="rule-line">{{dashboard.rule.commission_condition}}</view><view class="rule-line">{{dashboard.rule.settlement_cycle}}</view><view class="rule-line">{{dashboard.rule.refund_adjustment}}</view></view>
+    <button class="logout-btn" bindtap="logout">退出工作台</button>
   </block>
 </view>

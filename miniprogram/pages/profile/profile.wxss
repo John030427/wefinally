@@ -63,6 +63,25 @@
   font-weight: 600;
 }
 
+.partner-workspace-kicker {
+  color: #c89b52;
+  font-size: 18rpx;
+  font-weight: 600;
+  letter-spacing: 2rpx;
+  margin-bottom: 8rpx;
+}
+
+.partner-workspace.state-active {
+  border-color: #a9d0bd;
+  background: #f6fbf8;
+}
+
+.partner-workspace.state-suspended,
+.partner-workspace.state-revoked {
+  border-color: #ecc8c3;
+  background: #fff7f5;
+}
+
 .partner-workspace-desc {
   margin-top: 8rpx;
   color: #7b8881;

@@ -1,20 +1,44 @@
-<view class="partner-login-page container">
+<view class="partner-activation-page container">
   <view class="hero-card card">
-    <view class="hero-kicker">WeFinally Partner</view>
-    <view class="hero-title">合伙人邀请中心</view>
-    <view class="hero-desc">登录后生成安全的邀请链接和小程序码，分享行为不会直接授予会员资格。</view>
+    <view class="hero-kicker">WEFINALLY PARTNER</view>
+    <view class="hero-title">合伙人计划</view>
+    <view class="hero-desc">平台认可资格，微信验证本人手机号。首次绑定后无需密码，后续可直接恢复工作台。</view>
   </view>
 
-  <view class="form-card card">
-    <view class="form-item">
-      <text class="form-label">手机号</text>
-      <input class="form-input" type="number" maxlength="20" placeholder="合伙人注册手机号" value="{{phone}}" data-key="phone" bindinput="onInput" />
+  <view class="state-card card" wx:if="{{pageState === 'loading'}}">正在读取合伙人资格...</view>
+  <view class="state-card card error-text" wx:elif="{{pageState === 'error'}}">{{errorMsg}}<button class="outline-btn" bindtap="loadStatus">重试</button></view>
+
+  <block wx:else>
+    <view class="state-card card">
+      <view class="state-label">当前状态</view>
+      <view class="state-title" wx:if="{{status.state === 'active'}}">已激活 · {{status.partner_code}}</view>
+      <view class="state-title" wx:elif="{{status.state === 'pending'}}">申请审核中</view>
+      <view class="state-title" wx:elif="{{status.state === 'needs_verification'}}">资格已通过，等待本人验证</view>
+      <view class="state-title" wx:elif="{{status.state === 'rejected'}}">申请未通过，可完善后重提</view>
+      <view class="state-title" wx:elif="{{status.state === 'suspended'}}">合伙人权限已暂停</view>
+      <view class="state-title" wx:elif="{{status.state === 'revoked'}}">合伙人资格已撤销</view>
+      <view class="state-title" wx:else>尚未申请，或使用老板名单验证</view>
+      <view class="state-note" wx:if="{{status.phone_masked}}">资格手机号：{{status.phone_masked}}</view>
+      <view class="state-note" wx:if="{{status.review_note}}">{{status.review_note}}</view>
     </view>
-    <view class="form-item">
-      <text class="form-label">密码</text>
-      <input class="form-input" password placeholder="合伙人后台密码" value="{{password}}" data-key="password" bindinput="onInput" />
+
+    <view class="verify-card card" wx:if="{{status.state === 'needs_verification' || status.state === 'not_applied'}}">
+      <view class="section-title">我已在平台认可名单中</view>
+      <view class="section-desc">点击后由微信向服务端提供一次性动态 code；本页不会读取或保存完整手机号。</view>
+      <button class="primary-btn full-btn" open-type="getPhoneNumber" bindgetphonenumber="onVerifyPhone" loading="{{submitting}}" disabled="{{submitting}}">微信验证手机号并进入</button>
     </view>
+
+    <view class="form-card card" wx:if="{{status.state === 'not_applied' || status.state === 'rejected'}}">
+      <view class="section-title">申请成为合伙人</view>
+      <view class="form-item"><text class="form-label">手机号</text><input class="form-input" type="number" maxlength="20" value="{{phone}}" data-key="phone" bindinput="onInput" placeholder="用于资格审核，不能直接登录" /></view>
+      <view class="form-item"><text class="form-label">所在城市</text><input class="form-input" value="{{city}}" data-key="city" bindinput="onInput" placeholder="例如：汕头" /></view>
+      <view class="form-item"><text class="form-label">可服务圈层</text><textarea class="form-textarea" value="{{circleNote}}" data-key="circleNote" bindinput="onInput" placeholder="例如：本地创业者、医护或教师圈层" /></view>
+      <view class="form-item"><text class="form-label">申请理由</text><textarea class="form-textarea" value="{{reason}}" data-key="reason" bindinput="onInput" placeholder="说明你能为用户提供的帮助" /></view>
+      <button class="primary-btn full-btn" bindtap="submitApplication" loading="{{submitting}}" disabled="{{submitting}}">提交审核</button>
+    </view>
+
+    <button class="primary-btn full-btn" wx:if="{{status.state === 'active'}}" bindtap="goDashboard">进入合伙人工作台</button>
+    <button class="outline-btn full-btn" wx:if="{{status.state === 'suspended' || status.state === 'revoked' || status.state === 'pending'}}" bindtap="contactSupport">联系平台</button>
     <view class="error-text" wx:if="{{errorMsg}}">{{errorMsg}}</view>
-    <button class="primary-btn full-btn" bindtap="submit" loading="{{submitting}}" disabled="{{submitting}}">登录并生成邀请</button>
-  </view>
+  </block>
 </view>
