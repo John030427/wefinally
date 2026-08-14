@@ -24,6 +24,8 @@ const tickets = [{ id: 501, ticket_ref: 'WF-T-000501', session_ref: 'WF-S-000301
 
 const order = { id: 601, order_no: 'WF-ORDER-000601', user: official, amount: 199, pay_status: 1, settle_status: 0, pay_time: '2026-08-12T08:00:00.000Z', create_time: '2026-08-12T07:55:00.000Z' }
 const match = { id: 701, owner: official, matched: { ...official, id: 8, support_code: 'WF-000008', display_label: 'WF-000008 · 男 · 潮州', gender: 1, gender_text: '男', city: '潮州' }, total_score: 86.5, view_similarity: 91, match_date: '2026-08-13', match_type: 'daily', score_version: 'v2' }
+const partnerCandidates = [{ id: 31, source: 'application', phone_masked: '138****0015', applicant_user_id: 15, review_status: 'pending', activation_status: 'unbound', review_note: '', create_time: '2026-08-14T09:00:00.000Z' }]
+const fixturePartners = [{ id: 7, name: 'Grace', partner_code: 'WF-P-0007', promote_code: 'WFP0007', phone_masked: '139****8001', user_id: 15, status: 1, balance: 88.5, binding_version: 1 }]
 
 function aggregate(user = official) {
   return {
@@ -81,6 +83,14 @@ http.createServer(async (req, res) => {
   }
   if (req.method === 'POST' && url.pathname === '/api/auth/admin-login') return send(res, 200, { code: 0, data: { token: 'fixture-token', admin: { username: 'Grace', role: 'super_admin', admin_role: 'super_admin' } } })
   if (req.method === 'GET' && url.pathname === '/api/admin/dashboard') return send(res, 200, { code: 0, data: { users: 1, vip_users: 1, partners: 1, paid_orders: 1, revenue: 199, pending_member_applications: 0, open_service_tickets: 1 } })
+  if (req.method === 'GET' && url.pathname === '/api/admin/partner-candidates') return send(res, 200, { code: 0, data: { list: partnerCandidates } })
+  if (req.method === 'GET' && url.pathname === '/api/admin/partners') return send(res, 200, { code: 0, data: { list: fixturePartners } })
+  if (req.method === 'POST' && url.pathname === '/api/admin/partner-candidates') {
+    const body = await readBody(req)
+    const candidate = { id: 32, source: 'roster', phone_masked: '137****5678', applicant_user_id: 0, review_status: 'approved', activation_status: 'unbound', review_note: body.note || '', create_time: new Date().toISOString() }
+    partnerCandidates.push(candidate)
+    return send(res, 200, { code: 0, data: candidate })
+  }
   if (req.method === 'GET' && url.pathname === '/api/admin/users') return send(res, 200, { code: 0, data: listPayload(url.searchParams.get('include_test') === '1' ? [official, testUser] : [official]) })
   if (req.method === 'GET' && url.pathname === '/api/admin/orders') return send(res, 200, { code: 0, data: listPayload([order], 50) })
   if (req.method === 'GET' && url.pathname === '/api/admin/matches') return send(res, 200, { code: 0, data: listPayload([match], 50) })
@@ -93,6 +103,26 @@ http.createServer(async (req, res) => {
     return send(res, 200, { code: 0, data: { list } })
   }
   let matched = url.pathname.match(/^\/api\/admin\/users\/(\d+)$/)
+  matched = url.pathname.match(/^\/api\/admin\/partner-candidates\/(\d+)$/)
+  if (req.method === 'GET' && matched) {
+    const candidate = partnerCandidates.find((item) => item.id === Number(matched[1]))
+    return send(res, candidate ? 200 : 404, candidate ? { code: 0, data: { candidate, partner: null, audits: [{ id: 1, action: 'application_submit', reason: 'self_application', create_time: candidate.create_time }] } } : { code: 404, message: 'candidate not found' })
+  }
+  matched = url.pathname.match(/^\/api\/admin\/partner-candidates\/(\d+)\/(approve|reject)$/)
+  if (req.method === 'POST' && matched) {
+    const candidate = partnerCandidates.find((item) => item.id === Number(matched[1]))
+    const body = await readBody(req)
+    candidate.review_status = matched[2] === 'approve' ? 'approved' : 'rejected'
+    candidate.review_note = body.reason
+    return send(res, 200, { code: 0, data: candidate })
+  }
+  matched = url.pathname.match(/^\/api\/admin\/partners\/(\d+)\/(suspend|resume|unbind|revoke)$/)
+  if (req.method === 'POST' && matched) {
+    const partner = fixturePartners.find((item) => item.id === Number(matched[1]))
+    partner.status = matched[2] === 'resume' ? 1 : matched[2] === 'unbind' ? 0 : 2
+    return send(res, 200, { code: 0, data: partner })
+  }
+  matched = url.pathname.match(/^\/api\/admin\/users\/(\d+)$/)
   if (req.method === 'GET' && matched) {
     const user = Number(matched[1]) === 118 ? testUser : Number(matched[1]) === 7 ? official : null
     return send(res, user ? 200 : 404, user ? { code: 0, data: aggregate(user) } : { code: 404, message: 'fixture user not found' })

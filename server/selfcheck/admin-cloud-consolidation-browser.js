@@ -96,7 +96,7 @@ async function main() {
     }
     const clickPage = async (name) => {
       await evaluate(`document.querySelector('.nav-item[data-p="${name}"]').click()`)
-      await waitUntil(`document.getElementById('pageTitle').textContent === ${JSON.stringify({ users: '用户管理', service: '客服工作台', orders: '订单对账', matches: '匹配记录' }[name])} && !document.getElementById('content').textContent.includes('加载中')`, `${name} page`)
+      await waitUntil(`document.getElementById('pageTitle').textContent === ${JSON.stringify({ users: '用户管理', service: '客服工作台', orders: '订单对账', matches: '匹配记录', partners: '合伙人审核与管理' }[name])} && !document.getElementById('content').textContent.includes('加载中')`, `${name} page`)
     }
 
     await waitUntil(`document.readyState === 'complete' && document.getElementById('loginForm')`, 'login page')
@@ -131,6 +131,19 @@ async function main() {
     const matchText = await evaluate(`document.getElementById('content').textContent`)
     assert(matchText.includes('WF-000007 · 女 · 深圳'))
     assert(matchText.includes('WF-000008 · 男 · 潮州'))
+
+    await clickPage('partners')
+    assert((await evaluate(`document.getElementById('content').textContent`)).includes('138****0015'))
+    await evaluate(`setPartnerWorkspace('roster')`)
+    await waitUntil(`document.getElementById('partnerRosterForm')`, 'partner roster form')
+    await evaluate(`document.getElementById('partnerRosterName').value='浏览器名单';document.getElementById('partnerRosterPhone').value='13700005678';document.getElementById('partnerRosterNote').value='老板确认';document.getElementById('partnerRosterForm').requestSubmit()`)
+    await waitUntil(`document.getElementById('content').textContent.includes('137****5678')`, 'roster candidate created')
+    await evaluate(`setPartnerWorkspace('queue')`)
+    await waitUntil(`document.getElementById('content').textContent.includes('138****0015')`, 'partner review queue')
+    await evaluate(`openPartnerAction('candidate',31,'approve')`)
+    assert(await evaluate(`document.getElementById('partnerActionReason').value === ''`))
+    await evaluate(`document.getElementById('partnerActionReason').value='浏览器审核通过';submitPartnerAction('candidate',31,'approve')`)
+    await waitUntil(`document.getElementById('content').textContent.includes('浏览器审核通过')`, 'partner approval reason persisted')
 
     const browserErrors = cdp.events.filter((event) => event.method === 'Runtime.exceptionThrown')
     assert.strictEqual(browserErrors.length, 0, browserErrors.map((event) => JSON.stringify(event.params.exceptionDetails)).join('\n'))

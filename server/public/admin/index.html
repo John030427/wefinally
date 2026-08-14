@@ -150,6 +150,15 @@
     .service-event:last-child { border-bottom: 0; }
     .service-event span:last-child { color: #7e776d; font-family: "IBM Plex Mono", "JetBrains Mono", monospace; }
     .service-empty-pane { min-height: 280px; display: grid; place-items: center; padding: 2rem; color: #817b72; text-align: center; font-size: .82rem; }
+    .partner-workspace { --partner-paper:#fff9f7; --partner-ink:#242126; --partner-green:#2f7d62; margin:-1.25rem; padding:1.25rem; min-height:calc(100vh - 54px); background:var(--partner-paper); color:var(--partner-ink); font-family:"IBM Plex Sans SC","Microsoft YaHei",sans-serif; }
+    .partner-head { display:grid; grid-template-columns:minmax(240px,1fr) auto; gap:1rem; align-items:end; margin-bottom:1rem; }
+    .partner-head h2 { font-size:1.15rem; margin-bottom:.25rem; } .partner-head p,.partner-panel p { color:#766e70; font-size:.75rem; line-height:1.6; }
+    .partner-tabs { display:flex; gap:.4rem; flex-wrap:wrap; } .partner-tab { border:1px solid #dfd4d1; background:#fff; color:#554d50; border-radius:999px; padding:.45rem .8rem; cursor:pointer; font-size:.76rem; } .partner-tab.active { background:var(--partner-ink); border-color:var(--partner-ink); color:#fff; }
+    .partner-grid { display:grid; grid-template-columns:220px minmax(0,1fr); gap:1rem; align-items:start; } .partner-rail { position:sticky; top:0; display:grid; gap:.75rem; }
+    .partner-panel,.partner-table { background:#fff; border:1px solid #e6deda; border-radius:10px; } .partner-panel { padding:.9rem; } .partner-panel h3 { font-size:.82rem; margin-bottom:.6rem; }
+    .partner-panel input,.partner-panel textarea { width:100%; border:1px solid #dfd4d1; border-radius:6px; padding:.5rem .6rem; margin-bottom:.5rem; font-size:.78rem; } .partner-table { overflow:auto; } .partner-table table { min-width:760px; }
+    .partner-code { font-family:"IBM Plex Mono","JetBrains Mono",monospace; font-weight:600; } .partner-state { display:inline-flex; border:1px solid currentColor; border-radius:999px; padding:.12rem .45rem; font-size:.68rem; } .partner-state.ok { color:var(--partner-green); background:#eef7f2; } .partner-state.wait { color:#a36f1c; background:#fff7e7; } .partner-state.stop { color:#b6403a; background:#fff1ef; }
+    @media (max-width:900px) { .partner-head,.partner-grid { grid-template-columns:1fr; } .partner-rail { position:static; } }
     .pagination { display: flex; gap: .35rem; margin-top: .75rem; align-items: center; font-size: .8125rem; }
     @media (max-width: 1180px) { .service-columns { grid-template-columns: 280px minmax(400px, 1fr); } .service-context { grid-column: 1 / -1; border-left: 0; border-top: 1px solid var(--svc-line); display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); } .service-context .service-pane-head { grid-column: 1 / -1; } }
     @media (max-width: 768px) { .layout { flex-direction: column; } .sidebar { width: 100%; } .member-detail-grid { grid-template-columns: 1fr; } .service-workbench { margin: -.75rem; } .service-topbar { grid-template-columns: 1fr; } .service-metrics { justify-content: flex-start; } .service-columns { display: block; } .service-queue, .service-context { max-height: none; border: 0; } .service-conversation { min-height: 620px; border-top: 1px solid var(--svc-line); border-bottom: 1px solid var(--svc-line); } .service-context { display: block; } }
@@ -178,7 +187,7 @@
         <button class="nav-item" data-p="users">用户管理</button>
         <button class="nav-item" data-p="members">会员审核</button>
         <button class="nav-item" data-p="matches">匹配记录</button>
-        <button class="nav-item" data-p="partners">合伙人管理</button>
+        <button class="nav-item" data-p="partners">合伙人审核与管理</button>
         <button class="nav-item" data-p="orders">订单对账</button>
         <button class="nav-item" data-p="withdrawals">提现审核</button>
         <button class="nav-item" data-p="marry">婚姻报备</button>
@@ -210,14 +219,14 @@
   const TK = 'wf_admin_token';
   const CLOUD_TK = 'wf_cloud_admin_token';
   const RK = 'wf_admin_role';
-  const TITLES = { dashboard:'数据看板', service:'客服工作台', users:'用户管理', members:'会员审核', matches:'匹配记录', partners:'合伙人管理', orders:'订单对账', withdrawals:'提现审核', marry:'婚姻报备', cancel:'注销/离异审核', stats:'公示数据配置', knowledge:'AI 知识库', chat:'客服会话', handoff:'奔现工单', privacy:'合规授权日志', whitelist:'单位白名单', export:'数据导出', logs:'系统日志' };
-  const ROLE_PAGES = { customer_service: ['service', 'orders'] };
+  const TITLES = { dashboard:'数据看板', service:'客服工作台', users:'用户管理', members:'会员审核', matches:'匹配记录', partners:'合伙人审核与管理', orders:'订单对账', withdrawals:'提现审核', marry:'婚姻报备', cancel:'注销/离异审核', stats:'公示数据配置', knowledge:'AI 知识库', chat:'客服会话', handoff:'奔现工单', privacy:'合规授权日志', whitelist:'单位白名单', export:'数据导出', logs:'系统日志' };
+  const ROLE_PAGES = { customer_service: ['service', 'orders', 'partners'], auditor: ['partners'] };
   const CLOUD_ONLY_PAGES = ['dashboard', 'service', 'users', 'members', 'matches', 'partners', 'orders', 'knowledge'];
   let page = 'dashboard', dashRange = 'today', cacheUsers = [], cacheOrders = [];
   let serviceTickets = [], serviceCoordinations = [], serviceSelectedTicketId = 0, serviceTicketDetail = null;
   let serviceConversations = [], serviceSelectedConversationId = 0, serviceConversationDetail = null, serviceAuditQuery = '';
   let serviceFilter = 'active', serviceQuery = '';
-  let usersIncludeTest = false, serviceIncludeTest = false;
+  let usersIncludeTest = false, serviceIncludeTest = false, partnerWorkspace = 'queue';
 
   function authStorage() { return CLOUD_ONLY ? sessionStorage : localStorage; }
   function token() { return authStorage().getItem(TK); }
@@ -834,27 +843,31 @@
   };
 
   async function pgPartners() {
-    const st = document.getElementById('pSt')?.value ?? '';
-    const data = await memberApi('/admin/partners' + (st !== '' ? '?status=' + st : ''));
-    let rows = data.list.length ? data.list.map(p =>
-      '<tr><td>' + p.id + '</td><td>' + esc(p.username || p.phone || '-') + '</td><td>' + esc(p.real_name || p.name || '-') + '</td><td>' + esc(p.promote_code) + '</td><td>' + statusBadge(p.status === 0 ? 0 : p.status === 1 ? 1 : 2) + '</td><td>¥' + Number(p.balance || 0).toFixed(2) + '</td><td>' + esc(p.created_at || p.create_time || '-') + '</td><td>' +
-      (p.status === 0 ? '<button class="btn btn-sm btn-success" onclick="approveP(' + p.id + ',\'approve\')">激活</button> <button class="btn btn-sm btn-danger" onclick="approveP(' + p.id + ',\'reject\')">拒绝</button>' : '') +
-      '</td></tr>'
-    ).join('') : '<tr><td colspan="8" class="empty">暂无</td></tr>';
-    document.getElementById('content').innerHTML =
-      '<div class="toolbar"><select id="pSt" onchange="pgPartners()"><option value="">全部</option><option value="0">待授权</option><option value="1">已激活</option><option value="2">已禁用</option></select></div>' +
-      '<div class="card"><div class="card-bd"><table><thead><tr><th>ID</th><th>账号</th><th>姓名</th><th>推广码</th><th>状态</th><th>余额</th><th>注册</th><th>操作</th></tr></thead><tbody>' + rows + '</tbody></table></div></div>';
-    if (st !== '') document.getElementById('pSt').value = st;
+    const results = await Promise.all([memberApi('/admin/partner-candidates'), memberApi('/admin/partners')]);
+    const candidates = results[0].list || [], partners = results[1].list || [], canWrite = adminRole() === 'super_admin';
+    const tabs = [['queue','审核队列'],['roster','老板名单'],['active','已激活合伙人']].map(t => '<button class="partner-tab ' + (partnerWorkspace === t[0] ? 'active' : '') + '" onclick="setPartnerWorkspace(\'' + t[0] + '\')">' + t[1] + '</button>').join('');
+    let rail = '<div class="partner-panel"><h3>状态说明</h3><p>名单资格不等于登录凭证。首次进入仍需微信手机号验证，绑定后免密码恢复会话。</p></div>', body = '';
+    if (partnerWorkspace === 'roster' && canWrite) rail = '<form id="partnerRosterForm" class="partner-panel" onsubmit="submitPartnerRoster(event)"><h3>录入老板名单</h3><input id="partnerRosterName" required placeholder="姓名"/><input id="partnerRosterPhone" required inputmode="tel" placeholder="手机号"/><textarea id="partnerRosterNote" placeholder="认可原因 / 备注"></textarea><button class="btn btn-primary btn-block" type="submit">加入名单</button></form><div class="partner-panel"><h3>批量导入</h3><p>每行：姓名,手机号,备注（最多 200 行）</p><textarea id="partnerImportRows" rows="7" placeholder="Grace,13800000000,老板确认"></textarea><button class="btn btn-outline btn-block" onclick="importPartnerRoster()">导入名单</button></div>';
+    if (partnerWorkspace === 'active') {
+      const rows = partners.length ? partners.map(p => '<tr><td><span class="partner-code">' + esc(p.partner_code || '-') + '</span></td><td>' + esc(p.name || '-') + '</td><td>' + esc(p.phone_masked || '-') + '</td><td><span class="partner-code">' + esc(p.promote_code || '-') + '</span></td><td>' + esc(p.user_id || '-') + '</td><td>' + partnerStatus(p.status) + '</td><td>¥' + Number(p.balance || 0).toFixed(2) + '</td><td>' + (canWrite ? partnerButtons(p) : '只读') + '</td></tr>').join('') : '<tr><td colspan="8" class="empty">暂无合伙人</td></tr>';
+      body = '<div class="partner-table"><table><thead><tr><th>合伙人编号</th><th>姓名</th><th>手机号</th><th>邀请码</th><th>用户ID</th><th>状态</th><th>余额</th><th>操作</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+    } else {
+      const list = candidates.filter(c => partnerWorkspace === 'queue' ? c.source === 'application' : c.source === 'roster');
+      const rows = list.length ? list.map(c => '<tr><td>' + c.id + '</td><td>' + esc(c.phone_masked || '-') + '</td><td>' + candidateStatus(c) + '</td><td>' + esc(c.applicant_user_id || '-') + '</td><td>' + esc(c.review_note || '-') + '</td><td>' + esc(c.create_time || '-') + '</td><td><button class="btn btn-sm btn-outline" onclick="openPartnerCandidate(' + c.id + ')">详情</button> ' + (canWrite && c.review_status === 'pending' ? '<button class="btn btn-sm btn-success" onclick="openPartnerAction(\'candidate\',' + c.id + ',\'approve\')">通过</button> <button class="btn btn-sm btn-danger" onclick="openPartnerAction(\'candidate\',' + c.id + ',\'reject\')">驳回</button>' : '') + '</td></tr>').join('') : '<tr><td colspan="7" class="empty">暂无记录</td></tr>';
+      body = '<div class="partner-table"><table><thead><tr><th>ID</th><th>手机号</th><th>状态</th><th>申请用户</th><th>审核说明</th><th>创建时间</th><th>操作</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+    }
+    document.getElementById('content').innerHTML = '<section class="partner-workspace"><div class="partner-head"><div><h2>合伙人审核与管理</h2><p>名单、申请、微信绑定与收入身份统一管理；浏览器永不接收完整手机号。</p></div><div class="partner-tabs">' + tabs + '</div></div><div class="partner-grid"><aside class="partner-rail">' + rail + '</aside><main>' + body + '</main></div></section>';
   }
   window.pgPartners = pgPartners;
-  window.approveP = async function (id, action) {
-    try {
-      if (CLOUD_MEMBER_API) await memberApi('/admin/partners/' + id, { method: 'PUT', body: { status: action === 'reject' ? 2 : 1 } });
-      else await api('/admin/partners/' + id + '/approve', { method: 'POST', body: { action } });
-      toast(action === 'reject' ? '已拒绝' : '已激活', true);
-      pgPartners();
-    } catch (e) { toast(e.message, false); }
-  };
+  window.setPartnerWorkspace = value => { partnerWorkspace = value; pgPartners(); };
+  function partnerStatus(status) { return Number(status) === 1 ? '<span class="partner-state ok">有效</span>' : Number(status) === 2 ? '<span class="partner-state stop">已停用</span>' : '<span class="partner-state wait">待验证</span>'; }
+  function candidateStatus(c) { return '<span class="partner-state ' + (c.review_status === 'approved' ? 'ok' : c.review_status === 'pending' ? 'wait' : 'stop') + '">' + esc(c.review_status) + ' · ' + esc(c.activation_status) + '</span>'; }
+  function partnerButtons(p) { return Number(p.status) === 1 ? '<button class="btn btn-sm btn-outline" onclick="openPartnerAction(\'partner\',' + p.id + ',\'suspend\')">暂停</button> <button class="btn btn-sm btn-outline" onclick="openPartnerAction(\'partner\',' + p.id + ',\'unbind\')">解绑</button> <button class="btn btn-sm btn-danger" onclick="openPartnerAction(\'partner\',' + p.id + ',\'revoke\')">撤销</button>' : '<button class="btn btn-sm btn-success" onclick="openPartnerAction(\'partner\',' + p.id + ',\'resume\')">恢复</button>'; }
+  window.submitPartnerRoster = async event => { event.preventDefault(); try { await memberApi('/admin/partner-candidates',{method:'POST',body:{name:document.getElementById('partnerRosterName').value,phone:document.getElementById('partnerRosterPhone').value,note:document.getElementById('partnerRosterNote').value,request_id:'roster-'+Date.now()}}); toast('已加入老板名单',true); pgPartners(); } catch(e){toast(e.message,false);} };
+  window.importPartnerRoster = async function () { const rows=document.getElementById('partnerImportRows').value.split(/\r?\n/).filter(Boolean).map(line=>{const p=line.split(',');return{name:(p[0]||'').trim(),phone:(p[1]||'').trim(),note:p.slice(2).join(',').trim()};}); try{const result=await memberApi('/admin/partner-candidates/import',{method:'POST',body:{rows,request_id:'import-'+Date.now()}});toast('导入成功 '+result.created+' 条，失败 '+result.failed+' 条',result.failed===0);pgPartners();}catch(e){toast(e.message,false);} };
+  window.openPartnerCandidate = async function(id){modal('合伙人资格详情','<div class="loading">加载中...</div>');try{const d=await memberApi('/admin/partner-candidates/'+id),c=d.candidate||{},audits=d.audits||[];document.querySelector('#modalRoot .modal-bd').innerHTML=memberDetailSection('资格',[memberDetailItem('资格ID',c.id),memberDetailItem('来源',c.source),memberDetailItem('脱敏手机号',c.phone_masked),memberDetailItem('审核状态',c.review_status),memberDetailItem('激活状态',c.activation_status),memberDetailItem('合伙人编号',d.partner&&d.partner.partner_code||'-')])+contextList('审计记录',audits,a=>memberDetailItem(a.action,(a.reason||'-')+' · '+(a.create_time||'-'),true));}catch(e){document.querySelector('#modalRoot .modal-bd').innerHTML='<div class="error-box">'+esc(e.message)+'</div>';}};
+  window.openPartnerAction = function(kind,id,action){modal('确认合伙人操作','<p style="margin-bottom:.75rem">操作：<strong>'+esc(action)+'</strong> · 对象 #'+Number(id)+'</p><div class="form-group"><label for="partnerActionReason">操作原因</label><textarea id="partnerActionReason" rows="4" placeholder="必填，写入审计记录"></textarea></div>','<button class="btn btn-outline" onclick="closeM()">取消</button><button class="btn btn-primary" onclick="submitPartnerAction(\''+kind+'\','+Number(id)+',\''+action+'\')">确认</button>');};
+  window.submitPartnerAction = async function(kind,id,action){const reason=document.getElementById('partnerActionReason').value.trim();if(!reason)return toast('请填写操作原因',false);const path=kind==='candidate'?'/admin/partner-candidates/'+id+'/'+action:'/admin/partners/'+id+'/'+action;try{await memberApi(path,{method:'POST',body:{reason,request_id:'partner-'+action+'-'+id+'-'+Date.now()}});closeM();toast('操作已完成',true);pgPartners();}catch(e){toast(e.message,false);}};
 
   async function pgService() {
     if (CLOUD_MEMBER_API) return pgCloudAgentService();
