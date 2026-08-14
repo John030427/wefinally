@@ -160,7 +160,7 @@ async function main() {
   assert.strictEqual(publicRun.tables.match_claim.length, 0)
   assert.strictEqual(publicRun.semanticCalls.length, 1)
   const publicLog = publicRun.tables.user_match_log[0]
-  assert.strictEqual(publicLog.score_version, 'algo_evidence_v2')
+  assert.strictEqual(publicLog.score_version, 'algo_evidence_v3')
   const scoreDetail = JSON.parse(publicLog.score_detail_json)
   const counterpartScoreDetail = JSON.parse(publicLog.counterpart_score_detail_json)
   assert.strictEqual(scoreDetail.ai_rerank.applied, true)

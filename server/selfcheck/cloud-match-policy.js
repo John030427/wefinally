@@ -123,7 +123,7 @@ assert.strictEqual(oneSided[0].quality.pass, false)
 assert(oneSided[0].quality.reasons.includes('side_score'))
 
 const detail = scoreDetailFor(ranked[0], 'a', 1)
-assert.strictEqual(detail.version, 'algo_evidence_v2')
+assert.strictEqual(detail.version, 'algo_evidence_v3')
 assert.strictEqual(detail.quality_gate.pass, true)
 assert.notStrictEqual(detail.total, 88)
 assert(detail.side.dimensions.view.compatibility_score > 0)

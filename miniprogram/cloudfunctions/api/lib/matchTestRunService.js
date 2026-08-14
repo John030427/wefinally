@@ -151,7 +151,7 @@ function createMatchTestRunHandlers(deps) {
           total_score: best.scoreA && best.scoreA.total,
           score_detail_json: JSON.stringify(scoreDetailA),
           counterpart_score_detail_json: JSON.stringify(scoreDetailB),
-          score_version: 'algo_evidence_v2',
+          score_version: 'algo_evidence_v3',
           match_date: deps.now(),
           match_type: 'AI测试匹配',
           internal_test_run_id: claimedRun.id,

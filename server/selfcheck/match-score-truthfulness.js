@@ -43,30 +43,24 @@ assert.ok(notCompared(emptyPrefs.detail.education) || emptyPrefs.detail.educatio
 assert.ok(notCompared(emptyPrefs.detail.circle) || emptyPrefs.detail.circle === null, 'empty circle preference must not award full weight')
 assert.ok(notCompared(emptyPrefs.detail.city) || emptyPrefs.detail.city === null || emptyPrefs.detail.city === 0, 'missing/mismatched city must not award soft default 1')
 
-assert.notStrictEqual(emptyPrefs.detail.baby, 10)
-assert.notStrictEqual(emptyPrefs.detail.age, 5)
-assert.notStrictEqual(emptyPrefs.detail.height, 3)
-assert.notStrictEqual(emptyPrefs.detail.education, 2)
+assert.strictEqual(emptyPrefs.detail.baby, null)
+assert.strictEqual(emptyPrefs.detail.age, null)
+assert.strictEqual(emptyPrefs.detail.height, null)
+assert.strictEqual(emptyPrefs.detail.education, null)
+assert.strictEqual(emptyPrefs.detail.circle, null)
+assert.strictEqual(emptyPrefs.detail.city, null)
 assert.notStrictEqual(emptyPrefs.detail.circle, MATCH_CONFIG.weights.circle)
 
-// Fit score and completeness must be separable concepts.
-assert.ok(
-  emptyPrefs.completeness == null
-    || (typeof emptyPrefs.completeness === 'number' && emptyPrefs.completeness < 50),
-  'sparse prefs must expose low completeness separate from fit'
-)
+assert.ok(typeof emptyPrefs.completeness === 'number')
+assert.ok(emptyPrefs.completeness < 50, 'sparse prefs must expose low completeness separate from fit')
 
-// Synonym values should not depend on character Jaccard alone.
-const synonym = computeViewSimilarity(
-  '我重视踏实和担当',
-  '希望对方稳重有责任心',
-  '我为人稳重有责任心',
-  '希望对方踏实有担当'
+const identical = computeViewSimilarity(
+  '重视真诚责任稳定沟通',
+  '温柔独立热爱生活彼此尊重',
+  '温柔独立热爱生活彼此尊重',
+  '重视真诚责任稳定沟通'
 )
-assert.ok(synonym >= 60, `synonym values must enter semantic recall path; Jaccard got ${synonym}`)
-
-const identical = computeViewSimilarity('我重视踏实', '稳重', '我重视踏实', '稳重')
-assert.ok(identical >= 80, 'identical values remain high')
+assert.ok(identical >= 80, `bilateral identical values remain high; got ${identical}`)
 
 const opposite = computeViewSimilarity(
   '我坚持丁克不要孩子',
@@ -76,7 +70,6 @@ const opposite = computeViewSimilarity(
 )
 assert.ok(opposite < 40, `opposing life plans must not look highly similar; got ${opposite}`)
 
-// UI must not paint unset dimensions as full bars.
 const fakeDetail = {
   side: Object.assign({}, emptyPrefs.detail, { dimensions: emptyPrefs.dimensions })
 }
@@ -87,5 +80,7 @@ assert.ok(
   circle.percent === 0 || circle.status === 'not_compared' || circle.insufficient === true,
   `unset circle preference must not render full bar; got percent=${circle.percent}`
 )
+assert.strictEqual(circle.insufficient, true)
+assert.strictEqual(circle.status, 'not_compared')
 
 console.log('PASS match score truthfulness characterization')

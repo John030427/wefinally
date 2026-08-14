@@ -20,7 +20,7 @@ function batchRecord(input, clock, extra = {}) {
     match_type: clock.matchType,
     request_id: String(input.requestId || '').slice(0, 120),
     trigger_source: String(input.triggerSource || 'timer'),
-    algorithm_version: 'algo_evidence_v2',
+    algorithm_version: 'algo_evidence_v3',
     retry_count: 0,
     users_considered: 0,
     candidates_evaluated: 0,

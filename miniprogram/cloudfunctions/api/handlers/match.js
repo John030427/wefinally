@@ -143,7 +143,7 @@ function hasScoreDetailSide(scoreDetail) {
 function buildDemoScoreDetail(viewer, partner, options) {
   const totalScore = Number((options && options.totalScore) || 88)
   return {
-    version: 'algo_evidence_v2',
+    version: 'algo_evidence_v3',
     algorithm_rank: options && options.algorithmRank ? options.algorithmRank : 1,
     ai_rank: null,
     ai_weight: 0,
@@ -549,7 +549,7 @@ async function start(data, wxContext) {
         view_similarity: best.viewSimilarity,
         total_score: best.scoreA.total,
         score_detail_json: JSON.stringify(detailJsonA),
-        score_version: 'algo_evidence_v2',
+        score_version: 'algo_evidence_v3',
         ai_report_text: '',
         ai_report_status: 0,
         ai_report_error: '',
@@ -566,7 +566,7 @@ async function start(data, wxContext) {
         view_similarity: best.viewSimilarity,
         total_score: best.scoreB.total,
         score_detail_json: JSON.stringify(detailJsonB),
-        score_version: 'algo_evidence_v2',
+        score_version: 'algo_evidence_v3',
         ai_report_text: '',
         ai_report_status: 0,
         ai_report_error: '',
@@ -619,7 +619,7 @@ async function start(data, wxContext) {
       view_similarity: best.viewSimilarity,
       mutual_score: best.mutualScore,
       pair_key: delivery.claim.pair_key,
-      algorithm_version: 'algo_evidence_v2'
+      algorithm_version: 'algo_evidence_v3'
     }
   }
   return {

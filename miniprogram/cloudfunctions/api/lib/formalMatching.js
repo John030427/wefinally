@@ -68,7 +68,7 @@ async function executeFormalMatching(ctx = {}) {
         view_similarity: best.viewSimilarity,
         total_score: best.scoreA.total,
         score_detail_json: JSON.stringify(semanticDetail(best, 'a', reranked.ranked.indexOf(best) + 1)),
-        score_version: 'algo_evidence_v2',
+        score_version: 'algo_evidence_v3',
         match_date: clock.businessDate,
         match_type: clock.matchType || '正式匹配',
         pair_key: pairKey
@@ -79,7 +79,7 @@ async function executeFormalMatching(ctx = {}) {
         view_similarity: best.viewSimilarity,
         total_score: best.scoreB.total,
         score_detail_json: JSON.stringify(semanticDetail(best, 'b', reranked.ranked.indexOf(best) + 1)),
-        score_version: 'algo_evidence_v2',
+        score_version: 'algo_evidence_v3',
         match_date: clock.businessDate,
         match_type: clock.matchType || '正式匹配',
         pair_key: pairKey
