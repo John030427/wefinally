@@ -38,6 +38,7 @@ async function main() {
   const service = createPartnerAdminService(deps, { phoneSecret: 'partner-admin-phone-lookup-secret-for-selfcheck' })
   const superAdmin = { role: 'admin', admin_role: 'super_admin', id: 1 }
   const customerService = { role: 'admin', admin_role: 'customer_service', id: 2 }
+  const auditor = { role: 'admin', admin_role: 'auditor', id: 3 }
 
   const created = await service.createRosterCandidate(superAdmin, {
     phone: '+86 138 0000 1234',
@@ -53,6 +54,14 @@ async function main() {
   assert.ok(deps.tables.partner_candidate[0].phone_digest)
   assert.strictEqual(deps.tables.partner_audit_log[0].action, 'roster_create')
   assert.strictEqual(deps.tables.partner_audit_log[0].phone_digest, undefined)
+  const createdAgain = await service.createRosterCandidate(superAdmin, {
+    phone: '+86 138 0000 1234',
+    name: '名单合伙人',
+    note: '老板确认',
+    request_id: 'roster-create-1'
+  })
+  assert.strictEqual(createdAgain.id, created.id)
+  assert.strictEqual(deps.tables.partner_audit_log.length, 1)
 
   await assert.rejects(() => service.createRosterCandidate(customerService, { phone: '13900005678', name: '无权' }), /无权/)
   await assert.rejects(() => service.createRosterCandidate(superAdmin, { phone: '13800001234', name: '重复' }), /手机号已在合伙人名单/)
@@ -61,6 +70,12 @@ async function main() {
   assert.strictEqual(list.length, 1)
   assert.strictEqual(list[0].phone_digest, undefined)
   assert.strictEqual(list[0].phone, undefined)
+  assert.strictEqual((await service.listCandidates(auditor, {})).length, 1)
+
+  const detail = await service.candidateDetail(auditor, created.id)
+  assert.strictEqual(detail.candidate.id, created.id)
+  assert.strictEqual(detail.audits.length, 1)
+  assert.strictEqual(detail.audits[0].phone_digest, undefined)
 
   const pending = await deps.addWithId('partner_candidate', {
     source: 'application',
@@ -77,6 +92,12 @@ async function main() {
   })
   assert.strictEqual(approved.review_status, 'approved')
   assert.strictEqual(deps.tables.partner_audit_log.at(-1).action, 'approve')
+  const approvedAgain = await service.reviewCandidate(superAdmin, pending.id, {
+    action: 'approve',
+    reason: '资料符合要求',
+    request_id: 'review-approve-1'
+  })
+  assert.strictEqual(approvedAgain.id, approved.id)
 
   const partnerList = await service.listPartners(customerService, {})
   assert.strictEqual(partnerList[0].phone, undefined)
@@ -93,6 +114,8 @@ async function main() {
   assert.strictEqual(unbound.binding_version, 2)
   assert.strictEqual(unbound.phone, undefined)
   assert.strictEqual(unbound.password, undefined)
+  const unboundAgain = await service.changePartner(superAdmin, 5, { action: 'unbind', reason: '更换微信', request_id: 'partner-unbind-1' })
+  assert.strictEqual(unboundAgain.binding_version, 2)
 
   await assert.rejects(() => service.changePartner(superAdmin, 5, { action: 'resume', reason: '', request_id: 'missing-reason' }), /原因/)
 

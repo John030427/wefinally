@@ -12,7 +12,7 @@
   - 实现重复手机号、重复用户、并发绑定和 binding_version 规则
   - _Requirements: R2, R3, R4, R6_
 
-- [ ] 3. 实现管理后台审核与名单 API
+- [x] 3. 实现管理后台审核与名单 API
   - 测试驱动实现名单单条录入、批量导入、申请查询和详情
   - 实现批准、驳回、暂停、恢复、解绑和撤销，强制原因、幂等与审计
   - 校验 super_admin/customer_service/auditor 权限和手机号脱敏

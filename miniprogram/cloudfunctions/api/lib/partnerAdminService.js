@@ -33,6 +33,29 @@ function requireReason(value) {
   return result
 }
 
+function requireRequestId(value) {
+  const result = text(value, 128)
+  if (!result) throw new Error('请求编号不能为空')
+  return result
+}
+
+function auditDto(row = {}) {
+  return {
+    id: number(row.id),
+    actor_type: String(row.actor_type || ''),
+    actor_admin_id: number(row.actor_admin_id),
+    actor_admin_role: String(row.actor_admin_role || ''),
+    candidate_id: number(row.candidate_id),
+    partner_id: number(row.partner_id),
+    action: String(row.action || ''),
+    from_status: String(row.from_status || ''),
+    to_status: String(row.to_status || ''),
+    request_id: String(row.request_id || ''),
+    reason: String(row.reason || ''),
+    create_time: row.create_time || null
+  }
+}
+
 function partnerAdminDto(row = {}) {
   return {
     id: number(row.id),
@@ -72,8 +95,21 @@ function createPartnerAdminService(deps, options = {}) {
     }, 'partner_audit')
   }
 
+  async function priorWrite(actor, action, requestId) {
+    const prior = await deps.first('partner_audit_log', { action, request_id: requestId })
+    if (prior && number(prior.actor_admin_id) !== number(actor.id)) throw new Error('请求编号冲突')
+    return prior
+  }
+
   async function createRosterCandidate(actor, input = {}) {
     requireSuperAdmin(actor)
+    const rosterRequestId = text(input.request_id, 128)
+    const prior = rosterRequestId ? await priorWrite(actor, 'roster_create', rosterRequestId) : null
+    if (prior) {
+      const priorCandidate = await deps.byId('partner_candidate', prior.candidate_id)
+      if (!priorCandidate) throw new Error('名单幂等记录无效')
+      return candidateDto(priorCandidate)
+    }
     const normalizedPhone = normalizePhone(input.phone)
     const digest = phoneDigest(normalizedPhone, phoneSecret)
     const existing = await deps.first('partner_candidate', { phone_digest: digest })
@@ -100,7 +136,7 @@ function createPartnerAdminService(deps, options = {}) {
       action: 'roster_create',
       from_status: '',
       to_status: REVIEW_STATUS.APPROVED,
-      request_id: input.request_id,
+      request_id: rosterRequestId,
       reason: input.note
     })
     return candidateDto(candidate)
@@ -139,11 +175,32 @@ function createPartnerAdminService(deps, options = {}) {
       .map(candidateDto)
   }
 
+  async function candidateDetail(actor, candidateId) {
+    requireAdmin(actor)
+    const candidate = await deps.byId('partner_candidate', candidateId)
+    if (!candidate) throw new Error('合伙人申请不存在')
+    const partner = number(candidate.partner_id) ? await deps.byId('partner', candidate.partner_id) : null
+    const audits = await deps.list('partner_audit_log', { candidate_id: number(candidate.id) }, 200)
+    return {
+      candidate: candidateDto(candidate),
+      partner: partner ? partnerAdminDto(partner) : null,
+      audits: audits.sort((left, right) => number(right.id) - number(left.id)).map(auditDto)
+    }
+  }
+
   async function reviewCandidate(actor, candidateId, input = {}) {
     requireSuperAdmin(actor)
     const reason = requireReason(input.reason)
     const action = String(input.action || '')
     if (!['approve', 'reject'].includes(action)) throw new Error('审核操作无效')
+    const reviewRequestId = requireRequestId(input.request_id)
+    const prior = await priorWrite(actor, action, reviewRequestId)
+    if (prior) {
+      if (number(prior.candidate_id) !== number(candidateId)) throw new Error('请求编号冲突')
+      const priorCandidate = await deps.byId('partner_candidate', candidateId)
+      if (!priorCandidate) throw new Error('审核幂等记录无效')
+      return candidateDto(priorCandidate)
+    }
     const candidate = await deps.byId('partner_candidate', candidateId)
     if (!candidate) throw new Error('合伙人申请不存在')
     const fromStatus = String(candidate.review_status || '')
@@ -163,7 +220,7 @@ function createPartnerAdminService(deps, options = {}) {
       action,
       from_status: fromStatus,
       to_status: toStatus,
-      request_id: input.request_id,
+      request_id: reviewRequestId,
       reason
     })
     return candidateDto(updated)
@@ -183,6 +240,14 @@ function createPartnerAdminService(deps, options = {}) {
     const reason = requireReason(input.reason)
     const action = String(input.action || '')
     if (!['suspend', 'resume', 'unbind', 'revoke'].includes(action)) throw new Error('合伙人操作无效')
+    const changeRequestId = requireRequestId(input.request_id)
+    const prior = await priorWrite(actor, action, changeRequestId)
+    if (prior) {
+      if (number(prior.partner_id) !== number(partnerId)) throw new Error('请求编号冲突')
+      const priorPartner = await deps.byId('partner', partnerId)
+      if (!priorPartner) throw new Error('状态操作幂等记录无效')
+      return partnerAdminDto(priorPartner)
+    }
     const partner = await deps.byId('partner', partnerId)
     if (!partner) throw new Error('合伙人不存在')
     const fromStatus = String(number(partner.status))
@@ -212,7 +277,7 @@ function createPartnerAdminService(deps, options = {}) {
       action,
       from_status: fromStatus,
       to_status: String(number(updated.status)),
-      request_id: input.request_id,
+      request_id: changeRequestId,
       reason
     })
     return partnerAdminDto(updated)
@@ -222,6 +287,7 @@ function createPartnerAdminService(deps, options = {}) {
     createRosterCandidate,
     importRoster,
     listCandidates,
+    candidateDetail,
     reviewCandidate,
     listPartners,
     changePartner

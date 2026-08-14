@@ -438,6 +438,10 @@ async function handleBackofficeHttp(event = {}) {
     if (method === 'POST' && /\/api\/admin\/partner-candidates$/.test(path)) {
       return ok(await partnerAdminService().createRosterCandidate(actor, body), '合伙人名单已添加')
     }
+    matched = path.match(/\/api\/admin\/partner-candidates\/(\d+)$/)
+    if (method === 'GET' && matched) {
+      return ok(await partnerAdminService().candidateDetail(actor, Number(matched[1])))
+    }
     matched = path.match(/\/api\/admin\/partner-candidates\/(\d+)\/(approve|reject)$/)
     if (method === 'POST' && matched) {
       return ok(await partnerAdminService().reviewCandidate(actor, Number(matched[1]), {
