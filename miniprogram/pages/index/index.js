@@ -254,7 +254,8 @@ Page({
     this.setData({ testRunStatus: 'running', testRunStatusText: '正在执行测试匹配', testRunBusy: true })
     try {
       const run = await post(`${API_PATHS.MATCH_TEST_RUNS}/${id}/execute`, {}, { showError: false })
-      this.applyTestRun(run, { testRunBusy: false, countdownLeft: 0 })
+      this.applyTestRun(run, { testRunBusy: run.status === 'queued', countdownLeft: 0 })
+      if (run.status === 'queued') this.resumeCountdown(run)
     } catch (err) {
       this.setData({
         testRunBusy: false,

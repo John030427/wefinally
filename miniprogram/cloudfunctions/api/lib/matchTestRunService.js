@@ -37,10 +37,8 @@ function createMatchTestRunHandlers(deps) {
     const requestId = String(data.request_id || '').trim()
     if (requestId.length < 8) throw new Error('请求编号无效')
     const batchKey = `test:${user.id}:${requestId}`
-    const existing = await deps.first('match_batch_run', { batch_key: batchKey })
-    if (existing) return publicRun(existing)
     const executeAfter = new Date(deps.now().getTime() + 10000)
-    const row = await deps.addWithId('match_batch_run', {
+    const acquired = await deps.acquireRun({
       batch_key: batchKey,
       mode: 'internal_test',
       status: 'queued',
@@ -49,8 +47,8 @@ function createMatchTestRunHandlers(deps) {
       requester_user_id: Number(user.id),
       execute_after: executeAfter,
       matched_count: 0
-    }, 'match_batch')
-    return publicRun(row)
+    })
+    return publicRun(acquired.batch)
   }
 
   async function loadOwned(id, user) {
@@ -68,25 +66,24 @@ function createMatchTestRunHandlers(deps) {
     if (['completed_matched', 'completed_no_match', 'blocked'].includes(run.status)) {
       return publicRun(run)
     }
-    await deps.updateByDoc('match_batch_run', run, { status: 'running' })
+    if (new Date(run.execute_after).getTime() > deps.now().getTime()) return publicRun(run)
+    const claim = await deps.claimRun(run, deps.now())
+    if (!claim.acquired) return publicRun(claim.batch || run)
+    const claimedRun = claim.batch
     try {
       if (!canUseMatching({ member_status: memberStatus(user), vipActive: isVipActive(user) })) {
-        return publicRun(await deps.updateByDoc('match_batch_run', run, {
-          status: 'blocked',
-          reason_code: 'not_eligible',
-          message: '资料或会员资格不满足测试匹配条件'
-        }))
+        return publicRun(await deps.completeRun(claimedRun, { patch: {
+          status: 'blocked', reason_code: 'not_eligible', message: '资料或会员资格不满足测试匹配条件'
+        } }))
       }
       const candidates = (await deps.list('user', { status: 1 }, 200) || [])
         .filter((item) => Number(item.id) !== Number(user.id))
         .filter((item) => isSyntheticFixture(item) && canUseFixtureForMatch(user, item, deps.now()))
         .filter((item) => memberStatus(item) === MEMBER_STATUS.APPROVED)
       if (!candidates.length) {
-        return publicRun(await deps.updateByDoc('match_batch_run', run, {
-          status: 'blocked',
-          reason_code: 'no_owned_fixture',
-          message: '没有归属当前账号且未过期的合成测试画像'
-        }))
+        return publicRun(await deps.completeRun(claimedRun, { patch: {
+          status: 'blocked', reason_code: 'no_owned_fixture', message: '没有归属当前账号且未过期的合成测试画像'
+        } }))
       }
       const settings = await deps.list('user_match_setting', {}, 200)
       const settingsByUserId = {}
@@ -94,37 +91,28 @@ function createMatchTestRunHandlers(deps) {
       const ranked = rankCandidates(user, candidates, settingsByUserId)
       const best = ranked.find((item) => item.quality && item.quality.pass)
       if (!best) {
-        return publicRun(await deps.updateByDoc('match_batch_run', run, {
-          status: 'completed_no_match',
-          reason_code: 'completed_no_match',
-          matched_count: 0,
-          message: '本轮无匹配结果'
-        }))
+        return publicRun(await deps.completeRun(claimedRun, { patch: {
+          status: 'completed_no_match', reason_code: 'completed_no_match', matched_count: 0, message: '本轮无匹配结果'
+        } }))
       }
       const partner = best.candidate
-      const log = await deps.addWithId('user_match_log', {
-        user_id: user.id,
-        match_user_id: partner.id,
-        view_similarity: best.viewSimilarity,
-        total_score: best.scoreA && best.scoreA.total,
-        match_date: deps.now(),
-        match_type: '内部测试',
-        internal_test_run_id: run.id,
-        pair_key: `test:${run.id}`
-      }, 'match_log')
-      return publicRun(await deps.updateByDoc('match_batch_run', run, {
-        status: 'completed_matched',
-        reason_code: 'matched',
-        matched_count: 1,
-        match_id: log.id,
-        message: '测试匹配成功'
+      return publicRun(await deps.completeRun(claimedRun, {
+        log: {
+          user_id: user.id,
+          match_user_id: partner.id,
+          view_similarity: best.viewSimilarity,
+          total_score: best.scoreA && best.scoreA.total,
+          match_date: deps.now(),
+          match_type: '内部测试',
+          internal_test_run_id: claimedRun.id,
+          pair_key: `test:${claimedRun.id}`
+        },
+        patch: { status: 'completed_matched', reason_code: 'matched', matched_count: 1, message: '测试匹配成功' }
       }))
     } catch (error) {
-      return publicRun(await deps.updateByDoc('match_batch_run', run, {
-        status: 'failed',
-        reason_code: 'failed',
-        message: '测试运行失败，可安全重试'
-      }))
+      return publicRun(await deps.completeRun(claimedRun, { patch: {
+        status: 'failed', reason_code: 'failed', message: '测试运行失败，可安全重试'
+      } }))
     }
   }
 

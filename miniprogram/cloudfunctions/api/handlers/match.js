@@ -626,8 +626,9 @@ module.exports = {
     first,
     list,
     byId,
-    addWithId,
-    updateByDoc,
+    acquireRun: require('../lib/db').acquireMatchTestRun,
+    claimRun: require('../lib/db').claimMatchTestRun,
+    completeRun: require('../lib/db').completeMatchTestRun,
     now
   })
 }

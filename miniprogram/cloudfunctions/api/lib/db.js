@@ -1,4 +1,5 @@
 const cloud = require('wx-server-sdk')
+const crypto = require('crypto')
 const collections = require('./collections')
 const { withCollectionBootstrap } = require('./collectionBootstrapPolicy')
 const { OFFICIAL_SUPPORT_CODE, isTestUser, testSupportCode } = require('../agent/userIdentity')
@@ -126,6 +127,80 @@ async function claimIfStatus(name, doc, expectedStatus, data) {
   }))
   if (!update.stats || !update.stats.updated) return null
   return Object.assign({}, doc, data, { update_time: now() })
+}
+
+function matchTestRunDocumentId(userId, requestId) {
+  const digest = crypto.createHash('sha256').update(`${userId}:${requestId}`).digest('hex').slice(0, 32)
+  return `match_batch_test_${digest}`
+}
+
+async function acquireMatchTestRun(data) {
+  const userId = Number(data && data.requester_user_id)
+  const requestId = String(data && data.request_id || '')
+  if (!Number.isSafeInteger(userId) || userId <= 0 || requestId.length < 8) throw new Error('测试匹配批次编号无效')
+  const documentId = matchTestRunDocumentId(userId, requestId)
+  return withCollection('match_batch_run', () => db.runTransaction(async (rawTransaction) => {
+    const adapter = transactionAdapter(rawTransaction)
+    const current = await adapter.byDocId('match_batch_run', documentId)
+    if (current) return { created: false, batch: current }
+    const id = await adapter.nextCounter('match_batch_run')
+    const timestamp = now()
+    const batch = Object.assign({}, data, {
+      _id: documentId,
+      id,
+      create_time: timestamp,
+      update_time: timestamp
+    })
+    await adapter.setByDocId('match_batch_run', documentId, batch)
+    return { created: true, batch }
+  }))
+}
+
+async function claimMatchTestRun(run, timestamp = now()) {
+  if (!run || !run._id) throw new Error('测试匹配批次无效')
+  return withCollection('match_batch_run', () => db.runTransaction(async (rawTransaction) => {
+    const adapter = transactionAdapter(rawTransaction)
+    const current = await adapter.byDocId('match_batch_run', run._id)
+    if (!current) return { acquired: false, batch: null }
+    if (!['queued', 'failed'].includes(current.status)) return { acquired: false, batch: current }
+    if (new Date(current.execute_after).getTime() > new Date(timestamp).getTime()) {
+      return { acquired: false, batch: current }
+    }
+    const claimed = Object.assign({}, current, {
+      status: 'running',
+      execution_token: crypto.randomBytes(16).toString('hex'),
+      started_at: timestamp,
+      update_time: timestamp
+    })
+    await adapter.setByDocId('match_batch_run', run._id, claimed)
+    return { acquired: true, batch: claimed }
+  }))
+}
+
+async function completeMatchTestRun(run, outcome) {
+  if (!run || !run._id || !run.execution_token) throw new Error('测试匹配执行权无效')
+  return withCollection('match_batch_run', () => db.runTransaction(async (rawTransaction) => {
+    const adapter = transactionAdapter(rawTransaction)
+    const current = await adapter.byDocId('match_batch_run', run._id)
+    if (!current) throw new Error('测试匹配批次不存在')
+    if (['completed_matched', 'completed_no_match', 'blocked'].includes(current.status)) return current
+    if (current.status !== 'running' || current.execution_token !== run.execution_token) {
+      throw new Error('测试匹配执行权已失效')
+    }
+    let matchId = null
+    if (outcome.log) {
+      const log = await adapter.addWithId('user_match_log', outcome.log, 'match_log')
+      matchId = log.id
+    }
+    const completed = Object.assign({}, current, outcome.patch, {
+      match_id: matchId || outcome.patch.match_id || null,
+      execution_token: '',
+      completed_at: now(),
+      update_time: now()
+    })
+    await adapter.setByDocId('match_batch_run', run._id, completed)
+    return completed
+  }))
 }
 
 async function acquireFormalMatchBatch(data) {
@@ -304,6 +379,9 @@ module.exports = {
   addWithId,
   updateByDoc,
   claimIfStatus,
+  acquireMatchTestRun,
+  claimMatchTestRun,
+  completeMatchTestRun,
   acquireFormalMatchBatch,
   removeByDoc,
   transaction,

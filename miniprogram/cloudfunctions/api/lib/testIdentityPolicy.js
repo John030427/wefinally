@@ -1,5 +1,3 @@
-const TEST_OPENID = /^(dev|test|fixture|mock)[_-]/i
-
 function number(value) {
   const id = Number(value)
   return Number.isSafeInteger(id) && id > 0 ? id : 0
@@ -22,9 +20,7 @@ function isInternalQaAccount(user = {}) {
   user = user || {}
   if (isSyntheticFixture(user)) return false
   const mode = text(user.account_mode)
-  if (mode === 'internal_qa') return true
-  if (mode === 'production') return false
-  return TEST_OPENID.test(text(user.openid))
+  return mode === 'internal_qa'
 }
 
 function fixtureOwnerId(user) {
@@ -127,7 +123,6 @@ function planProfileProvenance(users = []) {
 }
 
 module.exports = {
-  TEST_OPENID,
   resolveTestIdentity,
   identityBadge,
   isSyntheticFixture,
