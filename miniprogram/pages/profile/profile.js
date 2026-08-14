@@ -35,7 +35,7 @@ Page({
   async loadPartnerStatus() {
     try {
       const status = await onboardingStatus()
-      this.setData({ partnerStatus: status || { state: 'not_applied', allowed_actions: ['apply', 'verify'] } })
+      this.setData({ partnerStatus: status || { state: 'not_applied', allowed_actions: ['verify'] } })
     } catch (err) {
       this.setData({ partnerStatus: { state: 'error', review_note: (err && err.message) || '暂时无法读取合伙人状态', allowed_actions: [] } })
     }

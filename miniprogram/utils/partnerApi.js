@@ -38,12 +38,8 @@ function onboardingStatus() {
   return requestPartner('/api/partner/onboarding/status', 'GET', {}, { requireToken: false })
 }
 
-function submitPartnerApplication(data) {
-  return requestPartner('/api/partner/applications', 'POST', data, { requireToken: false })
-}
-
-function activatePartner(phoneCode, requestId) {
-  return requestPartner('/api/partner/activation', 'POST', { phone_code: phoneCode, request_id: requestId }, { requireToken: false })
+function activatePartner(phone, requestId) {
+  return requestPartner('/api/partner/activation', 'POST', { phone, request_id: requestId }, { requireToken: false })
     .then((result) => {
       savePartnerSession(result.session)
       if (result.partner) wx.setStorageSync(STORAGE_KEYS.PARTNER_INFO, result.partner)
@@ -60,7 +56,6 @@ module.exports = {
   requestPartner,
   loginPartner,
   onboardingStatus,
-  submitPartnerApplication,
   activatePartner,
   restorePartnerSession,
   savePartnerSession

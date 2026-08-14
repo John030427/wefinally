@@ -67,13 +67,13 @@
         <view class="partner-workspace-title" wx:elif="{{partnerStatus.state === 'pending'}}">合伙人申请审核中</view>
         <view class="partner-workspace-title" wx:elif="{{partnerStatus.state === 'needs_verification'}}">合伙人资格待手机号验证</view>
         <view class="partner-workspace-title" wx:elif="{{partnerStatus.state === 'suspended'}}">合伙人权限已暂停</view>
-        <view class="partner-workspace-title" wx:elif="{{partnerStatus.state === 'rejected'}}">合伙人申请需重新提交</view>
+        <view class="partner-workspace-title" wx:elif="{{partnerStatus.state === 'rejected'}}">当前没有可激活资格</view>
         <view class="partner-workspace-title" wx:elif="{{partnerStatus.state === 'revoked'}}">合伙人资格已撤销</view>
-        <view class="partner-workspace-title" wx:else>合伙人计划</view>
+        <view class="partner-workspace-title" wx:else>合作合伙人入口</view>
         <view class="partner-workspace-desc" wx:if="{{partnerStatus.state === 'active'}}">查看邀请转化、收入与分享素材</view>
-        <view class="partner-workspace-desc" wx:elif="{{partnerStatus.state === 'pending'}}">平台正在核对资料，通过后需要微信手机号验证</view>
+        <view class="partner-workspace-desc" wx:elif="{{partnerStatus.state === 'pending'}}">历史申请正在处理；当前仅开放已有合作名单激活</view>
         <view class="partner-workspace-desc" wx:elif="{{partnerStatus.review_note}}">{{partnerStatus.review_note}}</view>
-        <view class="partner-workspace-desc" wx:else>已获认可的合伙人可验证手机号；也可提交申请</view>
+        <view class="partner-workspace-desc" wx:else>已有合作合伙人可输入名单手机号激活</view>
       </view>
       <text class="menu-arrow">›</text>
     </view>
