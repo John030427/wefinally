@@ -41,7 +41,7 @@ async function main() {
     secret: 'partner-phone-lookup-secret-for-selfcheck-2026'
   }), /手机号格式无效|未获资格/)
 
-  assert.strictEqual(partnerDisplayName({ name: '核验姓名' }), '核验姓名')
+  assert.strictEqual(partnerDisplayName({ name: '核验姓名' }), '合伙人')
   assert.strictEqual(partnerDisplayName({ name: '  ' }), '合伙人')
   assert.strictEqual(partnerDisplayName({}), '合伙人')
   assert.notStrictEqual(partnerDisplayName({}), 'Grace')
@@ -50,6 +50,7 @@ async function main() {
   const inviteJs = read('miniprogram/pages/partner-invite/partner-invite.js')
   const registerWxml = read('miniprogram/pages/register/register.wxml')
   const dashboardPolicy = read('miniprogram/cloudfunctions/api/lib/partnerDashboardPolicy.js')
+  const commonHandler = read('miniprogram/cloudfunctions/api/handlers/common.js')
 
   assert(inviteWxml.includes('一键分享给微信好友'))
   assert(inviteWxml.includes('复制公开邀请码（可多人使用）'))
@@ -58,6 +59,8 @@ async function main() {
   assert(!inviteJs.includes('Grace'))
   assert(!inviteWxml.includes('Grace'))
   assert(!dashboardPolicy.includes("'Grace'") && !dashboardPolicy.includes('"Grace"'))
+  assert(commonHandler.includes("message: '已识别合伙人推广码'"))
+  assert(!commonHandler.includes('partner.name'))
   assert(registerWxml.includes('公开邀请码'))
   assert(registerWxml.includes('用于确认邀请来源，不会自动成为合伙人'))
 

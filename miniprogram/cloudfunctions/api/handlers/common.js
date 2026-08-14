@@ -45,7 +45,7 @@ async function promoteCode(data) {
   }
   return {
     valid: true,
-    message: `已识别 ${partner.name || '合伙人'} 推广码`,
+    message: '已识别合伙人推广码',
     partner_id: partner.id,
     circle_id: partner.circle_id
   }
