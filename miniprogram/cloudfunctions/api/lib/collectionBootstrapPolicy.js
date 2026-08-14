@@ -24,7 +24,9 @@ const BOOTSTRAP_COLLECTIONS = new Set([
   'partner_commission_rule',
   'partner_dashboard_daily',
   'partner_referral_attribution',
-  'partner_share_event'
+  'partner_share_event',
+  'partner_candidate',
+  'partner_audit_log'
 ])
 
 function canBootstrapCollection(name) {

@@ -1,6 +1,6 @@
 # Implementation Plan
 
-- [ ] 1. 准备 CloudBase 数据资源与本地集合契约
+- [x] 1. 准备 CloudBase 数据资源与本地集合契约
   - 通过 CloudBase MCP 核对正式环境和现有 `partners` 数据结构
   - 创建 `partner_candidates`、`partner_audit_logs` 及所需索引，不修改现有业务记录
   - 为逻辑集合映射、可引导集合白名单和资源契约编写失败测试后实现

@@ -11,6 +11,8 @@ module.exports = {
   partner_dashboard_daily: 'partner_dashboard_daily',
   partner_referral_attribution: 'partner_referral_attributions',
   partner_share_event: 'partner_share_events',
+  partner_candidate: 'partner_candidates',
+  partner_audit_log: 'partner_audit_logs',
   marry_report: 'marry_reports',
   system_stat: 'system_stats',
   system_config: 'system_configs',
