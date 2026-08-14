@@ -12,7 +12,10 @@ function fakeDeps() {
       { _id: 'users_118', id: 118, openid: 'dev_wefinally_local_openid', gender: 1, city: '深圳', status: 1 }
     ],
     user_match_setting: [{ id: 20, user_id: 7, age_min: 27, age_max: 38, self_view_text: '重视沟通', target_view_text: '真诚稳定' }],
-    user_match_log: [{ id: 30, user_id: 7, match_user_id: 8, total_score: 88, score_detail_json: '{"total":88}', prompt_debug_payload: 'must-not-leak', match_date: '2026-08-12' }],
+    user_match_log: [
+      { id: 30, user_id: 7, match_user_id: 8, total_score: 88, score_detail_json: '{"total":88}', prompt_debug_payload: 'must-not-leak', match_date: '2026-08-12' },
+      { id: 31, user_id: 7, match_user_id: 118, total_score: 66, score_detail_json: '{"total":66}', match_type: '开发测试', match_date: '2026-08-13' }
+    ],
     user_order: [{ id: 40, user_id: 7, order_no: 'ORDER-SENSITIVE-7', price: 188, pay_status: 1, settle_status: 0, partner_id: 3 }],
     member_application: [{ id: 50, user_id: 7, assigned_partner_id: 3, status: 'approved', profile_snapshot_json: '{"private":"snapshot"}' }],
     partner: [{ id: 3, name: 'Grace 合伙人', promote_code: 'GRACE', status: 1 }],
@@ -88,6 +91,7 @@ async function main() {
   assert.strictEqual(detail.orders.length, 1)
   assert.strictEqual(detail.orders[0].order_no, undefined)
   assert.strictEqual(detail.matches.length, 1)
+  assert.deepStrictEqual(detail.matches.map((row) => row.id), [30])
   assert.strictEqual(detail.conversations.length, 2)
   assert.strictEqual(detail.tickets.length, 1)
   assert.strictEqual(detail.coordinations.length, 1)
@@ -102,6 +106,9 @@ async function main() {
   assert.strictEqual(adminDetail.user.openid, 'official-7')
   assert.strictEqual(adminDetail.user.phone, '13800000007')
   assert.strictEqual(adminDetail.orders[0].order_no, 'ORDER-SENSITIVE-7')
+
+  const testDetail = await service.userDetail(superAdmin, 118)
+  assert.deepStrictEqual(testDetail.matches.map((row) => row.id), [31])
 
   const dashboard = await service.dashboard(superAdmin)
   assert.deepStrictEqual(dashboard, {

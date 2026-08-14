@@ -228,10 +228,13 @@ function createUserBackofficeService(deps) {
     if (!user) throw error('用户不存在', 404)
     const relations = await userRelations(userId)
     const isSuperAdmin = sensitive(actor)
+    const targetIsTestUser = isTestUser(user)
     const matchSummaries = await Promise.all(relations.matches.map(async (row) => {
       const owner = number(row.user_id) === userId ? user : await deps.byId('user', row.user_id)
       const matched = number(row.match_user_id) === userId ? user : await deps.byId('user', row.match_user_id)
-      return owner && matched ? matchDto(row, owner, matched, actor) : null
+      if (!owner || !matched) return null
+      if (!targetIsTestUser && (isTestUser(owner) || isTestUser(matched))) return null
+      return matchDto(row, owner, matched, actor)
     }))
     await deps.addWithId('partner_user_audit_log', {
       actor_role: 'admin',
