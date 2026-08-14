@@ -19,8 +19,9 @@
   - _Requirements: R2, R3, R5, R6_
 
 - [x] 4. 实现小程序免密激活与会话恢复 API
-  - 实现当前微信用户的 onboarding status、申请、手机号激活和 session 恢复
-  - 将微信手机号动态 code 的消费封装为可测试依赖，禁止记录敏感值
+  - 实现当前微信用户的 onboarding status、老板名单手机号激活和 session 恢复
+  - 关闭普通用户申请路由，只允许 `source=roster` 的已批准名单资格激活
+  - 由用户手动输入名单手机号，服务端只持久化 HMAC 摘要和脱敏值，禁止记录完整手机号
   - 让受保护接口校验 partner 状态和 binding_version
   - _Requirements: R1, R3, R5, R6_
 
@@ -32,7 +33,7 @@
 
 - [x] 6. 升级小程序“我的”、激活页与合伙人 Dashboard
   - “我的”入口改为服务端状态驱动，不再依赖本地 partner token 决定可见性
-  - 将旧密码登录页重构为申请/手机号验证多状态页面
+  - 将旧密码登录页重构为仅限已有合作名单的手动手机号激活页
   - 合并分享素材、邀请转化、佣金、余额和会员审核入口
   - 完成颜色、字体、SVG 图标、拒绝授权和无 Token 恢复测试
   - _Requirements: R1, R3, R5_
@@ -47,5 +48,5 @@
   - 运行全部相关 selfcheck、语法检查、CloudBase 规则审查和 diff 审查
   - 仅通过 CloudBase MCP 更新 `api` 与既有管理后台托管
   - 验证函数 Active/Available、后台审核、测试激活、会话恢复、分享和 Dashboard
-  - 不上传小程序正式版或体验版；真机手机号授权作为明确的人工验收项
+  - 不上传小程序正式版或体验版；真机手动手机号激活作为明确的人工验收项
   - _Requirements: R1, R2, R3, R4, R5, R6_
