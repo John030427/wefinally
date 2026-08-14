@@ -18,13 +18,15 @@ function delayHours(interactionId, fixtureRunId, secret = HMAC_SECRET) {
   return Math.round((MIN_HOURS + unit * (MAX_HOURS - MIN_HOURS)) * 1000) / 1000
 }
 
-function canScheduleFixtureDecline(actor, target, now = new Date()) {
+function canScheduleFixtureDecline(actor, target, now = new Date(), options = {}) {
   const actorId = resolveTestIdentity(actor)
   const targetId = resolveTestIdentity(target)
-  return actorId.profile_origin === 'real_user'
-    && isInternalQaAccount(actor)
-    && isSyntheticFixture(target)
+  const actorAllowed = isInternalQaAccount(actor)
     && fixtureOwnerId(target) === Number(actor && actor.id)
+  const matchedPublicSimulation = options.allowMatchedPublicFixture === true
+  return actorId.profile_origin === 'real_user'
+    && isSyntheticFixture(target)
+    && (actorAllowed || matchedPublicSimulation)
     && targetId.allow_date_coordination === false
     && fixtureNotExpired(target, now)
 }
@@ -46,7 +48,9 @@ async function scheduleFixtureDecline(input, deps) {
   const actor = input.actor
   const target = input.target
   const now = deps.now()
-  if (!canScheduleFixtureDecline(actor, target, now)) {
+  if (!canScheduleFixtureDecline(actor, target, now, {
+    allowMatchedPublicFixture: input.allow_matched_public_fixture === true
+  })) {
     const error = new Error('不能为该对象创建测试拒绝任务')
     error.code = 403
     throw error

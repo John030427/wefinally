@@ -147,7 +147,7 @@ function createDateCoordinationHandlers(overrides = {}) {
     if (!match) throw new Error('仅可与当前匹配对象发起日期协调')
     const partner = await dep('byId')('user', partnerId)
     if (!isEligible(partner, now)) throw new Error('匹配对象暂不满足日期协调条件')
-    if (canScheduleFixtureDecline(user, partner, now)) {
+    if (canScheduleFixtureDecline(user, partner, now, { allowMatchedPublicFixture: true })) {
       return {
         test_simulation: true,
         await_application: true,
@@ -183,7 +183,7 @@ function createDateCoordinationHandlers(overrides = {}) {
       throw new Error('仅可从自己的测试匹配记录提交模拟约会申请')
     }
     const partner = await dep('byId')('user', partnerId)
-    if (!canScheduleFixtureDecline(user, partner, dep('now')())) {
+    if (!canScheduleFixtureDecline(user, partner, dep('now')(), { allowMatchedPublicFixture: true })) {
       const error = new Error('当前对象不能进入模拟约会流程')
       error.code = 403
       throw error
@@ -192,7 +192,8 @@ function createDateCoordinationHandlers(overrides = {}) {
     const job = await scheduleFixtureDecline({
       actor: user,
       target: partner,
-      interaction_id: `match:${match.id}`
+      interaction_id: `match:${match.id}`,
+      allow_matched_public_fixture: true
     }, {
       acquireJob: (jobData) => dep('acquireFixtureResponseJob')(Object.assign({}, jobData, {
         application_snapshot: {

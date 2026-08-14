@@ -210,6 +210,32 @@ async function main() {
   assert.strictEqual(simulated.test_simulation, true)
   assert.strictEqual(simulated.fixture_response_job.response_type, 'polite_decline')
   assert.strictEqual(fresh.tables.date_coordination.length, 0)
+
+  const publicFixture = Object.assign({}, fixture, { fixture_owner_user_id: 10 })
+  const publicDeps = memory({
+    user: [qa, real, publicFixture],
+    user_match_log: [{ id: 100, user_id: 11, match_user_id: 20 }]
+  })
+  publicDeps.currentUser = async () => real
+  const publicHandlers = createDateCoordinationHandlers(publicDeps)
+  const publicDraft = await publicHandlers.create({ match_log_id: 100, match_user_id: 20 }, {})
+  assert.strictEqual(publicDraft.test_simulation, true)
+  assert.strictEqual(publicDraft.await_application, true)
+  const publicSubmitted = await publicHandlers.submitFixtureApplication({
+    match_log_id: 100,
+    match_user_id: 20,
+    application: {
+      availability: [{ date: '2026-08-16', periods: ['evening'] }],
+      areas: ['南区'],
+      activities: ['咖啡'],
+      budget: '50-100',
+      payment_preference: 'aa',
+      duration: '1-2h'
+    }
+  }, {})
+  assert.strictEqual(publicSubmitted.test_simulation, true)
+  assert.strictEqual(publicDeps.tables.fixture_response_job.length, 1)
+  assert.strictEqual(publicDeps.tables.date_coordination.length, 0)
   fresh.tables.fixture_response_job[0].status = 'delivered'
   const visible = await freshHandlers.fixtureResponse({ id: fresh.tables.fixture_response_job[0].id }, {})
   assert.strictEqual(visible.fixture_response_job.status, 'delivered')
