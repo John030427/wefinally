@@ -52,6 +52,67 @@
   border-bottom: none;
 }
 
+.coordination-track {
+  position: relative;
+}
+
+.coordination-step {
+  display: flex;
+  gap: 18rpx;
+  position: relative;
+  padding: 14rpx 0 22rpx;
+  color: #746b70;
+}
+
+.coordination-step::after {
+  content: '';
+  position: absolute;
+  left: 9rpx;
+  top: 38rpx;
+  bottom: -4rpx;
+  width: 2rpx;
+  background: #ede4e6;
+}
+
+.coordination-step:last-child::after {
+  display: none;
+}
+
+.step-dot {
+  flex: 0 0 20rpx;
+  width: 20rpx;
+  height: 20rpx;
+  margin-top: 8rpx;
+  border: 4rpx solid #ede4e6;
+  border-radius: 50%;
+  background: #fff9f7;
+  box-sizing: border-box;
+}
+
+.coordination-step.active .step-dot {
+  border-color: #ff6b8a;
+  box-shadow: 0 0 0 8rpx rgba(255, 107, 138, 0.1);
+}
+
+.coordination-step.done .step-dot {
+  border-color: #2f8a68;
+  background: #2f8a68;
+}
+
+.step-title {
+  color: #2b2729;
+  font-size: 28rpx;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.step-desc {
+  margin-top: 6rpx;
+  color: #746b70;
+  font-size: 24rpx;
+  line-height: 1.65;
+}
+
 .choice-list,
 .action-row {
   display: flex;

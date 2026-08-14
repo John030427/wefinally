@@ -31,6 +31,7 @@ Page({
     coordinationId: '',
     coordination: null,
     fixtureSimulation: null,
+    fixtureStage: '',
     fixtureStatusText: '',
     fixtureResponseMessage: '',
     refreshingFixture: false,
@@ -102,6 +103,7 @@ Page({
   },
 
   onShow() {
+    this.pageVisible = true
     if (this.hasShown && this.data.fixtureSimulation) {
       this.refreshFixtureSimulation()
       this.hasShown = true
@@ -111,6 +113,16 @@ Page({
       this.refreshCoordination()
     }
     this.hasShown = true
+  },
+
+  onHide() {
+    this.pageVisible = false
+    this.stopFixturePolling()
+  },
+
+  onUnload() {
+    this.pageVisible = false
+    this.stopFixturePolling()
   },
 
   async openCoordination(options) {
@@ -156,11 +168,12 @@ Page({
           status: 'collecting_initiator',
           role: 'initiator',
           can_submit_application: true,
-          simulation_badge: coordination.simulation_badge || '测试画像 / 模拟流程'
+          simulation_badge: '虚拟体验对象'
         }),
         coordinationId: '',
         fixtureSimulation: null,
-        fixtureStatusText: '请完整填写测试约会偏好后提交'
+        fixtureStage: '',
+        fixtureStatusText: '请完整填写约会偏好后提交'
       })
       return
     }
@@ -185,18 +198,38 @@ Page({
 
   applyFixtureSimulation(result) {
     const job = result.fixture_response_job || {}
-    const statusText = job.status === 'delivered'
-      ? '测试对象未接受本次约会申请'
-      : '申请已记录，等待测试对象回应'
+    const fixtureStage = job.status === 'delivered'
+      ? 'completed'
+      : (job.status === 'processing' ? 'generating' : 'queued')
+    const statusText = fixtureStage === 'completed'
+      ? 'AI协调已完成，对方未接受本次约会申请'
+      : (fixtureStage === 'generating' ? 'AI协调员正在整理协调结果' : '约会申请已收到，AI协调任务正在排队')
     this.setData({
       pageState: 'fixture-simulation',
       fixtureSimulation: job,
+      fixtureStage,
       fixtureStatusText: statusText,
       fixtureResponseMessage: result.response_message || ''
     })
+    if (fixtureStage === 'completed') this.stopFixturePolling()
+    else if (this.pageVisible !== false) this.startFixturePolling()
   },
 
-  async refreshFixtureSimulation() {
+  startFixturePolling() {
+    this.stopFixturePolling()
+    this.fixturePollTimer = setInterval(() => {
+      this.refreshFixtureSimulation(true)
+    }, 10000)
+  },
+
+  stopFixturePolling() {
+    if (!this.fixturePollTimer) return
+    clearInterval(this.fixturePollTimer)
+    this.fixturePollTimer = null
+  },
+
+  async refreshFixtureSimulation(silent) {
+    const isSilent = silent === true
     const job = this.data.fixtureSimulation
     if (!job || !job.id || this.data.refreshingFixture) return
     this.setData({ refreshingFixture: true })
@@ -204,7 +237,7 @@ Page({
       const result = await get(`${API_PATHS.DATE_COORDINATIONS}/fixture-responses/${job.id}`, {}, { showError: false })
       this.applyFixtureSimulation(result)
     } catch (err) {
-      wx.showToast({ title: (err && err.message) || '刷新失败', icon: 'none' })
+      if (!isSilent) wx.showToast({ title: (err && err.message) || '刷新失败', icon: 'none' })
     } finally {
       this.setData({ refreshingFixture: false })
     }
@@ -327,7 +360,7 @@ Page({
           application: this.data.form
         }, { showError: false })
         this.applyFixtureSimulation(result)
-        wx.showToast({ title: '已提交测试约会申请', icon: 'success' })
+        wx.showToast({ title: '约会申请已提交', icon: 'success' })
         return
       }
       const result = await put(`${API_PATHS.DATE_COORDINATIONS}/${this.data.coordinationId}/application`, this.data.form, { showError: false })
@@ -379,7 +412,7 @@ Page({
 
   goCoordinator() {
     if (!this.data.coordinationId) {
-      wx.showToast({ title: '测试约会请先填写上方表单', icon: 'none', duration: 3000 })
+      wx.showToast({ title: '请先填写上方约会表单', icon: 'none', duration: 3000 })
       return
     }
     wx.navigateTo({

@@ -32,9 +32,9 @@ assert.strictEqual(canUseFixtureForMatch(owner, fixture, now), true)
 assert.throws(() => assertOfflineDatingAllowed(fixture), /测试画像仅用于匹配效果验证/)
 
 const detailPage = read('miniprogram/pages/match-detail/match-detail.wxml')
-assert(detailPage.includes('发起测试约会申请'))
-assert(detailPage.includes('测试画像 / 模拟流程'))
 assert(detailPage.includes('申请约会'))
+assert(detailPage.includes('虚拟体验对象'))
+assert(detailPage.includes('AI 协调员会记录申请'))
 
 async function main() {
   const jobs = []

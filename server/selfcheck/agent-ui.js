@@ -21,7 +21,7 @@ assert(profileJs.includes('agentType=platform_service'))
 
 const matchDetail = read('miniprogram/pages/match-detail/match-detail.wxml')
 assert(matchDetail.includes('申请约会'))
-assert(matchDetail.includes('发起测试约会申请'))
+assert(matchDetail.includes('AI 协调员会记录申请'))
 assert(matchDetail.includes('date-coordination'))
 assert(!matchDetail.includes('申请官方奔现对接'))
 assert(!matchDetail.includes('<view class="meet-title">奔现对接</view>'))

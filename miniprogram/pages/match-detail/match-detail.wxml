@@ -255,10 +255,10 @@
     </block>
 
     <view class="meet-card card sticky-cta" wx:if="{{detail.matchOnlyFixture}}">
-      <view class="meet-badge">测试画像 / 模拟流程</view>
-      <view class="meet-title">测试约会申请</view>
-      <view class="meet-desc">可完整填写约会偏好以验证流程。系统将在数小时后返回模拟婉拒，不会产生真实通知、工单或线下安排。</view>
-      <navigator wx:if="{{!detail.locked}}" url="/pages/date-coordination/date-coordination?matchUserId={{detail.matchedUserId}}&matchLogId={{matchId}}&fixtureSimulation=1" class="meet-action-btn meet-action-primary">发起测试约会申请</navigator>
+      <view class="meet-badge">虚拟体验对象</view>
+      <view class="meet-title">申请第一次约会</view>
+      <view class="meet-desc">可以完整填写约会偏好，AI 协调员会记录申请并在后台整理反馈结果。</view>
+      <navigator wx:if="{{!detail.locked}}" url="/pages/date-coordination/date-coordination?matchUserId={{detail.matchedUserId}}&matchLogId={{matchId}}&fixtureSimulation=1" class="meet-action-btn meet-action-primary">申请约会</navigator>
       <button class="meet-action-btn" open-type="contact">匹配异常联系人工客服</button>
     </view>
 

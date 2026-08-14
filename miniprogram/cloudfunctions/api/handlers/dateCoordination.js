@@ -148,12 +148,25 @@ function createDateCoordinationHandlers(overrides = {}) {
     const partner = await dep('byId')('user', partnerId)
     if (!isEligible(partner, now)) throw new Error('匹配对象暂不满足日期协调条件')
     if (canScheduleFixtureDecline(user, partner, now, { allowMatchedPublicFixture: true })) {
+      const responseJob = await dep('first')('fixture_response_job', {
+        interaction_id: `match:${match.id}`
+      })
+      if (responseJob
+        && Number(responseJob.actor_user_id) === Number(user.id)
+        && Number(responseJob.fixture_user_id) === partnerId) {
+        return {
+          test_simulation: true,
+          fixture_response_job: publicJob(responseJob),
+          response_message: responseJob.status === 'delivered' ? politeDeclineMessage() : '',
+          simulation_badge: '虚拟体验对象'
+        }
+      }
       return {
         test_simulation: true,
         await_application: true,
         match_log_id: Number(match.id),
         match_user_id: partnerId,
-        simulation_badge: '测试画像 / 模拟流程'
+        simulation_badge: '虚拟体验对象'
       }
     }
     assertOfflineDatingAllowed(partner)
@@ -180,11 +193,11 @@ function createDateCoordinationHandlers(overrides = {}) {
     const partnerId = Number(data.match_user_id || data.matchUserId || 0)
     const match = matchLogId ? await dep('byId')('user_match_log', matchLogId) : null
     if (!match || Number(match.user_id) !== Number(user.id) || Number(match.match_user_id) !== partnerId) {
-      throw new Error('仅可从自己的测试匹配记录提交模拟约会申请')
+      throw new Error('仅可从自己的匹配记录提交约会申请')
     }
     const partner = await dep('byId')('user', partnerId)
     if (!canScheduleFixtureDecline(user, partner, dep('now')(), { allowMatchedPublicFixture: true })) {
-      const error = new Error('当前对象不能进入模拟约会流程')
+      const error = new Error('当前对象暂时不能提交约会申请')
       error.code = 403
       throw error
     }
@@ -207,7 +220,7 @@ function createDateCoordinationHandlers(overrides = {}) {
     return {
       test_simulation: true,
       fixture_response_job: publicJob(job),
-      simulation_badge: '测试画像 / 模拟流程'
+      simulation_badge: '虚拟体验对象'
     }
   }
 

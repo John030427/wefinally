@@ -210,6 +210,8 @@ async function main() {
   assert.strictEqual(simulated.test_simulation, true)
   assert.strictEqual(simulated.fixture_response_job.response_type, 'polite_decline')
   assert.strictEqual(fresh.tables.date_coordination.length, 0)
+  const resumed = await freshHandlers.create({ match_log_id: 99, match_user_id: 20 }, {})
+  assert.strictEqual(resumed.fixture_response_job.id, simulated.fixture_response_job.id)
 
   const publicFixture = Object.assign({}, fixture, { fixture_owner_user_id: 10 })
   const publicDeps = memory({
@@ -246,12 +248,18 @@ async function main() {
   assert(datePage.includes('fixture-applications'))
   assert(datePage.includes("role: 'initiator'"))
   assert(datePage.includes('can_submit_application: true'))
-  assert(dateView.includes('提交测试约会申请'))
-  assert(dateView.includes('不会向真人发送邀请'))
+  assert(dateView.includes('提交约会申请'))
+  assert(dateView.includes('AI协调任务已进入队列'))
+  assert(dateView.includes('正在整理协调结果'))
+  assert(dateView.includes('AI协调反馈'))
   assert(dateView.includes('wx:if="{{coordinationId}}"'))
-  assert(datePage.includes('测试约会请先填写上方表单'))
-  assert(datePage.includes('申请已记录，等待测试对象回应'))
-  assert(dateView.includes('等待测试对象回应') || dateView.includes('测试约会申请'))
+  assert(datePage.includes("'queued'"))
+  assert(datePage.includes("'generating'"))
+  assert(datePage.includes("'completed'"))
+  assert(datePage.includes('startFixturePolling'))
+  assert(datePage.includes('stopFixturePolling'))
+  assert(datePage.includes('this.pageVisible = false'))
+  assert(datePage.includes('约会申请已提交'))
   console.log('PASS synthetic fixture declines are delayed, idempotent and never notify for real')
 }
 

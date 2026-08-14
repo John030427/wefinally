@@ -17,23 +17,29 @@
 
   <block wx:elif="{{pageState === 'fixture-simulation'}}">
     <view class="date-head card">
-      <view class="date-title">测试约会申请进度</view>
+      <view class="date-title">约会申请进度</view>
       <view class="date-desc">{{fixtureStatusText}}</view>
-      <view class="status-pill">{{fixtureSimulation.status === 'delivered' ? '测试对象未接受' : '等待测试对象回应'}}</view>
+      <view class="status-pill">{{fixtureStage === 'completed' ? '已反馈' : (fixtureStage === 'generating' ? '处理中' : '待处理')}}</view>
+    </view>
+    <view class="progress-card card coordination-track">
+      <view class="section-title">AI协调进度</view>
+      <view class="coordination-step done"><view class="step-dot"></view><view><view class="step-title">约会申请已提交</view><view class="step-desc">系统已经保存你的时间、区域和活动偏好</view></view></view>
+      <view class="coordination-step {{fixtureStage === 'generating' || fixtureStage === 'completed' ? 'done' : 'active'}}"><view class="step-dot"></view><view><view class="step-title">AI协调处理中</view><view class="step-desc">{{fixtureStage === 'queued' ? 'AI协调任务已进入队列，可离开页面，后台会继续处理' : '正在整理协调结果，请稍候'}}</view></view></view>
+      <view class="coordination-step {{fixtureStage === 'completed' ? 'done' : ''}}"><view class="step-dot"></view><view><view class="step-title">协调结果反馈</view><view class="step-desc">{{fixtureStage === 'completed' ? '协调结果已经生成' : '完成后会在本页显示反馈'}}</view></view></view>
     </view>
     <view class="invite-card card">
-      <view class="section-title">模拟回复</view>
+      <view class="section-title">AI协调反馈</view>
       <view class="invite-text" wx:if="{{fixtureResponseMessage}}">{{fixtureResponseMessage}}</view>
-      <view class="muted" wx:else>到期前显示等待状态。测试画像不会进入真实约会、通知、工单或线下见面流程。</view>
-      <button class="outline-btn full-btn" bindtap="refreshFixtureSimulation" loading="{{refreshingFixture}}">刷新回复状态</button>
+      <view class="muted" wx:else>{{fixtureStage === 'generating' ? '正在整理协调结果，请稍候。' : 'AI协调任务已进入队列。你可以先离开，稍后回来查看结果。'}}</view>
+      <button class="outline-btn full-btn" bindtap="refreshFixtureSimulation" loading="{{refreshingFixture}}">刷新协调进度</button>
     </view>
   </block>
 
   <block wx:else>
     <view class="date-head card">
-      <view class="date-title">{{coordination.simulation_badge ? '测试约会申请' : '第一次约会协调'}}</view>
+      <view class="date-title">第一次约会协调</view>
       <view class="meet-badge" wx:if="{{coordination.simulation_badge}}">{{coordination.simulation_badge}}</view>
-      <view class="date-desc">{{coordination.simulation_badge ? '请完整填写偏好。提交后进入等待测试对象回应，不会产生真实通知或线下安排。' : '先由发起方填写偏好并邀请对方，再一起确认轻松、安全的初次见面。'}}</view>
+      <view class="date-desc">{{coordination.simulation_badge ? '请完整填写偏好，提交后由 AI 协调员在后台处理并反馈结果。' : '先由发起方填写偏好并邀请对方，再一起确认轻松、安全的初次见面。'}}</view>
       <view class="status-pill">{{coordination.status_text || coordination.status || '协调中'}}</view>
     </view>
 
@@ -59,7 +65,7 @@
 
     <view class="form-card card" wx:if="{{coordination.can_submit_application}}">
       <view class="section-title">填写我的偏好</view>
-      <view class="form-hint" wx:if="{{coordination.status === 'collecting_initiator'}}">{{coordination.test_simulation ? '填写完整偏好后进入模拟等待，不会向真人发送邀请。' : '先告诉我们你的理想安排，保存后才会邀请对方参与协调。'}}</view>
+      <view class="form-hint" wx:if="{{coordination.status === 'collecting_initiator'}}">{{coordination.test_simulation ? '填写完整偏好后，AI 协调员会在后台处理并反馈结果。' : '先告诉我们你的理想安排，保存后才会邀请对方参与协调。'}}</view>
       <view class="form-item">
         <view class="form-label required">📅 可约时间</view>
         <picker mode="date" start="{{dateMin}}" end="{{dateMax}}" value="{{selectedDate}}" bindchange="onDateChange">
@@ -113,7 +119,7 @@
         <view>{{form.share_message || '尚未填写'}}</view>
       </view>
       <view class="public-note">建议选择白天、公共场所，尊重彼此的边界和节奏。</view>
-      <button class="primary-btn full-btn" bindtap="submitApplication" loading="{{submitting}}" disabled="{{submitting}}">{{coordination.test_simulation ? '提交测试约会申请' : (coordination.status === 'collecting_initiator' ? '💌 保存偏好并邀请对方' : '💗 提交我的偏好')}}</button>
+      <button class="primary-btn full-btn" bindtap="submitApplication" loading="{{submitting}}" disabled="{{submitting}}">{{coordination.test_simulation ? '提交约会申请' : (coordination.status === 'collecting_initiator' ? '💌 保存偏好并邀请对方' : '💗 提交我的偏好')}}</button>
     </view>
 
     <view class="proposal-card card" wx:if="{{proposal}}">
