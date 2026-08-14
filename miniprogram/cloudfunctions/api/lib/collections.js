@@ -13,6 +13,7 @@ module.exports = {
   partner_share_event: 'partner_share_events',
   partner_candidate: 'partner_candidates',
   partner_audit_log: 'partner_audit_logs',
+  partner_binding: 'partner_bindings',
   marry_report: 'marry_reports',
   system_stat: 'system_stats',
   system_config: 'system_configs',

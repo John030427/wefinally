@@ -18,7 +18,7 @@
   - 校验 super_admin/customer_service/auditor 权限和手机号脱敏
   - _Requirements: R2, R3, R5, R6_
 
-- [ ] 4. 实现小程序免密激活与会话恢复 API
+- [x] 4. 实现小程序免密激活与会话恢复 API
   - 实现当前微信用户的 onboarding status、申请、手机号激活和 session 恢复
   - 将微信手机号动态 code 的消费封装为可测试依赖，禁止记录敏感值
   - 让受保护接口校验 partner 状态和 binding_version

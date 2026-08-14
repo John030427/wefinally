@@ -17,15 +17,15 @@ function fakeDeps() {
       partner_id: 0
     }],
     partner: [],
+    partner_binding: [],
     partner_audit_log: []
   }
-  const matches = (row, query) => Object.keys(query || {}).every((key) => row[key] === query[key])
   const tx = {
     async byId(name, id) {
       return (state[name] || []).find((row) => Number(row.id) === Number(id)) || null
     },
-    async first(name, query) {
-      return (state[name] || []).find((row) => matches(row, query)) || null
+    async byDocId(name, documentId) {
+      return (state[name] || []).find((row) => row._id === documentId) || null
     },
     async nextCounter(name) {
       assert.strictEqual(name, 'partner_support_code')
@@ -39,6 +39,16 @@ function fakeDeps() {
     },
     async updateByDoc(name, row, data) {
       Object.assign(row, data)
+      return row
+    },
+    async setByDocId(name, documentId, data) {
+      const existing = (state[name] || []).find((row) => row._id === documentId)
+      if (existing) {
+        Object.assign(existing, data)
+        return existing
+      }
+      const row = { _id: documentId, ...data }
+      state[name].push(row)
       return row
     },
     now() {
@@ -76,6 +86,7 @@ async function main() {
   assert.strictEqual(deps.state.partner_candidate[0].activation_status, 'bound')
   assert.strictEqual(deps.state.partner_candidate[0].partner_id, 21)
   assert.strictEqual(deps.state.partner_audit_log.length, 1)
+  assert.strictEqual(deps.state.partner_binding[0].partner_id, 21)
   assert.strictEqual(deps.state.partner_audit_log[0].action, 'activate')
   assert.strictEqual(deps.state.partner_audit_log[0].verified_phone, undefined)
   assert.strictEqual(deps.state.partner_audit_log[0].phone_digest, undefined)

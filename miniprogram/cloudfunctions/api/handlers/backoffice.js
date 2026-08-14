@@ -220,6 +220,9 @@ async function actorFromMiniProgram(data) {
   if (actor.role !== 'partner') throw new Error('仅合伙人可以使用邀请功能')
   const partner = await db.byId('partner', actor.id)
   if (!partner || Number(partner.status) !== 1) throw new Error('后台账号已停用')
+  if (Number(actor.binding_version) > 0 && Number(actor.binding_version) !== Number(partner.binding_version || 1)) {
+    throw new Error('合伙人会话已失效，请重新进入工作台')
+  }
   return actor
 }
 
@@ -233,6 +236,10 @@ async function partnerInviteAssetsForMiniProgram(data) {
 
 async function recordShareEventForMiniProgram(data) {
   return recordShareEvent(data, await actorFromMiniProgram(data))
+}
+
+async function partnerDashboardForMiniProgram(data) {
+  return partnerDashboard(await actorFromMiniProgram(data))
 }
 
 async function partnerDashboard(actor) {
@@ -485,5 +492,6 @@ module.exports = {
   handleBackofficeHttp,
   partnerLoginForMiniProgram,
   partnerInviteAssetsForMiniProgram,
-  recordShareEventForMiniProgram
+  recordShareEventForMiniProgram,
+  partnerDashboardForMiniProgram
 }

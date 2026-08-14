@@ -26,6 +26,7 @@ const BOOTSTRAP_COLLECTIONS = new Set([
   'partner_referral_attribution',
   'partner_share_event',
   'partner_candidate',
+  'partner_binding',
   'partner_audit_log'
 ])
 

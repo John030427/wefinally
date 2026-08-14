@@ -123,6 +123,83 @@ async function removeByDoc(name, doc) {
   return { removed }
 }
 
+function transactionAdapter(rawTransaction) {
+  const collection = (name) => rawTransaction.collection(collections[name] || name)
+
+  async function txByDocId(name, documentId) {
+    const result = await collection(name).doc(String(documentId)).get()
+    return result.data || null
+  }
+
+  async function txById(name, id) {
+    const numericId = Number(id)
+    if (!Number.isSafeInteger(numericId) || numericId <= 0) return null
+    return txByDocId(name, `${name}_${numericId}`)
+  }
+
+  async function txNextCounter(name) {
+    const ref = collection('system_counters').doc(String(name))
+    const result = await ref.get()
+    const current = result && result.data
+    const sequence = Number(current && current.seq || 0) + 1
+    const timestamp = now()
+    if (current) await ref.update({ data: { seq: sequence, update_time: timestamp } })
+    else await ref.set({ data: { seq: sequence, create_time: timestamp, update_time: timestamp } })
+    return sequence
+  }
+
+  async function txAddWithId(name, data, prefix, stableId) {
+    const hasStableId = stableId !== undefined && stableId !== null
+    const id = hasStableId ? Number(stableId) : await txNextCounter(name)
+    if (!Number.isSafeInteger(id) || id <= 0) throw new Error('事务记录 ID 无效')
+    const timestamp = now()
+    const document = Object.assign({}, data, {
+      _id: `${prefix || name}_${id}`,
+      id,
+      create_time: data.create_time || timestamp,
+      update_time: data.update_time || timestamp
+    })
+    const writeData = Object.assign({}, document)
+    delete writeData._id
+    await collection(name).doc(document._id).set({ data: writeData })
+    return document
+  }
+
+  async function txUpdateByDoc(name, doc, data) {
+    if (!doc || !doc._id) throw new Error('记录不存在')
+    const timestamp = now()
+    await collection(name).doc(doc._id).update({ data: Object.assign({}, data, { update_time: timestamp }) })
+    return Object.assign({}, doc, data, { update_time: timestamp })
+  }
+
+  async function txSetByDocId(name, documentId, data) {
+    const timestamp = now()
+    const document = Object.assign({}, data, {
+      _id: String(documentId),
+      update_time: data.update_time || timestamp
+    })
+    const writeData = Object.assign({}, document)
+    delete writeData._id
+    await collection(name).doc(document._id).set({ data: writeData })
+    return document
+  }
+
+  return {
+    now,
+    byDocId: txByDocId,
+    byId: txById,
+    nextCounter: txNextCounter,
+    addWithId: txAddWithId,
+    updateByDoc: txUpdateByDoc,
+    setByDocId: txSetByDocId
+  }
+}
+
+async function transaction(work) {
+  if (typeof work !== 'function') throw new Error('事务回调无效')
+  return db.runTransaction((rawTransaction) => work(transactionAdapter(rawTransaction)))
+}
+
 async function ensureUserSupportCode(userDoc) {
   if (!userDoc || !userDoc._id || !Number(userDoc.id)) throw new Error('用户记录无效')
   if (isTestUser(userDoc)) return testSupportCode(userDoc)
@@ -176,6 +253,7 @@ module.exports = {
   addWithId,
   updateByDoc,
   removeByDoc,
+  transaction,
   ensureUserSupportCode,
   authError,
   withCollection

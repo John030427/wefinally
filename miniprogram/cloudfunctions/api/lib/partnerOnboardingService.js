@@ -2,6 +2,7 @@ const {
   assertActivation,
   partnerCodes
 } = require('./partnerOnboardingPolicy')
+const crypto = require('crypto')
 
 function number(value) {
   const result = Number(value)
@@ -24,6 +25,10 @@ function requestId(value) {
   return result
 }
 
+function requestDocumentId(value) {
+  return `partner_activation_${crypto.createHash('sha256').update(value).digest('hex')}`
+}
+
 function createPartnerOnboardingService(deps, options = {}) {
   if (!deps || typeof deps.transaction !== 'function') throw new Error('合伙人激活事务依赖缺失')
   const phoneSecret = String(options.phoneSecret || '')
@@ -35,10 +40,8 @@ function createPartnerOnboardingService(deps, options = {}) {
     if (!candidateId || !currentUserId) throw new Error('合伙人激活参数无效')
 
     return deps.transaction(async (tx) => {
-      const prior = await tx.first('partner_audit_log', {
-        action: 'activate',
-        request_id: activationRequestId
-      })
+      const auditDocumentId = requestDocumentId(activationRequestId)
+      const prior = await tx.byDocId('partner_audit_log', auditDocumentId)
       if (prior) {
         if (number(prior.actor_user_id) !== currentUserId) throw new Error('激活请求编号冲突')
         const existing = await tx.byId('partner', prior.result_partner_id)
@@ -50,7 +53,11 @@ function createPartnerOnboardingService(deps, options = {}) {
       const partner = candidate && number(candidate.partner_id)
         ? await tx.byId('partner', candidate.partner_id)
         : null
-      const partnerForUser = await tx.first('partner', { user_id: currentUserId })
+      const bindingDocumentId = `partner_user_${currentUserId}`
+      const bindingLock = await tx.byDocId('partner_binding', bindingDocumentId)
+      const partnerForUser = bindingLock && number(bindingLock.partner_id)
+        ? await tx.byId('partner', bindingLock.partner_id)
+        : null
       const binding = assertActivation({
         candidate,
         partner,
@@ -106,7 +113,15 @@ function createPartnerOnboardingService(deps, options = {}) {
         applicant_user_id: number(candidate.applicant_user_id) || currentUserId,
         bound_at: timestamp
       })
-      await tx.addWithId('partner_audit_log', {
+      await tx.setByDocId('partner_binding', bindingDocumentId, {
+        user_id: currentUserId,
+        partner_id: number(activated.id),
+        candidate_id: candidateId,
+        binding_version: number(activated.binding_version),
+        status: 1,
+        update_time: timestamp
+      })
+      await tx.setByDocId('partner_audit_log', auditDocumentId, {
         actor_type: 'user',
         actor_user_id: currentUserId,
         candidate_id: candidateId,
@@ -116,8 +131,9 @@ function createPartnerOnboardingService(deps, options = {}) {
         from_status: 'needs_verification',
         to_status: 'active',
         request_id: activationRequestId,
-        reason: 'verified_phone_binding'
-      }, 'partner_audit')
+        reason: 'verified_phone_binding',
+        create_time: timestamp
+      })
       return partnerDto(activated)
     })
   }

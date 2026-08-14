@@ -12,6 +12,7 @@ const dateCoordination = require('./dateCoordination')
 const dateApplicationPatch = require('./dateApplicationPatch')
 const experienceFeedback = require('./experienceFeedback')
 const backoffice = require('./backoffice')
+const partnerOnboarding = require('./partnerOnboardingCloud')
 
 function methodOf(value) {
   return String(value || 'GET').toUpperCase()
@@ -34,6 +35,10 @@ function route(method, path) {
   const map = {
     'POST /api/auth/wx-login': auth.wxLogin,
     'POST /api/auth/partner-login': backoffice.partnerLoginForMiniProgram,
+    'GET /api/partner/onboarding/status': partnerOnboarding.status,
+    'POST /api/partner/applications': partnerOnboarding.apply,
+    'POST /api/partner/activation': partnerOnboarding.activate,
+    'POST /api/partner/session': partnerOnboarding.session,
     'GET /api/common/circles': common.circles,
     'GET /api/common/promote-code': common.promoteCode,
     'GET /api/common/stats': common.marryStat,
@@ -86,6 +91,7 @@ function route(method, path) {
     'GET /api/meet/list': meet.meetList
   }
   if (exact === 'GET /api/partner/invite-assets') return backoffice.partnerInviteAssetsForMiniProgram
+  if (exact === 'GET /api/partner/dashboard') return backoffice.partnerDashboardForMiniProgram
   if (exact === 'POST /api/partner/share-event') return backoffice.recordShareEventForMiniProgram
   if (map[exact]) return map[exact]
 
