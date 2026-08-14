@@ -186,19 +186,39 @@ async function main() {
   assert.ok(created)
   assert.strictEqual(created.test_simulation, undefined)
 
-  const fixtureHandlers = createDateCoordinationHandlers(deps)
-  const simulated = await fixtureHandlers.create({ match_log_id: 99, match_user_id: 20 }, {})
+  const fixtureHandlers = createDateCoordinationHandlers(memory())
+  const draft = await fixtureHandlers.create({ match_log_id: 99, match_user_id: 20 }, {})
+  assert.strictEqual(draft.test_simulation, true)
+  assert.strictEqual(draft.await_application, true)
+  const fresh = memory()
+  const freshHandlers = createDateCoordinationHandlers(fresh)
+  const draftFresh = await freshHandlers.create({ match_log_id: 99, match_user_id: 20 }, {})
+  assert.strictEqual(draftFresh.await_application, true)
+  assert.strictEqual(fresh.tables.fixture_response_job.length, 0)
+  const simulated = await freshHandlers.submitFixtureApplication({
+    match_log_id: 99,
+    match_user_id: 20,
+    application: {
+      availability: [{ date: '2026-08-16', periods: ['evening'] }],
+      areas: ['南区'],
+      activities: ['咖啡'],
+      budget: '50-100',
+      payment_preference: 'aa',
+      duration: '1-2h'
+    }
+  }, {})
   assert.strictEqual(simulated.test_simulation, true)
   assert.strictEqual(simulated.fixture_response_job.response_type, 'polite_decline')
-  assert.strictEqual(deps.tables.date_coordination.length, 0)
-  deps.tables.fixture_response_job[0].status = 'delivered'
-  const visible = await fixtureHandlers.fixtureResponse({ id: deps.tables.fixture_response_job[0].id }, {})
+  assert.strictEqual(fresh.tables.date_coordination.length, 0)
+  fresh.tables.fixture_response_job[0].status = 'delivered'
+  const visible = await freshHandlers.fixtureResponse({ id: fresh.tables.fixture_response_job[0].id }, {})
   assert.strictEqual(visible.fixture_response_job.status, 'delivered')
   assert.ok(visible.response_message.includes('不太方便见面'))
   const datePage = fs.readFileSync(path.join(root, 'miniprogram/pages/date-coordination/date-coordination.js'), 'utf8')
   const dateView = fs.readFileSync(path.join(root, 'miniprogram/pages/date-coordination/date-coordination.wxml'), 'utf8')
   assert(datePage.includes('refreshFixtureSimulation'))
-  assert(dateView.includes('对方回复'))
+  assert(datePage.includes('fixture-applications'))
+  assert(dateView.includes('等待测试对象回应') || dateView.includes('测试约会申请'))
   console.log('PASS synthetic fixture declines are delayed, idempotent and never notify for real')
 }
 

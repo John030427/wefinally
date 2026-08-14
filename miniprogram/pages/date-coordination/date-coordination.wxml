@@ -17,22 +17,23 @@
 
   <block wx:elif="{{pageState === 'fixture-simulation'}}">
     <view class="date-head card">
-      <view class="date-title">约会邀请进度</view>
+      <view class="date-title">测试约会申请进度</view>
       <view class="date-desc">{{fixtureStatusText}}</view>
-      <view class="status-pill">{{fixtureSimulation.status === 'delivered' ? '已回复' : '等待回复'}}</view>
+      <view class="status-pill">{{fixtureSimulation.status === 'delivered' ? '测试对象未接受' : '等待测试对象回应'}}</view>
     </view>
     <view class="invite-card card">
-      <view class="section-title">对方回复</view>
+      <view class="section-title">模拟回复</view>
       <view class="invite-text" wx:if="{{fixtureResponseMessage}}">{{fixtureResponseMessage}}</view>
-      <view class="muted" wx:else>平台会在对方回复后更新这里。测试画像不会进入真实约会或线下见面流程。</view>
+      <view class="muted" wx:else>到期前显示等待状态。测试画像不会进入真实约会、通知、工单或线下见面流程。</view>
       <button class="outline-btn full-btn" bindtap="refreshFixtureSimulation" loading="{{refreshingFixture}}">刷新回复状态</button>
     </view>
   </block>
 
   <block wx:else>
     <view class="date-head card">
-      <view class="date-title">第一次约会协调</view>
-      <view class="date-desc">先由发起方填写偏好并邀请对方，再一起确认轻松、安全的初次见面。</view>
+      <view class="date-title">{{coordination.simulation_badge ? '测试约会申请' : '第一次约会协调'}}</view>
+      <view class="meet-badge" wx:if="{{coordination.simulation_badge}}">{{coordination.simulation_badge}}</view>
+      <view class="date-desc">{{coordination.simulation_badge ? '请完整填写偏好。提交后进入等待测试对象回应，不会产生真实通知或线下安排。' : '先由发起方填写偏好并邀请对方，再一起确认轻松、安全的初次见面。'}}</view>
       <view class="status-pill">{{coordination.status_text || coordination.status || '协调中'}}</view>
     </view>
 

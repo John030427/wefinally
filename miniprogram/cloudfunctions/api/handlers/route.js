@@ -85,6 +85,7 @@ function route(method, path) {
     'POST /api/agent/sessions': agent.createSession,
     'POST /api/agent/human-tickets': agent.createHumanTicket,
     'POST /api/date-coordinations': dateCoordination.create,
+    'POST /api/date-coordinations/fixture-applications': dateCoordination.submitFixtureApplication,
     'POST /api/meet/create': meet.create,
     'POST /api/meet/sos': meet.homeSos,
     'GET /api/meet/existing': meet.existing,

@@ -148,15 +148,13 @@ function createDateCoordinationHandlers(overrides = {}) {
     const partner = await dep('byId')('user', partnerId)
     if (!isEligible(partner, now)) throw new Error('匹配对象暂不满足日期协调条件')
     if (canScheduleFixtureDecline(user, partner, now)) {
-      const job = await scheduleFixtureDecline({
-        actor: user,
-        target: partner,
-        interaction_id: `match:${match.id}`
-      }, {
-        acquireJob: (jobData) => dep('acquireFixtureResponseJob')(jobData),
-        now: () => dep('now')()
-      })
-      return { test_simulation: true, fixture_response_job: publicJob(job) }
+      return {
+        test_simulation: true,
+        await_application: true,
+        match_log_id: Number(match.id),
+        match_user_id: partnerId,
+        simulation_badge: '测试画像 / 模拟流程'
+      }
     }
     assertOfflineDatingAllowed(partner)
 
@@ -174,6 +172,42 @@ function createDateCoordinationHandlers(overrides = {}) {
       final_proposal_id: 0
     }, 'date_coordination')
     return detailFor(created, user)
+  }
+
+  async function submitFixtureApplication(data, wxContext) {
+    const user = await dep('currentUser')(wxContext)
+    const matchLogId = Number(data.match_log_id || data.matchLogId || 0)
+    const partnerId = Number(data.match_user_id || data.matchUserId || 0)
+    const match = matchLogId ? await dep('byId')('user_match_log', matchLogId) : null
+    if (!match || Number(match.user_id) !== Number(user.id) || Number(match.match_user_id) !== partnerId) {
+      throw new Error('仅可从自己的测试匹配记录提交模拟约会申请')
+    }
+    const partner = await dep('byId')('user', partnerId)
+    if (!canScheduleFixtureDecline(user, partner, dep('now')())) {
+      const error = new Error('当前对象不能进入模拟约会流程')
+      error.code = 403
+      throw error
+    }
+    const application = normalizeApplication(data.application || data, dep('now')())
+    const job = await scheduleFixtureDecline({
+      actor: user,
+      target: partner,
+      interaction_id: `match:${match.id}`
+    }, {
+      acquireJob: (jobData) => dep('acquireFixtureResponseJob')(Object.assign({}, jobData, {
+        application_snapshot: {
+          areas: application.areas,
+          activities: application.activities,
+          budget: application.budget
+        }
+      })),
+      now: () => dep('now')()
+    })
+    return {
+      test_simulation: true,
+      fixture_response_job: publicJob(job),
+      simulation_badge: '测试画像 / 模拟流程'
+    }
   }
 
   async function fixtureResponse(data, wxContext) {
@@ -518,7 +552,7 @@ function createDateCoordinationHandlers(overrides = {}) {
     return detailFor(updated, user)
   }
 
-  return { create, fixtureResponse, respondInvitation, saveApplication, saveApplicationForUser, detail, confirmProposal, recoordinate }
+  return { create, submitFixtureApplication, fixtureResponse, respondInvitation, saveApplication, saveApplicationForUser, detail, confirmProposal, recoordinate }
 }
 
 const handlers = {}
@@ -532,6 +566,7 @@ function handler(name) {
 
 module.exports = {
   create: handler('create'),
+  submitFixtureApplication: handler('submitFixtureApplication'),
   respondInvitation: handler('respondInvitation'),
   saveApplication: handler('saveApplication'),
   detail: handler('detail'),

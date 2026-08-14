@@ -145,6 +145,23 @@ Page({
       this.applyFixtureSimulation(coordination)
       return
     }
+    if (coordination.test_simulation && coordination.await_application) {
+      this.fixtureDraft = {
+        match_log_id: Number(coordination.match_log_id || 0),
+        match_user_id: Number(coordination.match_user_id || 0)
+      }
+      this.setData({
+        pageState: 'success',
+        coordination: Object.assign({}, coordination, {
+          status: 'collecting_initiator',
+          simulation_badge: coordination.simulation_badge || '测试画像 / 模拟流程'
+        }),
+        coordinationId: '',
+        fixtureSimulation: null,
+        fixtureStatusText: '请完整填写测试约会偏好后提交'
+      })
+      return
+    }
     const status = String(coordination.status || '')
     const id = coordination.id || coordination.coordination_id || coordination.coordinationId || ''
     const application = coordination.application || coordination.my_application || {}
@@ -167,8 +184,8 @@ Page({
   applyFixtureSimulation(result) {
     const job = result.fixture_response_job || {}
     const statusText = job.status === 'delivered'
-      ? '对方已婉拒本次邀请'
-      : (job.status === 'processing' ? '对方正在回复' : '邀请已发出，等待对方回复')
+      ? '测试对象未接受本次约会申请'
+      : '等待测试对象回应'
     this.setData({
       pageState: 'fixture-simulation',
       fixtureSimulation: job,
@@ -299,8 +316,18 @@ Page({
       return
     }
     this.setData({ submitting: true })
-    const wasInitiatorDraft = this.data.coordination.status === 'collecting_initiator'
+    const wasInitiatorDraft = this.data.coordination && this.data.coordination.status === 'collecting_initiator'
     try {
+      if (this.fixtureDraft && this.data.coordination && this.data.coordination.test_simulation) {
+        const result = await post(`${API_PATHS.DATE_COORDINATIONS}/fixture-applications`, {
+          match_log_id: this.fixtureDraft.match_log_id,
+          match_user_id: this.fixtureDraft.match_user_id,
+          application: this.data.form
+        }, { showError: false })
+        this.applyFixtureSimulation(result)
+        wx.showToast({ title: '已提交测试约会申请', icon: 'success' })
+        return
+      }
       const result = await put(`${API_PATHS.DATE_COORDINATIONS}/${this.data.coordinationId}/application`, this.data.form, { showError: false })
       this.applyCoordination(normalizeCoordination(result))
       wx.showToast({
