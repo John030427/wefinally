@@ -176,6 +176,8 @@ async function main() {
   const userHandler = fs.readFileSync(path.join(root, 'miniprogram/cloudfunctions/api/handlers/user.js'), 'utf8')
   assert(route.includes('/api/match/test-runs'))
   assert(indexWxml.includes('10 秒测试匹配') || indexWxml.includes('10秒测试匹配'))
+  assert(indexWxml.includes('匹配测试'))
+  assert(!indexWxml.includes('>内部测试</text>'))
   assert(indexWxml.includes('qaTestRunEnabled'))
   assert(indexJs.includes('testRunStatus'))
   assert(!indexJs.includes('reset_user_batch'))
