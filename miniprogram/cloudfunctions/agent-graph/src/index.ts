@@ -23,6 +23,12 @@ type MainResponse = {
   code?: string
 }
 
+function withoutCloudBaseMetadata(event: unknown): unknown {
+  if (!event || typeof event !== 'object' || Array.isArray(event)) return event
+  const { userInfo: _userInfo, ...businessEvent } = event as Record<string, unknown>
+  return businessEvent
+}
+
 function statusForPhase(phase: string, pendingAction: unknown): GraphResult['status'] {
   if (phase === 'manual_pending') return 'manual_pending'
   if (phase === 'awaiting_confirmation') return 'awaiting_confirmation'
@@ -61,14 +67,15 @@ function resultFromState(threadId: string, state: Record<string, unknown>): Grap
 
 export function createAgentGraphMain(dependencies: MainDependencies) {
   return async function main(event: unknown): Promise<MainResponse> {
-    if (event && typeof event === 'object' && !Array.isArray(event)) {
-      const object = event as Record<string, unknown>
+    const businessEvent = withoutCloudBaseMetadata(event)
+    if (businessEvent && typeof businessEvent === 'object' && !Array.isArray(businessEvent)) {
+      const object = businessEvent as Record<string, unknown>
       if (object.operation === 'health' && Object.keys(object).length === 1) {
         return { success: true, data: { status: 'ok', runtime: 'langgraph' } }
       }
     }
 
-    const runInput = GraphRunInputSchema.safeParse(event)
+    const runInput = GraphRunInputSchema.safeParse(businessEvent)
     try {
       if (runInput.success) {
         const boundedInput = GraphStateSchema.parse({
@@ -87,7 +94,7 @@ export function createAgentGraphMain(dependencies: MainDependencies) {
         return { success: true, data: resultFromState(boundedInput.threadId, state) }
       }
 
-      const resumeInput = GraphResumeInputSchema.safeParse(event)
+      const resumeInput = GraphResumeInputSchema.safeParse(businessEvent)
       if (!resumeInput.success) return { success: false, code: 'invalid_request' }
       let checkpointState: Record<string, unknown> | undefined
       try {
@@ -105,7 +112,7 @@ export function createAgentGraphMain(dependencies: MainDependencies) {
           success: true,
           data: GraphResultSchema.parse({
             status: 'fallback',
-            threadId: runInput.success ? runInput.data.threadId : (event as { threadId: string }).threadId,
+            threadId: runInput.success ? runInput.data.threadId : (businessEvent as { threadId: string }).threadId,
             phase: 'fallback',
             replyDraft: 'AI 服务暂时不可用，请稍后重试或联系人工客服。',
             pendingAction: null,

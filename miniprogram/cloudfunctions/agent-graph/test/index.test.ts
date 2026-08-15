@@ -29,6 +29,24 @@ test('health is explicit and unknown event fields are rejected', async () => {
   assert.equal(invalid.code, 'invalid_request')
 })
 
+test('entrypoint ignores only CloudBase injected userInfo metadata', async () => {
+  const main = createAgentGraphMain({
+    checkpointer: new MemorySaver(),
+    model: {
+      decide: async () => ({
+        intent: 'faq', replyDraft: '已核对。', riskLevel: 'safe', route: 'faq',
+        toolRequest: null, suggestedActions: []
+      })
+    }
+  })
+  const result = await main({
+    ...customerInput('介绍平台规则'),
+    userInfo: { appId: 'cloudbase-injected', openId: 'cloudbase-injected' }
+  })
+  assert.equal(result.success, true)
+  assert.equal(result.data?.status, 'completed')
+})
+
 test('entrypoint sanitizes model input and returns a bounded graph result', async () => {
   let observed: DecisionInput | undefined
   const model: DecisionModel = {
