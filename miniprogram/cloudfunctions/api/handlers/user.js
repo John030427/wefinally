@@ -127,10 +127,11 @@ async function register(data, wxContext) {
     console.warn('privacy auth log skipped:', err.message || err)
   }
 
+  const registeredProfile = await profilePayload(user)
   return {
     token: tokenFor(openid),
-    user: await profilePayload(user),
-    userInfo: await profilePayload(user)
+    user: registeredProfile,
+    userInfo: registeredProfile
   }
 }
 

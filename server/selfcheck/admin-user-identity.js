@@ -29,18 +29,22 @@ function fakeCloudDatabase(seed = {}) {
     }
   }
 
+  let transactionTail = Promise.resolve()
+
   return {
     state,
     command: {},
     collection(collectionName) {
       return { doc(documentId) { return document(collectionName, documentId) } }
     },
-    async runTransaction(handler) {
-      return handler({
+    runTransaction(handler) {
+      const result = transactionTail.then(() => handler({
         collection(collectionName) {
           return { doc(documentId) { return document(collectionName, documentId) } }
         }
-      })
+      }))
+      transactionTail = result.catch(() => undefined)
+      return result
     }
   }
 }
@@ -116,6 +120,8 @@ async function main() {
       user_7: { id: 7, openid: 'official-openid' },
       user_8: { id: 8, openid: 'official-openid-2' },
       user_9: { id: 9, openid: 'official-openid-3' },
+      user_10: { id: 10, openid: 'official-openid-4' },
+      user_11: { id: 11, openid: 'official-openid-5' },
       users_118: { id: 118, openid: 'dev_wefinally_local_openid' }
     }
   })
@@ -137,6 +143,14 @@ async function main() {
   assert.strictEqual(testCode, 'TEST-000118')
   assert.strictEqual(fakeDb.state.users.users_118.support_code, undefined)
   assert.strictEqual(fakeDb.state.system_counters.user_support_code.seq, 2)
+
+  const concurrentCodes = await Promise.all([
+    db.ensureUserSupportCode({ _id: 'user_10', id: 10, openid: 'official-openid-4' }),
+    db.ensureUserSupportCode({ _id: 'user_11', id: 11, openid: 'official-openid-5' })
+  ])
+  assert.deepStrictEqual(concurrentCodes, ['WF-000003', 'WF-000004'])
+  assert.strictEqual(new Set(concurrentCodes).size, 2)
+  assert.strictEqual(fakeDb.state.system_counters.user_support_code.seq, 4)
 
   fakeDb.state.system_counters.user_support_code.seq = 999999
   await assert.rejects(
