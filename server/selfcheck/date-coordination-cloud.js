@@ -305,14 +305,16 @@ async function main() {
     ],
     date_coordination: [{
       _id: 'date_coordination_77', id: 77, user_a_id: 1, user_b_id: 2,
-      status: 'no_overlap', coordination_version: 1, recoordination_count: 1
+      status: 'no_overlap', coordination_version: 4, recoordination_count: 3
     }]
   })
   const recoordinationHandlers = createDateCoordinationHandlers(recoordinationDeps)
   const secondRound = await recoordinationHandlers.recoordinate({ coordination_id: 77 }, { user_id: 1 })
   assert.strictEqual(secondRound.status, 'replanning')
-  assert.strictEqual(secondRound.coordination_version, 2)
-  assert.strictEqual(secondRound.recoordination_count, 2)
+  assert.strictEqual(secondRound.coordination_version, 5)
+  assert.strictEqual(secondRound.recoordination_count, 4)
+  assert.strictEqual(secondRound.round_number, 5)
+  assert.strictEqual(secondRound.max_rounds, 5)
   assert.strictEqual(secondRound.application_deadline_at.toISOString(), '2026-07-15T08:00:00.000Z')
   const handoff = await recoordinationHandlers.recoordinate({ coordination_id: 77 }, { user_id: 1 })
   assert.strictEqual(handoff.status, 'manual_handoff')

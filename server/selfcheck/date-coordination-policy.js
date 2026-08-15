@@ -7,6 +7,14 @@ const {
   nextStatus,
   applyConfirmation
 } = require('../../miniprogram/cloudfunctions/api/lib/dateCoordinationPolicy')
+const {
+  MAX_COORDINATION_ROUNDS,
+  PROCESSING_STATUS,
+  nextProcessingStatus,
+  roundNumber,
+  canStartAnotherRound,
+  enqueueProcessing
+} = require('../../miniprogram/cloudfunctions/api/lib/dateCoordinationProcessingPolicy')
 
 const now = new Date('2026-07-12T08:00:00.000Z')
 
@@ -81,6 +89,20 @@ assert.strictEqual(nextStatus(STATUS.COLLECTING_PREFERENCES, 'applications_compl
 assert.strictEqual(nextStatus(STATUS.COMPUTING_OVERLAP, 'proposals_created'), STATUS.WAITING_CONFIRMATIONS)
 assert.strictEqual(nextStatus(STATUS.COMPUTING_OVERLAP, 'no_overlap'), STATUS.NO_OVERLAP)
 assert.throws(() => nextStatus(STATUS.ARRANGED, 'recoordinate'), /当前状态不能执行/)
+assert.strictEqual(MAX_COORDINATION_ROUNDS, 5)
+assert.strictEqual(roundNumber({ recoordination_count: 0 }), 1)
+assert.strictEqual(roundNumber({ recoordination_count: 4 }), 5)
+assert.strictEqual(canStartAnotherRound({ recoordination_count: 3 }), true)
+assert.strictEqual(canStartAnotherRound({ recoordination_count: 4 }), false)
+assert.strictEqual(nextProcessingStatus(PROCESSING_STATUS.QUEUED, 'claim'), PROCESSING_STATUS.PROCESSING)
+assert.strictEqual(nextProcessingStatus(PROCESSING_STATUS.PROCESSING, 'complete'), PROCESSING_STATUS.COMPLETED)
+assert.strictEqual(nextProcessingStatus(PROCESSING_STATUS.PROCESSING, 'fail'), PROCESSING_STATUS.FAILED)
+assert.strictEqual(nextProcessingStatus(PROCESSING_STATUS.FAILED, 'retry'), PROCESSING_STATUS.QUEUED)
+assert.throws(() => nextProcessingStatus(PROCESSING_STATUS.COMPLETED, 'retry'), /当前处理状态/)
+const queued = enqueueProcessing({ coordination_version: 3 }, { now, version: 3 })
+assert.strictEqual(queued.status, STATUS.COMPUTING_OVERLAP)
+assert.strictEqual(queued.processing_status, PROCESSING_STATUS.QUEUED)
+assert.strictEqual(queued.processing_version, 3)
 
 const coordination = {
   status: STATUS.WAITING_CONFIRMATIONS,
@@ -96,6 +118,8 @@ assert.strictEqual(first.confirmations.length, 1)
 const second = applyConfirmation(first.coordination, proposal, first.confirmations, { user_id: 20, decision: 'confirm' })
 assert.strictEqual(second.coordination.status, STATUS.ARRANGED)
 assert.strictEqual(second.coordination.final_proposal_id, 88)
+const rejectedProposal = applyConfirmation(coordination, proposal, [], { user_id: 10, decision: 'reject' })
+assert.strictEqual(rejectedProposal.coordination.status, STATUS.REPLANNING)
 assert.throws(() => applyConfirmation(
   { ...coordination, coordination_version: 3 },
   proposal,

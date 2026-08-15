@@ -3,6 +3,7 @@ const { MEMBER_STATUS, memberStatus } = require('../lib/memberPolicy')
 const { createReminderJob, deliverProposalNotification } = require('../agent/notificationJobs')
 const { assertOfflineDatingAllowed } = require('../lib/testFixturePolicy')
 const { canScheduleFixtureDecline, scheduleFixtureDecline, publicJob, politeDeclineMessage } = require('../lib/fixtureResponseService')
+const { MAX_COORDINATION_ROUNDS, roundNumber, canStartAnotherRound } = require('../lib/dateCoordinationProcessingPolicy')
 
 async function upsertConfirmation(existing, data) {
   const db = require('../lib/db')
@@ -425,6 +426,10 @@ function createDateCoordinationHandlers(overrides = {}) {
       }[coordination.status] || 'coordinating'),
       coordination_version: version,
       recoordination_count: Number(coordination.recoordination_count || 0),
+      round_number: roundNumber(coordination),
+      max_rounds: MAX_COORDINATION_ROUNDS,
+      processing_status: coordination.processing_status || '',
+      processing_version: Number(coordination.processing_version || 0),
       invitation_deadline_at: coordination.invitation_deadline_at || null,
       application_deadline_at: coordination.application_deadline_at || null,
       confirmation_deadline_at: coordination.confirmation_deadline_at || null,
@@ -538,7 +543,7 @@ function createDateCoordinationHandlers(overrides = {}) {
       throw new Error('当前状态不能重新协调')
     }
     const rounds = Number(coordination.recoordination_count || 0)
-    if (rounds >= 2) {
+    if (!canStartAnotherRound(coordination)) {
       const updated = await dep('updateByDoc')('date_coordination', coordination, {
         status: STATUS.MANUAL_HANDOFF
       })
