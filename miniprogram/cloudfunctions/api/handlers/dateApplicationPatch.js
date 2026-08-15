@@ -1,5 +1,6 @@
 const { normalizeApplication, computeOverlap, STATUS } = require('../lib/dateCoordinationPolicy')
 const { previewApplicationChange, shareableSummary, cleanChanges } = require('../lib/dateApplicationPatchPolicy')
+const { publishCoordinationEvent } = require('../agent/dateCoordinationEvents')
 
 async function claimPendingPatch(patch) {
   const db = require('../lib/db')
@@ -20,6 +21,7 @@ function defaultDeps() {
     addWithId: db.addWithId,
     updateByDoc: db.updateByDoc,
     claimPendingPatch,
+    publishCoordinationEvent,
     now: db.now,
     saveApplicationForUser(data, user) {
       const { createDateCoordinationHandlers } = require('./dateCoordination')
@@ -53,6 +55,13 @@ function createDateApplicationPatchHandlers(overrides = {}) {
   let defaults = null
   function dep(name) {
     if (overrides[name]) return overrides[name]
+    if (name === 'publishCoordinationEvent' && overrides.first && overrides.addWithId) {
+      return (input) => publishCoordinationEvent(input, {
+        first: overrides.first,
+        addWithId: overrides.addWithId,
+        now: overrides.now
+      })
+    }
     if (!defaults) defaults = defaultDeps()
     return defaults[name]
   }
@@ -141,34 +150,16 @@ function createDateApplicationPatchHandlers(overrides = {}) {
     const partnerId = Number(coordination.user_a_id) === Number(user.id)
       ? Number(coordination.user_b_id)
       : Number(coordination.user_a_id)
-    let session = await dep('first')('agent_session', {
-      user_id: partnerId,
-      agent_type: 'date_coordinator',
-      coordination_id: Number(coordination.id)
+    const published = await dep('publishCoordinationEvent')({
+      coordination,
+      event: {
+        event_type: 'preference_changed',
+        actor_user_id: Number(user.id),
+        coordination_version: Number(version),
+        has_proposal: Boolean(proposalCreated),
+        changed_dimensions: summary.changed_dimensions
+      }
     })
-    if (!session) {
-      session = await dep('addWithId')('agent_session', {
-        user_id: partnerId,
-        agent_type: 'date_coordinator',
-        coordination_id: Number(coordination.id),
-        status: 'active',
-        summary: ''
-      }, 'agent_session')
-    }
-    const content = proposalCreated
-      ? '对方的约会条件发生调整，系统已生成新的候选方案，请查看后确认是否合适。'
-      : '对方的约会条件发生调整，目前还没有完整交集。你可以告诉我哪些时间、区域或活动方便调整。'
-    await dep('addWithId')('agent_message', {
-      session_id: Number(session.id),
-      user_id: partnerId,
-      agent_type: 'date_coordinator',
-      role: 'assistant',
-      sender_type: 'ai',
-      content,
-      coordination_id: Number(coordination.id),
-      coordination_version: Number(version),
-      event_type: 'partner_preference_changed'
-    }, 'agent_message')
     await dep('addWithId')('agent_notification_job', {
       coordination_id: Number(coordination.id),
       user_id: partnerId,
@@ -178,7 +169,8 @@ function createDateApplicationPatchHandlers(overrides = {}) {
       status: 'pending',
       attempts: 0
     }, 'agent_notification_job')
-    return { partner_id: partnerId, session_id: Number(session.id), shareable_summary: summary }
+    const partnerMessage = published.messages.find((item) => Number(item.user_id) === partnerId)
+    return { partner_id: partnerId, session_id: Number(partnerMessage && partnerMessage.session_id || 0), shareable_summary: summary }
   }
 
   async function confirmForUser(data, user) {
@@ -298,13 +290,6 @@ function createDateApplicationPatchHandlers(overrides = {}) {
       applied_at: dep('now')()
     })
     const summary = shareableSummary(patch.preview)
-    await dep('addWithId')('date_coordination_event', {
-      coordination_id: Number(coordination.id),
-      coordination_version: newVersion,
-      event_type: 'preference_changed',
-      actor_user_id: Number(user.id),
-      shareable_summary: summary
-    }, 'date_coordination_event')
     const notification = await notifyPartner(coordination, user, summary, proposalCreated, newVersion)
     return {
       patch: publicPatch(appliedPatch),

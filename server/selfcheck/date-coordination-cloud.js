@@ -3,6 +3,7 @@ const assert = require('assert')
 const { createDateCoordinationHandlers, processCoordinationDeadlines } = require('../../miniprogram/cloudfunctions/api/handlers/dateCoordination')
 const { processCoordinationTasks } = require('../../miniprogram/cloudfunctions/api/handlers/dateCoordinationWorker')
 const { claimProcessingVersion, completeProcessingVersion } = require('../../miniprogram/cloudfunctions/api/lib/dateCoordinationProcessingPolicy')
+const { publishCoordinationEvent } = require('../../miniprogram/cloudfunctions/api/agent/dateCoordinationEvents')
 
 const NOW = new Date('2026-07-12T08:00:00.000Z')
 
@@ -13,7 +14,7 @@ function memoryDeps(seed = {}) {
     if (!rows[name]) rows[name] = []
     return rows[name]
   }
-  return {
+  const deps = {
     rows,
     currentUser: async (context) => {
       const user = collection('user').find((item) => Number(item.id) === Number(context.user_id))
@@ -56,6 +57,8 @@ function memoryDeps(seed = {}) {
     },
     now: () => new Date(NOW)
   }
+  deps.publishCoordinationEvent = (input) => publishCoordinationEvent(input, deps)
+  return deps
 }
 
 function memoryWorkerDeps(deps) {
@@ -102,7 +105,8 @@ function memoryWorkerDeps(deps) {
         Object.assign(current, { processing_status: 'queued', processing_token: '', processing_error_code: code })
       }
       return current
-    }
+    },
+    publishCoordinationEvent: deps.publishCoordinationEvent
   }
 }
 
@@ -293,7 +297,13 @@ async function main() {
   assert.strictEqual(deps.rows.date_coordination_proposal[0].status, 'active')
   assert.strictEqual(computed.confirmation_deadline_at.toISOString(), '2026-07-13T08:00:00.000Z')
   assert.strictEqual(deps.rows.agent_notification_job.length, 1)
-  assert.strictEqual(deps.rows.agent_message.length, 0)
+  assert(deps.rows.agent_message.length >= 8)
+  assert.strictEqual(deps.rows.agent_session.filter((row) => row.agent_type === 'date_coordinator').length, 2)
+  const coordinationMessages = JSON.stringify(deps.rows.agent_message)
+  assert.strictEqual(coordinationMessages.includes(applicationA.share_message), false)
+  assert.strictEqual(coordinationMessages.includes(applicationB.share_message), false)
+  assert(coordinationMessages.includes('双方偏好已收齐'))
+  assert(coordinationMessages.includes('候选方案'))
   await assert.rejects(() => handlers.saveApplication({ coordination_id: 999, ...applicationA }, { user_id: 1 }), /日期协调不存在/)
   await assert.rejects(() => handlers.saveApplication({ coordination_id: first.id, ...applicationA }, { user_id: 3 }), /无权操作该日期协调/)
 
@@ -435,6 +445,26 @@ async function main() {
   assert.deepStrictEqual(staleWorker, { scanned: 1, claimed: 1, completed: 0, stale: 1, failed: 0 })
   assert.strictEqual(staleWorkerDeps.rows.date_coordination_proposal.length, 0)
   assert.strictEqual(staleWorkerDeps.rows.date_coordination[0].coordination_version, 2)
+
+  const feedbackFailureDeps = memoryDeps({
+    date_coordination: [{
+      _id: 'date_coordination_103', id: 103, user_a_id: 1, user_b_id: 2,
+      status: 'computing_overlap', coordination_version: 1,
+      processing_status: 'queued', processing_version: 1, processing_attempts: 0
+    }],
+    date_coordination_application: [
+      { id: 1, coordination_id: 103, user_id: 1, coordination_version: 1, application: applicationA },
+      { id: 2, coordination_id: 103, user_id: 2, coordination_version: 1, application: applicationB }
+    ]
+  })
+  const feedbackFailureStore = memoryWorkerDeps(feedbackFailureDeps)
+  let reportedEventError = false
+  feedbackFailureStore.publishCoordinationEvent = async () => { throw new Error('event unavailable') }
+  feedbackFailureStore.onEventError = async () => { reportedEventError = true }
+  const feedbackFailure = await processCoordinationTasks({ deps: feedbackFailureStore, now: NOW, limit: 10 })
+  assert.deepStrictEqual(feedbackFailure, { scanned: 1, claimed: 1, completed: 1, stale: 0, failed: 0 })
+  assert.strictEqual(feedbackFailureDeps.rows.date_coordination[0].processing_status, 'completed')
+  assert.strictEqual(reportedEventError, true)
 
   console.log('PASS date coordination cloud')
 }

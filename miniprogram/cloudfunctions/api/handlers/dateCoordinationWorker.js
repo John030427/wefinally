@@ -1,4 +1,5 @@
 const { computeOverlap } = require('../lib/dateCoordinationPolicy')
+const { publishCoordinationEvent } = require('../agent/dateCoordinationEvents')
 
 function defaultDeps() {
   const db = require('../lib/db')
@@ -11,6 +12,7 @@ function defaultDeps() {
     }, 10),
     completeTask: db.completeCoordinationProcessing,
     failTask: db.failCoordinationProcessing,
+    publishCoordinationEvent,
     now: db.now
   }
 }
@@ -43,10 +45,33 @@ async function processCoordinationTasks(options = {}) {
       if (!applicationA || !applicationB) throw new Error('双方协调申请不完整')
       const overlap = computeOverlap(applicationA, applicationB, { version })
       const result = await deps.completeTask(lease, overlap, current)
-      if (result && result.applied) completed += 1
-      else stale += 1
+      if (result && result.applied) {
+        completed += 1
+        const proposals = result.proposals || []
+        try {
+          await deps.publishCoordinationEvent({
+            coordination: result.coordination,
+            event: {
+              event_type: proposals.length ? 'proposal_generated' : 'no_overlap',
+              coordination_version: version,
+              proposal: proposals[0] || null
+            }
+          })
+        } catch (eventError) {
+          if (deps.onEventError) await deps.onEventError(eventError, result.coordination)
+        }
+      } else stale += 1
     } catch (error) {
-      await deps.failTask(lease, errorCode(error), current)
+      const failedTask = await deps.failTask(lease, errorCode(error), current)
+      if (failedTask && failedTask.processing_status === 'failed') {
+        await deps.publishCoordinationEvent({
+          coordination: failedTask,
+          event: {
+            event_type: 'processing_failed',
+            coordination_version: Number(failedTask.coordination_version || lease.coordination_version || 1)
+          }
+        })
+      }
       failed += 1
     }
   }

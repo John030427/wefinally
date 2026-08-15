@@ -4,6 +4,7 @@ const { createReminderJob } = require('../agent/notificationJobs')
 const { assertOfflineDatingAllowed } = require('../lib/testFixturePolicy')
 const { canScheduleFixtureDecline, scheduleFixtureDecline, publicJob, politeDeclineMessage } = require('../lib/fixtureResponseService')
 const { MAX_COORDINATION_ROUNDS, roundNumber, canStartAnotherRound, enqueueProcessing } = require('../lib/dateCoordinationProcessingPolicy')
+const { publishCoordinationEvent } = require('../agent/dateCoordinationEvents')
 
 async function upsertConfirmation(existing, data) {
   const db = require('../lib/db')
@@ -63,6 +64,7 @@ function defaultDeps() {
     upsertConfirmation,
     updateConfirmationState,
     expireIfCurrent: expireCoordinationIfCurrent,
+    publishCoordinationEvent,
     now: db.now
   }
 }
@@ -121,6 +123,13 @@ function createDateCoordinationHandlers(overrides = {}) {
   let defaults = null
   function dep(name) {
     if (overrides[name]) return overrides[name]
+    if (name === 'publishCoordinationEvent' && overrides.first && overrides.addWithId) {
+      return (input) => publishCoordinationEvent(input, {
+        first: overrides.first,
+        addWithId: overrides.addWithId,
+        now: overrides.now
+      })
+    }
     if (!defaults) defaults = defaultDeps()
     return defaults[name]
   }
@@ -260,6 +269,14 @@ function createDateCoordinationHandlers(overrides = {}) {
     }
     if (event === 'accept_invitation') update.application_deadline_at = addHours(now, 72)
     const updated = await dep('updateByDoc')('date_coordination', coordination, update)
+    await dep('publishCoordinationEvent')({
+      coordination: updated,
+      event: {
+        event_type: event === 'accept_invitation' ? 'invitation_accepted' : 'invitation_declined',
+        actor_user_id: Number(user.id),
+        coordination_version: Number(updated.coordination_version || 1)
+      }
+    })
     return detailFor(updated, user)
   }
 
@@ -299,6 +316,14 @@ function createDateCoordinationHandlers(overrides = {}) {
         submitted_at: now
       }), 'date_coordination_application')
     }
+    await dep('publishCoordinationEvent')({
+      coordination,
+      event: {
+        event_type: 'application_submitted',
+        actor_user_id: Number(user.id),
+        coordination_version: version
+      }
+    })
 
     if (isInitiatorDraft) {
       const invitationDeadline = addHours(now, 48)
@@ -345,6 +370,14 @@ function createDateCoordinationHandlers(overrides = {}) {
       last_event_at: queued.last_event_at,
       missing_dimensions: [],
       confirmation_deadline_at: null
+    })
+    await dep('publishCoordinationEvent')({
+      coordination: updated,
+      event: {
+        event_type: 'processing_queued',
+        actor_user_id: Number(user.id),
+        coordination_version: version
+      }
     })
     return detailFor(updated, user)
   }
@@ -500,6 +533,27 @@ function createDateCoordinationHandlers(overrides = {}) {
       decision: data.decision
     })
     const updated = await dep('updateConfirmationState')(coordination, latestResult)
+    const decision = String(data.decision || '')
+    await dep('publishCoordinationEvent')({
+      coordination: updated,
+      event: {
+        event_type: decision === 'confirm' ? 'proposal_confirmed' : 'proposal_rejected',
+        actor_user_id: Number(user.id),
+        coordination_version: version,
+        proposal
+      }
+    })
+    if (updated.status === STATUS.ARRANGED) {
+      await dep('publishCoordinationEvent')({
+        coordination: updated,
+        event: {
+          event_type: 'arranged',
+          actor_user_id: Number(user.id),
+          coordination_version: version,
+          proposal
+        }
+      })
+    }
     return detailFor(updated, user)
   }
 
@@ -515,6 +569,15 @@ function createDateCoordinationHandlers(overrides = {}) {
     if (!canStartAnotherRound(coordination)) {
       const updated = await dep('updateByDoc')('date_coordination', coordination, {
         status: STATUS.MANUAL_HANDOFF
+      })
+      await dep('publishCoordinationEvent')({
+        coordination: updated,
+        event: {
+          event_type: 'manual_handoff',
+          actor_user_id: Number(user.id),
+          coordination_version: Number(updated.coordination_version || 1),
+          round_number: roundNumber(updated)
+        }
       })
       return detailFor(updated, user)
     }
@@ -536,6 +599,15 @@ function createDateCoordinationHandlers(overrides = {}) {
       confirmation_deadline_at: null,
       missing_dimensions: [],
       final_proposal_id: 0
+    })
+    await dep('publishCoordinationEvent')({
+      coordination: updated,
+      event: {
+        event_type: 'recoordination_started',
+        actor_user_id: Number(user.id),
+        coordination_version: Number(updated.coordination_version || currentVersion + 1),
+        round_number: roundNumber(updated)
+      }
     })
     return detailFor(updated, user)
   }
