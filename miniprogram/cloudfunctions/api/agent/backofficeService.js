@@ -218,6 +218,52 @@ function createAgentBackofficeService(deps, options = {}) {
     return result
   }
 
+  async function pairedConversationProjection(coordination, selectedSessionId, coordinationEvents) {
+    if (!coordination) return null
+    const sessions = (await deps.list('agent_session', { coordination_id: Number(coordination.id) }, 100))
+      .filter((row) => row.agent_type === 'date_coordinator')
+    async function projectSide(label, userId) {
+      const session = sessions
+        .filter((row) => Number(row.user_id) === Number(userId))
+        .sort((a, b) => Number(b.id || 0) - Number(a.id || 0))[0]
+      if (!session) return null
+      const [user, messages, runs, notificationJobs] = await Promise.all([
+        deps.byId('user', userId),
+        deps.list('agent_message', { session_id: session.id }, 500),
+        deps.list('agent_run', { session_id: session.id }, 100),
+        deps.list('agent_notification_job', { coordination_id: coordination.id, user_id: userId }, 100)
+      ])
+      const orderedMessages = messages.sort((a, b) => Number(a.id || 0) - Number(b.id || 0))
+      return {
+        side: label,
+        selected: Number(session.id) === Number(selectedSessionId),
+        session: sessionDto(session, user),
+        messages: orderedMessages.map(messageDto),
+        timeline: buildTimeline(orderedMessages, [], notificationJobs),
+        runs: runs.sort((a, b) => Number(b.id || 0) - Number(a.id || 0)).map(runDto),
+        notification_jobs: notificationJobs
+          .sort((a, b) => Number(b.id || 0) - Number(a.id || 0))
+          .map(notificationJobDto)
+      }
+    }
+    const [sideA, sideB] = await Promise.all([
+      projectSide('A', coordination.user_a_id),
+      projectSide('B', coordination.user_b_id)
+    ])
+    return {
+      read_only: true,
+      coordination: coordinationDto(coordination),
+      sides: {
+        a: sideA,
+        b: sideB
+      },
+      shared_events: coordinationEvents
+        .slice()
+        .sort((a, b) => timeValue(a.create_time) - timeValue(b.create_time))
+        .map(coordinationEventDto)
+    }
+  }
+
   function includeTest(filters) {
     return filters.include_test === true || String(filters.include_test || '') === '1'
   }
@@ -265,6 +311,13 @@ function createAgentBackofficeService(deps, options = {}) {
       notification_jobs: notificationJobs
         .sort((a, b) => Number(b.id || 0) - Number(a.id || 0))
         .map(notificationJobDto)
+    }
+    if (coordination) {
+      result.paired_conversation = await pairedConversationProjection(
+        coordination,
+        session.id,
+        coordinationEvents
+      )
     }
     if (userBackoffice) result.user_context = await userBackoffice.userContext(actor, ticket.user_id)
     return result
@@ -346,6 +399,13 @@ function createAgentBackofficeService(deps, options = {}) {
       notification_jobs: notificationJobs
         .sort((a, b) => Number(b.id || 0) - Number(a.id || 0))
         .map(notificationJobDto)
+    }
+    if (coordination) {
+      result.paired_conversation = await pairedConversationProjection(
+        coordination,
+        session.id,
+        coordinationEvents
+      )
     }
     if (userBackoffice) result.user_context = await userBackoffice.userContext(actor, session.user_id)
     return result
