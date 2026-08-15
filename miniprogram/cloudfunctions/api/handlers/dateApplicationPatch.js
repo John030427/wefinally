@@ -1,6 +1,7 @@
-const { normalizeApplication, computeOverlap, STATUS } = require('../lib/dateCoordinationPolicy')
+const { normalizeApplication, STATUS } = require('../lib/dateCoordinationPolicy')
 const { previewApplicationChange, shareableSummary, cleanChanges } = require('../lib/dateApplicationPatchPolicy')
 const { publishCoordinationEvent } = require('../agent/dateCoordinationEvents')
+const { canStartAnotherRound, enqueueProcessing } = require('../lib/dateCoordinationProcessingPolicy')
 
 async function claimPendingPatch(patch) {
   const db = require('../lib/db')
@@ -79,7 +80,7 @@ function createDateApplicationPatchHandlers(overrides = {}) {
   async function createPreviewForUser(data, user, session) {
     const coordination = await dep('byId')('date_coordination', Number(data.coordination_id || 0))
     if (!owns(coordination, user && user.id)) throw new Error('无权修改该约会协调')
-    if ([STATUS.CANCELLED, STATUS.CLOSED, STATUS.EXPIRED].includes(coordination.status)) {
+    if ([STATUS.CANCELLED, STATUS.CLOSED, STATUS.EXPIRED, STATUS.MANUAL_HANDOFF].includes(coordination.status)) {
       throw new Error('当前约会协调已经结束，不能修改')
     }
     const version = Number(coordination.coordination_version || 1)
@@ -115,7 +116,7 @@ function createDateApplicationPatchHandlers(overrides = {}) {
   async function createInitialPreviewForUser(data, user, session) {
     const coordination = await dep('byId')('date_coordination', Number(data.coordination_id || 0))
     if (!owns(coordination, user && user.id)) throw new Error('无权创建该约会申请')
-    if ([STATUS.CANCELLED, STATUS.CLOSED, STATUS.EXPIRED].includes(coordination.status)) {
+    if ([STATUS.CANCELLED, STATUS.CLOSED, STATUS.EXPIRED, STATUS.MANUAL_HANDOFF].includes(coordination.status)) {
       throw new Error('当前约会协调已经结束，不能发送申请')
     }
     const version = Number(coordination.coordination_version || 1)
@@ -228,6 +229,34 @@ function createDateApplicationPatchHandlers(overrides = {}) {
     const mine = latestForUser(rows, user.id, oldVersion)
     if (!mine) throw new Error('没有可修改的约会申请')
     const nextApplication = normalizeApplication(Object.assign({}, mine.application, patch.changes), dep('now')())
+    if (!canStartAnotherRound(coordination)) {
+      const handedOff = await dep('updateByDoc')('date_coordination', coordination, {
+        status: STATUS.MANUAL_HANDOFF,
+        business_state: 'manual_handoff'
+      })
+      const referredPatch = await dep('updateByDoc')('date_application_patch', patch, {
+        status: 'manual_handoff',
+        applied_version: oldVersion,
+        applied_at: dep('now')()
+      })
+      await dep('publishCoordinationEvent')({
+        coordination: handedOff,
+        event: {
+          event_type: 'manual_handoff',
+          actor_user_id: Number(user.id),
+          coordination_version: oldVersion,
+          round_number: 5
+        }
+      })
+      return {
+        patch: publicPatch(referredPatch),
+        coordination_version: oldVersion,
+        status: handedOff.status,
+        business_state: handedOff.business_state,
+        proposal_generated: false,
+        partner_notified: true
+      }
+    }
     const newVersion = oldVersion + 1
 
     const proposals = await dep('list')('date_coordination_proposal', {
@@ -262,25 +291,30 @@ function createDateApplicationPatchHandlers(overrides = {}) {
       nextApplications.set(participantId, application)
     }
 
-    const applicationA = nextApplications.get(Number(coordination.user_a_id))
-    const applicationB = nextApplications.get(Number(coordination.user_b_id))
-    const overlap = applicationA && applicationB
-      ? computeOverlap(applicationA, applicationB, { version: newVersion })
-      : { proposals: [], missing_dimensions: [] }
-    for (const proposal of overlap.proposals) {
-      await dep('addWithId')('date_coordination_proposal', Object.assign({}, proposal, {
-        coordination_id: Number(coordination.id),
-        status: 'active'
-      }), 'date_coordination_proposal')
-    }
-    const proposalCreated = overlap.proposals.length > 0
+    const hasBothApplications = nextApplications.has(Number(coordination.user_a_id))
+      && nextApplications.has(Number(coordination.user_b_id))
+    const nextCoordination = Object.assign({}, coordination, {
+      coordination_version: newVersion,
+      recoordination_count: Number(coordination.recoordination_count || 0) + 1
+    })
+    const queued = hasBothApplications
+      ? enqueueProcessing(nextCoordination, { version: newVersion, now: dep('now')() })
+      : nextCoordination
     const update = {
       coordination_version: newVersion,
-      status: proposalCreated ? STATUS.WAITING_CONFIRMATIONS : (applicationA && applicationB ? STATUS.NO_OVERLAP : STATUS.COLLECTING_PREFERENCES),
-      business_state: proposalCreated ? 'proposal_generated' : 'waiting_partner',
-      missing_dimensions: overlap.missing_dimensions,
+      recoordination_count: nextCoordination.recoordination_count,
+      status: hasBothApplications ? queued.status : STATUS.COLLECTING_PREFERENCES,
+      business_state: hasBothApplications ? queued.business_state : 'waiting_partner',
+      processing_status: hasBothApplications ? queued.processing_status : '',
+      processing_version: hasBothApplications ? queued.processing_version : 0,
+      processing_token: '',
+      processing_attempts: 0,
+      processing_started_at: null,
+      processing_completed_at: null,
+      processing_error_code: '',
+      missing_dimensions: [],
       final_proposal_id: 0,
-      confirmation_deadline_at: proposalCreated ? addHours(dep('now')(), 24) : null,
+      confirmation_deadline_at: null,
       last_changed_by_user_id: Number(user.id)
     }
     const updatedCoordination = await dep('updateByDoc')('date_coordination', coordination, update)
@@ -290,13 +324,13 @@ function createDateApplicationPatchHandlers(overrides = {}) {
       applied_at: dep('now')()
     })
     const summary = shareableSummary(patch.preview)
-    const notification = await notifyPartner(coordination, user, summary, proposalCreated, newVersion)
+    const notification = await notifyPartner(updatedCoordination, user, summary, false, newVersion)
     return {
       patch: publicPatch(appliedPatch),
       coordination_version: newVersion,
       status: updatedCoordination.status,
       business_state: updatedCoordination.business_state,
-      proposal_generated: proposalCreated,
+      proposal_generated: false,
       partner_notified: true,
       partner_session_id: notification.session_id
     }

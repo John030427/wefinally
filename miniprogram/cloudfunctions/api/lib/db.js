@@ -574,6 +574,64 @@ async function failCoordinationProcessing(claim, errorCode, timestamp = now()) {
   })
 }
 
+async function commitCoordinationConfirmation(coordination, proposal, input = {}, timestamp = now()) {
+  if (!coordination || !coordination._id || !proposal || !proposal._id) throw new Error('方案已失效，请刷新后重试')
+  const userId = Number(input.user_id || 0)
+  const decision = String(input.decision || '')
+  if (decision !== 'confirm') throw new Error('协调确认事务只接受明确确认')
+  return transaction(async (adapter) => {
+    const current = await adapter.byDocId('date_coordination', coordination._id)
+    const storedProposal = await adapter.byDocId('date_coordination_proposal', proposal._id)
+    if (!current || !storedProposal
+      || ![Number(current.user_a_id), Number(current.user_b_id)].includes(userId)
+      || Number(storedProposal.coordination_id) !== Number(current.id)
+      || Number(storedProposal.coordination_version) !== Number(current.coordination_version)
+      || storedProposal.status !== 'active') {
+      throw new Error('方案已失效，请刷新后重试')
+    }
+    const version = Number(current.coordination_version || 1)
+    const confirmationDocId = (participantId) => `date-confirmation-${current.id}-${participantId}-v${version}`
+    if (current.status === 'arranged') {
+      const existing = await adapter.byDocId('date_coordination_confirmation', confirmationDocId(userId))
+      if (existing && existing.decision === 'confirm'
+        && Number(existing.proposal_id) === Number(storedProposal.id)
+        && Number(current.final_proposal_id) === Number(storedProposal.id)) {
+        return { coordination: current, confirmation: existing, arranged: true, idempotent: true }
+      }
+      throw new Error('当前状态不能确认约会方案')
+    }
+    if (current.status !== 'waiting_confirmations') throw new Error('当前状态不能确认约会方案')
+    const documentId = confirmationDocId(userId)
+    const existing = await adapter.byDocId('date_coordination_confirmation', documentId)
+    const confirmation = await adapter.setByDocId('date_coordination_confirmation', documentId, Object.assign({}, existing || {}, {
+      coordination_id: Number(current.id),
+      user_id: userId,
+      proposal_id: Number(storedProposal.id),
+      coordination_version: version,
+      decision: 'confirm',
+      status: 'active',
+      create_time: existing && existing.create_time || timestamp
+    }))
+    const participantConfirmations = await Promise.all([
+      adapter.byDocId('date_coordination_confirmation', confirmationDocId(Number(current.user_a_id))),
+      adapter.byDocId('date_coordination_confirmation', confirmationDocId(Number(current.user_b_id)))
+    ])
+    const arranged = participantConfirmations.every((item) => item
+      && item.status !== 'superseded'
+      && item.decision === 'confirm'
+      && Number(item.proposal_id) === Number(storedProposal.id)
+      && Number(item.coordination_version) === version)
+    const updated = arranged
+      ? await adapter.updateByDoc('date_coordination', current, {
+        status: 'arranged',
+        business_state: 'completed',
+        final_proposal_id: Number(storedProposal.id)
+      })
+      : current
+    return { coordination: updated, confirmation, arranged, idempotent: false }
+  })
+}
+
 function authError(message) {
   const err = new Error(message || '登录已过期，请重新登录')
   err.code = 401
@@ -608,6 +666,7 @@ module.exports = {
   claimCoordinationProcessing,
   completeCoordinationProcessing,
   failCoordinationProcessing,
+  commitCoordinationConfirmation,
   authError,
   withCollection
 }

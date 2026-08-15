@@ -3,13 +3,16 @@ const assert = require('assert')
 const { createDateCoordinationHandlers, processCoordinationDeadlines } = require('../../miniprogram/cloudfunctions/api/handlers/dateCoordination')
 const { processCoordinationTasks } = require('../../miniprogram/cloudfunctions/api/handlers/dateCoordinationWorker')
 const { claimProcessingVersion, completeProcessingVersion } = require('../../miniprogram/cloudfunctions/api/lib/dateCoordinationProcessingPolicy')
+const { applyConfirmation } = require('../../miniprogram/cloudfunctions/api/lib/dateCoordinationPolicy')
 const { publishCoordinationEvent } = require('../../miniprogram/cloudfunctions/api/agent/dateCoordinationEvents')
+const { createDateApplicationPatchHandlers } = require('../../miniprogram/cloudfunctions/api/handlers/dateApplicationPatch')
 
 const NOW = new Date('2026-07-12T08:00:00.000Z')
 
 function memoryDeps(seed = {}) {
   const rows = Object.assign({}, seed)
   const counters = {}
+  let confirmationTail = Promise.resolve()
   function collection(name) {
     if (!rows[name]) rows[name] = []
     return rows[name]
@@ -33,6 +36,11 @@ function memoryDeps(seed = {}) {
       return row
     },
     updateByDoc: async (name, doc, data) => Object.assign(doc, data),
+    claimPendingPatch: async (patch) => {
+      if (!patch || patch.status !== 'pending_confirmation') return false
+      patch.status = 'applying'
+      return true
+    },
     expireIfCurrent: async (doc) => {
       if (!['collecting_initiator', 'inviting_partner', 'collecting_preferences', 'waiting_confirmations'].includes(doc.status)) return false
       Object.assign(doc, { status: 'expired', business_state: 'expired' })
@@ -58,6 +66,46 @@ function memoryDeps(seed = {}) {
     now: () => new Date(NOW)
   }
   deps.publishCoordinationEvent = (input) => publishCoordinationEvent(input, deps)
+  deps.commitConfirmation = (coordination, proposal, input) => {
+    const execute = async () => {
+      coordination = await deps.byId('date_coordination', coordination.id)
+      if (coordination.status === 'arranged') {
+        const existing = await deps.first('date_coordination_confirmation', {
+          coordination_id: Number(coordination.id),
+          user_id: Number(input.user_id),
+          coordination_version: Number(coordination.coordination_version)
+        })
+        if (existing && existing.decision === 'confirm'
+          && Number(existing.proposal_id) === Number(proposal.id)
+          && Number(coordination.final_proposal_id) === Number(proposal.id)) {
+          return { coordination, confirmation: existing, arranged: true, idempotent: true }
+        }
+        throw new Error('当前状态不能确认约会方案')
+      }
+      const confirmations = await deps.list('date_coordination_confirmation', {
+        coordination_id: Number(coordination.id),
+        coordination_version: Number(coordination.coordination_version)
+      }, 10)
+      const result = applyConfirmation(coordination, proposal, confirmations, input)
+      const mine = result.confirmations.find((item) => Number(item.user_id) === Number(input.user_id))
+      const existing = await deps.first('date_coordination_confirmation', {
+        coordination_id: Number(coordination.id),
+        user_id: Number(input.user_id),
+        coordination_version: Number(coordination.coordination_version)
+      })
+      await deps.upsertConfirmation(existing, Object.assign({}, mine, { coordination_id: Number(coordination.id) }))
+      const latest = await deps.list('date_coordination_confirmation', {
+        coordination_id: Number(coordination.id),
+        coordination_version: Number(coordination.coordination_version)
+      }, 10)
+      const latestResult = applyConfirmation(coordination, proposal, latest, input)
+      const updated = await deps.updateConfirmationState(coordination, latestResult)
+      return { coordination: updated, confirmation: mine, arranged: updated.status === 'arranged', idempotent: false }
+    }
+    const result = confirmationTail.then(execute)
+    confirmationTail = result.catch(() => undefined)
+    return result
+  }
   return deps
 }
 
@@ -108,6 +156,31 @@ function memoryWorkerDeps(deps) {
     },
     publishCoordinationEvent: deps.publishCoordinationEvent
   }
+}
+
+async function processAndConfirmBoth(deps, coordinationId) {
+  const worker = await processCoordinationTasks({ deps: memoryWorkerDeps(deps), now: NOW, limit: 10 })
+  assert.strictEqual(worker.completed, 1)
+  const coordination = (deps.rows.date_coordination || []).find((row) => Number(row.id) === Number(coordinationId))
+  const proposal = (deps.rows.date_coordination_proposal || []).find((row) => (
+    Number(row.coordination_id) === Number(coordinationId)
+      && Number(row.coordination_version) === Number(coordination.coordination_version)
+      && row.status === 'active'
+  ))
+  assert(proposal)
+  const handlers = createDateCoordinationHandlers(deps)
+  await handlers.confirmProposal({
+    coordination_id: coordinationId,
+    proposal_id: proposal.id,
+    coordination_version: coordination.coordination_version,
+    decision: 'confirm'
+  }, { user_id: Number(coordination.user_a_id) })
+  return handlers.confirmProposal({
+    coordination_id: coordinationId,
+    proposal_id: proposal.id,
+    coordination_version: coordination.coordination_version,
+    decision: 'confirm'
+  }, { user_id: Number(coordination.user_b_id) })
 }
 
 async function main() {
@@ -321,6 +394,15 @@ async function main() {
 
   const proposal = deps.rows.date_coordination_proposal[0]
   await assert.rejects(
+    () => handlers.confirmProposal({
+      coordination_id: first.id,
+      proposal_id: proposal.id,
+      coordination_version: 1,
+      decision: 'invalid'
+    }, { user_id: 1 }),
+    /请选择确认或重新协调/
+  )
+  await assert.rejects(
     () => handlers.confirmProposal({ coordination_id: first.id, proposal_id: proposal.id, coordination_version: 2, decision: 'confirm' }, { user_id: 1 }),
     /方案已失效/
   )
@@ -357,6 +439,118 @@ async function main() {
     decision: 'confirm'
   }, { user_id: 1 })
   assert.strictEqual(repeatedAfterArranged.status, 'arranged')
+
+  const proposalRejectionDeps = memoryDeps({
+    user: [
+      { id: 1, member_status: 'approved', is_vip: 1, vip_expire_time: '2026-08-01T00:00:00.000Z' },
+      { id: 2, member_status: 'approved', is_vip: 1, vip_expire_time: '2026-08-01T00:00:00.000Z' }
+    ],
+    date_coordination: [{
+      id: 70, user_a_id: 1, user_b_id: 2, status: 'waiting_confirmations',
+      business_state: 'proposal_generated', coordination_version: 1, recoordination_count: 0
+    }],
+    date_coordination_application: [
+      { id: 1, coordination_id: 70, user_id: 1, coordination_version: 1, application: applicationA },
+      { id: 2, coordination_id: 70, user_id: 2, coordination_version: 1, application: applicationB }
+    ],
+    date_coordination_proposal: [{
+      id: 7, coordination_id: 70, coordination_version: 1, status: 'active',
+      proposal_key: 'v1-proposal', date: '2026-07-15', period: 'afternoon', area: '福田区', activity: '咖啡'
+    }],
+    date_coordination_confirmation: [
+      { id: 8, coordination_id: 70, user_id: 2, coordination_version: 1, proposal_id: 7, decision: 'confirm' }
+    ]
+  })
+  const proposalRejection = await createDateCoordinationHandlers(proposalRejectionDeps).confirmProposal({
+    coordination_id: 70,
+    proposal_id: 7,
+    coordination_version: 1,
+    decision: 'reject'
+  }, { user_id: 1 })
+  assert.strictEqual(proposalRejection.status, 'replanning')
+  assert.strictEqual(proposalRejection.coordination_version, 2)
+  assert.strictEqual(proposalRejection.recoordination_count, 1)
+  assert.strictEqual(proposalRejectionDeps.rows.date_coordination_proposal[0].status, 'superseded')
+  assert(proposalRejectionDeps.rows.date_coordination_confirmation.every((row) => row.status === 'superseded'))
+  assert.strictEqual(proposalRejectionDeps.rows.date_coordination_application.filter((row) => row.coordination_version === 2).length, 2)
+  const rejectionPatchHandlers = createDateApplicationPatchHandlers(proposalRejectionDeps)
+  const rejectionPatch = await rejectionPatchHandlers.createPreviewForUser({
+    coordination_id: 70,
+    changes: { budget: 'flexible' }
+  }, proposalRejectionDeps.rows.user[0])
+  const queuedAfterRejection = await rejectionPatchHandlers.confirmForUser({
+    coordination_id: 70,
+    patch_id: rejectionPatch.id
+  }, proposalRejectionDeps.rows.user[0])
+  assert.strictEqual(queuedAfterRejection.status, 'computing_overlap')
+  assert.strictEqual(queuedAfterRejection.coordination_version, 3)
+  const arrangedAfterRejection = await processAndConfirmBoth(proposalRejectionDeps, 70)
+  assert.strictEqual(arrangedAfterRejection.status, 'arranged')
+  assert.strictEqual(arrangedAfterRejection.coordination_version, 3)
+
+  const oneModificationDeps = memoryDeps({
+    user: [
+      { id: 1, member_status: 'approved', is_vip: 1, vip_expire_time: '2026-08-01T00:00:00.000Z' },
+      { id: 2, member_status: 'approved', is_vip: 1, vip_expire_time: '2026-08-01T00:00:00.000Z' }
+    ],
+    date_coordination: [{
+      id: 71, user_a_id: 1, user_b_id: 2, status: 'no_overlap',
+      business_state: 'waiting_partner', coordination_version: 1, recoordination_count: 0
+    }],
+    date_coordination_application: [
+      { id: 1, coordination_id: 71, user_id: 1, coordination_version: 1, application: Object.assign({}, applicationA, { areas: ['南山区'], activities: ['看展'] }) },
+      { id: 2, coordination_id: 71, user_id: 2, coordination_version: 1, application: Object.assign({}, applicationB, { areas: ['福田区'], activities: ['咖啡'] }) }
+    ]
+  })
+  const oneModificationPatchHandlers = createDateApplicationPatchHandlers(oneModificationDeps)
+  const oneModificationPatch = await oneModificationPatchHandlers.createPreviewForUser({
+    coordination_id: 71,
+    changes: { areas: ['福田区'], activities: ['咖啡'] }
+  }, oneModificationDeps.rows.user[0])
+  const oneModificationQueued = await oneModificationPatchHandlers.confirmForUser({
+    coordination_id: 71,
+    patch_id: oneModificationPatch.id
+  }, oneModificationDeps.rows.user[0])
+  assert.strictEqual(oneModificationQueued.status, 'computing_overlap')
+  const oneModificationArranged = await processAndConfirmBoth(oneModificationDeps, 71)
+  assert.strictEqual(oneModificationArranged.status, 'arranged')
+  assert.strictEqual(oneModificationArranged.coordination_version, 2)
+
+  const bilateralModificationDeps = memoryDeps({
+    user: [
+      { id: 1, member_status: 'approved', is_vip: 1, vip_expire_time: '2026-08-01T00:00:00.000Z' },
+      { id: 2, member_status: 'approved', is_vip: 1, vip_expire_time: '2026-08-01T00:00:00.000Z' }
+    ],
+    date_coordination: [{
+      id: 72, user_a_id: 1, user_b_id: 2, status: 'no_overlap',
+      business_state: 'waiting_partner', coordination_version: 1, recoordination_count: 0
+    }],
+    date_coordination_application: [
+      { id: 1, coordination_id: 72, user_id: 1, coordination_version: 1, application: Object.assign({}, applicationA, { areas: ['南山区'], activities: ['咖啡'] }) },
+      { id: 2, coordination_id: 72, user_id: 2, coordination_version: 1, application: Object.assign({}, applicationB, {
+        availability: [{ date: '2026-07-16', periods: ['evening'] }], areas: ['福田区'], activities: ['看展']
+      }) }
+    ]
+  })
+  const bilateralPatchHandlers = createDateApplicationPatchHandlers(bilateralModificationDeps)
+  const firstSidePatch = await bilateralPatchHandlers.createPreviewForUser({
+    coordination_id: 72,
+    changes: { areas: ['福田区'], activities: ['看展'] }
+  }, bilateralModificationDeps.rows.user[0])
+  await bilateralPatchHandlers.confirmForUser({ coordination_id: 72, patch_id: firstSidePatch.id }, bilateralModificationDeps.rows.user[0])
+  const secondSidePatch = await bilateralPatchHandlers.createPreviewForUser({
+    coordination_id: 72,
+    changes: { availability: [{ date: '2026-07-15', periods: ['afternoon'] }] }
+  }, bilateralModificationDeps.rows.user[1])
+  const bilateralQueued = await bilateralPatchHandlers.confirmForUser({
+    coordination_id: 72,
+    patch_id: secondSidePatch.id
+  }, bilateralModificationDeps.rows.user[1])
+  assert.strictEqual(bilateralQueued.coordination_version, 3)
+  assert.strictEqual(bilateralQueued.status, 'computing_overlap')
+  const bilateralArranged = await processAndConfirmBoth(bilateralModificationDeps, 72)
+  assert.strictEqual(bilateralArranged.status, 'arranged')
+  assert.strictEqual(bilateralArranged.coordination_version, 3)
 
   const recoordinationDeps = memoryDeps({
     user: [

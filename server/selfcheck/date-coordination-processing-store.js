@@ -6,6 +6,7 @@ function fakeDatabase(seed = {}) {
     date_coordinations: {},
     date_applications: {},
     date_proposals: {},
+    date_confirmations: {},
     system_counters: {}
   }, seed)
   let transactionTail = Promise.resolve()
@@ -103,6 +104,47 @@ async function main() {
         processing_attempts: 3,
         processing_token: 'expired-lease',
         processing_started_at: '2026-08-15T07:00:00.000Z'
+      },
+      date_coordination_54: {
+        id: 54,
+        user_a_id: 1,
+        user_b_id: 2,
+        status: 'waiting_confirmations',
+        business_state: 'proposal_generated',
+        coordination_version: 1,
+        final_proposal_id: 0
+      },
+      date_coordination_55: {
+        id: 55,
+        user_a_id: 1,
+        user_b_id: 2,
+        status: 'waiting_confirmations',
+        business_state: 'proposal_generated',
+        coordination_version: 1,
+        final_proposal_id: 0
+      }
+    },
+    date_proposals: {
+      date_coordination_proposal_90: {
+        id: 90,
+        coordination_id: 54,
+        coordination_version: 1,
+        status: 'active',
+        proposal_key: 'v1-shared'
+      },
+      date_coordination_proposal_91: {
+        id: 91,
+        coordination_id: 55,
+        coordination_version: 1,
+        status: 'active',
+        proposal_key: 'v1-left'
+      },
+      date_coordination_proposal_92: {
+        id: 92,
+        coordination_id: 55,
+        coordination_version: 1,
+        status: 'active',
+        proposal_key: 'v1-right'
       }
     }
   })
@@ -150,11 +192,37 @@ async function main() {
   assert.strictEqual(completed.applied, true)
   assert.strictEqual(fake.state.date_coordinations.date_coordination_51.status, 'waiting_confirmations')
   assert.strictEqual(fake.state.date_coordinations.date_coordination_51.processing_status, 'completed')
-  assert.strictEqual(Object.keys(fake.state.date_proposals).length, 1)
+  assert.strictEqual(Object.keys(fake.state.date_proposals).length, 4)
+
+  const coordination54 = Object.assign({ _id: 'date_coordination_54' }, fake.state.date_coordinations.date_coordination_54)
+  const proposal90 = Object.assign({ _id: 'date_coordination_proposal_90' }, fake.state.date_proposals.date_coordination_proposal_90)
+  const confirmations = await Promise.all([
+    db.commitCoordinationConfirmation(coordination54, proposal90, { user_id: 1, decision: 'confirm' }, now),
+    db.commitCoordinationConfirmation(coordination54, proposal90, { user_id: 2, decision: 'confirm' }, now)
+  ])
+  assert.strictEqual(confirmations.filter((item) => item.arranged).length, 1)
+  assert.strictEqual(fake.state.date_coordinations.date_coordination_54.status, 'arranged')
+  assert.strictEqual(fake.state.date_coordinations.date_coordination_54.final_proposal_id, 90)
+  assert.strictEqual(Object.keys(fake.state.date_confirmations).length, 2)
+  const replayConfirmation = await db.commitCoordinationConfirmation(
+    coordination54, proposal90, { user_id: 1, decision: 'confirm' }, now
+  )
+  assert.strictEqual(replayConfirmation.idempotent, true)
+
+  const coordination55 = Object.assign({ _id: 'date_coordination_55' }, fake.state.date_coordinations.date_coordination_55)
+  const proposal91 = Object.assign({ _id: 'date_coordination_proposal_91' }, fake.state.date_proposals.date_coordination_proposal_91)
+  const proposal92 = Object.assign({ _id: 'date_coordination_proposal_92' }, fake.state.date_proposals.date_coordination_proposal_92)
+  const splitConfirmations = await Promise.all([
+    db.commitCoordinationConfirmation(coordination55, proposal91, { user_id: 1, decision: 'confirm' }, now),
+    db.commitCoordinationConfirmation(coordination55, proposal92, { user_id: 2, decision: 'confirm' }, now)
+  ])
+  assert(splitConfirmations.every((item) => item.arranged === false))
+  assert.strictEqual(fake.state.date_coordinations.date_coordination_55.status, 'waiting_confirmations')
+  assert.strictEqual(fake.state.date_coordinations.date_coordination_55.final_proposal_id, 0)
 
   const replay = await db.completeCoordinationProcessing(claim, { proposals: [], missing_dimensions: [] }, now)
   assert.strictEqual(replay.applied, false)
-  assert.strictEqual(Object.keys(fake.state.date_proposals).length, 1)
+  assert.strictEqual(Object.keys(fake.state.date_proposals).length, 4)
 
   const staleClaim = await db.claimCoordinationProcessing(listed[1], now)
   Object.assign(fake.state.date_coordinations.date_coordination_52, {
@@ -169,7 +237,7 @@ async function main() {
   }, now)
   assert.strictEqual(stale.applied, false)
   assert.strictEqual(stale.reason, 'stale_processing_version')
-  assert.strictEqual(Object.keys(fake.state.date_proposals).length, 1)
+  assert.strictEqual(Object.keys(fake.state.date_proposals).length, 4)
 
   console.log('PASS CloudBase coordination processing store is CAS-safe and idempotent')
 }

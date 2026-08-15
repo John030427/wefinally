@@ -1,4 +1,4 @@
-const { STATUS, normalizeApplication, nextStatus, applyConfirmation } = require('../lib/dateCoordinationPolicy')
+const { STATUS, normalizeApplication, nextStatus } = require('../lib/dateCoordinationPolicy')
 const { MEMBER_STATUS, memberStatus } = require('../lib/memberPolicy')
 const { createReminderJob } = require('../agent/notificationJobs')
 const { assertOfflineDatingAllowed } = require('../lib/testFixturePolicy')
@@ -63,6 +63,7 @@ function defaultDeps() {
     acquireFixtureResponseJob: db.acquireFixtureResponseJob,
     upsertConfirmation,
     updateConfirmationState,
+    commitConfirmation: db.commitCoordinationConfirmation,
     expireIfCurrent: expireCoordinationIfCurrent,
     publishCoordinationEvent,
     now: db.now
@@ -504,36 +505,88 @@ function createDateCoordinationHandlers(overrides = {}) {
         return detailFor(coordination, user)
       }
     }
-    const confirmations = await dep('list')('date_coordination_confirmation', {
-      coordination_id: Number(coordination.id),
-      coordination_version: version
-    }, 10)
-    const result = applyConfirmation(coordination, proposal, confirmations, {
-      user_id: user.id,
-      decision: data.decision
-    })
-    const mine = result.confirmations.find((item) => Number(item.user_id) === Number(user.id))
-    const existing = await dep('first')('date_coordination_confirmation', {
-      coordination_id: Number(coordination.id),
-      user_id: Number(user.id),
-      coordination_version: version
-    })
-    await dep('upsertConfirmation')(existing, Object.assign({}, mine, {
-      coordination_id: Number(coordination.id)
-    }))
-    const latestConfirmations = await dep('list')('date_coordination_confirmation', {
-      coordination_id: Number(coordination.id),
-      coordination_version: version
-    }, 10)
-    const confirmationBase = coordination.status === STATUS.ARRANGED
-      ? Object.assign({}, coordination, { status: STATUS.WAITING_CONFIRMATIONS })
-      : coordination
-    const latestResult = applyConfirmation(confirmationBase, proposal, latestConfirmations, {
-      user_id: user.id,
-      decision: data.decision
-    })
-    const updated = await dep('updateConfirmationState')(coordination, latestResult)
     const decision = String(data.decision || '')
+    if (!['confirm', 'reject'].includes(decision)) throw new Error('请选择确认或重新协调')
+    if (decision === 'reject') {
+      const now = dep('now')()
+      const proposals = await dep('list')('date_coordination_proposal', {
+        coordination_id: Number(coordination.id),
+        coordination_version: version
+      }, 20)
+      const confirmations = await dep('list')('date_coordination_confirmation', {
+        coordination_id: Number(coordination.id),
+        coordination_version: version
+      }, 20)
+      for (const item of proposals.filter((row) => row.status === 'active')) {
+        await dep('updateByDoc')('date_coordination_proposal', item, { status: 'superseded' })
+      }
+      for (const item of confirmations) {
+        await dep('updateByDoc')('date_coordination_confirmation', item, { status: 'superseded' })
+      }
+      if (!canStartAnotherRound(coordination)) {
+        const handedOff = await dep('updateByDoc')('date_coordination', coordination, {
+          status: STATUS.MANUAL_HANDOFF,
+          business_state: 'manual_handoff'
+        })
+        await dep('publishCoordinationEvent')({
+          coordination: handedOff,
+          event: {
+            event_type: 'manual_handoff',
+            actor_user_id: Number(user.id),
+            coordination_version: version,
+            round_number: roundNumber(handedOff)
+          }
+        })
+        return detailFor(handedOff, user)
+      }
+      const newVersion = version + 1
+      const applications = await dep('list')('date_coordination_application', {
+        coordination_id: Number(coordination.id),
+        coordination_version: version
+      }, 10)
+      for (const application of applications) {
+        await dep('addWithId')('date_coordination_application', {
+          coordination_id: Number(coordination.id),
+          user_id: Number(application.user_id),
+          coordination_version: newVersion,
+          application: application.application,
+          submitted_at: now,
+          source: 'proposal_rejection_snapshot'
+        }, 'date_coordination_application')
+      }
+      const updated = await dep('updateByDoc')('date_coordination', coordination, {
+        status: STATUS.REPLANNING,
+        business_state: 'coordinating',
+        coordination_version: newVersion,
+        recoordination_count: Number(coordination.recoordination_count || 0) + 1,
+        application_deadline_at: addHours(now, 72),
+        confirmation_deadline_at: null,
+        final_proposal_id: 0,
+        missing_dimensions: [],
+        processing_status: '',
+        processing_version: 0,
+        processing_token: '',
+        processing_attempts: 0,
+        processing_started_at: null,
+        processing_completed_at: null,
+        processing_error_code: ''
+      })
+      await dep('publishCoordinationEvent')({
+        coordination: updated,
+        event: {
+          event_type: 'proposal_rejected',
+          actor_user_id: Number(user.id),
+          coordination_version: newVersion,
+          round_number: roundNumber(updated)
+        }
+      })
+      return detailFor(updated, user)
+    }
+    const committed = await dep('commitConfirmation')(coordination, proposal, {
+      user_id: Number(user.id),
+      decision: 'confirm'
+    }, dep('now')())
+    const updated = committed.coordination
     await dep('publishCoordinationEvent')({
       coordination: updated,
       event: {
