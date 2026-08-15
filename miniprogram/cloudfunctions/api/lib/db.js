@@ -454,6 +454,126 @@ async function ensureUserSupportCode(userDoc) {
   })
 }
 
+const COORDINATION_PROCESSING_LEASE_MS = 2 * 60 * 1000
+const COORDINATION_PROCESSING_MAX_ATTEMPTS = 3
+
+async function listCoordinationProcessingTasks(timestamp = now(), limit = 10) {
+  const bounded = Math.max(1, Math.min(Number(limit || 10), 50))
+  const queued = await list('date_coordination', {
+    status: 'computing_overlap',
+    processing_status: 'queued'
+  }, bounded)
+  if (queued.length >= bounded) return queued
+  const processing = await list('date_coordination', {
+    status: 'computing_overlap',
+    processing_status: 'processing'
+  }, bounded)
+  const cutoff = new Date(timestamp).getTime() - COORDINATION_PROCESSING_LEASE_MS
+  return queued.concat(processing.filter((row) => {
+    const started = new Date(row.processing_started_at || 0).getTime()
+    return Number.isFinite(started) && started <= cutoff
+  })).slice(0, bounded)
+}
+
+async function claimCoordinationProcessing(task, timestamp = now()) {
+  if (!task || !task._id) return null
+  const { claimProcessingVersion } = require('./dateCoordinationProcessingPolicy')
+  return transaction(async (adapter) => {
+    const stored = await adapter.byDocId('date_coordination', task._id)
+    if (!stored) return null
+    const current = Object.assign({ _id: task._id }, stored)
+    const started = new Date(current.processing_started_at || 0).getTime()
+    const leaseExpired = current.processing_status === 'processing'
+      && Number.isFinite(started)
+      && started <= new Date(timestamp).getTime() - COORDINATION_PROCESSING_LEASE_MS
+    if (current.processing_status !== 'queued' && !leaseExpired) return null
+    if (Number(current.processing_attempts || 0) >= COORDINATION_PROCESSING_MAX_ATTEMPTS) {
+      await adapter.updateByDoc('date_coordination', current, {
+        processing_status: 'failed',
+        processing_token: '',
+        processing_error_code: 'worker_interrupted',
+        last_event_at: timestamp
+      })
+      return null
+    }
+    const queued = leaseExpired ? Object.assign({}, current, { processing_status: 'queued' }) : current
+    let claimed
+    try {
+      claimed = claimProcessingVersion(queued, {
+        token: crypto.randomBytes(16).toString('hex'),
+        now: timestamp
+      })
+    } catch (err) {
+      return null
+    }
+    return adapter.updateByDoc('date_coordination', current, {
+      processing_status: claimed.processing_status,
+      processing_token: claimed.processing_token,
+      processing_attempts: claimed.processing_attempts,
+      processing_started_at: claimed.processing_started_at,
+      processing_error_code: '',
+      last_event_at: claimed.last_event_at
+    })
+  })
+}
+
+async function completeCoordinationProcessing(claim, result, timestamp = now()) {
+  if (!claim || !claim._id) return { applied: false, reason: 'missing_claim' }
+  const { completeProcessingVersion } = require('./dateCoordinationProcessingPolicy')
+  return transaction(async (adapter) => {
+    const stored = await adapter.byDocId('date_coordination', claim._id)
+    if (!stored) return { applied: false, reason: 'missing_coordination' }
+    const current = Object.assign({ _id: claim._id }, stored)
+    const completed = completeProcessingVersion(current, {
+      version: Number(claim.processing_version || 0),
+      token: claim.processing_token,
+      now: timestamp
+    })
+    if (!completed.applied) return completed
+    const proposals = []
+    for (const proposal of result.proposals || []) {
+      proposals.push(await adapter.addWithId('date_coordination_proposal', Object.assign({}, proposal, {
+        coordination_id: Number(current.id),
+        status: 'active'
+      }), 'date_coordination_proposal'))
+    }
+    const hasProposals = proposals.length > 0
+    const coordination = await adapter.updateByDoc('date_coordination', current, {
+      status: hasProposals ? 'waiting_confirmations' : 'no_overlap',
+      business_state: hasProposals ? 'proposal_generated' : 'waiting_partner',
+      processing_status: completed.coordination.processing_status,
+      processing_token: '',
+      processing_completed_at: completed.coordination.processing_completed_at,
+      processing_error_code: '',
+      last_event_at: completed.coordination.last_event_at,
+      missing_dimensions: hasProposals ? [] : (result.missing_dimensions || []),
+      confirmation_deadline_at: hasProposals
+        ? new Date(new Date(timestamp).getTime() + 24 * 60 * 60 * 1000)
+        : null
+    })
+    return { applied: true, reason: '', coordination, proposals }
+  })
+}
+
+async function failCoordinationProcessing(claim, errorCode, timestamp = now()) {
+  if (!claim || !claim._id) return null
+  return transaction(async (adapter) => {
+    const stored = await adapter.byDocId('date_coordination', claim._id)
+    if (!stored) return null
+    const current = Object.assign({ _id: claim._id }, stored)
+    if (Number(current.processing_version || 0) !== Number(claim.processing_version || 0)
+      || current.processing_status !== 'processing'
+      || String(current.processing_token || '') !== String(claim.processing_token || '')) return current
+    const exhausted = Number(current.processing_attempts || 0) >= COORDINATION_PROCESSING_MAX_ATTEMPTS
+    return adapter.updateByDoc('date_coordination', current, {
+      processing_status: exhausted ? 'failed' : 'queued',
+      processing_token: '',
+      processing_error_code: String(errorCode || 'coordination_processing_failed').slice(0, 80),
+      last_event_at: timestamp
+    })
+  })
+}
+
 function authError(message) {
   const err = new Error(message || '登录已过期，请重新登录')
   err.code = 401
@@ -484,6 +604,10 @@ module.exports = {
   removeByDoc,
   transaction,
   ensureUserSupportCode,
+  listCoordinationProcessingTasks,
+  claimCoordinationProcessing,
+  completeCoordinationProcessing,
+  failCoordinationProcessing,
   authError,
   withCollection
 }

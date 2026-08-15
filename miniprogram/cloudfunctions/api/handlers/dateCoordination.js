@@ -1,9 +1,9 @@
-const { STATUS, normalizeApplication, computeOverlap, nextStatus, applyConfirmation } = require('../lib/dateCoordinationPolicy')
+const { STATUS, normalizeApplication, nextStatus, applyConfirmation } = require('../lib/dateCoordinationPolicy')
 const { MEMBER_STATUS, memberStatus } = require('../lib/memberPolicy')
-const { createReminderJob, deliverProposalNotification } = require('../agent/notificationJobs')
+const { createReminderJob } = require('../agent/notificationJobs')
 const { assertOfflineDatingAllowed } = require('../lib/testFixturePolicy')
 const { canScheduleFixtureDecline, scheduleFixtureDecline, publicJob, politeDeclineMessage } = require('../lib/fixtureResponseService')
-const { MAX_COORDINATION_ROUNDS, roundNumber, canStartAnotherRound } = require('../lib/dateCoordinationProcessingPolicy')
+const { MAX_COORDINATION_ROUNDS, roundNumber, canStartAnotherRound, enqueueProcessing } = require('../lib/dateCoordinationProcessingPolicy')
 
 async function upsertConfirmation(existing, data) {
   const db = require('../lib/db')
@@ -331,51 +331,20 @@ function createDateCoordinationHandlers(overrides = {}) {
     const applicationB = applicationsByUser.get(Number(coordination.user_b_id))
     if (!applicationA || !applicationB) return detailFor(coordination, user)
 
-    const overlap = computeOverlap(applicationA, applicationB, { version })
-    if (!overlap.proposals.length) {
-      const updated = await dep('updateByDoc')('date_coordination', coordination, {
-        status: nextStatus(nextStatus(coordination.status, 'applications_complete'), 'no_overlap'),
-        business_state: 'waiting_partner',
-        missing_dimensions: overlap.missing_dimensions,
-        confirmation_deadline_at: null
-      })
-      return detailFor(updated, user)
-    }
-    for (const proposal of overlap.proposals) {
-      await dep('addWithId')('date_coordination_proposal', Object.assign({}, proposal, {
-        coordination_id: Number(coordination.id),
-        status: 'active'
-      }), 'date_coordination_proposal')
-    }
+    const queued = enqueueProcessing(coordination, { version, now })
     const updated = await dep('updateByDoc')('date_coordination', coordination, {
-      status: nextStatus(nextStatus(coordination.status, 'applications_complete'), 'proposals_created'),
-      business_state: 'proposal_generated',
+      status: queued.status,
+      business_state: queued.business_state,
+      processing_status: queued.processing_status,
+      processing_version: queued.processing_version,
+      processing_token: '',
+      processing_attempts: 0,
+      processing_started_at: null,
+      processing_completed_at: null,
+      processing_error_code: '',
+      last_event_at: queued.last_event_at,
       missing_dimensions: [],
-      confirmation_deadline_at: addHours(now, 24)
-    })
-    const recipientId = Number(coordination.user_a_id) === Number(user.id)
-      ? Number(coordination.user_b_id)
-      : Number(coordination.user_a_id)
-    const notification = createReminderJob({
-      coordinationId: coordination.id,
-      userId: recipientId,
-      stage: 'proposal_generated',
-      deadlineAt: updated.confirmation_deadline_at,
-      now
-    })
-    const queued = await dep('first')('agent_notification_job', {
-      idempotency_key: notification.idempotency_key
-    })
-    const job = queued || await dep('addWithId')('agent_notification_job', notification, 'agent_notification_job')
-    await deliverProposalNotification({
-      deps: {
-        first: dep('first'),
-        addWithId: dep('addWithId'),
-        updateByDoc: dep('updateByDoc')
-      },
-      job,
-      proposal: overlap.proposals[0],
-      now
+      confirmation_deadline_at: null
     })
     return detailFor(updated, user)
   }

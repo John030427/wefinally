@@ -1,6 +1,8 @@
 const assert = require('assert')
 
 const { createDateCoordinationHandlers, processCoordinationDeadlines } = require('../../miniprogram/cloudfunctions/api/handlers/dateCoordination')
+const { processCoordinationTasks } = require('../../miniprogram/cloudfunctions/api/handlers/dateCoordinationWorker')
+const { claimProcessingVersion, completeProcessingVersion } = require('../../miniprogram/cloudfunctions/api/lib/dateCoordinationProcessingPolicy')
 
 const NOW = new Date('2026-07-12T08:00:00.000Z')
 
@@ -53,6 +55,54 @@ function memoryDeps(seed = {}) {
       })
     },
     now: () => new Date(NOW)
+  }
+}
+
+function memoryWorkerDeps(deps) {
+  return {
+    now: deps.now,
+    listTasks: async () => (deps.rows.date_coordination || [])
+      .filter((row) => row.status === 'computing_overlap' && row.processing_status === 'queued'),
+    claimTask: async (task, timestamp) => {
+      if (task.processing_status !== 'queued') return null
+      const claimed = claimProcessingVersion(task, { token: `lease-${task.id}-${task.processing_attempts || 0}`, now: timestamp })
+      Object.assign(task, claimed)
+      return Object.assign({}, task)
+    },
+    listApplications: (coordinationId, version) => deps.list('date_coordination_application', {
+      coordination_id: Number(coordinationId),
+      coordination_version: Number(version)
+    }, 10),
+    completeTask: async (claim, overlap, timestamp) => {
+      const current = (deps.rows.date_coordination || []).find((row) => Number(row.id) === Number(claim.id))
+      const completed = completeProcessingVersion(current, {
+        version: claim.processing_version,
+        token: claim.processing_token,
+        now: timestamp
+      })
+      if (!completed.applied) return completed
+      const proposals = []
+      for (const proposal of overlap.proposals || []) {
+        proposals.push(await deps.addWithId('date_coordination_proposal', Object.assign({}, proposal, {
+          coordination_id: Number(current.id),
+          status: 'active'
+        }), 'date_coordination_proposal'))
+      }
+      Object.assign(current, completed.coordination, {
+        status: proposals.length ? 'waiting_confirmations' : 'no_overlap',
+        business_state: proposals.length ? 'proposal_generated' : 'waiting_partner',
+        missing_dimensions: proposals.length ? [] : overlap.missing_dimensions,
+        confirmation_deadline_at: proposals.length ? new Date(timestamp.getTime() + 86400000) : null
+      })
+      return { applied: true, coordination: current, proposals }
+    },
+    failTask: async (claim, code) => {
+      const current = (deps.rows.date_coordination || []).find((row) => Number(row.id) === Number(claim.id))
+      if (current && current.processing_token === claim.processing_token) {
+        Object.assign(current, { processing_status: 'queued', processing_token: '', processing_error_code: code })
+      }
+      return current
+    }
   }
 }
 
@@ -227,23 +277,23 @@ async function main() {
     /仅受邀参与者/
   )
 
-  const computed = await handlers.saveApplication({ coordination_id: first.id, ...applicationB }, { user_id: 2 })
+  const queuedCoordination = await handlers.saveApplication({ coordination_id: first.id, ...applicationB }, { user_id: 2 })
+  assert.strictEqual(queuedCoordination.status, 'computing_overlap')
+  assert.strictEqual(queuedCoordination.processing_status, 'queued')
+  assert.strictEqual(deps.rows.date_coordination_proposal.length, 0)
+  assert.strictEqual(deps.rows.agent_notification_job.length, 1)
+  const workerResult = await processCoordinationTasks({ deps: memoryWorkerDeps(deps), now: NOW, limit: 10 })
+  assert.deepStrictEqual(workerResult, { scanned: 1, claimed: 1, completed: 1, stale: 0, failed: 0 })
+  const computed = await handlers.detail({ coordination_id: first.id }, { user_id: 2 })
   assert.strictEqual(computed.status, 'waiting_confirmations')
   assert.strictEqual(computed.business_state, 'proposal_generated')
+  assert.strictEqual(computed.processing_status, 'completed')
   assert.strictEqual(deps.rows.date_coordination_application.length, 2)
   assert.strictEqual(deps.rows.date_coordination_proposal.length, 1)
   assert.strictEqual(deps.rows.date_coordination_proposal[0].status, 'active')
   assert.strictEqual(computed.confirmation_deadline_at.toISOString(), '2026-07-13T08:00:00.000Z')
-  assert.strictEqual(deps.rows.agent_notification_job.length, 2)
-  assert.strictEqual(deps.rows.agent_notification_job[1].user_id, 1)
-  assert.strictEqual(deps.rows.agent_notification_job[1].stage, 'proposal_generated')
-  assert.strictEqual(deps.rows.agent_notification_job[1].scheduled_at.toISOString(), NOW.toISOString())
-  assert.strictEqual(deps.rows.agent_notification_job[1].status, 'sent')
-  assert.strictEqual(deps.rows.agent_message.length, 1)
-  assert.strictEqual(deps.rows.agent_message[0].session_id, 20)
-  assert(deps.rows.agent_message[0].content.includes('对方已确认参与'))
-  assert(deps.rows.agent_message[0].content.includes('福田区'))
-  assert.strictEqual(deps.rows.agent_message[0].content.includes(applicationB.share_message), false)
+  assert.strictEqual(deps.rows.agent_notification_job.length, 1)
+  assert.strictEqual(deps.rows.agent_message.length, 0)
   await assert.rejects(() => handlers.saveApplication({ coordination_id: 999, ...applicationA }, { user_id: 1 }), /日期协调不存在/)
   await assert.rejects(() => handlers.saveApplication({ coordination_id: first.id, ...applicationA }, { user_id: 3 }), /无权操作该日期协调/)
 
@@ -337,6 +387,54 @@ async function main() {
     () => createDateCoordinationHandlers(expiredDeps).respondInvitation({ coordination_id: 90, decision: 'accept' }, { user_id: 2 }),
     /邀请已过期/
   )
+
+  const concurrentWorkerDeps = memoryDeps({
+    date_coordination: [{
+      _id: 'date_coordination_101', id: 101, user_a_id: 1, user_b_id: 2,
+      status: 'computing_overlap', coordination_version: 1,
+      processing_status: 'queued', processing_version: 1, processing_attempts: 0
+    }],
+    date_coordination_application: [
+      { id: 1, coordination_id: 101, user_id: 1, coordination_version: 1, application: applicationA },
+      { id: 2, coordination_id: 101, user_id: 2, coordination_version: 1, application: applicationB }
+    ]
+  })
+  const concurrentWorkerStore = memoryWorkerDeps(concurrentWorkerDeps)
+  const concurrentWorkers = await Promise.all([
+    processCoordinationTasks({ deps: concurrentWorkerStore, now: NOW, limit: 10 }),
+    processCoordinationTasks({ deps: concurrentWorkerStore, now: NOW, limit: 10 })
+  ])
+  assert.strictEqual(concurrentWorkers.reduce((sum, item) => sum + item.completed, 0), 1)
+  assert.strictEqual(concurrentWorkerDeps.rows.date_coordination_proposal.length, 1)
+
+  const staleWorkerDeps = memoryDeps({
+    date_coordination: [{
+      _id: 'date_coordination_102', id: 102, user_a_id: 1, user_b_id: 2,
+      status: 'computing_overlap', coordination_version: 1,
+      processing_status: 'queued', processing_version: 1, processing_attempts: 0
+    }],
+    date_coordination_application: [
+      { id: 1, coordination_id: 102, user_id: 1, coordination_version: 1, application: applicationA },
+      { id: 2, coordination_id: 102, user_id: 2, coordination_version: 1, application: applicationB }
+    ],
+    date_coordination_proposal: []
+  })
+  const staleWorkerStore = memoryWorkerDeps(staleWorkerDeps)
+  const listStaleApplications = staleWorkerStore.listApplications
+  staleWorkerStore.listApplications = async (coordinationId, version) => {
+    const applications = await listStaleApplications(coordinationId, version)
+    Object.assign(staleWorkerDeps.rows.date_coordination[0], {
+      coordination_version: 2,
+      processing_version: 2,
+      processing_status: 'queued',
+      processing_token: ''
+    })
+    return applications
+  }
+  const staleWorker = await processCoordinationTasks({ deps: staleWorkerStore, now: NOW, limit: 10 })
+  assert.deepStrictEqual(staleWorker, { scanned: 1, claimed: 1, completed: 0, stale: 1, failed: 0 })
+  assert.strictEqual(staleWorkerDeps.rows.date_coordination_proposal.length, 0)
+  assert.strictEqual(staleWorkerDeps.rows.date_coordination[0].coordination_version, 2)
 
   console.log('PASS date coordination cloud')
 }

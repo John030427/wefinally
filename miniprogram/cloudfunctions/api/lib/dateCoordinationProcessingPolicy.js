@@ -51,6 +51,7 @@ function enqueueProcessing(coordination = {}, input = {}) {
     processing_status: PROCESSING_STATUS.QUEUED,
     processing_version: version,
     processing_token: '',
+    processing_attempts: 0,
     processing_started_at: null,
     processing_completed_at: null,
     processing_error_code: '',

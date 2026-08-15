@@ -9,6 +9,7 @@ const { handleHttp } = require('./handlers/paymentNotify')
 const { processQueuedTasks } = require('./handlers/reportTask')
 const { processNotificationJobs } = require('./agent/notificationJobs')
 const { processCoordinationDeadlines } = require('./handlers/dateCoordination')
+const { processCoordinationTasks } = require('./handlers/dateCoordinationWorker')
 const { processFixtureResponseJobs } = require('./lib/fixtureResponseService')
 const { isHttpEvent } = require('./lib/httpEvent')
 const { runFormalMatchBatch } = require('./lib/matchingRunService')
@@ -47,10 +48,11 @@ exports.main = async (event = {}) => {
         }
       case 'processWorkerTasks': {
         assertInternalWorkerSecret(payload.worker_secret)
-        const [reports, notifications, coordinations, fixtureResponses] = await Promise.all([
+        const [reports, notifications, coordinationDeadlines, coordinationTasks, fixtureResponses] = await Promise.all([
           processQueuedTasks(Number(payload.report_limit || 2)),
           processNotificationJobs({ limit: Number(payload.notification_limit || 10) }),
           processCoordinationDeadlines({ limit: Number(payload.coordination_limit || 50) }),
+          processCoordinationTasks({ limit: Number(payload.coordination_task_limit || 10) }),
           processFixtureResponseJobs({
             listDue: db.listDueFixtureResponseJobs,
             claimJob: db.claimFixtureResponseJob,
@@ -59,7 +61,7 @@ exports.main = async (event = {}) => {
             now: db.now
           }, { limit: Number(payload.fixture_limit || 20) })
         ])
-        return { success: true, data: { reports, notifications, coordinations, fixtureResponses } }
+        return { success: true, data: { reports, notifications, coordinationDeadlines, coordinationTasks, fixtureResponses } }
       }
       case 'runFormalMatchBatch':
         assertInternalWorkerSecret(payload.worker_secret)
