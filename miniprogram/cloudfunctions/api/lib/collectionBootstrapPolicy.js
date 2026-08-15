@@ -22,6 +22,7 @@ const BOOTSTRAP_COLLECTIONS = new Set([
   'match_claim_audit',
   'match_batch_run',
   'fixture_response_job',
+  'controlled_date_scenario_run',
   'partner_commission_ledger',
   'partner_commission_rule',
   'partner_dashboard_daily',

@@ -11,6 +11,7 @@ const { createUserBackofficeService, dispatchUserBackofficeRoute } = require('..
 const { buildPartnerDashboard } = require('../lib/partnerDashboardPolicy')
 const { createReferralToken, createReferralScene } = require('../lib/partnerReferralPolicy')
 const { createPartnerAdminService } = require('../lib/partnerAdminService')
+const { createControlledDateScenarioService } = require('../agent/controlledDateScenarioService')
 const { httpMethod, httpPath, queryParameters } = require('../lib/httpEvent')
 
 const AGENT_BACKOFFICE_PATHS = Object.freeze({
@@ -23,6 +24,12 @@ const AGENT_BACKOFFICE_PATHS = Object.freeze({
 let agentBackoffice
 let userBackoffice
 let partnerAdminBackoffice
+let controlledDateScenarios
+
+function controlledDateScenarioService() {
+  if (!controlledDateScenarios) controlledDateScenarios = createControlledDateScenarioService(db)
+  return controlledDateScenarios
+}
 
 function partnerAdminService() {
   if (!partnerAdminBackoffice) {
@@ -353,6 +360,17 @@ async function handleBackofficeHttp(event = {}) {
     }
     if (method === 'GET' && path.endsWith(AGENT_BACKOFFICE_PATHS.coordinations)) {
       return ok({ list: await agentService().listCoordinations(actor, query) })
+    }
+    if (method === 'POST' && /\/api\/admin\/controlled-date-scenarios$/.test(path)) {
+      return ok(await controlledDateScenarioService().createRun(actor, body), '受控约会场景已创建')
+    }
+    let controlledScenario = path.match(/\/api\/admin\/controlled-date-scenarios\/([^/]+)\/advance$/)
+    if (method === 'POST' && controlledScenario) {
+      return ok(await controlledDateScenarioService().advanceRun(actor, decodeURIComponent(controlledScenario[1])), '受控约会场景已推进')
+    }
+    controlledScenario = path.match(/\/api\/admin\/controlled-date-scenarios\/([^/]+)$/)
+    if (method === 'GET' && controlledScenario) {
+      return ok(await controlledDateScenarioService().getRun(actor, decodeURIComponent(controlledScenario[1])))
     }
     if (method === 'GET' && /\/api\/partner\/invite-assets$/.test(path)) return ok(await inviteAssets(actor))
 
