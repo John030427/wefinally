@@ -25,7 +25,7 @@ function buildCoordinationDisplay(coordination) {
     computing_overlap: processingStatus === 'processing' ? '处理中' : (processingStatus === 'failed' ? '处理失败' : '待处理'),
     waiting_confirmations: '等待双方确认',
     no_overlap: '本轮暂无交集',
-    replanning: '等待调整偏好',
+    replanning: '请和AI协调员沟通',
     arranged: '双方已确认',
     invitation_declined: '邀请未被接受',
     manual_handoff: '已转人工协助',
@@ -455,6 +455,7 @@ Page({
         decision
       }, { showError: false })
       this.applyCoordination(normalizeCoordination(result))
+      if (decision === 'reject') this.goCoordinator()
     } catch (err) {
       wx.showToast({ title: (err && err.message) || (decision === 'reject' ? '暂时无法继续协调' : '确认失败，请重试'), icon: 'none' })
     } finally {
@@ -481,6 +482,7 @@ Page({
     try {
       const result = await post(`${API_PATHS.DATE_COORDINATIONS}/${this.data.coordinationId}/recoordinate`, {}, { showError: false })
       this.applyCoordination(normalizeCoordination(result))
+      this.goCoordinator()
     } catch (err) {
       wx.showToast({ title: (err && err.message) || '暂时无法重新协调', icon: 'none' })
     } finally {

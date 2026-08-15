@@ -72,6 +72,12 @@
       <button class="outline-btn full-btn" bindtap="goService">联系人工客服</button>
     </view>
 
+    <view class="processing-card card" wx:if="{{coordination.status === 'replanning'}}">
+      <view class="section-title">由AI继续协调</view>
+      <view class="public-note">首次填写的偏好已经保留，不需要再次填写表单。请告诉AI协调员你希望调整的地方，确认修改预览后系统会继续生成方案。</view>
+      <button class="primary-btn full-btn" bindtap="goCoordinator">继续和AI协调员沟通</button>
+    </view>
+
     <view class="progress-card card">
       <view class="section-title">进度</view>
       <view class="progress-row"><text>1. 发起方填写偏好</text><text>{{coordination.status === 'collecting_initiator' ? (coordination.role === 'initiator' ? '等待你填写' : '对方准备中') : '已完成'}}</text></view>

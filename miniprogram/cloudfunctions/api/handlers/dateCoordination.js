@@ -294,7 +294,7 @@ function createDateCoordinationHandlers(overrides = {}) {
     if (isInitiatorDraft && Number(coordination.user_a_id) !== Number(user.id)) {
       throw new Error('请等待发起方填写约会偏好并发出邀请')
     }
-    if (![STATUS.COLLECTING_INITIATOR, STATUS.COLLECTING_PREFERENCES, STATUS.REPLANNING].includes(coordination.status)) {
+    if (![STATUS.COLLECTING_INITIATOR, STATUS.COLLECTING_PREFERENCES].includes(coordination.status)) {
       throw new Error('当前状态不能提交日期申请')
     }
     const now = dep('now')()
@@ -441,7 +441,7 @@ function createDateCoordinationHandlers(overrides = {}) {
       role,
       can_respond_invitation: coordination.status === STATUS.INVITING_PARTNER && role === 'invitee',
       can_submit_application: (coordination.status === STATUS.COLLECTING_INITIATOR && role === 'initiator')
-        || [STATUS.COLLECTING_PREFERENCES, STATUS.REPLANNING].includes(coordination.status),
+        || (coordination.status === STATUS.COLLECTING_PREFERENCES && !mine),
       confirmed_by_me: mineConfirmed,
       invitation_status_text: coordination.status === STATUS.COLLECTING_INITIATOR
         ? '准备邀请'
