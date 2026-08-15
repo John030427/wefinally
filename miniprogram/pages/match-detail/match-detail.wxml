@@ -79,6 +79,7 @@
           {{detail.reportStatusText}}
         </view>
       </view>
+      <view class="ai-disclaimer">🤖 AI 生成内容，仅供参考</view>
       <view wx:if="{{detail.aiReportStatus === 'succeeded' && detail.aiReport}}" class="structured-report">
         <view class="report-text">{{detail.aiReport.summary}}</view>
         <view wx:if="{{detail.aiReport.strengths.length}}" class="local-report-title">契合点</view>

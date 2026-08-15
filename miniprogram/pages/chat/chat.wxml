@@ -28,6 +28,7 @@
     </view>
     <scroll-view class="chat-scroll" scroll-y scroll-into-view="{{scrollToView}}" scroll-with-animation>
       <view class="chat-tip">{{agentType === 'love_advisor' ? '温和陪伴，信息有限时会明确说明知识不足' : (agentType === 'date_coordinator' ? '只说明共同进度，不展示对方原始回答' : '优先处理平台业务咨询')}}</view>
+      <view class="ai-disclaimer">🤖 AI 生成回复仅供参考，重要事项请以官方客服确认为准</view>
       <view
         id="msg-{{item.id}}"
         class="msg-row {{item.isBot ? 'msg-bot' : 'msg-user'}}"

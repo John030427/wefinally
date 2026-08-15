@@ -287,3 +287,16 @@
 .send-btn[disabled] {
   background: #ccc !important;
 }
+
+.ai-disclaimer {
+  text-align: center;
+  padding: 16rpx 20rpx;
+  border-radius: 8rpx;
+  background: #fff8e1;
+  border: 2rpx solid #f2d879;
+  color: #8a6d1a;
+  font-size: 24rpx;
+  font-weight: 600;
+  line-height: 1.5;
+  margin-bottom: 16rpx;
+}
