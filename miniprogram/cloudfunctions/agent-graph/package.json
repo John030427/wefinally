@@ -2,13 +2,12 @@
   "name": "wefinally-agent-graph",
   "version": "1.0.0",
   "private": true,
-  "type": "module",
   "main": "dist/src/cloudFunction.js",
   "engines": {
     "node": ">=20"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && node build-dist-package.cjs",
     "test": "tsx --test test/*.test.ts",
     "check": "npm run build && npm test"
   },

@@ -54,5 +54,6 @@ test('CloudBase function entrypoint wires the persistent saver and provider', ()
   const config = JSON.parse(readFileSync(new URL('../config.json', import.meta.url), 'utf8')) as { handler?: string }
   const root = readFileSync(new URL('../index.js', import.meta.url), 'utf8')
   assert.equal(config.handler, 'index.main')
-  assert(root.includes("export { main } from './dist/src/cloudFunction.js'"))
+  assert(root.includes("exports.main = async function main"))
+  assert(root.includes("import('./dist/src/cloudFunction.js')"))
 })
