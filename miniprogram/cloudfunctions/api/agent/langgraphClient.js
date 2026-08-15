@@ -12,7 +12,7 @@ function readLangGraphConfig(env = process.env) {
   return {
     enabled: enabled(env.LANGGRAPH_ENABLED),
     shadowMode: enabled(env.LANGGRAPH_SHADOW_MODE),
-    timeoutMs: Math.max(10, Math.min(15000, Number.isFinite(rawTimeout) ? rawTimeout : 8000)),
+    timeoutMs: Math.max(10, Math.min(30000, Number.isFinite(rawTimeout) ? rawTimeout : 8000)),
     actorSecret: String(env.LANGGRAPH_ACTOR_SECRET || '').trim()
   }
 }

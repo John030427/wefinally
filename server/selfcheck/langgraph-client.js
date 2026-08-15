@@ -14,7 +14,7 @@ async function main() {
     timeoutMs: 8000,
     actorSecret: ''
   })
-  assert.strictEqual(readLangGraphConfig({ LANGGRAPH_ENABLED: 'true', LANGGRAPH_SHADOW_MODE: 'true', LANGGRAPH_TIMEOUT_MS: '99999', LANGGRAPH_ACTOR_SECRET: 'secret' }).timeoutMs, 15000)
+  assert.strictEqual(readLangGraphConfig({ LANGGRAPH_ENABLED: 'true', LANGGRAPH_SHADOW_MODE: 'true', LANGGRAPH_TIMEOUT_MS: '99999', LANGGRAPH_ACTOR_SECRET: 'secret' }).timeoutMs, 30000)
 
   const actorRef = createActorRef(716, 'test-secret')
   assert.match(actorRef, /^usr_[a-f0-9]{32}$/)
