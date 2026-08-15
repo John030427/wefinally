@@ -27,6 +27,7 @@ test('health is explicit and unknown event fields are rejected', async () => {
   const invalid = await main({ ...customerInput('你好'), database: 'all' })
   assert.equal(invalid.success, false)
   assert.equal(invalid.code, 'invalid_request')
+  assert.equal(invalid.details, 'unknown:database')
 })
 
 test('entrypoint ignores only CloudBase injected userInfo metadata', async () => {

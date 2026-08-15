@@ -117,7 +117,11 @@ async function invokeLangGraph(input, deps = {}) {
       })
     ])
     const body = response && typeof response === 'object' && response.result ? response.result : response
-    if (!body || body.success !== true) return { kind: 'fallback', code: String((body && body.code) || 'graph_failed').slice(0, 80) }
+    if (!body || body.success !== true) {
+      const baseCode = String((body && body.code) || 'graph_failed')
+      const details = String((body && body.details) || '').replace(/[^A-Za-z0-9_.:,-]/g, '').slice(0, 120)
+      return { kind: 'fallback', code: `${baseCode}${details ? `:${details}` : ''}`.slice(0, 160) }
+    }
     const result = normalizeResult(body.data)
     return result ? { kind: 'result', result } : { kind: 'fallback', code: 'invalid_graph_result' }
   } catch (error) {

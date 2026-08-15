@@ -21,12 +21,22 @@ type MainResponse = {
   success: boolean
   data?: GraphResult | { status: 'ok'; runtime: 'langgraph' }
   code?: string
+  details?: string
 }
 
 function withoutCloudBaseMetadata(event: unknown): unknown {
   if (!event || typeof event !== 'object' || Array.isArray(event)) return event
   const { userInfo: _userInfo, ...businessEvent } = event as Record<string, unknown>
   return businessEvent
+}
+
+function validationDetails(issues: Array<{ code?: string; path?: PropertyKey[]; keys?: string[] }>): string {
+  const parts = issues.flatMap((issue) => {
+    if (issue.code === 'unrecognized_keys') return (issue.keys || []).map((key) => `unknown:${key}`)
+    const path = (issue.path || []).map(String).join('.')
+    return path ? [`invalid:${path}`] : ['invalid:root']
+  })
+  return parts.join(',').replace(/[^A-Za-z0-9_.:,-]/g, '').slice(0, 160)
 }
 
 function statusForPhase(phase: string, pendingAction: unknown): GraphResult['status'] {
@@ -95,7 +105,10 @@ export function createAgentGraphMain(dependencies: MainDependencies) {
       }
 
       const resumeInput = GraphResumeInputSchema.safeParse(businessEvent)
-      if (!resumeInput.success) return { success: false, code: 'invalid_request' }
+      if (!resumeInput.success) {
+        const issues = runInput.error.issues.length ? runInput.error.issues : resumeInput.error.issues
+        return { success: false, code: 'invalid_request', details: validationDetails(issues) }
+      }
       let checkpointState: Record<string, unknown> | undefined
       try {
         checkpointState = await loadCheckpointState(dependencies.checkpointer, resumeInput.data.threadId)

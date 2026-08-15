@@ -56,6 +56,13 @@ async function main() {
   assert.strictEqual(timedOut.kind, 'fallback')
   assert.strictEqual(timedOut.code, 'graph_timeout')
 
+  const invalid = await invokeLangGraph({ threadId: 'wf_thread_aaaaaaaaaaaaaaaa', actorRef, mode: 'customer_service', userText: '你好', safeSummary: '' }, {
+    env: { LANGGRAPH_ENABLED: 'true', LANGGRAPH_ACTOR_SECRET: 'secret' },
+    invokeFunction: async () => ({ result: { success: false, code: 'invalid_request', details: 'unknown:context' } })
+  })
+  assert.strictEqual(invalid.kind, 'fallback')
+  assert.strictEqual(invalid.code, 'invalid_request:unknown:context')
+
   console.log('PASS langgraph client')
 }
 
