@@ -11,6 +11,12 @@ const STEP_SEQUENCE = Object.freeze([
   'passed'
 ])
 
+const CONTROLLED_PATCH_REQUEST = [
+  '受控端到端校验：请修改我自己的约会申请，把活动改为只喝咖啡。',
+  '请返回 intent=modify_date_application，调用 create_date_application_patch，',
+  'tool_request.arguments 仅设置 activities=["咖啡"]，并生成待我确认的修改预览。'
+].join('')
+
 function requireSuperAdmin(actor) {
   if (!actor || actor.role !== 'admin' || actor.admin_role !== 'super_admin') {
     throw new Error('无权运行受控约会场景')
@@ -179,7 +185,7 @@ function createDefaultServices(deps) {
     async requestPatch({ run }) {
       const result = await agentHandlers.send({
         session_id: run.session_a_id,
-        message: '请把我的活动调整为只喝咖啡'
+        message: CONTROLLED_PATCH_REQUEST
       }, contextFor(run.user_a_id))
       if (!result.requires_confirmation || !result.patch_preview) throw new Error('AI 未生成约会修改预览')
       return { patch_id: Number(result.patch_preview.id) }
@@ -322,6 +328,7 @@ function createControlledDateScenarioService(deps, services) {
 }
 
 module.exports = {
+  CONTROLLED_PATCH_REQUEST,
   createControlledDateScenarioService,
   createDefaultServices,
   requireSuperAdmin,

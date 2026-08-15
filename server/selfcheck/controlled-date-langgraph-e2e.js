@@ -1,6 +1,9 @@
 const assert = require('assert')
 
-const { createControlledDateScenarioService } = require('../../miniprogram/cloudfunctions/api/agent/controlledDateScenarioService')
+const {
+  CONTROLLED_PATCH_REQUEST,
+  createControlledDateScenarioService
+} = require('../../miniprogram/cloudfunctions/api/agent/controlledDateScenarioService')
 
 function fixture() {
   const tables = {
@@ -74,6 +77,8 @@ function fixture() {
 }
 
 async function main() {
+  assert(CONTROLLED_PATCH_REQUEST.includes('create_date_application_patch'))
+  assert(CONTROLLED_PATCH_REQUEST.includes('activities'))
   const { deps, services } = fixture()
   const service = createControlledDateScenarioService(deps, services)
   const admin = { role: 'admin', admin_role: 'super_admin', id: 1 }
