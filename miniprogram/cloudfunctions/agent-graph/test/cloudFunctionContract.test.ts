@@ -51,4 +51,8 @@ test('CloudBase function entrypoint wires the persistent saver and provider', ()
   for (const contract of ['cloud.DYNAMIC_CURRENT_ENV', 'CloudBaseCheckpointSaver', 'createDecisionModel', 'createAgentGraphMain', 'export const main']) {
     assert(source.includes(contract), `cloud function entrypoint missing: ${contract}`)
   }
+  const config = JSON.parse(readFileSync(new URL('../config.json', import.meta.url), 'utf8')) as { handler?: string }
+  const root = readFileSync(new URL('../index.js', import.meta.url), 'utf8')
+  assert.equal(config.handler, 'index.main')
+  assert(root.includes("export { main } from './dist/src/cloudFunction.js'"))
 })
