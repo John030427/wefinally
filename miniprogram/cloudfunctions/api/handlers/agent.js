@@ -410,6 +410,19 @@ function createAgentHandlers(overrides = {}) {
               risk_level: 'safe',
               error_code: dateGraphResult.errorCode || ''
             }, 'agent_run')
+          } else {
+            await dep('addWithId')('agent_run', {
+              session_id: session.id,
+              user_id: user.id,
+              agent_type: session.agent_type,
+              coordination_id: Number(coordination.id),
+              coordination_version: Number(coordination.coordination_version || 1),
+              status: 'fallback',
+              provider: 'langgraph',
+              intent: 'date_coordination_state',
+              risk_level: 'safe',
+              error_code: String(graphStep.code || graphStep.kind || 'graph_fallback').slice(0, 80)
+            }, 'agent_run')
           }
         } catch (_) {
           // Graph failures fall through to the established backend/DeepSeek path.

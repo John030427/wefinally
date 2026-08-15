@@ -300,6 +300,12 @@ async function main() {
   for (const forbidden of ['share_message', 'other_requirements', 'transport_constraints', '不公开', 'openid', 'phone']) {
     assert.strictEqual(graphJson.includes(forbidden), false)
   }
+  deps.invokeGraphFunction = async () => { throw new Error('graph offline') }
+  await handlers.send({ session_id: coordinator.id, message: '现在协调状态怎么样？' }, contextA)
+  assert(deps.tables.agent_run.some((row) => row.provider === 'langgraph'
+    && row.session_id === coordinator.id
+    && row.status === 'fallback'
+    && row.error_code === 'graph_unavailable'))
   deps.env.LANGGRAPH_ENABLED = 'false'
 
   const patchReply = await handlers.send({ session_id: coordinator.id, message: '不想看电影了，帮我改成咖啡' }, contextA)

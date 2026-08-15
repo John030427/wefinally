@@ -297,7 +297,8 @@ function createControlledDateScenarioService(deps, services) {
         if (!coordination || coordination.status !== 'arranged') throw new Error('双方尚未形成约会安排')
         const graphRuns = await deps.list('agent_run', { provider: 'langgraph' }, 200)
         const patchCalls = await deps.list('agent_tool_call', { tool_name: 'create_date_application_patch' }, 200)
-        if (!graphRuns.some((row) => Number(row.session_id) === Number(run.session_a_id))) throw new Error('缺少 LangGraph 运行证据')
+        if (!graphRuns.some((row) => Number(row.session_id) === Number(run.session_a_id)
+          && row.status !== 'fallback' && !row.error_code)) throw new Error('缺少成功的 LangGraph 运行证据')
         if (!patchCalls.some((row) => Number(row.session_id) === Number(run.session_a_id))) throw new Error('缺少 AI 工具调用证据')
         nextStep = 'passed'
         patch.status = 'passed'
