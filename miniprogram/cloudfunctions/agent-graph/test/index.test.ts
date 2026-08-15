@@ -42,7 +42,8 @@ test('entrypoint ignores only CloudBase injected userInfo metadata', async () =>
   })
   const result = await main({
     ...customerInput('介绍平台规则'),
-    userInfo: { appId: 'cloudbase-injected', openId: 'cloudbase-injected' }
+    userInfo: { appId: 'cloudbase-injected', openId: 'cloudbase-injected' },
+    tcbContext: { requestId: 'cloudbase-injected' }
   })
   assert.equal(result.success, true)
   assert.equal(result.data?.status, 'completed')

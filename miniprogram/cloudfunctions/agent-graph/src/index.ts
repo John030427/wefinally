@@ -26,7 +26,11 @@ type MainResponse = {
 
 function withoutCloudBaseMetadata(event: unknown): unknown {
   if (!event || typeof event !== 'object' || Array.isArray(event)) return event
-  const { userInfo: _userInfo, ...businessEvent } = event as Record<string, unknown>
+  const {
+    userInfo: _userInfo,
+    tcbContext: _tcbContext,
+    ...businessEvent
+  } = event as Record<string, unknown>
   return businessEvent
 }
 
