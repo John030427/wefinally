@@ -43,6 +43,22 @@ function fakeDeps() {
         other_requirements: '',
         share_message: ''
       }
+    }, {
+      id: 61,
+      coordination_id: 50,
+      user_id: 2,
+      coordination_version: 1,
+      application: {
+        availability: [{ date: '2026-07-18', periods: ['afternoon'] }],
+        areas: ['福田区'],
+        activities: ['咖啡'],
+        budget: '100-200',
+        payment_preference: 'aa',
+        duration: '1-2h',
+        transport_constraints: '不公开的交通信息',
+        other_requirements: '不公开的自由文本',
+        share_message: '不公开的留言'
+      }
     }],
     date_coordination_proposal: [],
     date_coordination_confirmation: [],
@@ -153,6 +169,18 @@ function fakeDeps() {
           fallback: false
         }
       }
+      if (input.message === '请继续协调方案') {
+        return {
+          intent: 'coordinate_date',
+          replyDraft: '我会继续根据双方已提交的信息协调。',
+          requestedTools: [],
+          toolRequest: null,
+          riskLevel: 'safe',
+          suggestedActions: [],
+          provider: 'deepseek',
+          fallback: false
+        }
+      }
       if (['想聊聊健康恋爱', '我对相处节奏拿不准'].includes(input.message)) {
         assert.strictEqual(input.context.knowledge.length, 0)
       }
@@ -231,6 +259,48 @@ async function main() {
   assert(coordinatorReply.reply.includes('填写约会偏好'))
   assert.strictEqual(coordinatorReply.tool, 'get_date_coordination_status')
   assert.strictEqual(JSON.stringify(coordinatorReply).includes('user_a_id'), false)
+
+  deps.env.LANGGRAPH_ENABLED = 'true'
+  deps.env.LANGGRAPH_ACTOR_SECRET = 'selfcheck-secret'
+  const dateGraphPayloads = []
+  deps.invokeGraphFunction = async (name, payload) => {
+    assert.strictEqual(name, 'agent-graph')
+    dateGraphPayloads.push(payload)
+    return {
+      result: {
+        success: true,
+        data: {
+          status: 'awaiting_confirmation',
+          threadId: payload.threadId,
+          phase: 'awaiting_confirmation',
+          replyDraft: '已找到双方都可以接受的方案，等待双方确认。',
+          pendingAction: null,
+          coordinationVersion: 1
+        }
+      }
+    }
+  }
+  const dateGraphReply = await handlers.send({ session_id: coordinator.id, message: '请继续协调方案' }, contextA)
+  const dateGraphReplyB = await handlers.send({ session_id: coordinatorB.id, message: '请继续协调方案' }, contextB)
+  const dateGraphPayload = dateGraphPayloads[0]
+  assert.strictEqual(dateGraphPayload.mode, 'date_coordination')
+  assert.strictEqual(dateGraphPayload.coordinationId, 50)
+  assert.strictEqual(dateGraphPayload.coordinationVersion, 1)
+  assert.strictEqual(dateGraphPayload.party, 'A')
+  assert.deepStrictEqual(dateGraphPayload.partyAState.dateWindows, ['2026-07-18:afternoon'])
+  assert.deepStrictEqual(dateGraphPayload.partyBState.regions, ['福田区'])
+  assert.deepStrictEqual(dateGraphPayload.partyBState.venueTypes, ['咖啡'])
+  assert.strictEqual(dateGraphReply.provider, 'deepseek')
+  assert.strictEqual(dateGraphReplyB.provider, 'deepseek')
+  assert.strictEqual(dateGraphPayloads[1].threadId, dateGraphPayload.threadId)
+  assert.notStrictEqual(dateGraphPayloads[1].actorRef, dateGraphPayload.actorRef)
+  assert.strictEqual(dateGraphPayloads[1].party, 'B')
+  assert(deps.tables.agent_run.some((row) => row.provider === 'langgraph' && row.session_id === coordinator.id))
+  const graphJson = JSON.stringify(dateGraphPayload)
+  for (const forbidden of ['share_message', 'other_requirements', 'transport_constraints', '不公开', 'openid', 'phone']) {
+    assert.strictEqual(graphJson.includes(forbidden), false)
+  }
+  deps.env.LANGGRAPH_ENABLED = 'false'
 
   const patchReply = await handlers.send({ session_id: coordinator.id, message: '不想看电影了，帮我改成咖啡' }, contextA)
   assert.strictEqual(patchReply.provider, 'deepseek')
