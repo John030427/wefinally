@@ -49,12 +49,13 @@ CloudBase 环境：`cloud1-d4gy8l52g08bba326`（上海，NoSQL）
 
 专项场景已覆盖：直接一轮成功、一次修改后成功、双方修改后成功、拒绝旧方案后成功、第五轮转人工、不同方案不 arranged、并发 worker 单次完成、旧 worker 不覆盖新版本、事件不泄露原始申请。
 
-## 4. CloudBase 发布准备
+## 4. CloudBase 发布状态
 
 通过 CloudBase MCP 完成并复核：
 
-- `api` 与 `report-worker` 均为 Active/Available；`report-worker` 每分钟触发一次。
-- 线上 `api` 仍是本轮之前的代码，尚不包含协调任务 worker，必须部署后才能让新队列自动完成。
+- 已于 2026-08-15 通过 CloudBase MCP 更新 `api`；函数更新时间为 `2026-08-15 13:41:50`，状态为 Active/Available。
+- 线上代码已核验包含 `processCoordinationTasks` 与 `coordinationTasks`，`ping` 实际调用成功。
+- `report-worker` 为 Active/Available，每分钟触发一次；受控调用已成功贯通 `report-worker -> api -> coordinationTasks`，无函数错误。
 - `MATCH_TEST_RUN_PUBLIC_ENABLED=false`；原有关键环境变量仍保留。
 - `cloud_demo_match_enabled=false`、`cloud_demo_vip_grant_enabled=false`。
 - 20 个 `wf_public_match_pool_20260814_v1` synthetic 画像已补 `formal_match_hidden=1`，并保持 `allow_date_coordination=0`；没有删除数据。
@@ -77,7 +78,6 @@ CloudBase 环境：`cloud1-d4gy8l52g08bba326`（上海，NoSQL）
 
 ## 6. 尚未完成与发布门禁
 
-- 尚未部署本轮 `api` 代码。
 - 尚未上传微信小程序体验版或正式版。
 - 尚未用两个独立真实微信账号完成：一轮成功、修改后成功、拒绝方案后成功、明确拒绝邀请四条真机链路。
 - 尚未验证体验版页面的真实机型尺寸、前后台切换和弱网恢复。
@@ -85,7 +85,7 @@ CloudBase 环境：`cloud1-d4gy8l52g08bba326`（上海，NoSQL）
 
 ## 7. 回滚
 
-- 函数部署前先记录当前 `api` 详情与代码版本；若新版本 ping、路由或 worker 验证失败，通过 CloudBase MCP 重新部署部署前代码包。
+- 部署前的 `api` 代码下载地址已通过 CloudBase MCP 留存；若线上回归失败，通过 CloudBase MCP 重新部署该部署前代码包。
 - 新索引均为附加索引；回滚代码时可保留，不影响旧逻辑。只有确认索引本身导致异常时才单独删除。
 - faker 隐藏标记与测试开关属于正式发布安全配置，代码回滚时默认保持关闭；恢复测试能力必须重新获得明确授权。
 - 不通过 reset/clean/restore 回滚本地工作树；使用新的反向提交或重新部署已审核 commit。
