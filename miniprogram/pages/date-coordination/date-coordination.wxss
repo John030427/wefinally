@@ -52,6 +52,59 @@
   border-bottom: none;
 }
 
+.lifecycle-card {
+  border: 2rpx solid #f3e4e8;
+  background: #fff;
+}
+
+.lifecycle-main {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20rpx;
+}
+
+.lifecycle-round {
+  color: #30292c;
+  font-size: 32rpx;
+  font-weight: 700;
+}
+
+.lifecycle-version,
+.lifecycle-note {
+  margin-top: 8rpx;
+  color: #8c7b80;
+  font-size: 23rpx;
+  line-height: 1.6;
+}
+
+.lifecycle-state {
+  flex: 0 0 auto;
+  padding: 8rpx 16rpx;
+  border-radius: 22rpx;
+  color: #b64d69;
+  background: #fff0f4;
+  font-size: 23rpx;
+}
+
+.compact-btn {
+  width: 100%;
+  margin-top: 20rpx;
+}
+
+.processing-card {
+  border-left: 8rpx solid #ff7896;
+}
+
+.processing-card-failed {
+  border-left-color: #c55b5b;
+  background: #fffafa;
+}
+
+.proposal-reject-btn {
+  margin-top: 18rpx;
+}
+
 .coordination-track {
   position: relative;
 }

@@ -126,6 +126,8 @@ function route(method, path) {
   })
   m = path.match(/^\/api\/date-coordinations\/(\d+)\/recoordinate$/)
   if (method === 'POST' && m) return withParams(dateCoordination.recoordinate, { coordination_id: Number(m[1]) })
+  m = path.match(/^\/api\/date-coordinations\/(\d+)\/retry-processing$/)
+  if (method === 'POST' && m) return withParams(dateCoordination.retryProcessing, { coordination_id: Number(m[1]) })
   m = path.match(/^\/api\/meet\/share\/([^/]+)$/)
   if (method === 'GET' && m) return withParams(meet.shareDetail, { token: m[1] })
   m = path.match(/^\/api\/meet\/(\d+)$/)

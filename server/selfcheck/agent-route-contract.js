@@ -31,7 +31,8 @@ for (const contract of [
   '/api\\/date-coordinations\\/(\\d+)\\/application-patches\\/(\\d+)\\/confirm',
   '/api\\/date-coordinations\\/(\\d+)\\/application-patches\\/(\\d+)\\/cancel',
   '/api\\/date-coordinations\\/(\\d+)\\/proposals\\/(\\d+)\\/confirm',
-  '/api\\/date-coordinations\\/(\\d+)\\/recoordinate'
+  '/api\\/date-coordinations\\/(\\d+)\\/recoordinate',
+  '/api\\/date-coordinations\\/(\\d+)\\/retry-processing'
 ]) assert(route.includes(contract), `route contract missing: ${contract}`)
 
 for (const name of [

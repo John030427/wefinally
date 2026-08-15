@@ -13,6 +13,39 @@ function normalizeCoordination(data) {
   return coordination || {}
 }
 
+function buildCoordinationDisplay(coordination) {
+  const status = String(coordination && coordination.status || '')
+  const processingStatus = String(coordination && coordination.processing_status || '')
+  const roundNumber = Math.max(1, Math.min(Number(coordination && coordination.round_number || 1), Number(coordination && coordination.max_rounds || 5)))
+  const maxRounds = Math.max(roundNumber, Number(coordination && coordination.max_rounds || 5))
+  const labels = {
+    collecting_initiator: '等待发起方填写',
+    inviting_partner: '等待对方接受邀请',
+    collecting_preferences: '等待双方填写',
+    computing_overlap: processingStatus === 'processing' ? '处理中' : (processingStatus === 'failed' ? '处理失败' : '待处理'),
+    waiting_confirmations: '等待双方确认',
+    no_overlap: '本轮暂无交集',
+    replanning: '等待调整偏好',
+    arranged: '双方已确认',
+    invitation_declined: '邀请未被接受',
+    manual_handoff: '已转人工协助',
+    expired: '已过期',
+    cancelled: '已结束'
+  }
+  return {
+    roundNumber,
+    maxRounds,
+    version: Math.max(1, Number(coordination && coordination.coordination_version || 1)),
+    statusText: labels[status] || '协调中',
+    processing: status === 'computing_overlap' && ['queued', 'processing'].includes(processingStatus),
+    queued: status === 'computing_overlap' && processingStatus === 'queued',
+    failed: status === 'computing_overlap' && processingStatus === 'failed',
+    manualHandoff: status === 'manual_handoff',
+    completed: status === 'arranged',
+    shouldPoll: status === 'computing_overlap' && ['queued', 'processing'].includes(processingStatus)
+  }
+}
+
 function buildSelection(form) {
   const activities = {}
   const periods = {}
@@ -30,6 +63,8 @@ Page({
     errorMsg: '',
     coordinationId: '',
     coordination: null,
+    coordinationDisplay: buildCoordinationDisplay({}),
+    refreshingCoordination: false,
     fixtureSimulation: null,
     fixtureStage: '',
     fixtureStatusText: '',
@@ -118,11 +153,13 @@ Page({
   onHide() {
     this.pageVisible = false
     this.stopFixturePolling()
+    this.stopCoordinationPolling()
   },
 
   onUnload() {
     this.pageVisible = false
     this.stopFixturePolling()
+    this.stopCoordinationPolling()
   },
 
   async openCoordination(options) {
@@ -181,6 +218,7 @@ Page({
     const id = coordination.id || coordination.coordination_id || coordination.coordinationId || ''
     const application = coordination.application || coordination.my_application || {}
     const proposal = coordination.final_proposal || coordination.proposal || (coordination.proposals || [])[0] || null
+    const coordinationDisplay = buildCoordinationDisplay(coordination)
     const form = Object.assign({}, this.data.form, application, {
       availability: application.availability || this.data.form.availability || [],
       activities: application.activities || this.data.form.activities || []
@@ -188,12 +226,15 @@ Page({
     this.setData({
       coordinationId: String(id),
       coordination,
+      coordinationDisplay,
       form,
       selection: buildSelection(form),
       areaText: Array.isArray(form.areas) ? form.areas.join('、') : '',
       proposal,
       pageState: status === 'expired' ? 'expired' : 'success'
     })
+    if (coordinationDisplay.shouldPoll && this.pageVisible !== false) this.startCoordinationPolling()
+    else this.stopCoordinationPolling()
   },
 
   applyFixtureSimulation(result) {
@@ -249,9 +290,29 @@ Page({
       : (this.launchOptions || {}))
   },
 
-  refreshCoordination() {
-    if (!this.data.coordinationId) return
-    this.openCoordination({ coordinationId: this.data.coordinationId })
+  startCoordinationPolling() {
+    this.stopCoordinationPolling()
+    this.coordinationPollTimer = setInterval(() => this.refreshCoordination(true), 6000)
+  },
+
+  stopCoordinationPolling() {
+    if (!this.coordinationPollTimer) return
+    clearInterval(this.coordinationPollTimer)
+    this.coordinationPollTimer = null
+  },
+
+  async refreshCoordination(silent) {
+    if (!this.data.coordinationId || this.data.refreshingCoordination) return
+    const isSilent = silent === true
+    this.setData({ refreshingCoordination: true })
+    try {
+      const result = await get(`${API_PATHS.DATE_COORDINATIONS}/${this.data.coordinationId}`, {}, { showError: false })
+      this.applyCoordination(normalizeCoordination(result))
+    } catch (err) {
+      if (!isSilent) wx.showToast({ title: (err && err.message) || '刷新失败', icon: 'none' })
+    } finally {
+      this.setData({ refreshingCoordination: false })
+    }
   },
 
   onDateChange(e) {
@@ -377,17 +438,38 @@ Page({
   },
 
   async confirmProposal() {
+    return this.respondToProposal('confirm')
+  },
+
+  async rejectProposal() {
+    return this.respondToProposal('reject')
+  },
+
+  async respondToProposal(decision) {
     if (!this.data.proposal || this.data.submitting) return
     this.setData({ submitting: true })
     try {
       const proposalId = this.data.proposal.id || this.data.proposal.proposal_id
       const result = await post(`${API_PATHS.DATE_COORDINATIONS}/${this.data.coordinationId}/proposals/${proposalId}/confirm`, {
         coordination_version: this.data.coordination.coordination_version,
-        decision: 'confirm'
+        decision
       }, { showError: false })
       this.applyCoordination(normalizeCoordination(result))
     } catch (err) {
-      wx.showToast({ title: (err && err.message) || '确认失败，请重试', icon: 'none' })
+      wx.showToast({ title: (err && err.message) || (decision === 'reject' ? '暂时无法继续协调' : '确认失败，请重试'), icon: 'none' })
+    } finally {
+      this.setData({ submitting: false })
+    }
+  },
+
+  async retryProcessing() {
+    if (!this.data.coordinationId || this.data.submitting) return
+    this.setData({ submitting: true })
+    try {
+      const result = await post(`${API_PATHS.DATE_COORDINATIONS}/${this.data.coordinationId}/retry-processing`, {}, { showError: false })
+      this.applyCoordination(normalizeCoordination(result))
+    } catch (err) {
+      wx.showToast({ title: (err && err.message) || '重新处理失败', icon: 'none' })
     } finally {
       this.setData({ submitting: false })
     }

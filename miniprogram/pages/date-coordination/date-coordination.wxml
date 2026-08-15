@@ -37,10 +37,39 @@
 
   <block wx:else>
     <view class="date-head card">
-      <view class="date-title">第一次约会协调</view>
+      <view class="date-title">约会协调</view>
       <view class="meet-badge" wx:if="{{coordination.simulation_badge}}">{{coordination.simulation_badge}}</view>
       <view class="date-desc">{{coordination.simulation_badge ? '请完整填写偏好，提交后由 AI 协调员在后台处理并反馈结果。' : '先由发起方填写偏好并邀请对方，再一起确认轻松、安全的初次见面。'}}</view>
-      <view class="status-pill">{{coordination.status_text || coordination.status || '协调中'}}</view>
+      <view class="status-pill">{{coordinationDisplay.statusText}}</view>
+    </view>
+
+    <view class="lifecycle-card card">
+      <view class="lifecycle-main">
+        <view>
+          <view class="lifecycle-round">第 {{coordinationDisplay.roundNumber}} / {{coordinationDisplay.maxRounds}} 轮</view>
+          <view class="lifecycle-version">方案版本 v{{coordinationDisplay.version}}</view>
+        </view>
+        <view class="lifecycle-state">{{coordinationDisplay.statusText}}</view>
+      </view>
+      <view class="lifecycle-note">这里只展示共同进度，不会公开对方的原始表单或聊天内容。</view>
+      <button class="outline-btn compact-btn" bindtap="refreshCoordination" loading="{{refreshingCoordination}}">刷新当前进度</button>
+    </view>
+
+    <view class="processing-card card" wx:if="{{coordinationDisplay.processing}}">
+      <view class="section-title">{{coordinationDisplay.queued ? '协调任务待处理' : '正在计算共同方案'}}</view>
+      <view class="public-note">{{coordinationDisplay.queued ? '任务已进入后台队列，可以先离开页面；完成后本页会自动更新。' : '后台正在核对双方当前版本的共同时间、区域和活动。'}}</view>
+    </view>
+
+    <view class="processing-card processing-card-failed card" wx:if="{{coordinationDisplay.failed}}">
+      <view class="section-title">本轮处理暂时失败</view>
+      <view class="public-note">你的申请仍然保留，可以重新进入队列；如果持续失败，请联系人工客服。</view>
+      <button class="primary-btn full-btn" bindtap="retryProcessing" loading="{{submitting}}">重新处理</button>
+    </view>
+
+    <view class="processing-card card" wx:if="{{coordinationDisplay.manualHandoff}}">
+      <view class="section-title">自动协调已转人工</view>
+      <view class="public-note">已经完成 5 轮自动协调。平台客服会基于安全摘要继续协助，不会替任何一方作决定。</view>
+      <button class="outline-btn full-btn" bindtap="goService">联系人工客服</button>
     </view>
 
     <view class="progress-card card">
@@ -129,6 +158,7 @@
       <view class="proposal-line">活动：{{proposal.activity || proposal.activities || '待确认'}}</view>
       <view class="public-note">方案仅在双方确认后生效。</view>
       <button class="primary-btn full-btn" bindtap="confirmProposal" loading="{{submitting}}" disabled="{{submitting || coordination.confirmed_by_me}}">{{coordination.confirmed_by_me ? '已确认，等待对方' : '确认这个方案'}}</button>
+      <button class="outline-btn full-btn proposal-reject-btn" bindtap="rejectProposal" loading="{{submitting}}" disabled="{{submitting}}">这个方案不合适，继续协调</button>
     </view>
 
     <view class="proposal-card card" wx:if="{{coordination.status === 'no_overlap'}}">

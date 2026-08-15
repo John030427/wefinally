@@ -665,7 +665,41 @@ function createDateCoordinationHandlers(overrides = {}) {
     return detailFor(updated, user)
   }
 
-  return { create, submitFixtureApplication, fixtureResponse, respondInvitation, saveApplication, saveApplicationForUser, detail, confirmProposal, recoordinate }
+  async function retryProcessing(data, wxContext) {
+    const user = await dep('currentUser')(wxContext)
+    const coordination = await dep('byId')('date_coordination', coordinationId(data))
+    if (!coordination) throw new Error('日期协调不存在')
+    if (!participant(coordination, user.id)) throw new Error('无权重试该日期协调')
+    if (coordination.status !== STATUS.COMPUTING_OVERLAP || coordination.processing_status !== 'failed') {
+      throw new Error('当前协调任务不需要重试')
+    }
+    const version = Number(coordination.coordination_version || 1)
+    const queued = enqueueProcessing(coordination, { version, now: dep('now')() })
+    const updated = await dep('updateByDoc')('date_coordination', coordination, {
+      status: queued.status,
+      business_state: queued.business_state,
+      processing_status: queued.processing_status,
+      processing_version: queued.processing_version,
+      processing_token: '',
+      processing_attempts: 0,
+      processing_started_at: null,
+      processing_completed_at: null,
+      processing_error_code: '',
+      last_event_at: queued.last_event_at
+    })
+    await dep('publishCoordinationEvent')({
+      coordination: updated,
+      event: {
+        event_type: 'processing_queued',
+        actor_user_id: Number(user.id),
+        coordination_version: version,
+        idempotency_suffix: 'manual-retry'
+      }
+    })
+    return detailFor(updated, user)
+  }
+
+  return { create, submitFixtureApplication, fixtureResponse, respondInvitation, saveApplication, saveApplicationForUser, detail, confirmProposal, recoordinate, retryProcessing }
 }
 
 const handlers = {}
@@ -686,6 +720,7 @@ module.exports = {
   fixtureResponse: handler('fixtureResponse'),
   confirmProposal: handler('confirmProposal'),
   recoordinate: handler('recoordinate'),
+  retryProcessing: handler('retryProcessing'),
   createDateCoordinationHandlers,
   processCoordinationDeadlines,
   upsertConfirmation,

@@ -660,6 +660,24 @@ async function main() {
   assert.strictEqual(feedbackFailureDeps.rows.date_coordination[0].processing_status, 'completed')
   assert.strictEqual(reportedEventError, true)
 
+  const retryDeps = memoryDeps({
+    user: [{ id: 1, member_status: 'approved', is_vip: 1, vip_expire_time: '2026-08-01T00:00:00.000Z' }],
+    date_coordination: [{
+      id: 104, user_a_id: 1, user_b_id: 2, status: 'computing_overlap', business_state: 'processing',
+      coordination_version: 2, processing_status: 'failed', processing_version: 2,
+      processing_attempts: 3, processing_error_code: 'coordination_processing_failed'
+    }]
+  })
+  const retried = await createDateCoordinationHandlers(retryDeps).retryProcessing({ coordination_id: 104 }, { user_id: 1 })
+  assert.strictEqual(retried.status, 'computing_overlap')
+  assert.strictEqual(retried.processing_status, 'queued')
+  assert.strictEqual(retried.processing_version, 2)
+  assert.strictEqual(retryDeps.rows.date_coordination[0].processing_attempts, 0)
+  await assert.rejects(
+    () => createDateCoordinationHandlers(retryDeps).retryProcessing({ coordination_id: 104 }, { user_id: 1 }),
+    /不需要重试/
+  )
+
   console.log('PASS date coordination cloud')
 }
 
