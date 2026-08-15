@@ -1,4 +1,5 @@
 {
   "timeout": 60,
-  "runtime": "Nodejs20.19"
+  "runtime": "Nodejs20.19",
+  "handler": "dist/src/cloudFunction.main"
 }
