@@ -13,13 +13,6 @@ Page({
     scheduleDesc: MATCH_SCHEDULE.desc,
     latestMatch: null,
     hasLatest: false,
-    qaTestRunEnabled: false,
-    testRunBusy: false,
-    testRunStatus: '',
-    testRunStatusText: '',
-    testRunId: 0,
-    testRunMatchId: 0,
-    countdownLeft: 0,
     readiness: null,
     journeyState: null
   },
@@ -66,7 +59,6 @@ Page({
         latestMatch,
         nextMatchText: next ? next.text : ''
       })
-      const qaTestRunEnabled = profile && (profile.qa_test_run_enabled === true || profile.account_mode === 'internal_qa')
       this.setData({
         pageState: 'success',
         isVip,
@@ -76,10 +68,8 @@ Page({
         latestMatch,
         hasLatest: !!latestMatch,
         readiness,
-        journeyState,
-        qaTestRunEnabled
+        journeyState
       })
-      if (qaTestRunEnabled) await this.restoreQaTestRun()
     } catch (err) {
       this.setData({
         pageState: 'error',
@@ -108,12 +98,6 @@ Page({
       ageText: latest.age_band || (age === '--' ? '--' : `${age}岁`),
       city: latest.city || '--'
     }
-  },
-
-  async refreshLatestMatch() {
-    const latest = await get(API_PATHS.MATCH_LATEST, {}, { showError: false })
-    const latestMatch = this.normalizeLatestMatch(latest)
-    this.setData({ latestMatch, hasLatest: !!latestMatch })
   },
 
   goMatchSetting() {
@@ -150,154 +134,6 @@ Page({
 
   goLoveAdvisor() {
     wx.navigateTo({ url: '/pages/love-advisor/love-advisor' })
-  },
-
-  testRunLabel(run) {
-    const status = run && run.status || this.data.testRunStatus
-    const messages = {
-      queued: this.data.countdownLeft > 0 ? `倒计时 ${this.data.countdownLeft} 秒` : '已创建，等待倒计时结束',
-      countdown: `倒计时 ${this.data.countdownLeft} 秒`,
-      running: '正在执行测试匹配',
-      completed_matched: '测试匹配成功，可进入详情',
-      matched: '测试匹配成功，可进入详情',
-      completed_no_match: run && run.message || '本轮无匹配结果',
-      no_match: '本轮无匹配结果',
-      blocked: run && run.message || '当前无法测试匹配',
-      failed: run && run.message || '测试运行失败，可安全重试'
-    }
-    return messages[status] || ''
-  },
-
-  applyTestRun(run, extra = {}) {
-    if (!run) return
-    const status = run.status === 'completed_matched' ? 'matched' : (run.status === 'completed_no_match' ? 'no_match' : run.status)
-    this.setData(Object.assign({
-      testRunId: run.id || run.run_id || 0,
-      testRunStatus: status,
-      testRunMatchId: run.match_id || 0,
-      testRunBusy: status === 'queued' || status === 'countdown' || status === 'running',
-      testRunStatusText: this.testRunLabel(Object.assign({}, run, { status }))
-    }, extra))
-    if (run.id || run.run_id) wx.setStorageSync('wf_test_run_id', run.id || run.run_id)
-  },
-
-  async restoreQaTestRun() {
-    const storedId = wx.getStorageSync('wf_test_run_id')
-    try {
-      const run = storedId
-        ? await get(`${API_PATHS.MATCH_TEST_RUNS}/${storedId}`, {}, { showError: false })
-        : await get(API_PATHS.MATCH_TEST_RUNS, { latest: 1 }, { showError: false })
-      if (run && run.id) {
-        this.applyTestRun(run)
-        if (run.status === 'queued') this.resumeCountdown(run)
-      }
-    } catch (err) {}
-  },
-
-  resumeCountdown(run) {
-    const remainMs = new Date(run.execute_after || 0).getTime() - Date.now()
-    if (remainMs <= 0) {
-      this.executeQaTestRun()
-      return
-    }
-    this.setData({ countdownLeft: Math.ceil(remainMs / 1000), testRunBusy: true, testRunStatus: 'countdown' })
-    this.tickCountdown()
-  },
-
-  tickCountdown() {
-    if (this._testRunTimer) clearInterval(this._testRunTimer)
-    this._testRunTimer = setInterval(() => {
-      const left = Number(this.data.countdownLeft || 0) - 1
-      if (left <= 0) {
-        clearInterval(this._testRunTimer)
-        this._testRunTimer = null
-        this.setData({ countdownLeft: 0 })
-        this.executeQaTestRun()
-        return
-      }
-      this.setData({
-        countdownLeft: left,
-        testRunStatusText: `倒计时 ${left} 秒`
-      })
-    }, 1000)
-  },
-
-  clearTestRunTimer() {
-    if (!this._testRunTimer) return
-    clearInterval(this._testRunTimer)
-    this._testRunTimer = null
-  },
-
-  onHide() {
-    this.clearTestRunTimer()
-  },
-
-  onUnload() {
-    this.clearTestRunTimer()
-  },
-
-  async startQaTestRun() {
-    if (this.data.testRunBusy) return
-    this.setData({ testRunBusy: true, testRunStatus: 'countdown', countdownLeft: 10, testRunStatusText: '倒计时 10 秒' })
-    try {
-      const requestId = `qa-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
-      const run = await post(API_PATHS.MATCH_TEST_RUNS, { request_id: requestId }, { showError: false })
-      this.applyTestRun(run, { countdownLeft: 10, testRunStatus: 'countdown', testRunBusy: true, testRunStatusText: '倒计时 10 秒' })
-      this.tickCountdown()
-    } catch (err) {
-      this.setData({
-        testRunBusy: false,
-        testRunStatus: 'failed',
-        testRunStatusText: (err && err.message) || '测试运行失败，可安全重试'
-      })
-    }
-  },
-
-  async executeQaTestRun() {
-    const id = this.data.testRunId
-    if (!id) {
-      this.setData({ testRunBusy: false })
-      return
-    }
-    this.setData({ testRunStatus: 'running', testRunStatusText: '正在执行测试匹配', testRunBusy: true })
-    try {
-      const run = await post(`${API_PATHS.MATCH_TEST_RUNS}/${id}/execute`, {}, { showError: false })
-      this.applyTestRun(run, { testRunBusy: run.status === 'queued', countdownLeft: 0 })
-      if (run.status === 'queued') this.resumeCountdown(run)
-      if (run.status === 'completed_matched') await this.refreshLatestMatch()
-    } catch (err) {
-      this.setData({
-        testRunBusy: false,
-        testRunStatus: 'failed',
-        testRunStatusText: (err && err.message) || '测试运行失败，可安全重试'
-      })
-    }
-  },
-
-  onTestRunAction() {
-    if (this.data.testRunStatus === 'matched' || this.data.testRunStatus === 'completed_matched') {
-      this.goTestMatchDetail()
-      return
-    }
-    if (this.data.testRunStatus === 'failed') this.executeQaTestRun()
-  },
-
-  goTestMatchDetail() {
-    if (!this.data.testRunMatchId) return
-    wx.navigateTo({ url: `/pages/match-detail/match-detail?id=${this.data.testRunMatchId}&autoReport=1` })
-  },
-
-  devResetRegistration() {
-    const app = getApp()
-    const openid = `uat_register_${Date.now()}`
-    if (!app.resetLocalForRegistration) {
-      wx.showModal({ title: '当前版本不支持', content: '请在 Console 使用 getApp().resetLocalForRegistration()', showCancel: false })
-      return
-    }
-    const result = app.resetLocalForRegistration(openid)
-    if (result && result.ok === false) {
-      wx.showModal({ title: '重置失败', content: result.message || '请稍后重试', showCancel: false })
-    }
   },
 
   getLocationForSos() {

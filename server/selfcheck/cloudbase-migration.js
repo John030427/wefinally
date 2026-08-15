@@ -78,7 +78,7 @@ ok('cloud manual match no longer waits for DeepSeek report', !matchStartBody.inc
 ok('cloud match detail keeps field breakdown scores', cloudMatchJs.includes('ensureScoreDetailDimensions') && cloudMatchJs.includes('buildDemoScoreDetail'));
 ok('cloud exposes manual AI report generation endpoint', cloudMatchJs.includes('async function generateReport') && cloudRouteJs.includes('POST /api/match/report'));
 ok('manual AI report endpoint only creates or returns task', cloudMatchJs.includes('return reportTask.create(data, wxContext)'));
-ok('new manual match can open detail with auto AI report generation', indexJs.includes('autoReport=1') && matchDetailJs.includes('autoReportPending') && matchDetailJs.includes('silentReport'));
+ok('match detail can resume automatic AI report generation', matchDetailJs.includes('autoReportPending') && matchDetailJs.includes('silentReport'));
 ok('match detail derives actions from canonical task status', matchDetailJs.includes('normalizeAiReportState') && matchDetailJs.includes("status === 'succeeded'") && matchDetailJs.includes("status === 'failed'"));
 ok('match detail hides generation after task succeeds', matchDetailJs.includes("canGenerateReport: status === 'not_requested' || status === 'failed'") && matchDetailWxml.includes('detail.canGenerateReport'));
 ok('match detail shows task progress without regenerate action', matchDetailJs.includes('startReportPolling') && matchDetailJs.includes('requestAiReport') && !matchDetailJs.includes('重新生成AI报告') && matchDetailWxml.includes('AI报告生成中'));
@@ -86,7 +86,7 @@ ok('cloud meet reports are scoped to match user', cloudMeetJs.includes('findExis
 ok('cloud customer service stores handoff context', cloudChatJs.includes('handoff_ticket_id') && cloudChatJs.includes('match_log_id'));
 ok('match handoff navigates into customer service chat', matchDetailJs.includes('/pages/chat/chat') && matchDetailJs.includes('handoffTicketId'));
 ok('meet safety can load existing report for selected match', meetSafetyJs.includes('loadExistingForMatch') && meetSafetyJs.includes('matchUserId'));
-ok('home QA test match does not use formal rematch reset', indexJs.includes('MATCH_TEST_RUNS') && !indexJs.includes('reset_user_batch') && !indexJs.includes('allow_rematch'));
+ok('formal home contains no QA match entry or formal rematch reset', !indexJs.includes('MATCH_TEST_RUNS') && !indexJs.includes('reset_user_batch') && !indexJs.includes('allow_rematch'));
 ok('cloud demo vip grant is guarded by demo flag', cloudVipJs.includes('cloud_demo_vip_grant_enabled') && !cloudVipJs.includes('data.devGrant === true'));
 ok('cloud WeChat Pay utility uses API v3 RSA signing', cloudWechatPayJs.includes('WECHATPAY2-SHA256-RSA2048') && cloudWechatPayJs.includes('RSA-SHA256'));
 ok('cloud WeChat Pay utility decrypts APIv3 callback resources', cloudWechatPayJs.includes('aes-256-gcm') && cloudWechatPayJs.includes('decryptResource'));
