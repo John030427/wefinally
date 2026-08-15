@@ -43,7 +43,17 @@ function setting(userId) {
 }
 
 async function main() {
-  const users = [user(1, 1, 1992, '175-180cm'), user(2, 2, 1995, '160-165cm')]
+  const syntheticConflict = {
+    ...user(3, 2, 1994, '160-165cm'),
+    profile_origin: 'real_user',
+    is_test_fixture: 1,
+    fixture_access_mode: 'public_test_pool'
+  }
+  const hiddenFixture = {
+    ...user(4, 2, 1994, '160-165cm'),
+    formal_match_hidden: true
+  }
+  const users = [user(1, 1, 1992, '175-180cm'), user(2, 2, 1995, '160-165cm'), syntheticConflict, hiddenFixture]
   const settings = users.map((row) => setting(row.id))
   let semanticCalls = 0
   let deliveryInput = null
@@ -74,6 +84,7 @@ async function main() {
     }
   })
   assert.strictEqual(result.matched_count, 1)
+  assert.strictEqual(result.users_considered, 2)
   assert.strictEqual(semanticCalls, 1)
   assert(deliveryInput.deliveryData)
   assert.strictEqual(deliveryInput.logA, undefined)
@@ -96,6 +107,26 @@ async function main() {
   })
   assert.strictEqual(unavailable.matched_count, 0)
   assert.strictEqual(unavailableDelivered, false)
+
+  let fixtureOnlySemanticCalls = 0
+  let fixtureOnlyDeliveryCalls = 0
+  const fixtureOnly = await executeFormalMatching({
+    clock: { businessDate: '2026-08-14', matchType: '周五' },
+    deps: {
+      list: async (name) => {
+        if (name === 'user') return [user(1, 1, 1992, '175-180cm'), syntheticConflict]
+        if (name === 'match_claim') return []
+        if (name === 'user_match_setting') return [setting(1), setting(3)]
+        return []
+      },
+      semanticRerank: async (ranked) => { fixtureOnlySemanticCalls += 1; return { applied: true, ranked } },
+      deliverPair: async () => { fixtureOnlyDeliveryCalls += 1; return { delivered: true } }
+    }
+  })
+  assert.strictEqual(fixtureOnly.matched_count, 0)
+  assert.strictEqual(fixtureOnly.users_considered, 1)
+  assert.strictEqual(fixtureOnlySemanticCalls, 0)
+  assert.strictEqual(fixtureOnlyDeliveryCalls, 0)
   console.log('PASS formal matching reranks then atomically prepares delivery and report task')
 }
 

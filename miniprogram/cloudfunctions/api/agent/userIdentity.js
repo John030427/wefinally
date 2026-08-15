@@ -1,4 +1,4 @@
-const { resolveTestIdentity, isSyntheticFixture, isInternalQaAccount } = require('../lib/testIdentityPolicy')
+const { resolveTestIdentity, hasLegacyTestOpenid, isSyntheticFixture, isInternalQaAccount } = require('../lib/testIdentityPolicy')
 
 const OFFICIAL_SUPPORT_CODE = /^WF-\d{6}$/
 
@@ -8,7 +8,7 @@ function numericUserId(value) {
 }
 
 function isTestUser(user = {}) {
-  return isSyntheticFixture(user) || isInternalQaAccount(user)
+  return hasLegacyTestOpenid(user) || isSyntheticFixture(user) || isInternalQaAccount(user)
 }
 
 function testSupportCode(user) {
@@ -18,7 +18,7 @@ function testSupportCode(user) {
 }
 
 function supportCodeFor(user = {}) {
-  if (isSyntheticFixture(user) || /^(dev|test|fixture|mock)[_-]/i.test(String(user.openid || '').trim())) {
+  if (isSyntheticFixture(user) || hasLegacyTestOpenid(user)) {
     return testSupportCode(user)
   }
   const code = String(user.support_code || '').trim().toUpperCase()

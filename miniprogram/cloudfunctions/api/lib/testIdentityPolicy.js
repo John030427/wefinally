@@ -7,13 +7,20 @@ function text(value) {
   return String(value || '').trim()
 }
 
+function hasLegacyTestOpenid(user = {}) {
+  return /^(dev|test|fixture|mock)[_-]/i.test(text(user && user.openid))
+}
+
 function isSyntheticFixture(user = {}) {
   user = user || {}
   const origin = text(user.profile_origin)
   if (origin === 'synthetic_fixture') return true
-  if (origin === 'real_user') return false
   if (Number(user.is_test_fixture || 0) === 1) return true
-  return number(user.fixture_owner_user_id || user.ab_test_owner_user_id) > 0
+  if (Number(user.is_match_effect_fixture || 0) === 1) return true
+  if (number(user.fixture_owner_user_id || user.ab_test_owner_user_id) > 0) return true
+  if (text(user.test_scope) === 'matching') return true
+  if (text(user.fixture_access_mode)) return true
+  return false
 }
 
 function isInternalQaAccount(user = {}) {
@@ -60,7 +67,17 @@ function identityBadge(user) {
 }
 
 function canEnterFormalCandidatePool(user) {
-  return !isSyntheticFixture(user)
+  if (!user || typeof user !== 'object') return false
+  if (hasLegacyTestOpenid(user)) return false
+  if (isSyntheticFixture(user) || isInternalQaAccount(user)) return false
+  const origin = text(user.profile_origin)
+  if (origin && origin !== 'real_user') return false
+  const mode = text(user.account_mode)
+  if (mode && mode !== 'production') return false
+  const scope = text(user.test_scope)
+  if (scope && scope !== 'none') return false
+  if (user.formal_match_hidden === true || Number(user.formal_match_hidden || 0) === 1) return false
+  return true
 }
 
 function canUseFixtureForMatch(viewer, candidate, now = new Date()) {
@@ -126,6 +143,7 @@ function planProfileProvenance(users = []) {
 module.exports = {
   resolveTestIdentity,
   identityBadge,
+  hasLegacyTestOpenid,
   isSyntheticFixture,
   isInternalQaAccount,
   fixtureOwnerId,
