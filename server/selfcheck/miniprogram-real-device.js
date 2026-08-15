@@ -206,11 +206,11 @@ ok('app exposes local reset helper for registration retest', typeof appConfig.re
 ok('network probe has a timeout fallback instead of hanging pages', appJs.includes('networkCheckTimeoutMs') && appJs.includes('setTimeout') && appJs.includes('finishNetworkCheck'));
 ok('request layer uses cloud function instead of wx.request backend', requestJs.includes("require('./cloudApi')") && requestJs.includes('requestByPath') && !requestJs.includes('wx.request'));
 ok('request failures hide local backend diagnostics', !requestJs.includes('请确认手机和电脑在同一局域网') && !requestJs.includes('apiBaseUrl'));
-ok('mini program declares foreground location private APIs', appJson.requiredPrivateInfos.includes('getLocation') && appJson.requiredPrivateInfos.includes('startLocationUpdate') && appJson.requiredPrivateInfos.includes('onLocationChange'));
+ok('mini program declares only manual map selection private API', appJson.requiredPrivateInfos.length === 1 && appJson.requiredPrivateInfos[0] === 'chooseLocation');
 ok('common config and homepage SOS API constants exist', constantsJs.includes('COMMON_CONFIG') && constantsJs.includes('/api/common/config') && constantsJs.includes('MEET_SOS') && constantsJs.includes('/api/meet/sos'));
-ok('meet safety page uploads foreground location and can finish guard', meetSafetyJs.includes('startLocationUpdate') && meetSafetyJs.includes('/location') && meetSafetyJs.includes('/finish'));
+ok('meet safety page removes continuous and current location APIs', !meetSafetyJs.includes('wx.getLocation') && !meetSafetyJs.includes('wx.startLocationUpdate') && !meetSafetyJs.includes('wx.onLocationChange') && !meetSafetyWxml.includes('开启安全守护'));
 ok('meet safety page reopens latest submitted report by default', meetSafetyJs.includes('loadLatestReport') && meetSafetyJs.includes('/api/meet/list') && meetSafetyJs.includes('row.status) !== 2'));
-ok('homepage SOS writes evidence before emergency handoff', indexJs.includes('API_PATHS.MEET_SOS') && indexJs.includes('getLocationForSos'));
+ok('homepage SOS writes evidence without requesting current location', indexJs.includes('API_PATHS.MEET_SOS') && indexJs.includes('recordHomeSos') && !indexJs.includes('wx.getLocation'));
 ok('homepage SOS prompts before async evidence logging', indexJs.includes('recordHomeSos') && indexJs.indexOf('openEmergencyHelp') < indexJs.indexOf('recordHomeSos'));
 ok('homepage exposes one-tap dev registration reset', indexWxml.includes('devResetRegistration') && indexJs.includes('resetLocalForRegistration'));
 ok('homepage 110 uses reliable catchtap view', indexWxml.includes('class="safety-call"') && indexWxml.includes('catchtap="callPolice"') && !indexWxml.includes('class="safety-call" bindtap'));
@@ -227,7 +227,7 @@ ok('meet safety SOS missing report id is visible to tester', meetSosBody.include
 ok('meet safety SOS uses reliable catchtap view', meetSafetyWxml.includes('class="sos-btn"') && meetSafetyWxml.includes('catchtap="sos"') && !meetSafetyWxml.includes('class="sos-btn" bindtap'));
 ok('Guangdong 110 handoff is direct and not hidden behind another confirm modal', !indexJs.includes("confirmText: '打开广东110'") && !meetSafetyJs.includes("confirmText: '打开广东110'"));
 ok('meet safety page has explicit share-to-family action', meetSafetyWxml.includes('open-type="share"') && meetSafetyJs.includes('onShareAppMessage'));
-ok('meet safety page shows foreground guard evidence count', meetSafetyWxml.includes('locationCount') && meetSafetyWxml.includes('latestLocationText'));
+ok('meet safety page explains saved map location without live tracking', meetSafetyWxml.includes('仅保存你主动选择的见面地点') && !meetSafetyWxml.includes('locationCount'));
 ok('meet safety uses native date and time pickers', meetSafetyWxml.includes('mode="date"') && meetSafetyWxml.includes('mode="time"') && meetSafetyJs.includes('onMeetDateChange') && meetSafetyJs.includes('onMeetClockChange'));
 ok('meet safety SOS prompts before async evidence logging', meetSafetyJs.includes('recordMeetSos') && meetSafetyJs.indexOf('openEmergencyHelp') < meetSafetyJs.indexOf('recordMeetSos'));
 ok('meet safety action buttons use stable centered typography', meetSafetyWxss.includes('.share-btn,') && meetSafetyWxss.includes('display: flex') && meetSafetyWxss.includes('line-height: 1') && meetSafetyWxss.includes('white-space: nowrap'));

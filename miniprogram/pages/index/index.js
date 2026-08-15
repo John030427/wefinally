@@ -136,20 +136,6 @@ Page({
     wx.navigateTo({ url: '/pages/love-advisor/love-advisor' })
   },
 
-  getLocationForSos() {
-    return new Promise((resolve) => {
-      if (!wx.getLocation) {
-        resolve({})
-        return
-      }
-      wx.getLocation({
-        type: 'gcj02',
-        success: (r) => resolve({ lat: r.latitude, lng: r.longitude }),
-        fail: () => resolve({})
-      })
-    })
-  },
-
   callPolice() {
     this.openEmergencyHelp({ location: {} })
     this.recordHomeSos()
@@ -205,8 +191,7 @@ Page({
 
   async recordHomeSos(location) {
     try {
-      const loc = location || await this.getLocationForSos()
-      await post(API_PATHS.MEET_SOS, loc, { showError: false })
+      await post(API_PATHS.MEET_SOS, location || {}, { showError: false })
     } catch (err) {}
   },
 
