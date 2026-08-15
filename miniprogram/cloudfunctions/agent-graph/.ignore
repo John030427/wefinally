@@ -1,0 +1,5 @@
+# WeChat DevTools upload ignore — do not ship local tests or tooling.
+test/
+dist/test/
+*.map
+node_modules/.cache/
