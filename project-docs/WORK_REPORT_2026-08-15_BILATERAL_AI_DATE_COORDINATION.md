@@ -16,6 +16,7 @@ CloudBase 环境：`cloud1-d4gy8l52g08bba326`（上海，NoSQL）
 - 同一 active 方案、同一版本的双方确认通过 CloudBase 事务原子进入 `arranged`；不同方案不能拼成约会成功。
 - 协调页展示第 N/5 轮、方案版本、待处理/处理中/失败/待确认/已完成/转人工，并在处理期间每 6 秒无闪屏刷新。
 - 处理失败可由参与者重新入队；方案卡支持“确认”或“这个方案不合适，继续协调”。
+- 约会偏好表单改为每人仅首次填写：发起方提交后不再重复显示；后续重协调沿用原表单并进入 AI 协调员，通过局部修改预览继续沟通。
 
 ## 2. 交付提交
 
@@ -31,6 +32,8 @@ CloudBase 环境：`cloud1-d4gy8l52g08bba326`（上海，NoSQL）
 | 7 | `032d239` | 双边私密协调事件与主动反馈 |
 | 8 | `5ca79b1` | 多版本修改、拒绝与事务双确认闭环 |
 | 9 | `790f7a1` | 真实协调生命周期 UI、轮询与失败重试 |
+| 10 | `d42729d`、`b495d9e`、`0c8059e` | 一次性表单与拒绝分支回归测试 |
+| 11 | `6bc7f78` | 隐藏重复表单并将后续调整交给 AI 协调员 |
 
 规格提交：`2e49fd3`、`fdc8b90`、`3e54127`、`9ad1663`。
 
@@ -46,6 +49,7 @@ CloudBase 环境：`cloud1-d4gy8l52g08bba326`（上海，NoSQL）
 - `npm --prefix server run selfcheck:cloud-match`
 - 小程序 JavaScript 语法：39 个文件通过。
 - `git diff --check`：通过；仅存在 Windows 换行提示。
+- 一次性表单专项 RED→GREEN：发起方提交后隐藏表单；`replanning` 禁止整表重提；拒绝方案后进入 AI 协调员。
 
 专项场景已覆盖：直接一轮成功、一次修改后成功、双方修改后成功、拒绝旧方案后成功、第五轮转人工、不同方案不 arranged、并发 worker 单次完成、旧 worker 不覆盖新版本、事件不泄露原始申请。
 
@@ -53,7 +57,7 @@ CloudBase 环境：`cloud1-d4gy8l52g08bba326`（上海，NoSQL）
 
 通过 CloudBase MCP 完成并复核：
 
-- 已于 2026-08-15 通过 CloudBase MCP 更新 `api`；函数更新时间为 `2026-08-15 13:41:50`，状态为 Active/Available。
+- 已于 2026-08-15 通过 CloudBase MCP 再次更新 `api`；函数更新时间为 `2026-08-15 13:58:51`，状态为 Active/Available。
 - 线上代码已核验包含 `processCoordinationTasks` 与 `coordinationTasks`，`ping` 实际调用成功。
 - `report-worker` 为 Active/Available，每分钟触发一次；受控调用已成功贯通 `report-worker -> api -> coordinationTasks`，无函数错误。
 - `MATCH_TEST_RUN_PUBLIC_ENABLED=false`；原有关键环境变量仍保留。
