@@ -244,7 +244,14 @@ function createControlledDateScenarioService(deps, services) {
       session_a_id: bootstrapped.sessionA.id,
       session_b_id: bootstrapped.sessionB.id
     })
-    return publicRun(run)
+    return publicRun({
+      ...run,
+      user_a_id: userA.id,
+      user_b_id: userB.id,
+      coordination_id: bootstrapped.coordination.id,
+      session_a_id: bootstrapped.sessionA.id,
+      session_b_id: bootstrapped.sessionB.id
+    })
   }
 
   async function advanceRun(actor, rawRunId) {
@@ -261,7 +268,10 @@ function createControlledDateScenarioService(deps, services) {
         await workflow.submitApplications(input)
         nextStep = 'applications_submitted'
       } else if (run.step === 'applications_submitted') {
-        await workflow.processProposal(input)
+        const coordination = await deps.byId('date_coordination', run.coordination_id)
+        if (!coordination || coordination.status !== 'waiting_confirmations') {
+          await workflow.processProposal(input)
+        }
         nextStep = 'first_proposal'
       } else if (run.step === 'first_proposal') {
         const result = await workflow.requestPatch(input)
@@ -291,7 +301,7 @@ function createControlledDateScenarioService(deps, services) {
       patch.error_code = ''
       if (nextStep !== 'passed') patch.status = 'running'
       await deps.updateByDoc('controlled_date_scenario_run', run, patch)
-      return publicRun(run)
+      return publicRun({ ...run, ...patch })
     } catch (error) {
       await deps.updateByDoc('controlled_date_scenario_run', run, {
         status: 'failed',

@@ -14,14 +14,20 @@ function fixture() {
     tables,
     now: () => new Date('2026-08-15T06:00:00.000Z'),
     list: async (name, query = {}) => (tables[name] || []).filter((row) => matches(row, query)),
-    first: async (name, query = {}) => (tables[name] || []).find((row) => matches(row, query)) || null,
+    first: async (name, query = {}) => {
+      const row = (tables[name] || []).find((item) => matches(item, query)) || null
+      return row && name === 'controlled_date_scenario_run' ? { ...row } : row
+    },
     byId: async (name, id) => (tables[name] || []).find((row) => Number(row.id) === Number(id)) || null,
     addWithId: async (name, data) => {
       const row = { _id: `${name}_${++next}`, id: next, ...data }
       tables[name].push(row)
       return row
     },
-    updateByDoc: async (name, row, data) => Object.assign(row, data)
+    updateByDoc: async (name, row, data) => {
+      const stored = (tables[name] || []).find((item) => item._id === row._id) || row
+      Object.assign(stored, data)
+    }
   }
   const services = {
     bootstrap: async ({ run, userA, userB }) => {
@@ -81,7 +87,9 @@ async function main() {
   await assert.rejects(() => service.createRun({ role: 'admin', admin_role: 'customer_service', id: 2 }, { run_id: 'denied' }), /无权/)
 
   let current = run
-  for (let index = 0; index < 7; index += 1) current = await service.advanceRun(admin, current.run_id)
+  current = await service.advanceRun(admin, current.run_id)
+  assert.strictEqual(current.step, 'applications_submitted')
+  for (let index = 1; index < 7; index += 1) current = await service.advanceRun(admin, current.run_id)
   assert.strictEqual(current.status, 'passed')
   assert.strictEqual(current.step, 'passed')
   assert.strictEqual((await deps.byId('date_coordination', current.coordination_id)).status, 'arranged')
@@ -89,6 +97,17 @@ async function main() {
   assert((await deps.list('agent_run', { provider: 'langgraph' })).length >= 1)
   assert((await deps.list('agent_tool_call', { tool_name: 'create_date_application_patch' })).length >= 1)
   assert.strictEqual((await service.advanceRun(admin, current.run_id)).status, 'passed')
+
+  const raced = fixture()
+  const racedService = createControlledDateScenarioService(raced.deps, raced.services)
+  let racedRun = await racedService.createRun(admin, { run_id: 'wf-date-e2e-race-20260815' })
+  racedRun = await racedService.advanceRun(admin, racedRun.run_id)
+  const racedCoordination = await raced.deps.byId('date_coordination', racedRun.coordination_id)
+  racedCoordination.status = 'waiting_confirmations'
+  racedCoordination.processing_status = 'completed'
+  raced.services.processProposal = async () => { throw new Error('worker should not rerun completed proposal') }
+  racedRun = await racedService.advanceRun(admin, racedRun.run_id)
+  assert.strictEqual(racedRun.step, 'first_proposal')
 
   console.log('PASS controlled bilateral date LangGraph E2E service')
 }
