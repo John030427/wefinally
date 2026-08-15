@@ -468,11 +468,19 @@ async function main() {
     decision: 'reject'
   }, { user_id: 1 })
   assert.strictEqual(proposalRejection.status, 'replanning')
+  assert.strictEqual(proposalRejection.can_submit_application, false)
   assert.strictEqual(proposalRejection.coordination_version, 2)
   assert.strictEqual(proposalRejection.recoordination_count, 1)
   assert.strictEqual(proposalRejectionDeps.rows.date_coordination_proposal[0].status, 'superseded')
   assert(proposalRejectionDeps.rows.date_coordination_confirmation.every((row) => row.status === 'superseded'))
   assert.strictEqual(proposalRejectionDeps.rows.date_coordination_application.filter((row) => row.coordination_version === 2).length, 2)
+  await assert.rejects(
+    () => createDateCoordinationHandlers(proposalRejectionDeps).saveApplication({
+      coordination_id: 70,
+      ...applicationA
+    }, { user_id: 1 }),
+    /当前状态不能提交日期申请/
+  )
   const rejectionPatchHandlers = createDateApplicationPatchHandlers(proposalRejectionDeps)
   const rejectionPatch = await rejectionPatchHandlers.createPreviewForUser({
     coordination_id: 70,
