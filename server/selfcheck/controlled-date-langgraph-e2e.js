@@ -54,7 +54,6 @@ function fixture() {
       })
     },
     requestPatch: async ({ run }) => {
-      await deps.addWithId('agent_run', { session_id: run.session_a_id, provider: 'langgraph', status: 'completed' })
       await deps.addWithId('agent_tool_call', { session_id: run.session_a_id, tool_name: 'create_date_application_patch', status: 'completed' })
       return { patch_id: 701 }
     },
@@ -71,6 +70,11 @@ function fixture() {
         proposal_id: proposal.id, user_id: userId, decision: 'confirm'
       })
       coordination.status = 'arranged'
+    },
+    verifyGraphEvidence: async ({ run }) => {
+      await deps.addWithId('agent_run', {
+        session_id: run.session_a_id, provider: 'langgraph', status: 'completed', error_code: ''
+      })
     }
   }
   return { deps, services }

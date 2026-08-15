@@ -210,6 +210,14 @@ function createDefaultServices(deps) {
       await dateHandlers.confirmProposal({
         coordination_id: run.coordination_id, proposal_id: proposal.id, decision: 'confirm'
       }, contextFor(run.user_b_id))
+    },
+    async verifyGraphEvidence({ run }) {
+      const result = await agentHandlers.send({
+        session_id: run.session_a_id,
+        message: '请核验当前协调状态'
+      }, contextFor(run.user_a_id))
+      if (result.provider !== 'langgraph') throw new Error('LangGraph 状态核验未成功')
+      return result
     }
   }
 }
@@ -295,6 +303,7 @@ function createControlledDateScenarioService(deps, services) {
       } else if (run.step === 'confirmations_submitted') {
         const coordination = await deps.byId('date_coordination', run.coordination_id)
         if (!coordination || coordination.status !== 'arranged') throw new Error('双方尚未形成约会安排')
+        if (typeof workflow.verifyGraphEvidence === 'function') await workflow.verifyGraphEvidence(input)
         const graphRuns = await deps.list('agent_run', { provider: 'langgraph' }, 200)
         const patchCalls = await deps.list('agent_tool_call', { tool_name: 'create_date_application_patch' }, 200)
         if (!graphRuns.some((row) => Number(row.session_id) === Number(run.session_a_id)
