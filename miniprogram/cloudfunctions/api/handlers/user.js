@@ -74,7 +74,9 @@ async function register(data, wxContext) {
     circleId: data.circle_id,
     description: data.occupation_description
   })
-  const normalizedPromoteCode = String(partner.promote_code || data.promote_code).trim().toUpperCase()
+  const normalizedPromoteCode = partner
+    ? String(partner.promote_code || data.promote_code).trim().toUpperCase()
+    : ''
   const createdAt = now()
 
   const user = await addWithId('user', {
@@ -95,7 +97,7 @@ async function register(data, wxContext) {
     member_status_updated_at: createdAt,
     is_vip: 0,
     vip_expire_time: null,
-    promote_partner_id: Number(partner.id),
+    promote_partner_id: partner ? Number(partner.id) : 0,
     promote_code: normalizedPromoteCode,
     free_member: 0,
     free_source: '',
@@ -106,7 +108,9 @@ async function register(data, wxContext) {
     last_match_setting_time: null
   }, 'user')
 
-  await ensureReferralAttribution(user, partner, data.promote_code, { first, addWithId, now })
+  if (partner) {
+    await ensureReferralAttribution(user, partner, data.promote_code, { first, addWithId, now })
+  }
 
   await addWithId('user_match_setting', {
     user_id: user.id,

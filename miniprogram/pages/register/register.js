@@ -413,11 +413,6 @@ Page({
       wx.showToast({ title: '请填写具体职业', icon: 'none' })
       return false
     }
-    if (!String(form.promote_code || '').trim()) {
-      wx.showToast({ title: '邀请制注册需要邀请码', icon: 'none' })
-      return false
-    }
-
     if (form.marriage === '离异') {
       wx.showModal({
         title: '需先提交复入申请',

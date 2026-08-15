@@ -107,7 +107,7 @@ function nextMemberStatus(currentStatus, action) {
 
 async function resolveInvitation(code, first) {
   const referral = referralInput(code)
-  if (!referral.code && !referral.partnerId) throw new Error('邀请制注册需要有效邀请码')
+  if (!referral.code && !referral.partnerId) return null
   const partner = referral.partnerId
     ? await first('partner', { id: referral.partnerId, status: 1 })
     : await first('partner', { promote_code: referral.code, status: 1 })

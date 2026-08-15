@@ -129,9 +129,10 @@ function createMemberHandlers(overrides = {}) {
       throw new Error('当前状态不能提交会员申请')
     }
     const partnerId = Number(user.promote_partner_id || 0)
-    if (!partnerId) throw new Error('未绑定有效邀请合伙人，无法提交会员申请')
-    const partner = await dep('byId')('partner', partnerId)
-    if (!partner || Number(partner.status) !== 1) throw new Error('邀请合伙人当前不可用，请联系平台客服')
+    if (partnerId) {
+      const partner = await dep('byId')('partner', partnerId)
+      if (!partner || Number(partner.status) !== 1) throw new Error('邀请合伙人当前不可用，请联系平台客服')
+    }
 
     const setting = await dep('first')('user_match_setting', { user_id: user.id }) || {}
     const missing = missingApplicationFields(user, setting)
@@ -140,7 +141,7 @@ function createMemberHandlers(overrides = {}) {
     const rows = await dep('list')('member_application', { user_id: user.id }, 100)
     const latest = latestApplication(rows)
     const now = dep('now')()
-    const signedAttribution = await signedReferralAttribution(user, partnerId, dep)
+    const signedAttribution = partnerId ? await signedReferralAttribution(user, partnerId, dep) : null
     const nextStatus = signedAttribution ? MEMBER_STATUS.APPROVED : MEMBER_STATUS.PENDING_REVIEW
     const application = await dep('addWithId')('member_application', {
       user_id: user.id,

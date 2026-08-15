@@ -115,9 +115,9 @@
       </view>
 
       <view class="form-item">
-        <text class="form-label required">公开邀请码</text>
+        <text class="form-label">公开邀请码（选填）</text>
         <view class="promo-row">
-          <input class="promo-input" value="{{form.promote_code}}" placeholder="请输入公开邀请码（可多人使用）" maxlength="50" disabled="{{editMode}}" bindinput="onPromoteInput" bindblur="onPromoteBlur" />
+          <input class="promo-input" value="{{form.promote_code}}" placeholder="有邀请码可填写，没有可直接注册" maxlength="50" disabled="{{editMode}}" bindinput="onPromoteInput" bindblur="onPromoteBlur" />
           <view wx:if="{{form.promote_code && !editMode}}" class="promo-clear" bindtap="onPromoteClear">清空</view>
         </view>
         <view class="promo-hint">用于确认邀请来源，不会自动成为合伙人</view>

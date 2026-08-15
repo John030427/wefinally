@@ -17,7 +17,7 @@ async function main() {
   assert.deepStrictEqual(await resolveInvitation('wf7', first), partner)
   assert.deepStrictEqual(await resolveInvitation(' WF7 ', first), partner)
   await assert.rejects(() => resolveInvitation('DEAD', first), /无效或已停用/)
-  await assert.rejects(() => resolveInvitation('', first), /邀请码/)
+  assert.strictEqual(await resolveInvitation('', first), null)
 
   const userJs = read('miniprogram/cloudfunctions/api/handlers/user.js')
   const registerFn = userJs.slice(userJs.indexOf('async function register'), userJs.indexOf('async function getProfile'))
@@ -48,6 +48,7 @@ async function main() {
 
   const inviteWxml = read('miniprogram/pages/partner-invite/partner-invite.wxml')
   const inviteJs = read('miniprogram/pages/partner-invite/partner-invite.js')
+  const registerJs = read('miniprogram/pages/register/register.js')
   const registerWxml = read('miniprogram/pages/register/register.wxml')
   const dashboardPolicy = read('miniprogram/cloudfunctions/api/lib/partnerDashboardPolicy.js')
   const commonHandler = read('miniprogram/cloudfunctions/api/handlers/common.js')
@@ -62,6 +63,9 @@ async function main() {
   assert(commonHandler.includes("message: '已识别合伙人推广码'"))
   assert(!commonHandler.includes('partner.name'))
   assert(registerWxml.includes('公开邀请码'))
+  assert(registerWxml.includes('选填'))
+  assert(!registerWxml.includes('form-label required">公开邀请码'))
+  assert(!registerJs.includes('邀请制注册需要邀请码'))
   assert(registerWxml.includes('用于确认邀请来源，不会自动成为合伙人'))
 
   console.log('PASS reusable public invite codes stay attribution-only and never default to Grace')
