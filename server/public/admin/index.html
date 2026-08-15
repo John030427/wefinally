@@ -119,6 +119,19 @@
     .service-status { display: inline-flex; align-items: center; border-radius: 999px; padding: .25rem .5rem; background: #eef5f1; color: var(--svc-green); font-size: .7rem; }
     .service-status.closed { background: #eeeae3; color: #777168; }
     .service-messages { flex: 1; min-height: 300px; overflow-y: auto; padding: 1rem clamp(1rem, 4vw, 3.5rem); background-image: linear-gradient(rgba(47,107,87,.035) 1px, transparent 1px); background-size: 100% 32px; }
+    .service-paired-shell { flex: 1; min-height: 360px; display: flex; flex-direction: column; overflow: hidden; }
+    .service-paired-shared { border-bottom: 1px solid var(--svc-line); background: #f3eee5; padding: .55rem .8rem; }
+    .service-paired-shared strong { display: block; margin-bottom: .35rem; font-size: .72rem; color: #625e57; }
+    .service-paired-shared .service-message { margin-bottom: .35rem; }
+    .service-paired-grid { flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .service-side { min-width: 0; display: flex; flex-direction: column; background: #fffdfa; }
+    .service-side + .service-side { border-left: 1px solid var(--svc-line); }
+    .service-side-head { display: flex; justify-content: space-between; gap: .6rem; align-items: center; padding: .65rem .75rem; border-bottom: 1px solid var(--svc-line); background: #faf8f3; }
+    .service-side-head strong { font-size: .78rem; }
+    .service-side-head small { display: block; margin-top: .15rem; color: #777168; font: .66rem/1.3 "IBM Plex Mono", "JetBrains Mono", monospace; }
+    .service-side-badge { border: 1px solid var(--svc-green); border-radius: 999px; color: var(--svc-green); padding: .18rem .42rem; font-size: .64rem; white-space: nowrap; }
+    .service-side-messages { flex: 1; min-height: 280px; max-height: 58vh; overflow-y: auto; padding: .75rem; background-image: linear-gradient(rgba(47,107,87,.03) 1px, transparent 1px); background-size: 100% 30px; }
+    .service-side-messages .service-bubble { max-width: 88%; }
     .service-message { display: flex; margin-bottom: .85rem; }
     .service-message.user { justify-content: flex-start; }
     .service-message.agent, .service-message.human_agent { justify-content: flex-end; }
@@ -161,7 +174,7 @@
     @media (max-width:900px) { .partner-head,.partner-grid { grid-template-columns:1fr; } .partner-rail { position:static; } }
     .pagination { display: flex; gap: .35rem; margin-top: .75rem; align-items: center; font-size: .8125rem; }
     @media (max-width: 1180px) { .service-columns { grid-template-columns: 280px minmax(400px, 1fr); } .service-context { grid-column: 1 / -1; border-left: 0; border-top: 1px solid var(--svc-line); display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); } .service-context .service-pane-head { grid-column: 1 / -1; } }
-    @media (max-width: 768px) { .layout { flex-direction: column; } .sidebar { width: 100%; } .member-detail-grid { grid-template-columns: 1fr; } .service-workbench { margin: -.75rem; } .service-topbar { grid-template-columns: 1fr; } .service-metrics { justify-content: flex-start; } .service-columns { display: block; } .service-queue, .service-context { max-height: none; border: 0; } .service-conversation { min-height: 620px; border-top: 1px solid var(--svc-line); border-bottom: 1px solid var(--svc-line); } .service-context { display: block; } }
+    @media (max-width: 768px) { .layout { flex-direction: column; } .sidebar { width: 100%; } .member-detail-grid { grid-template-columns: 1fr; } .service-workbench { margin: -.75rem; } .service-topbar { grid-template-columns: 1fr; } .service-metrics { justify-content: flex-start; } .service-columns { display: block; } .service-queue, .service-context { max-height: none; border: 0; } .service-conversation { min-height: 620px; border-top: 1px solid var(--svc-line); border-bottom: 1px solid var(--svc-line); } .service-context { display: block; } .service-paired-grid { grid-template-columns: 1fr; } .service-side + .service-side { border-left: 0; border-top: 1px solid var(--svc-line); } .service-side-messages { max-height: 420px; } }
   </style>
 </head>
 <body>
@@ -1002,6 +1015,24 @@
     }).join('');
   }
 
+  function servicePairedConversationHtml(detail) {
+    const paired = detail?.paired_conversation;
+    if (!paired || !paired.sides) return '';
+    function sideHtml(side, label) {
+      if (!side || !side.session) return '<section class="service-side"><div class="service-empty-pane">' + label + ' 侧会话尚未建立</div></section>';
+      const session = side.session;
+      return '<section class="service-side" data-side="' + label + '">' +
+        '<div class="service-side-head"><div><strong>' + label + ' · ' + renderUserIdentity(session.user, { link:false }) + '</strong><small>' + esc(session.session_ref || '-') + '</small></div>' +
+        (side.selected ? '<span class="service-side-badge">当前处理</span>' : '<button class="service-btn" onclick="selectPairedConversation(' + Number(session.id) + ')">切换处理</button>') + '</div>' +
+        '<div class="service-side-messages" data-service-scroll="true">' + serviceMessagesHtml(side) + '</div></section>';
+    }
+    const shared = paired.shared_events || [];
+    return '<div class="service-paired-shell">' +
+      '<div class="service-paired-shared"><strong>' + esc(paired.coordination?.coordination_ref || '双方协调') + ' · 公共协调进度</strong>' +
+      (shared.length ? serviceMessagesHtml({ timeline: shared }) : '<div class="service-event"><span>暂无公共协调事件</span><span>-</span></div>') + '</div>' +
+      '<div class="service-paired-grid">' + sideHtml(paired.sides.a, 'A') + sideHtml(paired.sides.b, 'B') + '</div></div>';
+  }
+
   function serviceEventsHtml(items, type) {
     if (!items || !items.length) return '<div class="service-event"><span>暂无记录</span><span>-</span></div>';
     return items.slice(0, 6).map(item => {
@@ -1049,9 +1080,10 @@
       ? (serviceTickets.find(item => item.session_ref === selectedConversation.session_ref && item.status !== 'closed') || serviceTickets.find(item => item.session_ref === selectedConversation.session_ref))
       : null;
     if (conversationDetail) conversationDetail.ticket = linkedTicket || null;
+    const pairedConversation = conversationDetail ? servicePairedConversationHtml(conversationDetail) : '';
     const conversation = selectedConversation
       ? '<div class="service-conversation-head"><div><div class="service-conversation-title">' + esc(selectedConversation.session_ref) + '</div><div class="service-conversation-sub">' + renderUserIdentity(selectedConversation.user, { link:false }) + ' · ' + esc(selectedConversation.agent_type || 'Agent会话') + '</div></div><span class="service-status' + (linkedTicket?.status === 'closed' ? ' closed' : '') + '">' + esc(linkedTicket ? serviceStatusText(linkedTicket.status) : '未建工单') + '</span></div>' +
-        '<div class="service-messages" id="serviceMessages">' + (conversationDetail ? serviceMessagesHtml(conversationDetail) : '<div class="service-empty-pane">正在读取完整时间线...</div>') + '</div>' +
+        (pairedConversation || '<div class="service-messages" id="serviceMessages" data-service-scroll="true">' + (conversationDetail ? serviceMessagesHtml(conversationDetail) : '<div class="service-empty-pane">正在读取完整时间线...</div>') + '</div>') +
         '<div class="service-composer"><textarea id="serviceConversationReplyText" aria-label="人工客服回复" maxlength="1000" placeholder="以人工客服身份回复；没有工单时会自动建立"></textarea><div class="service-composer-actions"><small>查看行为自动审计；发送回复会建立或更新处理工单</small><div class="service-action-group">' + (linkedTicket && linkedTicket.status !== 'closed' ? '<button class="service-btn danger" onclick="cloudAgentClose(' + Number(linkedTicket.id) + ')">关闭工单</button>' : '') + '<button id="serviceConversationReplyButton" class="service-btn primary" onclick="sendCloudConversationReply(' + Number(selectedConversation.id) + ')">' + (linkedTicket && linkedTicket.status !== 'closed' ? '发送回复' : '建工单并回复') + '</button></div></div></div>'
       : '<div class="service-empty-pane">选择左侧会话后查看真实用户—AI聊天</div>';
     const search = '<div class="service-search"><input id="serviceAuditSearch" aria-label="搜索会话与工单" value="' + esc(serviceAuditQuery) + '" onkeydown="if(event.key===\'Enter\')searchCloudConversations()" placeholder="搜索会话、用户、协调编号或摘要" /></div>';
@@ -1061,7 +1093,7 @@
       '<div class="service-metric urgent"><strong>' + urgentCount + '</strong><span>紧急 P0/P1</span></div><div class="service-metric"><strong>' + openCount + '</strong><span>待处理工单</span></div><div class="service-metric"><strong>' + manualCount + '</strong><span>人工协调</span></div></div></div>' +
       '<div class="service-columns"><aside class="service-queue">' + queueBody + '</aside>' +
       '<main class="service-conversation">' + conversation + '</main><aside class="service-context">' + serviceContextHtml(conversationDetail) + '</aside></div></div>';
-    if (conversationDetail) setTimeout(() => { const box = document.getElementById('serviceMessages'); if (box) box.scrollTop = box.scrollHeight; }, 0);
+    if (conversationDetail) setTimeout(() => { document.querySelectorAll('[data-service-scroll="true"]').forEach(box => { box.scrollTop = box.scrollHeight; }); }, 0);
   }
   window.searchCloudConversations = async function () {
     const input = document.getElementById('serviceAuditSearch');
@@ -1093,6 +1125,12 @@
     serviceConversationDetail = null;
     renderCloudServiceWorkbench();
     await loadCloudConversation(id);
+  };
+  window.selectPairedConversation = async function (id) {
+    const sides = serviceConversationDetail?.paired_conversation?.sides || {};
+    const target = [sides.a, sides.b].map(side => side?.session).find(session => Number(session?.id) === Number(id));
+    if (target && !serviceConversations.some(session => Number(session.id) === Number(id))) serviceConversations.push(target);
+    await selectCloudConversation(id);
   };
   window.loadCloudConversation = async function (id) {
     try {
