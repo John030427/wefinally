@@ -348,7 +348,10 @@ async function main() {
   const accepted = await handlers.respondInvitation({ coordination_id: first.id, decision: 'accept' }, { user_id: 2 })
   assert.strictEqual(accepted.status, 'collecting_preferences')
   assert.strictEqual(accepted.business_state, 'coordinating')
+  assert.strictEqual(accepted.can_submit_application, true)
   assert.strictEqual(accepted.application_deadline_at.toISOString(), '2026-07-15T08:00:00.000Z')
+  const initiatorWaiting = await handlers.detail({ coordination_id: first.id }, { user_id: 1 })
+  assert.strictEqual(initiatorWaiting.can_submit_application, false)
   await assert.rejects(
     () => handlers.respondInvitation({ coordination_id: first.id, decision: 'decline' }, { user_id: 1 }),
     /仅受邀参与者/
