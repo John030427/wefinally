@@ -1,8 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { MemorySaver } from '@langchain/langgraph'
-import type { DecisionInput, DecisionModel } from '../src/model.js'
-import { createAgentGraphMain } from '../src/index.js'
+const { MemorySaver } = requireFromAgentGraph('@langchain/langgraph') as typeof import('@langchain/langgraph')
+import type { DecisionInput, DecisionModel } from '../../cloudfunctions/agent-graph/src/model.js'
+import { createAgentGraphMain } from '../../cloudfunctions/agent-graph/src/index.js'
 
 function customerInput(text: string) {
   return {

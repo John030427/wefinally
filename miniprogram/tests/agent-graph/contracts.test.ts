@@ -4,7 +4,7 @@ import {
   GraphResultSchema,
   GraphRunInputSchema,
   GraphStateSchema
-} from '../src/contracts.js'
+} from '../../cloudfunctions/agent-graph/src/contracts.js'
 
 const validRunInput = {
   operation: 'run',

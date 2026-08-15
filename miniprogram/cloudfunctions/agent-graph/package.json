@@ -7,8 +7,8 @@
     "node": ">=20"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json && node build-dist-package.cjs",
-    "test": "tsx --test test/*.test.ts",
+    "build": "node build-dist-package.cjs && tsc -p tsconfig.json && node -e \"const fs=require('fs');const p=require('path');const t=p.join('dist','test');if(fs.existsSync(t))fs.rmSync(t,{recursive:true,force:true})\"",
+    "test": "tsx --test ../../tests/agent-graph/*.test.ts",
     "check": "npm run build && npm test"
   },
   "dependencies": {

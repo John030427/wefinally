@@ -1,8 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { Command, MemorySaver } from '@langchain/langgraph'
-import type { DecisionModel, ModelDecision } from '../src/model.js'
-import { buildCustomerServiceGraph } from '../src/graphs/customerService.js'
+const { Command, MemorySaver } = requireFromAgentGraph('@langchain/langgraph') as typeof import('@langchain/langgraph')
+import type { DecisionModel, ModelDecision } from '../../cloudfunctions/agent-graph/src/model.js'
+import { buildCustomerServiceGraph } from '../../cloudfunctions/agent-graph/src/graphs/customerService.js'
 
 function fixedModel(decision: ModelDecision): DecisionModel {
   return { decide: async () => decision }

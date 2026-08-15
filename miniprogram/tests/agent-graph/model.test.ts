@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import {
   ModelBoundaryError,
   createDecisionModel
-} from '../src/model.js'
+} from '../../cloudfunctions/agent-graph/src/model.js'
 
 test('sends only sanitized bounded input and parses structured decision JSON', async () => {
   let requestBody = ''

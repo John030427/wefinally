@@ -1,5 +1,12 @@
-# WeChat DevTools upload ignore — do not ship local tests or tooling.
+# Do not ship local tests, TypeScript sources, or tooling in cloud function uploads.
 test/
 dist/test/
+**/*.test.js
+**/*.test.ts
+**/*.test.d.ts
 *.map
+src/
+tsconfig.json
+build-dist-package.cjs
+.gitignore
 node_modules/.cache/

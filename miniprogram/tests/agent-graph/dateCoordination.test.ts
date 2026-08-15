@@ -1,13 +1,13 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { MemorySaver } from '@langchain/langgraph'
+const { MemorySaver } = requireFromAgentGraph('@langchain/langgraph') as typeof import('@langchain/langgraph')
 import {
   applyConfirmation,
   applyPreferenceChange,
   buildDateCoordinationGraph,
   computeSafeOverlap,
   type DateCoordinationState
-} from '../src/graphs/dateCoordination.js'
+} from '../../cloudfunctions/agent-graph/src/graphs/dateCoordination.js'
 
 const a = {
   dateWindows: ['2026-08-16T14:00+08:00', '2026-08-17T19:00+08:00'],

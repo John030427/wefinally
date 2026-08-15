@@ -1,13 +1,13 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { Command } from '@langchain/langgraph'
-import type { DecisionModel } from '../src/model.js'
-import { buildCustomerServiceGraph } from '../src/graphs/customerService.js'
+const { Command } = requireFromAgentGraph('@langchain/langgraph') as typeof import('@langchain/langgraph')
+import type { DecisionModel } from '../../cloudfunctions/agent-graph/src/model.js'
+import { buildCustomerServiceGraph } from '../../cloudfunctions/agent-graph/src/graphs/customerService.js'
 import {
   CloudBaseCheckpointSaver,
   type CheckpointCollection,
   type CheckpointDocument
-} from '../src/checkpoint/cloudbaseSaver.js'
+} from '../../cloudfunctions/agent-graph/src/checkpoint/cloudbaseSaver.js'
 
 class MemoryCollection implements CheckpointCollection {
   readonly documents = new Map<string, CheckpointDocument>()

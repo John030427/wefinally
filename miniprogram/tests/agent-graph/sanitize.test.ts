@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { sanitizeGraphText } from '../src/sanitize.js'
+import { sanitizeGraphText } from '../../cloudfunctions/agent-graph/src/sanitize.js'
 
 test('removes phone OpenID API key and exact address before model use', () => {
   const input = '电话13800138000 OPENID=oAbCdEfGhIjKlMnOpQrStUvWxYz123 地址福田区XX路88号 DEEPSEEK_API_KEY=sk-abcdefghijklmnopqrstuvwxyz123456'
