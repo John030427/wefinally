@@ -339,15 +339,21 @@ function createDateCoordinationHandlers(overrides = {}) {
     const application = normalizeApplication(data, now)
     const query = { coordination_id: Number(coordination.id), user_id: Number(user.id), coordination_version: version }
     const existing = await dep('first')('date_coordination_application', query)
+    // Per-party preference_version: 首版 = coordination 版本；每次更新 +1（Requirement 18）
+    const nextPreferenceVersion = existing
+      ? Number(existing.preference_version || existing.coordination_version || version || 1) + 1
+      : Number(version || 1)
     if (existing) {
       await dep('updateByDoc')('date_coordination_application', existing, {
         application,
-        submitted_at: now
+        submitted_at: now,
+        preference_version: nextPreferenceVersion
       })
     } else {
       await dep('addWithId')('date_coordination_application', Object.assign({}, query, {
         application,
-        submitted_at: now
+        submitted_at: now,
+        preference_version: nextPreferenceVersion
       }), 'date_coordination_application')
     }
     await dep('publishCoordinationEvent')({

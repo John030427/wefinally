@@ -243,6 +243,10 @@ async function main() {
   assert.strictEqual(db.tables.date_coordination[0].status, STATUS.COMPUTING_OVERLAP)
   const aAppV2 = db.tables.date_coordination_application.filter((r) => r.user_id === 1 && r.coordination_version === 2)[0].application
   assert.ok(JSON.stringify(aAppV2).includes(SAT), 'A updated availability persisted')
+  const aRowV2 = db.tables.date_coordination_application.filter((r) => r.user_id === 1 && r.coordination_version === 2)[0]
+  assert.strictEqual(aRowV2.preference_version, 2, 'A preference version +1 after patch confirm')
+  const bRowV2 = db.tables.date_coordination_application.filter((r) => r.user_id === 2 && r.coordination_version === 2)[0]
+  assert.strictEqual(bRowV2.preference_version, 1, 'partner snapshot keeps its own preference version')
 
   await runWorker()
   assert.strictEqual(db.tables.date_coordination[0].status, STATUS.NO_OVERLAP, 'time aligned, area still 南山 vs 福田/车公庙 => area conflict keeps coordinating')

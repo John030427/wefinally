@@ -311,14 +311,19 @@ function createDateApplicationPatchHandlers(overrides = {}) {
     for (const participantId of participants) {
       const source = latestForUser(rows, participantId, oldVersion)
       if (!source || !source.application) continue
-      const application = participantId === Number(user.id) ? nextApplication : source.application
+      const isActor = participantId === Number(user.id)
+      const application = isActor ? nextApplication : source.application
       await dep('addWithId')('date_coordination_application', {
         coordination_id: Number(coordination.id),
         user_id: participantId,
         coordination_version: newVersion,
         application,
         submitted_at: dep('now')(),
-        source: participantId === Number(user.id) ? 'agent_confirmed_patch' : 'version_snapshot'
+        source: isActor ? 'agent_confirmed_patch' : 'version_snapshot',
+        // 修改方 preference_version +1；对方仅做版本快照，不伪造其偏好版本
+        preference_version: isActor
+          ? Number(source.preference_version || source.coordination_version || oldVersion || 1) + 1
+          : Number(source.preference_version || source.coordination_version || oldVersion || 1)
       }, 'date_coordination_application')
       nextApplications.set(participantId, application)
     }
