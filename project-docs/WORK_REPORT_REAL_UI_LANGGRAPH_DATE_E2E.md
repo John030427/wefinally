@@ -141,8 +141,8 @@ npm：`npm --prefix server run selfcheck:synthetic-coordination`
 | 项 | 值 |
 |---|---|
 | Start HEAD | `24de5a9` |
-| New commits | `de5b699` fixture real services；`0e645e8` production UI；`8ab3453` Records badge；`9b21048` E2E；`d9ffc42` report |
-| Final HEAD | `d9ffc42` |
+| New commits | `de5b699` fixture real services；`0e645e8` production UI；`8ab3453` Records badge；`9b21048` E2E；`d9ffc42`/`a4c28af` report + log |
+| Final HEAD | `a4c28af` |
 | Original dirty files | 已保留、未纳入本轮 commit |
 | No push / merge / deploy / mini-program upload / production migration | 确认 |
 
