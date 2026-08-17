@@ -77,6 +77,7 @@
       <view class="public-note">{{coordinatorHeroText}}</view>
       <button class="primary-btn full-btn" bindtap="goCoordinator">和 AI 约会协调员沟通</button>
       <view class="muted coordinator-hint">你可以随时调整时间、区域、活动、预算或其他要求。修改前会先展示预览，确认后才更新。</view>
+      <button class="outline-btn compact-btn" bindtap="onEnableSubscribe">开启约会协调提醒</button>
       <button class="outline-btn compact-btn" bindtap="refreshCoordination" loading="{{refreshingCoordination}}">刷新协调进度</button>
     </view>
 

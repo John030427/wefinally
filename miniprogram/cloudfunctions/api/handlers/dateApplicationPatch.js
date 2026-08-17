@@ -27,6 +27,10 @@ function defaultDeps() {
     saveApplicationForUser(data, user) {
       const { createDateCoordinationHandlers } = require('./dateCoordination')
       return createDateCoordinationHandlers().saveApplicationForUser(data, user)
+    },
+    writeInboxNotification(input) {
+      const { notifyInbox } = require('../lib/coordinationInbox')
+      return notifyInbox(input)
     }
   }
 }
@@ -62,6 +66,20 @@ function createDateApplicationPatchHandlers(overrides = {}) {
         addWithId: overrides.addWithId,
         now: overrides.now
       })
+    }
+    if (name === 'writeInboxNotification' && !overrides.writeInboxNotification && overrides.first && overrides.addWithId) {
+      return (input) => {
+        const { notifyInbox } = require('../lib/coordinationInbox')
+        const { notifyConfig } = require('../lib/coordinationNotification')
+        return notifyInbox(input, {
+          first: overrides.first,
+          addWithId: overrides.addWithId,
+          updateByDoc: overrides.updateByDoc,
+          now: overrides.now,
+          config: notifyConfig(process.env),
+          sendSubscribeMessage: null
+        })
+      }
     }
     if (!defaults) defaults = defaultDeps()
     return defaults[name]
@@ -161,6 +179,20 @@ function createDateApplicationPatchHandlers(overrides = {}) {
         changed_dimensions: summary.changed_dimensions
       }
     })
+    try {
+      await dep('writeInboxNotification')({
+        coordination,
+        user_id: partnerId,
+        event_type: 'preference_changed',
+        coordination_version: Number(version),
+        title: '对方更新了可约条件',
+        body: '对方的约会条件发生调整，涉及：' + (Array.isArray(summary.changed_dimensions) ? summary.changed_dimensions.join('、') : '') + '。请进入查看共同进度。',
+        changed_dimensions: summary.changed_dimensions || [],
+        stage: 'preference_changed'
+      })
+    } catch (err) {
+      console.warn('inbox preference notification skipped:', err.message || err)
+    }
     await dep('addWithId')('agent_notification_job', {
       coordination_id: Number(coordination.id),
       user_id: partnerId,

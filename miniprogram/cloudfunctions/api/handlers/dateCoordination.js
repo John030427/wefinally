@@ -66,7 +66,11 @@ function defaultDeps() {
     commitConfirmation: db.commitCoordinationConfirmation,
     expireIfCurrent: expireCoordinationIfCurrent,
     publishCoordinationEvent,
-    now: db.now
+    now: db.now,
+    writeInboxNotification(input) {
+      const { notifyInbox } = require('../lib/coordinationInbox')
+      return notifyInbox(input)
+    }
   }
 }
 
@@ -130,6 +134,20 @@ function createDateCoordinationHandlers(overrides = {}) {
         addWithId: overrides.addWithId,
         now: overrides.now
       })
+    }
+    if (name === 'writeInboxNotification' && !overrides.writeInboxNotification && overrides.first && overrides.addWithId) {
+      return (input) => {
+        const { notifyInbox } = require('../lib/coordinationInbox')
+        const { notifyConfig } = require('../lib/coordinationNotification')
+        return notifyInbox(input, {
+          first: overrides.first,
+          addWithId: overrides.addWithId,
+          updateByDoc: overrides.updateByDoc,
+          now: overrides.now,
+          config: notifyConfig(process.env),
+          sendSubscribeMessage: null
+        })
+      }
     }
     if (!defaults) defaults = defaultDeps()
     return defaults[name]
@@ -278,6 +296,21 @@ function createDateCoordinationHandlers(overrides = {}) {
         coordination_version: Number(updated.coordination_version || 1)
       }
     })
+    if (event === 'accept_invitation') {
+      try {
+        await dep('writeInboxNotification')({
+          coordination: updated,
+          user_id: Number(updated.user_a_id),
+          event_type: 'invitation_accepted',
+          coordination_version: Number(updated.coordination_version || 1),
+          title: '对方已接受约会协调邀请',
+          body: '对方已接受你的约会协调邀请，现在可以开始填写彼此的偏好。',
+          stage: 'invitation_accepted'
+        })
+      } catch (err) {
+        console.warn('inbox invitation notification skipped:', err.message || err)
+      }
+    }
     return detailFor(updated, user)
   }
 
@@ -345,6 +378,19 @@ function createDateCoordinationHandlers(overrides = {}) {
         idempotency_key: notification.idempotency_key
       })
       if (!queued) await dep('addWithId')('agent_notification_job', notification, 'agent_notification_job')
+      try {
+        await dep('writeInboxNotification')({
+          coordination: updated,
+          user_id: Number(updated.user_b_id),
+          event_type: 'invitation_created',
+          coordination_version: Number(updated.coordination_version || 1),
+          title: '新的约会协调邀请',
+          body: '你收到了一个约会协调邀请，请打开协调页查看并决定是否参与。',
+          stage: 'invitation_created'
+        })
+      } catch (err) {
+        console.warn('inbox invitation-created notification skipped:', err.message || err)
+      }
       return detailFor(updated, user)
     }
 
@@ -596,6 +642,27 @@ function createDateCoordinationHandlers(overrides = {}) {
         proposal
       }
     })
+    if (decision === 'confirm') {
+      const partnerId = Number(updated.user_a_id) === Number(user.id)
+        ? Number(updated.user_b_id)
+        : Number(updated.user_a_id)
+      const isArranged = updated.status === STATUS.ARRANGED
+      try {
+        await dep('writeInboxNotification')({
+          coordination: updated,
+          user_id: partnerId,
+          event_type: isArranged ? 'arranged' : 'proposal_confirmed',
+          coordination_version: Number(updated.coordination_version || version),
+          title: isArranged ? '双方已确认最终方案' : '对方已确认方案',
+          body: isArranged
+            ? '双方已确认最终方案，约会安排已经形成。'
+            : '对方已确认当前的候选方案，正在等待你的确认。',
+          stage: isArranged ? 'arranged' : 'proposal_confirmed'
+        })
+      } catch (err) {
+        console.warn('inbox confirm notification skipped:', err.message || err)
+      }
+    }
     if (updated.status === STATUS.ARRANGED) {
       await dep('publishCoordinationEvent')({
         coordination: updated,

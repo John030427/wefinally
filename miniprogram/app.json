@@ -27,7 +27,8 @@
     "pages/date-feedback/date-feedback",
     "pages/marry-report/marry-report",
     "pages/account-cancel/account-cancel",
-    "pages/rules/rules"
+    "pages/rules/rules",
+    "pages/notifications/notifications"
   ],
   "window": {
     "navigationBarBackgroundColor": "#FF6B8A",
@@ -63,5 +64,7 @@
       "desc": "用于你主动在微信地图中选择线下见面地点"
     }
   },
-  "requiredPrivateInfos": ["chooseLocation"]
+  "requiredPrivateInfos": [
+    "chooseLocation"
+  ]
 }

@@ -12,6 +12,7 @@ const dateCoordination = require('./dateCoordination')
 const dateApplicationPatch = require('./dateApplicationPatch')
 const experienceFeedback = require('./experienceFeedback')
 const backoffice = require('./backoffice')
+const notifications = require('./notifications')
 const partnerOnboarding = require('./partnerOnboardingCloud')
 
 function methodOf(value) {
@@ -60,6 +61,9 @@ function route(method, path) {
     'GET /api/match/setting': match.getSetting,
     'POST /api/match/setting': match.saveSetting,
     'POST /api/match/intent/confirm': match.confirmIntent,
+    'GET /api/match/ai-profile': match.getAiProfile,
+    'POST /api/match/ai-profile/confirm': match.confirmAiProfile,
+    'POST /api/match/ai-profile/correct': match.correctAiProfile,
     'GET /api/match/setting/cooldown': match.cooldown,
     'POST /api/match/start': match.start,
     'POST /api/match/test-runs': match.create,
@@ -74,6 +78,9 @@ function route(method, path) {
     'GET /api/match/feedback': experienceFeedback.getMatch,
     'POST /api/match/feedback': experienceFeedback.saveMatch,
     'GET /api/date-feedback': experienceFeedback.getDate,
+    'POST /api/notifications/read': notifications.read,
+    'GET /api/notifications/unread': notifications.unread,
+    'GET /api/notifications': notifications.getList,
     'POST /api/date-feedback': experienceFeedback.saveDate,
     'GET /api/vip/info': vip.info,
     'POST /api/vip/purchase': vip.purchase,

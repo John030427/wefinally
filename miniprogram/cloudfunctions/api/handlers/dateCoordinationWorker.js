@@ -13,7 +13,11 @@ function defaultDeps() {
     completeTask: db.completeCoordinationProcessing,
     failTask: db.failCoordinationProcessing,
     publishCoordinationEvent,
-    now: db.now
+    now: db.now,
+    writeInboxNotification(input) {
+      const { notifyInbox } = require('../lib/coordinationInbox')
+      return notifyInbox(input)
+    }
   }
 }
 
@@ -57,6 +61,24 @@ async function processCoordinationTasks(options = {}) {
               proposal: proposals[0] || null
             }
           })
+          if (proposals.length && typeof deps.writeInboxNotification === 'function') {
+            const participants = [Number(result.coordination.user_a_id), Number(result.coordination.user_b_id)].filter((id) => id > 0)
+            for (const userId of participants) {
+              try {
+                await deps.writeInboxNotification({
+                  coordination: result.coordination,
+                  user_id: userId,
+                  event_type: 'proposal_generated',
+                  coordination_version: version,
+                  title: '新的候选方案待确认',
+                  body: '系统找到了一个双方都可接受的候选方案，请打开约会协调页查看并确认。',
+                  stage: 'proposal_generated'
+                })
+              } catch (inboxError) {
+                console.warn('inbox proposal notification skipped:', inboxError.message || inboxError)
+              }
+            }
+          }
         } catch (eventError) {
           if (deps.onEventError) await deps.onEventError(eventError, result.coordination)
         }

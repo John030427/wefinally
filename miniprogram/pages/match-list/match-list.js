@@ -21,6 +21,18 @@ Page({
     this.loadList()
   },
 
+
+  async loadUnread() {
+    try {
+      const data = await get(API_PATHS.NOTIFICATIONS_UNREAD, {}, { showError: false })
+      this.setData({ unreadCount: Number((data && (data.unread_count || data.unreadCount)) || 0) })
+    } catch (err) { /* 未读数加载失败不阻断列表 */ }
+  },
+
+  goNotifications() {
+    wx.navigateTo({ url: '/pages/notifications/notifications' })
+  },
+
   async loadList() {
     this.setData({ pageState: 'loading' })
     const app = getApp()

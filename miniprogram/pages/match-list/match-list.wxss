@@ -45,3 +45,20 @@
   font-size: 36rpx;
   color: #ccc;
 }
+
+.notify-entry {
+  display: flex;
+  align-items: center;
+  padding: 20rpx 24rpx;
+  margin-bottom: 20rpx;
+  background: #fff;
+  border-radius: 16rpx;
+}
+.notify-entry-text { flex: 1; font-size: 28rpx; font-weight: 600; color: #2f2a26; }
+.notify-entry-badge {
+  min-width: 36rpx; height: 36rpx; line-height: 36rpx;
+  padding: 0 10rpx; border-radius: 18rpx;
+  background: #e34d59; color: #fff; font-size: 22rpx;
+  text-align: center; margin-right: 12rpx;
+}
+.notify-entry-arrow { color: #c9c2bb; font-size: 30rpx; }
