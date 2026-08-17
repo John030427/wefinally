@@ -35,7 +35,7 @@ export async function runGraph(
     const graph = buildCustomerServiceGraph(dependencies)
     return graph.invoke(input as Parameters<typeof graph.invoke>[0], config(input.threadId)) as Promise<Record<string, unknown>>
   }
-  return buildDateCoordinationGraph({ checkpointer: dependencies.checkpointer })
+  return buildDateCoordinationGraph({ checkpointer: dependencies.checkpointer, model: dependencies.model })
     .invoke(input as unknown as DateCoordinationState, config(input.threadId)) as Promise<Record<string, unknown>>
 }
 
@@ -53,7 +53,7 @@ export async function resumeGraph(
   if (mode !== 'date_coordination') throw new Error('invalid_checkpoint_mode')
 
   if (input.operation === 'resume_tool') {
-    return buildDateCoordinationGraph({ checkpointer: dependencies.checkpointer })
+    return buildDateCoordinationGraph({ checkpointer: dependencies.checkpointer, model: dependencies.model })
       .invoke(new Command({ resume: input.toolResult }), config(input.threadId)) as Promise<Record<string, unknown>>
   }
   const party = input.confirmation?.arguments?.party
@@ -62,6 +62,6 @@ export async function resumeGraph(
     throw new Error('invalid_confirmation')
   }
   const next = applyConfirmation(state as unknown as DateCoordinationState, party, version)
-  return buildDateCoordinationGraph({ checkpointer: dependencies.checkpointer })
+  return buildDateCoordinationGraph({ checkpointer: dependencies.checkpointer, model: dependencies.model })
     .invoke(next, config(input.threadId)) as Promise<Record<string, unknown>>
 }

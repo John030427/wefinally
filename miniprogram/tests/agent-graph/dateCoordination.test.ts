@@ -142,3 +142,24 @@ test('graph exposes only an allowlisted preview action after both parties confir
   assert.equal(result.pendingAction?.type, 'create_date_application_preview')
   assert.equal(result.pendingAction?.arguments.coordinationVersion, 3)
 })
+
+
+test('no-overlap graph proactively asks the current party for more time', async () => {
+  const graph = buildDateCoordinationGraph({ checkpointer: new MemorySaver() })
+  const result = await graph.invoke(state({
+    party: 'A',
+    partyAState: { ...a },
+    partyBState: { ...b, dateWindows: ['2026-08-20T19:00+08:00'] }
+  }), { configurable: { thread_id: 'wf_thread_coordination_no_overlap' } })
+  assert.equal(result.phase, 'ask_time')
+  assert.match(String(result.replyDraft), /共同时间/)
+  assert.match(String(result.replyDraft), /如果方便/)
+  assert.ok(!String(result.replyDraft).includes('靠近地铁'))
+})
+
+test('has overlap graph waits for bilateral confirmation without exposing partner notes', async () => {
+  const graph = buildDateCoordinationGraph({ checkpointer: new MemorySaver() })
+  const result = await graph.invoke(state({}), { configurable: { thread_id: 'wf_thread_coordination_wait' } })
+  assert.equal(result.phase, 'awaiting_confirmation')
+  assert.match(String(result.replyDraft), /等待双方确认/)
+})

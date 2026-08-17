@@ -7,11 +7,12 @@ const { generateDecision } = require('../agent/provider')
 const { TOOL_NAMES, inferTool, executeTool } = require('../agent/toolRegistry')
 const { createDateApplicationPatchHandlers, claimPendingPatch } = require('./dateApplicationPatch')
 const { createDateCoordinationHandlers } = require('./dateCoordination')
-const { PATCH_TOOL } = require('../lib/dateApplicationPatchPolicy')
+const { PATCH_TOOL, classifyChangeIntent } = require('../lib/dateApplicationPatchPolicy')
 const { readHumanServiceConfig, buildHumanServiceHandoff } = require('../agent/humanService')
 const { readLangGraphConfig, createActorRef, createThreadId, runLangGraphStep } = require('../agent/langgraphClient')
 const { executeGraphTool } = require('../agent/langgraphToolBridge')
 const { buildDateCoordinationGraphInput, latestApplication } = require('../agent/dateCoordinationGraphState')
+const { buildResumeSummary } = require('../lib/coordinationConcurrency')
 
 const FREE_DAILY_LIMIT = 5
 const VIP_DAILY_LIMIT = 30
@@ -382,15 +383,26 @@ function createAgentHandlers(overrides = {}) {
         coordination_id: Number(coordination.id)
       }, 200)
       let dateGraphResult = null
+      const coordinationEvents = await dep('list')('date_coordination_event', {
+        coordination_id: Number(coordination.id)
+      }, 200).catch(() => [])
+      const lastSeenVersion = Number(session.last_seen_coordination_version || 0)
+      const resume = buildResumeSummary(coordinationEvents, lastSeenVersion)
+      const resumeText = resume.has_updates ? resume.lines.join('\n') : ''
+      const markSeen = async () => {
+        await dep('updateByDoc')('agent_session', session, {
+          last_seen_coordination_version: Number(coordination.coordination_version || 1)
+        }).catch(() => null)
+      }
       if (graphConfig.enabled) {
         const graphInput = buildDateCoordinationGraphInput(coordination, allApplications, user)
         try {
           const graphStep = await runLangGraphStep({
-            threadId: createThreadId(`date:${coordination.id}`, graphConfig.actorSecret),
+            threadId: createThreadId('date:' + coordination.id + ':user:' + user.id, graphConfig.actorSecret),
             actorRef: createActorRef(user.id, graphConfig.actorSecret),
             mode: 'date_coordination',
             userText: content,
-            safeSummary: String(session.summary || '').slice(0, 800),
+            safeSummary: String([session.summary, resumeText].filter(Boolean).join('\n')).slice(0, 800),
             ...graphInput
           }, {
             env: dep('env'),
@@ -426,6 +438,26 @@ function createAgentHandlers(overrides = {}) {
           }
         } catch (_) {
           // Graph failures fall through to the established backend/DeepSeek path.
+        }
+      }
+      // LangGraph is the primary interaction layer for coordination when it can
+      // answer directly; modification requests still go to the backend patch
+      // preview pipeline (deterministic business layer owns every write).
+      const modificationIntent = classifyChangeIntent(content) === 'modify_date_application'
+      const questionLike = /进度|状态|哪一步|怎么样了|看看|怎么样|如何|情况|进展|确认|方案|安排|协调|在吗|\?|？/.test(content)
+      if (!modificationIntent && dateGraphResult && ['completed', 'awaiting_confirmation'].includes(dateGraphResult.status)
+        && dateGraphResult.replyDraft && (questionLike || resumeText)) {
+        const reply = [resumeText, dateGraphResult.replyDraft].filter(Boolean).join('\n')
+        await saveMessage(session, user, 'assistant', reply, { graph_phase: dateGraphResult.phase })
+        await markSeen()
+        return {
+          session_id: session.id,
+          agent_type: session.agent_type,
+          reply,
+          provider: 'langgraph',
+          graph_phase: dateGraphResult.phase,
+          resume_summary: resumeText ? true : undefined,
+          risk_level: 'safe'
         }
       }
       const pendingPatches = await dep('list')('date_application_patch', {
@@ -465,6 +497,7 @@ function createAgentHandlers(overrides = {}) {
             execution_verified: true,
             application_sent: isCreate
           })
+          await markSeen()
           return {
             session_id: session.id,
             agent_type: session.agent_type,
@@ -489,11 +522,13 @@ function createAgentHandlers(overrides = {}) {
         return { session_id: session.id, agent_type: session.agent_type, reply, cancelled: true, risk_level: 'safe' }
       }
       if (/进度|状态|哪一步|怎么样了/.test(content)) {
-        const reply = dateGraphResult && dateGraphResult.replyDraft
+        const graphReply = dateGraphResult && dateGraphResult.replyDraft
           ? `${dateGraphResult.replyDraft} 我只会说明共同进度，不会展示对方的原始回答。`
           : `当前进度：${statusText}。我只会说明共同进度，不会展示对方的原始回答。`
+        const reply = [resumeText, graphReply].filter(Boolean).join('\n')
         await recordTool(session, user, TOOL_NAMES.DATE_COORDINATION, 'completed')
         await saveMessage(session, user, 'assistant', reply, dateGraphResult ? { graph_phase: dateGraphResult.phase } : {})
+        await markSeen()
         return {
           session_id: session.id,
           agent_type: session.agent_type,
@@ -641,11 +676,13 @@ function createAgentHandlers(overrides = {}) {
         await recordTool(session, user, toolRequest.tool, 'failed', 'tool_not_allowed')
       }
       const reply = guardUnverifiedSuccessClaim(decision.replyDraft || `当前进度：${statusText}。你可以直接告诉我想调整的时间、区域或活动，我会先生成预览供你确认。`)
-      await saveMessage(session, user, 'assistant', reply)
+      const finalReply = resumeText ? resumeText + '\n' + reply : reply
+      await saveMessage(session, user, 'assistant', finalReply)
+      await markSeen()
       return {
         session_id: session.id,
         agent_type: session.agent_type,
-        reply,
+        reply: finalReply,
         provider: decision.provider || 'fallback',
         risk_level: decision.riskLevel || 'safe',
         suggested_actions: decision.suggestedActions || []

@@ -35,6 +35,7 @@ export type DecisionInput = {
   phase: string
   userText: string
   safeSummary: string
+  context?: Record<string, unknown>
 }
 
 export type DecisionModel = {
@@ -89,7 +90,10 @@ export function createDecisionModel(config: DecisionModelConfig): DecisionModel 
               mode: input.mode,
               phase: sanitizeGraphText(input.phase, 80),
               user_text: userText,
-              safe_summary: safeSummary
+              safe_summary: safeSummary,
+              ...(input.context ? {
+                context_json: sanitizeGraphText(JSON.stringify(input.context), 2600)
+              } : {})
             })
           }
         ]
