@@ -56,20 +56,39 @@
       </view>
 
       <view class="form-item">
-        <text class="form-label required">职业圈层</text>
+        <text class="form-label required">主要身份</text>
         <picker mode="multiSelector" range="{{circleMatrix}}" value="{{circleMultiIndex}}" bindcolumnchange="onCircleColumnChange" bindchange="onCircleChange">
-          <view class="picker-value {{form.circleName ? '' : 'placeholder'}}">{{form.circleName || '请选择职业板块和圈层'}}</view>
+          <view class="picker-value {{form.circleName ? '' : 'placeholder'}}">{{form.circleName || '请选择主要职业板块和圈层'}}</view>
         </picker>
       </view>
       <view class="form-item" wx:if="{{form.circleName === '其他'}}">
         <text class="form-label required">具体职业</text>
         <input class="text-input" value="{{form.occupationDescription}}" placeholder="请输入你的职业，例如：工业设计师" maxlength="100" bindinput="onOccupationDescriptionInput" />
       </view>
+      <view class="form-item" wx:if="{{secondaryIdentityOptions.length}}">
+        <text class="form-label">其他符合身份（最多2个）</text>
+        <view class="identity-chip-list">
+          <view
+            class="identity-chip {{item.selected ? 'selected' : ''}}"
+            wx:for="{{secondaryIdentityOptions}}"
+            wx:key="id"
+            data-id="{{item.id}}"
+            bindtap="toggleSecondaryIdentity"
+          >{{item.name}}</view>
+        </view>
+        <view class="form-hint">学历仍单独填写；身份用于理解背景，不影响推广归属。</view>
+      </view>
 
       <view class="form-item">
+        <text class="form-label required">工作省份</text>
+        <picker mode="selector" range="{{provinceNames}}" value="{{form.provinceIndex}}" bindchange="onProvinceChange">
+          <view class="picker-value {{form.provinceName ? '' : 'placeholder'}}">{{form.provinceName || '请选择省份'}}</view>
+        </picker>
+      </view>
+      <view class="form-item">
         <text class="form-label required">工作城市</text>
-        <picker mode="selector" range="{{cityOptions}}" value="{{form.cityIndex}}" bindchange="onPickerChange" data-field="city">
-          <view class="picker-value {{form.city ? '' : 'placeholder'}}">{{form.city || '请选择城市'}}</view>
+        <picker mode="selector" range="{{cityOptions}}" value="{{form.cityIndex}}" bindchange="onCityChange" disabled="{{!form.provinceCode}}">
+          <view class="picker-value {{form.city ? '' : 'placeholder'}}">{{form.city || (form.provinceCode ? '请选择城市' : '请先选择省份')}}</view>
         </picker>
       </view>
 

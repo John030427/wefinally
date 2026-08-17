@@ -64,6 +64,11 @@ const CITY_OPTIONS = [
   '北京', '上海', '广州', '深圳', '杭州', '成都', '重庆', '武汉',
   '南京', '西安', '苏州', '天津', '长沙', '郑州', '青岛', '厦门'
 ]
+
+// Province → city cascade; keep CITY_OPTIONS for legacy screens.
+const { listProvinces, listCities, resolveRegion, legacyCityOptions } = require('./chinaRegions')
+const PROVINCE_OPTIONS = listProvinces()
+const MAX_IDENTITY_TAGS = 3
 const AGE_RANGE_OPTIONS = ['20-25岁', '25-30岁', '30-35岁', '35-40岁', '40-45岁', '45岁以上']
 const HEIGHT_RANGE_OPTIONS = ['140-150cm', '150-160cm', '160-170cm', '170-180cm', '180-190cm', '190cm以上']
 const LIKE_MARRY_OPTIONS = ['仅看未婚', '可接受离异']
@@ -111,6 +116,12 @@ module.exports = {
   BABY_PLAN_OPTIONS,
   HOUSE_CAR_OPTIONS,
   CITY_OPTIONS,
+  PROVINCE_OPTIONS,
+  MAX_IDENTITY_TAGS,
+  listProvinces,
+  listCities,
+  resolveRegion,
+  legacyCityOptions,
   AGE_RANGE_OPTIONS,
   HEIGHT_RANGE_OPTIONS,
   LIKE_MARRY_OPTIONS,

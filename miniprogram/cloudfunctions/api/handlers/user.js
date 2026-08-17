@@ -10,6 +10,12 @@ const {
 } = require('../lib/memberPolicy')
 const { resolveTestIdentity } = require('../lib/testIdentityPolicy')
 const { flagEnabled } = require('../lib/flags')
+const { resolveRegion } = require('../lib/regionNormalize')
+const {
+  normalizeIdentityInput,
+  legacyTagsFromUser,
+  summarizeIdentities
+} = require('../lib/userIdentityTags')
 
 async function currentUser(wxContext) {
   const openid = wxContext.OPENID
@@ -24,13 +30,47 @@ async function circleName(circleId) {
   return circle ? (circle.circle_name || circle.name || '') : ''
 }
 
+async function loadIdentityTags(userId) {
+  try {
+    const rows = await col('user_identity_tag').where({ user_id: Number(userId) }).limit(10).get()
+    return (rows && rows.data) || []
+  } catch (error) {
+    return []
+  }
+}
+
+async function replaceIdentityTags(userId, tags) {
+  const existing = await loadIdentityTags(userId)
+  for (const row of existing) {
+    try {
+      await col('user_identity_tag').doc(row._id || row.id).remove()
+    } catch (error) {
+      // best-effort cleanup
+    }
+  }
+  for (const tag of tags || []) {
+    await addWithId('user_identity_tag', {
+      user_id: Number(userId),
+      circle_id: Number(tag.circle_id),
+      is_primary: tag.is_primary ? 1 : 0,
+      source: tag.source || 'user_declared',
+      verified_status: tag.verified_status || 'unverified',
+      occupation_description: tag.occupation_description || ''
+    }, 'user_identity_tag')
+  }
+}
+
 async function profilePayload(user) {
-  const [setting, supportCode, publicTestRunEnabled] = await Promise.all([
+  const [setting, supportCode, publicTestRunEnabled, identityRows] = await Promise.all([
     first('user_match_setting', { user_id: user.id }),
     ensureUserSupportCode(user),
-    flagEnabled('match_test_run_public_enabled')
+    flagEnabled('match_test_run_public_enabled'),
+    loadIdentityTags(user.id)
   ])
   const identity = resolveTestIdentity(user)
+  const tags = identityRows.length ? identityRows : legacyTagsFromUser(user)
+  const summarized = summarizeIdentities(tags)
+  const region = resolveRegion(user)
   return Object.assign({}, user, {
     support_code: supportCode,
     circle_name: user.circle_name || await circleName(user.circle_id),
@@ -40,7 +80,16 @@ async function profilePayload(user) {
     member_status: memberStatus(user),
     account_mode: identity.account_mode,
     identity_kind: identity.kind,
-    qa_test_run_enabled: identity.kind === 'internal_qa' || publicTestRunEnabled
+    qa_test_run_enabled: identity.kind === 'internal_qa' || publicTestRunEnabled,
+    primary_circle_id: summarized.primary_circle_id || user.circle_id,
+    secondary_circle_ids: summarized.secondary_circle_ids,
+    identity_tags: summarized.tags,
+    province_code: user.province_code || region.province_code,
+    province_name: user.province_name || region.province_name,
+    city_code: user.city_code || region.city_code,
+    city_name: user.city_name || region.city_name || user.city,
+    // Attribution remains partner-locked; multi-identity must not fork promote_partner_id
+    promote_partner_id: user.promote_partner_id || 0
   })
 }
 
@@ -70,10 +119,16 @@ async function register(data, wxContext) {
   }
 
   const partner = await resolveInvitation(data.promote_code, first)
-  const occupation = normalizeOccupation({
-    circleId: data.circle_id,
-    description: data.occupation_description
+  const identity = normalizeIdentityInput({
+    circle_id: data.primary_circle_id != null ? data.primary_circle_id : data.circle_id,
+    secondary_circle_ids: data.secondary_circle_ids,
+    occupation_description: data.occupation_description
   })
+  const occupation = normalizeOccupation({
+    circleId: identity.primary_circle_id,
+    description: identity.occupation_description
+  })
+  const region = resolveRegion(data)
   const normalizedPromoteCode = partner
     ? String(partner.promote_code || data.promote_code).trim().toUpperCase()
     : ''
@@ -87,7 +142,13 @@ async function register(data, wxContext) {
     education: data.education || '',
     circle_id: occupation.circleId,
     occupation_description: occupation.description,
-    city: data.city || '深圳',
+    city: region.city || data.city || '深圳',
+    province_code: region.province_code || '',
+    province_name: region.province_name || '',
+    city_code: region.city_code || '',
+    city_name: region.city_name || region.city || data.city || '深圳',
+    country_code: region.country_code || 'CN',
+    country_name: region.country_name || '中国',
     marry_status: data.marry_status || '未婚',
     baby_plan: data.baby_plan || '',
     income_range: data.income_range || '',
@@ -107,6 +168,11 @@ async function register(data, wxContext) {
     appearance_want_tags: '',
     last_match_setting_time: null
   }, 'user')
+  try {
+    await replaceIdentityTags(user.id, identity.tags)
+  } catch (error) {
+    console.warn('identity tag write skipped:', error.message || error)
+  }
 
   if (partner) {
     await ensureReferralAttribution(user, partner, data.promote_code, { first, addWithId, now })
@@ -149,12 +215,41 @@ async function updateProfile(data, wxContext) {
   const allowed = [
     'city', 'education', 'income_range', 'house_car', 'baby_plan',
     'height_range', 'appearance_description', 'appearance_want',
-    'circle_id', 'occupation_description'
+    'circle_id', 'occupation_description',
+    'province_code', 'province_name', 'city_code', 'city_name',
+    'country_code', 'country_name'
   ]
   if (memberStatus(user) !== MEMBER_STATUS.APPROVED) allowed.push('birth_year')
   allowed.forEach((key) => {
     if (data[key] !== undefined) patch[key] = data[key]
   })
+
+  if (data.primary_circle_id != null || data.circle_id != null || data.secondary_circle_ids) {
+    const identity = normalizeIdentityInput({
+      circle_id: data.primary_circle_id != null ? data.primary_circle_id : (data.circle_id != null ? data.circle_id : user.circle_id),
+      secondary_circle_ids: data.secondary_circle_ids,
+      occupation_description: data.occupation_description != null ? data.occupation_description : user.occupation_description
+    })
+    patch.circle_id = identity.primary_circle_id
+    patch.occupation_description = identity.occupation_description
+    try {
+      await replaceIdentityTags(user.id, identity.tags)
+    } catch (error) {
+      console.warn('identity tag update skipped:', error.message || error)
+    }
+  }
+
+  if (data.city || data.province_code || data.city_code) {
+    const region = resolveRegion(Object.assign({}, user, data, patch))
+    patch.city = region.city || patch.city || user.city
+    patch.province_code = region.province_code
+    patch.province_name = region.province_name
+    patch.city_code = region.city_code
+    patch.city_name = region.city_name || patch.city
+    patch.country_code = region.country_code || 'CN'
+    patch.country_name = region.country_name || '中国'
+  }
+
   const updated = await updateByDoc('user', user, patch)
   return profilePayload(updated)
 }
