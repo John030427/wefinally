@@ -668,6 +668,23 @@
 }
 
 .sticky-cta {
+  position: relative;
+}
+
+.test-data-badge {
+  position: absolute;
+  top: 16rpx;
+  right: 20rpx;
+  padding: 4rpx 10rpx;
+  border-radius: 8rpx;
+  background: rgba(0, 0, 0, 0.04);
+  color: #999;
+  font-size: 20rpx;
+  font-weight: 500;
+  z-index: 6;
+}
+
+.sticky-cta {
   position: sticky;
   bottom: calc(16rpx + env(safe-area-inset-bottom));
   z-index: 5;

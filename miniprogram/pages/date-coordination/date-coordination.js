@@ -20,7 +20,7 @@ function buildCoordinationDisplay(coordination) {
   const maxRounds = Math.max(roundNumber, Number(coordination && coordination.max_rounds || 5))
   const labels = {
     collecting_initiator: '等待发起方填写',
-    inviting_partner: '等待对方接受邀请',
+    inviting_partner: '等待对方回应',
     collecting_preferences: '等待双方填写',
     computing_overlap: processingStatus === 'processing' ? '处理中' : (processingStatus === 'failed' ? '处理失败' : '待处理'),
     waiting_confirmations: '等待双方确认',
@@ -33,7 +33,6 @@ function buildCoordinationDisplay(coordination) {
     cancelled: '已结束'
   }
   const activeCoordinatorStatuses = new Set([
-    'inviting_partner',
     'collecting_preferences',
     'computing_overlap',
     'waiting_confirmations',
@@ -50,13 +49,14 @@ function buildCoordinationDisplay(coordination) {
     failed: status === 'computing_overlap' && processingStatus === 'failed',
     manualHandoff: status === 'manual_handoff',
     completed: status === 'arranged',
+    declined: status === 'invitation_declined',
     shouldPoll: status === 'computing_overlap' && ['queued', 'processing'].includes(processingStatus),
     showCoordinatorCta: activeCoordinatorStatuses.has(status),
     coordinatorHeroText: status === 'no_overlap'
       ? '目前还没有找到完整共同安排。你可以随时和 AI 协调员沟通，调整条件后再计算。'
       : (status === 'waiting_confirmations'
         ? '已有推荐方案待确认。你也可以继续和 AI 协调员沟通微调。'
-        : '正在寻找双方共同安排。你可以随时和 AI 约会协调员沟通。')
+        : '正在帮助双方寻找共同安排。你可以随时告诉 AI 想调整的时间、区域、活动或预算。')
   }
 }
 
@@ -206,27 +206,17 @@ Page({
   },
 
   applyCoordination(coordination) {
+    // Legacy polite_decline queue UI — only when explicitly still returned by API
     if (coordination.test_simulation && coordination.fixture_response_job) {
       this.applyFixtureSimulation(coordination)
       return
     }
     if (coordination.test_simulation && coordination.await_application) {
-      this.fixtureDraft = {
-        match_log_id: Number(coordination.match_log_id || 0),
-        match_user_id: Number(coordination.match_user_id || 0)
-      }
+      // Old path without real coordination_id — surface as recoverable error so DevTools
+      // users recreate via real journey (accept/reject fixtures now mint real rows).
       this.setData({
-        pageState: 'success',
-        coordination: Object.assign({}, coordination, {
-          status: 'collecting_initiator',
-          role: 'initiator',
-          can_submit_application: true,
-          simulation_badge: '虚拟体验对象'
-        }),
-        coordinationId: '',
-        fixtureSimulation: null,
-        fixtureStage: '',
-        fixtureStatusText: '请完整填写约会偏好后提交'
+        pageState: 'error',
+        errorMsg: '当前测试对象仍走旧版排队模拟。请将测试对象 fixture_journey 设为 accept/reject 后重新匹配并发起约会。'
       })
       return
     }
@@ -539,7 +529,11 @@ Page({
 
   goCoordinator() {
     if (!this.data.coordinationId) {
-      wx.showToast({ title: '请先填写上方约会表单', icon: 'none', duration: 3000 })
+      wx.showToast({ title: '协调尚未就绪，请稍后再试', icon: 'none', duration: 3000 })
+      return
+    }
+    if (this.data.coordination && this.data.coordination.status === 'invitation_declined') {
+      wx.showToast({ title: '对方暂未接受本次约会邀请', icon: 'none', duration: 3000 })
       return
     }
     wx.navigateTo({

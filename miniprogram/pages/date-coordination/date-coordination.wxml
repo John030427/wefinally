@@ -37,10 +37,16 @@
 
   <block wx:else>
     <view class="date-head card">
+      <view class="test-data-badge" wx:if="{{coordination.test_data_badge || coordination.is_test_data}}">{{coordination.test_data_badge || '测试数据'}}</view>
       <view class="date-title">约会协调</view>
-      <view class="meet-badge" wx:if="{{coordination.simulation_badge}}">{{coordination.simulation_badge}}</view>
-      <view class="date-desc">{{coordination.simulation_badge ? '请完整填写偏好，提交后由 AI 协调员在后台处理并反馈结果。' : '先由发起方填写偏好并邀请对方，再一起确认轻松、安全的初次见面。'}}</view>
+      <view class="date-desc">先由发起方填写偏好并邀请对方，再一起确认轻松、安全的初次见面。</view>
       <view class="status-pill">{{coordinationDisplay.statusText}}</view>
+    </view>
+
+    <view class="invite-card card" wx:if="{{coordination.status === 'invitation_declined'}}">
+      <view class="section-title">邀请结果</view>
+      <view class="invite-text">{{coordination.declined_public_message || '对方暂未接受本次约会邀请。'}}</view>
+      <view class="muted">本次协调已结束，不能继续与 AI 约会协调员沟通。</view>
     </view>
 
     <view class="lifecycle-card card">
@@ -95,21 +101,23 @@
     </view>
 
     <view class="invite-card card" wx:if="{{coordination.status === 'inviting_partner'}}">
-      <view class="section-title">约会邀请</view>
-      <view class="invite-text">对方希望和你一起协调一次轻松、安全的初次见面。</view>
+      <view class="section-title">第一次约会</view>
+      <view class="invite-text" wx:if="{{coordination.can_respond_invitation}}">对方希望和你一起协调一次轻松、安全的初次见面。</view>
+      <view class="invite-text" wx:else>当前进度：等待对方回应。对方接受后，AI 约会协调员会继续帮助双方确认时间、区域和活动安排。</view>
       <view class="action-row" wx:if="{{coordination.can_respond_invitation}}">
         <button class="outline-btn" bindtap="respondInvitation" data-accepted="false" loading="{{responding}}">暂不参与</button>
         <button class="primary-btn" bindtap="respondInvitation" data-accepted="true" loading="{{responding}}">接受邀请</button>
       </view>
       <view wx:else>
-        <view class="muted">邀请已发出。对方需要使用自己的微信进入对应“匹配详情 → 官方第一次约会”，接受后双方才能填写偏好。</view>
+        <view class="muted">此时不会假装 AI 已与对方协调。你可以开启提醒，并稍后刷新邀请状态。</view>
+        <button class="outline-btn full-btn" bindtap="onEnableSubscribe">开启约会协调提醒</button>
         <button class="outline-btn full-btn" bindtap="refreshCoordination">刷新邀请状态</button>
       </view>
     </view>
 
     <view class="form-card card" wx:if="{{coordination.can_submit_application}}">
       <view class="section-title">填写我的偏好</view>
-      <view class="form-hint" wx:if="{{coordination.status === 'collecting_initiator'}}">{{coordination.test_simulation ? '填写完整偏好后，AI 协调员会在后台处理并反馈结果。' : '先告诉我们你的理想安排，保存后才会邀请对方参与协调。'}}</view>
+      <view class="form-hint" wx:if="{{coordination.status === 'collecting_initiator'}}">先告诉我们你的理想安排，保存后才会邀请对方参与协调。</view>
       <view class="form-item">
         <view class="form-label required">📅 可约时间</view>
         <picker mode="date" start="{{dateMin}}" end="{{dateMax}}" value="{{selectedDate}}" bindchange="onDateChange">
@@ -163,7 +171,7 @@
         <view>{{form.share_message || '尚未填写'}}</view>
       </view>
       <view class="public-note">建议选择白天、公共场所，尊重彼此的边界和节奏。</view>
-      <button class="primary-btn full-btn" bindtap="submitApplication" loading="{{submitting}}" disabled="{{submitting}}">{{coordination.test_simulation ? '提交约会申请' : (coordination.status === 'collecting_initiator' ? '💌 保存偏好并邀请对方' : '💗 提交我的偏好')}}</button>
+      <button class="primary-btn full-btn" bindtap="submitApplication" loading="{{submitting}}" disabled="{{submitting}}">{{coordination.status === 'collecting_initiator' ? '💌 保存偏好并邀请对方' : '💗 提交我的偏好'}}</button>
     </view>
 
     <view class="proposal-card card" wx:if="{{proposal}}">
@@ -183,7 +191,7 @@
       <button class="primary-btn full-btn" bindtap="recoordinate" loading="{{submitting}}">重新协调</button>
     </view>
 
-    <view class="support-card support-card-ai" wx:if="{{coordinationId}}" bindtap="goCoordinator" hover-class="support-card-pressed">
+    <view class="support-card support-card-ai" wx:if="{{coordinationId && showCoordinatorCta}}" bindtap="goCoordinator" hover-class="support-card-pressed">
       <view class="support-icon">💗</view>
       <view class="support-content">
         <view class="support-title">AI约会协调员</view>
