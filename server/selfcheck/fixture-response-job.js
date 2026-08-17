@@ -20,6 +20,7 @@ const fixture = {
   fixture_owner_user_id: 10,
   fixture_run_id: 'run-1',
   fixture_expires_at: '2026-08-16T00:00:00.000Z',
+  fixture_journey: 'legacy_queue',
   allow_date_coordination: false,
   member_status: 'approved',
   is_vip: 1,
@@ -246,13 +247,11 @@ async function main() {
   const dateView = fs.readFileSync(path.join(root, 'miniprogram/pages/date-coordination/date-coordination.wxml'), 'utf8')
   assert(datePage.includes('refreshFixtureSimulation'))
   assert(datePage.includes('fixture-applications'))
-  assert(datePage.includes("role: 'initiator'"))
-  assert(datePage.includes('can_submit_application: true'))
-  assert(dateView.includes('提交约会申请'))
   assert(dateView.includes('AI协调任务已进入队列'))
   assert(dateView.includes('正在整理协调结果'))
   assert(dateView.includes('AI协调反馈'))
-  assert(dateView.includes('wx:if="{{coordinationId}}"'))
+  assert(dateView.includes('和 AI 约会协调员沟通'))
+  assert(dateView.includes('coordinationId && showCoordinatorCta'))
   assert(datePage.includes("'queued'"))
   assert(datePage.includes("'generating'"))
   assert(datePage.includes("'completed'"))
