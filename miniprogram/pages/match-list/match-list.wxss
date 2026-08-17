@@ -49,12 +49,29 @@
 .notify-entry {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   padding: 20rpx 24rpx;
   margin-bottom: 20rpx;
   background: #fff;
   border-radius: 16rpx;
 }
-.notify-entry-text { flex: 1; font-size: 28rpx; font-weight: 600; color: #2f2a26; }
+.notify-entry-left {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+.notify-entry-icon { font-size: 28rpx; }
+.notify-entry-title { font-size: 28rpx; font-weight: 600; color: #2f2a26; }
+.notify-entry-right {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+}
+.notify-entry-count {
+  font-size: 24rpx;
+  color: #e34d59;
+  font-weight: 600;
+}
 .notify-entry-badge {
   min-width: 36rpx; height: 36rpx; line-height: 36rpx;
   padding: 0 10rpx; border-radius: 18rpx;
@@ -62,3 +79,4 @@
   text-align: center; margin-right: 12rpx;
 }
 .notify-entry-arrow { color: #c9c2bb; font-size: 30rpx; }
+.notify-entry-pressed { opacity: 0.85; }

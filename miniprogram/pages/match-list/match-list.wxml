@@ -31,6 +31,16 @@
   </block>
 
   <block wx:else>
+    <view class="notify-entry card" bindtap="goNotifications" hover-class="notify-entry-pressed">
+      <view class="notify-entry-left">
+        <text class="notify-entry-icon">🔔</text>
+        <text class="notify-entry-title">消息通知</text>
+      </view>
+      <view class="notify-entry-right">
+        <text class="notify-entry-count" wx:if="{{unreadCount > 0}}">{{unreadCount}}条未读</text>
+        <text class="notify-entry-arrow">›</text>
+      </view>
+    </view>
     <view
       class="list-item card"
       wx:for="{{list}}"
