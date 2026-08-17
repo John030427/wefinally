@@ -253,6 +253,31 @@ Page({
     })
     if (coordinationDisplay.shouldPoll && this.pageVisible !== false) this.startCoordinationPolling()
     else this.stopCoordinationPolling()
+    if (id) this.markCoordinationSeen(id)
+  },
+
+  markCoordinationSeen(id) {
+    if (!id || this._markedCoordinationId === String(id)) return
+    this._markedCoordinationId = String(id)
+    try {
+      post(API_PATHS.NOTIFICATIONS_READ, { coordination_id: Number(id) }, { showError: false }).catch(() => null)
+    } catch (err) { /* 标记已读失败忽略 */ }
+  },
+
+  onEnableSubscribe() {
+    const { SUBSCRIBE_TMPL_IDS } = require('../../utils/constants')
+    if (!SUBSCRIBE_TMPL_IDS || !SUBSCRIBE_TMPL_IDS.length) {
+      wx.showModal({
+        title: '暂未开启微信提醒',
+        content: '需要在微信公众平台配置“约会协调提醒”订阅消息模板后，才能收到微信推送。你可以先使用站内“协调提醒”入口。',
+        showCancel: false
+      })
+      return
+    }
+    wx.requestSubscribeMessage({
+      tmplIds: SUBSCRIBE_TMPL_IDS,
+      complete: () => {}
+    })
   },
 
   applyFixtureSimulation(result) {
