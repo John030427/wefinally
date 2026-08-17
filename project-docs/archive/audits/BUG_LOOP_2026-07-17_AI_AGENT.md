@@ -1,6 +1,6 @@
 # WeFinally AI Agent P0/P1 Bug Loop（2026-07-17）
 
-工作树：`D:\wefinal\.worktrees\wefinally-ai-agent`  
+工作树：`D:\wefinal\.worktrees\wefinally-ai-agent`
 分支：`feature/ai-agent-system`
 
 ## 基线

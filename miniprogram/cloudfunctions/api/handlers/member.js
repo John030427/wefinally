@@ -47,6 +47,14 @@ function snapshot(user, setting) {
   })
 }
 
+async function signedReferralAttribution(user, partnerId, dep) {
+  const attribution = await dep('first')('partner_referral_attribution', { user_id: Number(user.id) })
+  if (!attribution) return null
+  if (Number(attribution.partner_id) !== Number(partnerId)) return null
+  if (attribution.attribution_locked !== true) return null
+  return attribution.source_type === 'signed_token' ? attribution : null
+}
+
 async function reviewMemberApplication(input, actor, deps) {
   const application = await deps.byId('member_application', Number(input.applicationId || 0))
   if (!application) throw new Error('会员申请不存在')
@@ -121,9 +129,10 @@ function createMemberHandlers(overrides = {}) {
       throw new Error('当前状态不能提交会员申请')
     }
     const partnerId = Number(user.promote_partner_id || 0)
-    if (!partnerId) throw new Error('未绑定有效邀请合伙人，无法提交会员申请')
-    const partner = await dep('byId')('partner', partnerId)
-    if (!partner || Number(partner.status) !== 1) throw new Error('邀请合伙人当前不可用，请联系平台客服')
+    if (partnerId) {
+      const partner = await dep('byId')('partner', partnerId)
+      if (!partner || Number(partner.status) !== 1) throw new Error('邀请合伙人当前不可用，请联系平台客服')
+    }
 
     const setting = await dep('first')('user_match_setting', { user_id: user.id }) || {}
     const missing = missingApplicationFields(user, setting)
@@ -132,23 +141,38 @@ function createMemberHandlers(overrides = {}) {
     const rows = await dep('list')('member_application', { user_id: user.id }, 100)
     const latest = latestApplication(rows)
     const now = dep('now')()
+    const signedAttribution = partnerId ? await signedReferralAttribution(user, partnerId, dep) : null
+    const nextStatus = signedAttribution ? MEMBER_STATUS.APPROVED : MEMBER_STATUS.PENDING_REVIEW
     const application = await dep('addWithId')('member_application', {
       user_id: user.id,
       inviter_partner_id: partnerId,
       assigned_partner_id: partnerId,
       revision: Number(latest && latest.revision || 0) + 1,
-      status: MEMBER_STATUS.PENDING_REVIEW,
+      status: nextStatus,
       profile_snapshot_json: snapshot(user, setting),
-      review_note: '',
+      review_note: signedAttribution ? '合伙人签名分享邀请，资料完整后自动通过' : '',
       submitted_at: now,
-      reviewed_by_role: '',
-      reviewed_by_id: 0,
-      reviewed_at: null
+      reviewed_by_role: signedAttribution ? 'partner_referral_auto' : '',
+      reviewed_by_id: signedAttribution ? partnerId : 0,
+      reviewed_at: signedAttribution ? now : null
     }, 'member_application')
     await dep('updateByDoc')('user', user, {
-      member_status: MEMBER_STATUS.PENDING_REVIEW,
+      member_status: nextStatus,
       member_status_updated_at: now
     })
+    if (signedAttribution) {
+      await dep('addWithId')('partner_user_audit_log', {
+        application_id: application.id,
+        partner_id: partnerId,
+        user_id: user.id,
+        actor_role: 'partner_referral_auto',
+        actor_id: partnerId,
+        action: 'auto_approve',
+        from_status: memberStatus(user),
+        to_status: MEMBER_STATUS.APPROVED,
+        reason: 'signed_partner_referral'
+      }, 'member_audit')
+    }
     return application
   }
 
@@ -162,5 +186,6 @@ module.exports = {
   submit: handlers.submit,
   createMemberHandlers,
   latestApplication,
+  signedReferralAttribution,
   reviewMemberApplication
 }

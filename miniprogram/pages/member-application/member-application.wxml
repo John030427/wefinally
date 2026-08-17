@@ -20,6 +20,7 @@
       <button wx:if="{{detail.member_status === 'rejected' && detail.can_submit}}" class="primary" loading="{{submitting}}" bindtap="resubmit">重新提交申请</button>
       <button wx:if="{{detail.member_status === 'approved'}}" class="primary" bindtap="goVip">购买 VIP</button>
       <button class="secondary" bindtap="goService">联系平台客服</button>
+      <button class="secondary" open-type="contact">联系微信人工客服</button>
     </view>
   </block>
 </view>

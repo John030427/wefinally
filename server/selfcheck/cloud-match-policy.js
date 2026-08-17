@@ -123,7 +123,7 @@ assert.strictEqual(oneSided[0].quality.pass, false)
 assert(oneSided[0].quality.reasons.includes('side_score'))
 
 const detail = scoreDetailFor(ranked[0], 'a', 1)
-assert.strictEqual(detail.version, 'algo_evidence_v2')
+assert.strictEqual(detail.version, 'algo_evidence_v3')
 assert.strictEqual(detail.quality_gate.pass, true)
 assert.notStrictEqual(detail.total, 88)
 assert(detail.side.dimensions.view.compatibility_score > 0)
@@ -132,9 +132,37 @@ const handler = fs.readFileSync(path.resolve(
   __dirname,
   '../../miniprogram/cloudfunctions/api/handlers/match.js'
 ), 'utf8')
+const semanticService = fs.readFileSync(path.resolve(
+  __dirname,
+  '../../miniprogram/cloudfunctions/api/lib/semanticMatchService.js'
+), 'utf8')
 const startBody = handler.split('async function start')[1].split('module.exports')[0]
-assert(startBody.indexOf("ranked.find((item) => item.quality.pass)") < startBody.indexOf("addWithId('user_match_log'"))
-assert(startBody.includes('if (!best)'))
+assert(startBody.includes('const eligible = reranked.ranked.filter((item) => item.quality.pass)'))
+assert(startBody.includes('const reranked = await semanticRerank(ranked, user, settingsByUserId)'))
+assert(handler.includes('final_match_score'))
+assert(startBody.includes('withSemanticRerankDetail'))
+assert(handler.includes('ai_rerank'))
+assert(handler.includes('reranked.model'))
+assert(startBody.includes('const algorithmRank = ranked.findIndex'))
+assert(!startBody.includes('ranked.indexOf(best)'))
+assert(handler.includes("require('../lib/semanticMatchService')"))
+assert(semanticService.includes('validateSemanticRerankResponse'))
+assert(semanticService.includes('mergeSemanticRerank'))
+assert(semanticService.includes('rerankMutualMatchCandidates'))
+assert(semanticService.includes('classifySemanticRerankError'))
+assert(!semanticService.includes("reason: err.message"))
+const deepseekSource = fs.readFileSync(path.resolve(
+  __dirname,
+  '../../miniprogram/cloudfunctions/api/lib/deepseek.js'
+), 'utf8')
+assert(deepseekSource.includes('match_semantic_rerank_v1'))
+assert(deepseekSource.includes('life_plan_alignment'))
+assert(deepseekSource.includes('candidate_ref 必须各出现一次'))
+assert(deepseekSource.includes('max_tokens: 3200'))
+assert(startBody.indexOf("transactionDocument('user_match_log'") < startBody.indexOf('deliverPair'))
+assert(!startBody.includes("addWithId('user_match_log'"))
+assert(startBody.includes('if (!eligible.length)'))
+assert(startBody.includes('可用候选已被其他匹配占用'))
 assert(handler.includes('ensureScoreDetailDimensions(parseJson(row.score_detail_json), row, viewer, partner)'))
 
 console.log('PASS cloud match policy uses bilateral evidence, quality gates and deterministic ranking')

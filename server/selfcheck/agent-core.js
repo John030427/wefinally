@@ -54,15 +54,17 @@ async function main() {
   assert.deepStrictEqual(knowledge.map((item) => item.id), ['raw-1'])
   assert.strictEqual(Object.prototype.hasOwnProperty.call(knowledge[0], 'internal_note'), false)
 
-  const minimaxConfig = getProviderConfig({ AGENT_PROVIDER: 'minimax', MINIMAX_API_KEY: 'test-key' })
-  assert.deepStrictEqual({ provider: minimaxConfig.provider, protocol: minimaxConfig.protocol }, { provider: 'minimax', protocol: 'anthropic' })
-  const forcedMinimaxConfig = getProviderConfig({ AGENT_PROVIDER: 'unsupported-provider', MINIMAX_API_KEY: 'test-key' })
-  assert.deepStrictEqual({ provider: forcedMinimaxConfig.provider, protocol: forcedMinimaxConfig.protocol }, { provider: 'minimax', protocol: 'anthropic' })
+  const deepseekConfig = getProviderConfig({ AGENT_PROVIDER: 'deepseek', DEEPSEEK_API_KEY: 'test-key' })
+  assert.deepStrictEqual({ provider: deepseekConfig.provider, protocol: deepseekConfig.protocol }, { provider: 'deepseek', protocol: 'openai' })
+  const forcedDeepseekConfig = getProviderConfig({ AGENT_PROVIDER: 'unsupported-provider', LLM_API_KEY: 'test-key' })
+  assert.deepStrictEqual({ provider: forcedDeepseekConfig.provider, protocol: forcedDeepseekConfig.protocol }, { provider: 'deepseek', protocol: 'openai' })
+  assert.strictEqual(getProviderConfig({ DEEPSEEK_API_KEY: 'test-key', DEEPSEEK_TIMEOUT_MS: '25000' }).timeoutMs, 25000)
+  assert.strictEqual(getProviderConfig({ DEEPSEEK_API_KEY: 'test-key', DEEPSEEK_TIMEOUT_MS: '90000' }).timeoutMs, 30000)
   const providerDecision = await generateDecision({ prompt: '请给一个简短建议' }, {
-    env: { AGENT_PROVIDER: 'minimax', MINIMAX_API_KEY: 'test-key' },
+    env: { AGENT_PROVIDER: 'deepseek', DEEPSEEK_API_KEY: 'test-key' },
     request: async ({ config }) => {
-      assert.strictEqual(config.provider, 'minimax')
-      return { content: [{ type: 'text', text: '{"intent":"modify_date_application","reply_draft":"我整理了一份修改预览，请确认。","requested_tools":["create_date_application_patch"],"tool_request":{"tool":"create_date_application_patch","arguments":{"activities":["咖啡"]}},"risk_level":"safe","suggested_actions":["confirm_patch"]}' }] }
+      assert.strictEqual(config.provider, 'deepseek')
+      return { choices: [{ message: { content: '{"intent":"modify_date_application","reply_draft":"我整理了一份修改预览，请确认。","requested_tools":["create_date_application_patch"],"tool_request":{"tool":"create_date_application_patch","arguments":{"activities":["咖啡"]}},"risk_level":"safe","suggested_actions":["confirm_patch"]}' } }] }
     }
   })
   assert.deepStrictEqual(providerDecision, {
@@ -72,38 +74,33 @@ async function main() {
     toolRequest: { tool: 'create_date_application_patch', arguments: { activities: ['咖啡'] } },
     riskLevel: 'safe',
     suggestedActions: ['confirm_patch'],
-    provider: 'minimax',
+    provider: 'deepseek',
     fallback: false
   })
   const fencedDecision = await generateDecision({ prompt: '请给一个简短建议' }, {
-    env: { AGENT_PROVIDER: 'minimax', MINIMAX_API_KEY: 'test-key' },
+    env: { AGENT_PROVIDER: 'deepseek', DEEPSEEK_API_KEY: 'test-key' },
     request: async () => ({
-      content: [{
-        type: 'text',
-        text: '```json\n{"intent":"love_advice","reply_draft":"先梳理自己的感受和边界","requested_tools":[],"risk_level":"safe","suggested_actions":[]}\n```'
-      }]
+      choices: [{ message: { content: '```json\n{"intent":"love_advice","reply_draft":"先梳理自己的感受和边界","requested_tools":[],"risk_level":"safe","suggested_actions":[]}\n```' } }]
     })
   })
   assert.strictEqual(fencedDecision.replyDraft, '先梳理自己的感受和边界')
   assert.strictEqual(fencedDecision.intent, 'love_advice')
   const truncatedDecision = await generateDecision({ prompt: '请给一个简短建议' }, {
-    env: { AGENT_PROVIDER: 'minimax', MINIMAX_API_KEY: 'test-key' },
+    env: { AGENT_PROVIDER: 'deepseek', DEEPSEEK_API_KEY: 'test-key' },
     request: async () => ({
-      content: [{
-        type: 'text',
-        text: '{"intent":"love_advice","reply_draft":"先说清自己的感受和边界，再邀请对方回应'
-      }]
+      choices: [{ message: { content: '{"intent":"love_advice","reply_draft":"先说清自己的感受和边界，再邀请对方回应' } }]
     })
   })
   assert.strictEqual(truncatedDecision.fallback, false)
-  assert.strictEqual(truncatedDecision.provider, 'minimax')
+  assert.strictEqual(truncatedDecision.provider, 'deepseek')
   assert.strictEqual(truncatedDecision.replyDraft, '先说清自己的感受和边界，再邀请对方回应')
   assert.strictEqual(truncatedDecision.replyDraft.includes('reply_draft'), false)
-  const minimaxBody = requestBody(minimaxConfig, { prompt: '请给一个简短建议' })
-  assert(minimaxBody.max_tokens > 600)
-  assert(String(minimaxBody.system).includes('350'))
+  const deepseekBody = requestBody(deepseekConfig, { prompt: '请给一个简短建议' })
+  assert(deepseekBody.max_tokens > 600)
+  assert.strictEqual(deepseekBody.response_format.type, 'json_object')
+  assert(String(deepseekBody.messages[0].content).includes('350'))
   const fallbackDecision = await generateDecision({ prompt: '请给一个简短建议' }, {
-    env: { AGENT_PROVIDER: 'minimax', MINIMAX_API_KEY: 'test-key' },
+    env: { AGENT_PROVIDER: 'deepseek', DEEPSEEK_API_KEY: 'test-key' },
     request: async () => { throw new Error('provider unavailable') }
   })
   assert.strictEqual(fallbackDecision.fallback, true)
@@ -121,7 +118,7 @@ async function main() {
     now: () => new Date('2026-07-12T00:00:00.000Z')
   })
   const session = await repositories.createSession({ agentType: AGENT_TYPES.PLATFORM_SERVICE, userId: 'user-raw-id', secret: 'nope' })
-  const run = await repositories.recordRun({ sessionId: session.id, agentType: AGENT_TYPES.PLATFORM_SERVICE, prompt: 'raw prompt', provider: 'minimax' })
+  const run = await repositories.recordRun({ sessionId: session.id, agentType: AGENT_TYPES.PLATFORM_SERVICE, prompt: 'raw prompt', provider: 'deepseek' })
   const audit = await repositories.recordToolAudit({ sessionId: session.id, runId: run.id, tool: 'member_status', input: { openid: 'raw' }, output: { phone: '13800138000' } })
   assert.deepStrictEqual(Object.keys(session).sort(), ['agentType', 'createdAt', 'id', 'status', 'updatedAt'])
   assert.deepStrictEqual(Object.keys(run).sort(), ['agentType', 'completedAt', 'createdAt', 'id', 'provider', 'sessionId', 'status'])

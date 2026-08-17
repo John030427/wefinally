@@ -10,6 +10,9 @@ function percent(value) {
 
 function resolveTotalScorePercent(totalScore, scoreDetail) {
   const detail = scoreDetail || {}
+  const finalMatchScore = finiteNumber(detail.final_match_score)
+  if (finalMatchScore !== null) return percent(finalMatchScore)
+
   const normalizedSnake = finiteNumber(detail.normalized_total)
   if (normalizedSnake !== null) return percent(normalizedSnake)
 

@@ -1,12 +1,15 @@
-const { col, first, byId, addWithId, updateByDoc, authError, now } = require('../lib/db')
+const { col, first, byId, addWithId, updateByDoc, ensureUserSupportCode, authError, now } = require('../lib/db')
 const { tokenFor } = require('./auth')
 const { isVipActive } = require('../lib/format')
+const { ensureReferralAttribution } = require('../lib/partnerReferralAttributionPolicy')
 const {
   MEMBER_STATUS,
   memberStatus,
   normalizeOccupation,
   resolveInvitation
 } = require('../lib/memberPolicy')
+const { resolveTestIdentity } = require('../lib/testIdentityPolicy')
+const { flagEnabled } = require('../lib/flags')
 
 async function currentUser(wxContext) {
   const openid = wxContext.OPENID
@@ -22,13 +25,22 @@ async function circleName(circleId) {
 }
 
 async function profilePayload(user) {
-  const setting = await first('user_match_setting', { user_id: user.id })
+  const [setting, supportCode, publicTestRunEnabled] = await Promise.all([
+    first('user_match_setting', { user_id: user.id }),
+    ensureUserSupportCode(user),
+    flagEnabled('match_test_run_public_enabled')
+  ])
+  const identity = resolveTestIdentity(user)
   return Object.assign({}, user, {
+    support_code: supportCode,
     circle_name: user.circle_name || await circleName(user.circle_id),
     is_vip: isVipActive(user) ? 1 : 0,
     isVip: isVipActive(user),
     match_settings: setting || null,
-    member_status: memberStatus(user)
+    member_status: memberStatus(user),
+    account_mode: identity.account_mode,
+    identity_kind: identity.kind,
+    qa_test_run_enabled: identity.kind === 'internal_qa' || publicTestRunEnabled
   })
 }
 
@@ -43,6 +55,14 @@ async function register(data, wxContext) {
   if (!openid) throw new Error('缺少 openid')
   const existing = await first('user', { openid })
   if (existing) {
+    if (Number(existing.promote_partner_id || 0) > 0) {
+      await ensureReferralAttribution(
+        existing,
+        { id: existing.promote_partner_id, promote_code: existing.promote_code },
+        existing.promote_code,
+        { first, addWithId, now }
+      )
+    }
     return {
       token: tokenFor(openid),
       user: await profilePayload(existing)
@@ -54,7 +74,9 @@ async function register(data, wxContext) {
     circleId: data.circle_id,
     description: data.occupation_description
   })
-  const normalizedPromoteCode = String(partner.promote_code || data.promote_code).trim().toUpperCase()
+  const normalizedPromoteCode = partner
+    ? String(partner.promote_code || data.promote_code).trim().toUpperCase()
+    : ''
   const createdAt = now()
 
   const user = await addWithId('user', {
@@ -75,7 +97,7 @@ async function register(data, wxContext) {
     member_status_updated_at: createdAt,
     is_vip: 0,
     vip_expire_time: null,
-    promote_partner_id: Number(partner.id),
+    promote_partner_id: partner ? Number(partner.id) : 0,
     promote_code: normalizedPromoteCode,
     free_member: 0,
     free_source: '',
@@ -85,6 +107,10 @@ async function register(data, wxContext) {
     appearance_want_tags: '',
     last_match_setting_time: null
   }, 'user')
+
+  if (partner) {
+    await ensureReferralAttribution(user, partner, data.promote_code, { first, addWithId, now })
+  }
 
   await addWithId('user_match_setting', {
     user_id: user.id,
@@ -105,10 +131,11 @@ async function register(data, wxContext) {
     console.warn('privacy auth log skipped:', err.message || err)
   }
 
+  const registeredProfile = await profilePayload(user)
   return {
     token: tokenFor(openid),
-    user: await profilePayload(user),
-    userInfo: await profilePayload(user)
+    user: registeredProfile,
+    userInfo: registeredProfile
   }
 }
 

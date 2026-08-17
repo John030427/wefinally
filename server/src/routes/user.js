@@ -24,6 +24,7 @@ const {
   ROLES,
   MARRY_REPORT_TYPE,
 } = require('../config/constants');
+const { referralInput } = require('../../../miniprogram/cloudfunctions/api/lib/partnerReferralPolicy');
 
 const router = express.Router();
 
@@ -204,14 +205,18 @@ router.post('/register', async (req, res, next) => {
       return fail(res, '请同意全部三项协议');
     }
 
-    const normalizedPromoteCode = String(promote_code || '').trim().toUpperCase();
-    if (!normalizedPromoteCode) return fail(res, '邀请制注册需要有效邀请码');
+    let referral;
+    try {
+      referral = referralInput(promote_code);
+    } catch (err) {
+      return fail(res, err.message);
+    }
+    if (!referral.code && !referral.partnerId) return fail(res, '邀请制注册需要有效邀请码');
     let promotePartnerId = 0;
     let lockedPromoteCode = '';
-    const [partners] = await conn.query(
-      'SELECT id, promote_code FROM `partner` WHERE promote_code = ? AND status = ?',
-      [normalizedPromoteCode, PARTNER_STATUS.ACTIVE]
-    );
+    const [partners] = referral.partnerId
+      ? await conn.query('SELECT id, promote_code FROM `partner` WHERE id = ? AND status = ?', [referral.partnerId, PARTNER_STATUS.ACTIVE])
+      : await conn.query('SELECT id, promote_code FROM `partner` WHERE promote_code = ? AND status = ?', [referral.code, PARTNER_STATUS.ACTIVE]);
     if (partners.length === 0) return fail(res, '邀请码无效或合伙人未激活');
     promotePartnerId = partners[0].id;
     lockedPromoteCode = partners[0].promote_code;

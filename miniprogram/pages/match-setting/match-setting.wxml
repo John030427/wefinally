@@ -124,8 +124,60 @@
       </view>
     </view>
 
+    <view class="card supplement-card">
+      <view class="section-title">其他补充需求（选填）</view>
+      <view class="section-hint">可以写城市或未来生活规划、家庭与事业安排、生活方式、外貌气质偏好及其他具体要求。原文不会直接展示给另一方。</view>
+      <textarea
+        class="textarea-input"
+        placeholder="例如：未来希望在华南发展，重视稳定沟通，也喜欢自然清爽的生活方式..."
+        maxlength="{{otherRequirementsMaxLen}}"
+        value="{{form.otherRequirements}}"
+        bindinput="onOtherRequirementsInput"
+        disabled="{{cooldownActive}}"
+        show-confirm-bar="{{false}}"
+      />
+      <view class="char-counter">当前 {{otherRequirementsLen}} / {{otherRequirementsMaxLen}} 字</view>
+    </view>
+
+    <view class="card intent-confirm-card" wx:if="{{intentConfirmation}}">
+      <view class="section-title">我对你的理解</view>
+      <view class="section-hint">请核对下面的摘要。它只用于匹配理解，不会把推测当成你的明确要求。</view>
+
+      <view class="intent-group" wx:if="{{intentConfirmation.must_have.length}}">
+        <view class="intent-label">必要条件</view>
+        <view wx:for="{{intentConfirmation.must_have}}" wx:key="value" class="intent-item">{{item.value}}</view>
+      </view>
+      <view class="intent-group" wx:if="{{intentConfirmation.preferences.length}}">
+        <view class="intent-label">重要偏好</view>
+        <view wx:for="{{intentConfirmation.preferences}}" wx:key="value" class="intent-item">{{item.value}}</view>
+      </view>
+      <view class="intent-group" wx:if="{{intentConfirmation.values.length}}">
+        <view class="intent-label">三观与相处</view>
+        <view wx:for="{{intentConfirmation.values}}" wx:key="value" class="intent-item">{{item.value}}</view>
+      </view>
+      <view class="intent-group" wx:if="{{intentConfirmation.lifestyle.length}}">
+        <view class="intent-label">生活方式</view>
+        <view wx:for="{{intentConfirmation.lifestyle}}" wx:key="value" class="intent-item">{{item.value}}</view>
+      </view>
+      <view class="intent-group" wx:if="{{intentConfirmation.appearance_preferences.length}}">
+        <view class="intent-label">外貌与气质偏好</view>
+        <view wx:for="{{intentConfirmation.appearance_preferences}}" wx:key="value" class="intent-item">{{item.value}}</view>
+      </view>
+      <view class="intent-group" wx:if="{{intentConfirmation.uncertainties.length}}">
+        <view class="intent-label">待确认项</view>
+        <view wx:for="{{intentConfirmation.uncertainties}}" wx:key="value" class="intent-item">{{item.value}}</view>
+      </view>
+      <view class="intent-group" wx:if="{{intentConfirmation.contradictions.length}}">
+        <view class="intent-label">需要厘清的矛盾</view>
+        <view wx:for="{{intentConfirmation.contradictions}}" wx:key="value" class="intent-item">{{item.value}}</view>
+      </view>
+      <button class="btn-primary intent-confirm-btn" bindtap="onConfirmIntent" loading="{{submitting}}" disabled="{{submitting}}">{{memberStatus === 'approved' ? '确认理解并保存' : '确认理解并提交审核'}}</button>
+      <button class="btn-secondary intent-edit-btn" bindtap="onEditIntent" disabled="{{submitting}}">返回修改补充</button>
+    </view>
+
     <view class="safe-bottom">
       <button
+        wx:if="{{!intentConfirmation}}"
         class="btn-primary"
         bindtap="onSubmit"
         disabled="{{cooldownActive || submitting}}"

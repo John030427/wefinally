@@ -103,7 +103,10 @@ Page({
     sessionId: '',
     sessionReady: false,
     coordinationId: '',
-    patchSubmitting: false
+    patchSubmitting: false,
+    supportCode: '',
+    supportCodeState: 'loading',
+    supportCodeError: ''
   },
 
   onLoad(options) {
@@ -129,7 +132,39 @@ Page({
         match_user_id: matchUserId
       } })
     }
+    this.loadSupportCode()
     this.loadHistory()
+  },
+
+  async loadSupportCode() {
+    this.setData({ supportCodeState: 'loading', supportCodeError: '' })
+    try {
+      const profile = await get(API_PATHS.USER_PROFILE, {}, { showError: false })
+      const supportCode = String(profile && profile.support_code || '').trim().toUpperCase()
+      if (!/^WF-\d{6}$/.test(supportCode)) throw new Error('用户ID暂不可用')
+      this.setData({ supportCode, supportCodeState: 'ready', supportCodeError: '' })
+    } catch (err) {
+      this.setData({
+        supportCode: '',
+        supportCodeState: 'error',
+        supportCodeError: (err && err.message) || '用户ID加载失败'
+      })
+    }
+  },
+
+  retrySupportCode() {
+    this.loadSupportCode()
+  },
+
+  copySupportCode() {
+    if (this.data.supportCodeState !== 'ready' || !this.data.supportCode) {
+      wx.showToast({ title: '用户ID尚未加载', icon: 'none' })
+      return
+    }
+    wx.setClipboardData({
+      data: this.data.supportCode,
+      success: () => wx.showToast({ title: '用户ID已复制', icon: 'success' })
+    })
   },
 
   welcomeMessage() {

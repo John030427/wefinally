@@ -6,7 +6,9 @@ const STORAGE_KEYS = {
   USER_INFO: 'wf_user_info',
   OPENID: 'wf_openid',
   AGREEMENT_ACCEPTED: 'wf_agreement_accepted',
-  MATCH_SETTING_COOLDOWN: 'wf_match_setting_cooldown'
+  MATCH_SETTING_COOLDOWN: 'wf_match_setting_cooldown',
+  PARTNER_TOKEN: 'wf_partner_token',
+  PARTNER_INFO: 'wf_partner_info'
 }
 
 function getStoredDevOpenid() {
@@ -79,6 +81,8 @@ App({
   },
 
   setLoginState(token, userInfo) {
+    wx.removeStorageSync(STORAGE_KEYS.PARTNER_TOKEN)
+    wx.removeStorageSync(STORAGE_KEYS.PARTNER_INFO)
     this.globalData.token = token
     this.globalData.userInfo = userInfo
     this.globalData.isLoggedIn = true
@@ -191,6 +195,8 @@ App({
     this.globalData.isLoggedIn = false
     wx.removeStorageSync(STORAGE_KEYS.TOKEN)
     wx.removeStorageSync(STORAGE_KEYS.USER_INFO)
+    wx.removeStorageSync(STORAGE_KEYS.PARTNER_TOKEN)
+    wx.removeStorageSync(STORAGE_KEYS.PARTNER_INFO)
   },
 
   checkNetwork(timeoutMs = networkCheckTimeoutMs) {

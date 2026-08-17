@@ -2,7 +2,7 @@ const { db, col, first, byId, now } = require('../lib/db')
 const { currentUser } = require('./user')
 const { isVipActive } = require('../lib/format')
 const { MEMBER_STATUS, memberStatus, canUseMatching } = require('../lib/memberPolicy')
-const { generateStructuredMatchReports } = require('../lib/minimax')
+const { generateStructuredMatchReports } = require('../lib/deepseek')
 const {
   STATUS,
   MAX_ATTEMPTS,
@@ -94,7 +94,7 @@ async function ensureTaskForMatch(match, source) {
   if (!task) {
     const created = now()
     const score = parseJson(match.score_detail_json)
-    const reverseScore = parseJson(reverse && reverse.score_detail_json)
+    const reverseScore = parseJson(reverse ? reverse.score_detail_json : match.counterpart_score_detail_json)
     const legacySucceeded = Number(match.ai_report_status) === 1 && match.ai_report_text && score.report_fallback_used !== true
     const doc = {
       match_group_id: pairId,
@@ -199,7 +199,10 @@ async function processOne(task) {
         a: Object.assign({}, userA, settingA || {}),
         b: Object.assign({}, userB, settingB || {})
       },
-      scores: { a: parseJson(matchA.score_detail_json), b: parseJson(matchB && matchB.score_detail_json) }
+      scores: {
+        a: parseJson(matchA.score_detail_json),
+        b: parseJson(matchB ? matchB.score_detail_json : matchA.counterpart_score_detail_json)
+      }
     }
     const started = Date.now()
     const result = await generateStructuredMatchReports(input)

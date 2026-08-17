@@ -11,6 +11,8 @@ const agent = require('./agent')
 const dateCoordination = require('./dateCoordination')
 const dateApplicationPatch = require('./dateApplicationPatch')
 const experienceFeedback = require('./experienceFeedback')
+const backoffice = require('./backoffice')
+const partnerOnboarding = require('./partnerOnboardingCloud')
 
 function methodOf(value) {
   return String(value || 'GET').toUpperCase()
@@ -32,6 +34,10 @@ function route(method, path) {
   const exact = `${method} ${path}`
   const map = {
     'POST /api/auth/wx-login': auth.wxLogin,
+    'POST /api/auth/partner-login': backoffice.partnerLoginForMiniProgram,
+    'GET /api/partner/onboarding/status': partnerOnboarding.status,
+    'POST /api/partner/activation': partnerOnboarding.activate,
+    'POST /api/partner/session': partnerOnboarding.session,
     'GET /api/common/circles': common.circles,
     'GET /api/common/promote-code': common.promoteCode,
     'GET /api/common/stats': common.marryStat,
@@ -53,8 +59,10 @@ function route(method, path) {
     'POST /api/member/application/submit': member.submit,
     'GET /api/match/setting': match.getSetting,
     'POST /api/match/setting': match.saveSetting,
+    'POST /api/match/intent/confirm': match.confirmIntent,
     'GET /api/match/setting/cooldown': match.cooldown,
     'POST /api/match/start': match.start,
+    'POST /api/match/test-runs': match.create,
     'POST /api/match/report': match.generateReport,
     'POST /api/match/report-tasks': reportTask.create,
     'GET /api/match/report-tasks/status': reportTask.status,
@@ -77,11 +85,15 @@ function route(method, path) {
     'POST /api/agent/sessions': agent.createSession,
     'POST /api/agent/human-tickets': agent.createHumanTicket,
     'POST /api/date-coordinations': dateCoordination.create,
+    'POST /api/date-coordinations/fixture-applications': dateCoordination.submitFixtureApplication,
     'POST /api/meet/create': meet.create,
     'POST /api/meet/sos': meet.homeSos,
     'GET /api/meet/existing': meet.existing,
     'GET /api/meet/list': meet.meetList
   }
+  if (exact === 'GET /api/partner/invite-assets') return backoffice.partnerInviteAssetsForMiniProgram
+  if (exact === 'GET /api/partner/dashboard') return backoffice.partnerDashboardForMiniProgram
+  if (exact === 'POST /api/partner/share-event') return backoffice.recordShareEventForMiniProgram
   if (map[exact]) return map[exact]
 
   let m = path.match(/^\/api\/agent\/sessions\/(\d+)\/messages$/)
@@ -89,6 +101,8 @@ function route(method, path) {
   if (method === 'POST' && m) return withParams(agent.send, { id: Number(m[1]), session_id: Number(m[1]) })
   m = path.match(/^\/api\/date-coordinations\/(\d+)$/)
   if (method === 'GET' && m) return withParams(dateCoordination.detail, { id: Number(m[1]), coordination_id: Number(m[1]) })
+  m = path.match(/^\/api\/date-coordinations\/fixture-responses\/(\d+)$/)
+  if (method === 'GET' && m) return withParams(dateCoordination.fixtureResponse, { id: Number(m[1]), job_id: Number(m[1]) })
   m = path.match(/^\/api\/date-coordinations\/(\d+)\/invitation-response$/)
   if (method === 'POST' && m) return withParams(dateCoordination.respondInvitation, { coordination_id: Number(m[1]) })
   m = path.match(/^\/api\/date-coordinations\/(\d+)\/application$/)
@@ -112,6 +126,8 @@ function route(method, path) {
   })
   m = path.match(/^\/api\/date-coordinations\/(\d+)\/recoordinate$/)
   if (method === 'POST' && m) return withParams(dateCoordination.recoordinate, { coordination_id: Number(m[1]) })
+  m = path.match(/^\/api\/date-coordinations\/(\d+)\/retry-processing$/)
+  if (method === 'POST' && m) return withParams(dateCoordination.retryProcessing, { coordination_id: Number(m[1]) })
   m = path.match(/^\/api\/meet\/share\/([^/]+)$/)
   if (method === 'GET' && m) return withParams(meet.shareDetail, { token: m[1] })
   m = path.match(/^\/api\/meet\/(\d+)$/)
@@ -124,6 +140,11 @@ function route(method, path) {
   if (method === 'POST' && m) return withParams(meet.cancel, { id: Number(m[1]) })
   m = path.match(/^\/api\/meet\/(\d+)\/sos$/)
   if (method === 'POST' && m) return withParams(meet.sos, { id: Number(m[1]) })
+  m = path.match(/^\/api\/match\/test-runs\/(\d+)\/execute$/)
+  if (method === 'POST' && m) return withParams(match.execute, { id: Number(m[1]) })
+  m = path.match(/^\/api\/match\/test-runs\/(\d+)$/)
+  if (method === 'GET' && m) return withParams(match.get, { id: Number(m[1]) })
+  if (method === 'GET' && path === '/api/match/test-runs') return match.get
   m = path.match(/^\/api\/match\/(\d+)$/)
   if (method === 'GET' && m) return withParams(match.detail, { id: Number(m[1]) })
 

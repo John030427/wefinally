@@ -83,11 +83,32 @@ function parseHeightCm(heightRange) {
 }
 
 function eduRank(education, config) {
-  return (config || MATCH_CONFIG).educationRank[education] ?? 0
+  return (config || MATCH_CONFIG).educationRank[education] || 0
 }
 
 function hardOk(settings, candidate, config) {
   const cfg = config || MATCH_CONFIG
+  const matchStatus = String(candidate.match_status || '').trim().toLowerCase()
+  const matchedPartnerId = candidate.matched_partner_id
+  const hasMatchedPartner = matchedPartnerId !== undefined
+    && matchedPartnerId !== null
+    && String(matchedPartnerId).trim() !== ''
+    && Number(matchedPartnerId) !== 0
+  if (matchStatus === 'matched' || hasMatchedPartner) return false
+  const requiredText = (keys) => {
+    for (let index = 0; index < keys.length; index += 1) {
+      const value = String(settings[keys[index]] || '').trim()
+      if (value) return value
+    }
+    return ''
+  }
+  const candidateText = (keys) => {
+    for (let index = 0; index < keys.length; index += 1) {
+      const value = String(candidate[keys[index]] || '').trim()
+      if (value) return value
+    }
+    return ''
+  }
   const hasAgeMin = settings.age_min != null && settings.age_min !== ''
   const hasAgeMax = settings.age_max != null && settings.age_max !== ''
   if (cfg.hard.age && (hasAgeMin || hasAgeMax)) {
@@ -102,6 +123,26 @@ function hardOk(settings, candidate, config) {
   }
   if (cfg.hard.minEducation && settings.min_education) {
     if (eduRank(candidate.education, cfg) < eduRank(settings.min_education, cfg)) return false
+  }
+  const requiredMarryStatus = requiredText(['must_marry_status', 'required_marry_status'])
+  if (requiredMarryStatus && candidateText(['marry_status', 'marriage_status']) !== requiredMarryStatus) return false
+  const requiredBabyPlan = requiredText(['must_baby_plan', 'required_baby_plan'])
+  if (requiredBabyPlan && candidateText(['baby_plan']) !== requiredBabyPlan) return false
+  const requiredCity = requiredText(['must_city', 'required_city'])
+  if (requiredCity && candidateText(['city']) !== requiredCity) return false
+  const requiredSmoking = requiredText(['must_smoking_status', 'required_smoking_status'])
+  if (requiredSmoking && candidateText(['smoking_status', 'smoking']) !== requiredSmoking) return false
+  const mustHeightMin = settings.must_height_min != null ? Number(settings.must_height_min) : null
+  const mustHeightMax = settings.must_height_max != null ? Number(settings.must_height_max) : null
+  if (mustHeightMin != null || mustHeightMax != null) {
+    const height = parseHeightCm(candidate.height_range)
+    if (height == null) return false
+    if (mustHeightMin != null && height < mustHeightMin) return false
+    if (mustHeightMax != null && height > mustHeightMax) return false
+  }
+  if (settings.require_safe_account === true) {
+    if (candidate.status !== undefined && Number(candidate.status) !== 1) return false
+    if (candidate.member_status && candidate.member_status !== 'approved') return false
   }
   return true
 }
@@ -215,8 +256,9 @@ function scoreAppearancePreference(user, candidate) {
 }
 
 function dimension(key, label, maxScore, rawScore, extra) {
-  const raw = round2(rawScore)
-  const percent = maxScore ? Math.min(100, Math.round((raw / maxScore) * 100)) : 0
+  const compared = !(extra && extra.compared === false) && rawScore != null && Number.isFinite(Number(rawScore))
+  const raw = compared ? round2(rawScore) : null
+  const percent = compared && maxScore ? Math.min(100, Math.round((raw / maxScore) * 100)) : null
   return Object.assign({
     key,
     label,
@@ -224,7 +266,9 @@ function dimension(key, label, maxScore, rawScore, extra) {
     max_score: maxScore,
     raw_score: raw,
     percent,
-    compatibility_score: percent
+    compatibility_score: percent,
+    status: compared ? 'compared' : 'not_compared',
+    compared
   }, extra || {})
 }
 
@@ -234,104 +278,132 @@ function scorePair(user, settings, candidate, viewSimilarity, config) {
   const detail = {}
   const dimensions = {}
   let total = 0
+  let comparedWeight = 0
 
-  const wantedBabyPlan = settings.like_baby_plan === '不限' ? '' : settings.like_baby_plan
-  detail.baby = wantedBabyPlan ? (candidate.baby_plan === wantedBabyPlan ? weights.baby : 0) : 10
-  dimensions.baby = dimension('baby', '婚育节奏', weights.baby, detail.baby)
-  total += detail.baby
+  function take(key, label, weight, raw, extra) {
+    const compared = raw != null && Number.isFinite(Number(raw))
+    detail[key] = compared ? round2(raw) : null
+    dimensions[key] = dimension(key, label, weight, compared ? raw : null, Object.assign({ compared }, extra || {}))
+    if (compared) {
+      total += Number(detail[key] || 0)
+      comparedWeight += Number(weight || 0)
+    }
+  }
 
-  detail.view = round2((Number(viewSimilarity || 0) / 100) * weights.view)
-  dimensions.view = dimension('view', '三观文本', weights.view, detail.view, {
-    similarity: Number(viewSimilarity || 0)
+  const wantedBabyPlan = settings.like_baby_plan === '不限' ? '' : String(settings.like_baby_plan || '').trim()
+  take('baby', '婚育节奏', weights.baby, wantedBabyPlan
+    ? (candidate.baby_plan === wantedBabyPlan ? weights.baby : 0)
+    : null)
+
+  take('view', '三观文本', weights.view, round2((Number(viewSimilarity || 0) / 100) * weights.view), {
+    similarity: Number(viewSimilarity || 0),
+    signal: 'jaccard_diagnostic'
   })
-  total += detail.view
 
   const psych = scorePsychProfile(settings.psych_profile_json, candidate.psych_profile_json)
-  detail.psych = psych.compared ? round2((psych.score / 100) * weights.psych) : 0
   detail.psych_score = psych.score
   detail.psych_compared = psych.compared
   detail.psych_detail = psych.detail
-  dimensions.psych = dimension('psych', '关系偏好', weights.psych, detail.psych, {
+  take('psych', '关系偏好', weights.psych, psych.compared ? round2((psych.score / 100) * weights.psych) : null, {
     compatibility_score: psych.score,
     compared: psych.compared,
     detail: psych.detail
   })
-  total += detail.psych
 
   const age = calcAge(candidate.birth_year)
+  let ageRaw = null
   if (age != null && settings.age_min != null && settings.age_max != null) {
-    if (age >= Number(settings.age_min) && age <= Number(settings.age_max)) detail.age = weights.age
+    if (age >= Number(settings.age_min) && age <= Number(settings.age_max)) ageRaw = weights.age
     else {
       const distance = Math.min(
         Math.abs(age - Number(settings.age_min)),
         Math.abs(age - Number(settings.age_max))
       )
-      detail.age = Math.max(0, weights.age - distance * 2)
+      ageRaw = Math.max(0, weights.age - distance * 2)
     }
-  } else detail.age = 5
-  dimensions.age = dimension('age', '年龄区间', weights.age, detail.age)
-  total += detail.age
+  }
+  take('age', '年龄区间', weights.age, ageRaw)
 
   const height = parseHeightCm(candidate.height_range)
+  let heightRaw = null
   if (height && settings.height_min && settings.height_max) {
     if (height >= Number(settings.height_min) && height <= Number(settings.height_max)) {
-      detail.height = weights.height
+      heightRaw = weights.height
     } else {
       const distance = Math.min(
         Math.abs(height - Number(settings.height_min)),
         Math.abs(height - Number(settings.height_max))
       )
-      detail.height = Math.max(0, weights.height - distance)
+      heightRaw = Math.max(0, weights.height - distance)
     }
-  } else detail.height = 3
-  dimensions.height = dimension('height', '身高区间', weights.height, detail.height)
-  total += detail.height
+  }
+  take('height', '身高区间', weights.height, heightRaw)
 
-  detail.education = settings.min_education
-    ? (eduRank(candidate.education, cfg) >= eduRank(settings.min_education, cfg) ? weights.education : 0)
-    : 2
-  dimensions.education = dimension('education', '学历偏好', weights.education, detail.education)
-  total += detail.education
+  const minEducation = String(settings.min_education || '').trim()
+  take('education', '学历偏好', weights.education, minEducation
+    ? (eduRank(candidate.education, cfg) >= eduRank(minEducation, cfg) ? weights.education : 0)
+    : null)
 
-  detail.circle = circleMatches(settings.like_circle_ids, candidate.circle_id) ? weights.circle : 2
-  dimensions.circle = dimension('circle', '职业圈层', weights.circle, detail.circle)
-  total += detail.circle
+  const circleIds = String(settings.like_circle_ids || '').split(',').map((item) => item.trim()).filter(Boolean)
+  take('circle', '职业圈层', weights.circle, circleIds.length
+    ? (circleIds.includes(String(candidate.circle_id)) ? weights.circle : 0)
+    : null)
 
-  detail.city = user.city && candidate.city === user.city ? weights.city : 1
-  dimensions.city = dimension('city', '城市距离', weights.city, detail.city)
-  total += detail.city
+  const userCity = String(user.city || '').trim()
+  const candidateCity = String(candidate.city || '').trim()
+  take('city', '城市距离', weights.city, (userCity && candidateCity)
+    ? (candidateCity === userCity ? weights.city : 0)
+    : null)
 
-  detail.appearance = cfg.useAppearanceInMatch
-    ? round2(weights.appearance * scoreAppearancePreference(user, candidate))
-    : 0
-  dimensions.appearance = dimension('appearance', '外貌偏好', weights.appearance, detail.appearance)
-  total += detail.appearance
+  const appearanceRatio = cfg.useAppearanceInMatch ? scoreAppearancePreference(user, candidate) : 0
+  take('appearance', '外貌偏好', weights.appearance, cfg.useAppearanceInMatch && appearanceRatio > 0
+    ? round2(weights.appearance * appearanceRatio)
+    : (cfg.useAppearanceInMatch && (appearanceTerms(user, 'appearance_want_tags', 'appearance_want').length
+      || appearanceTerms(candidate, 'appearance_tags', 'appearance_description').length)
+      ? 0
+      : null))
 
   const maxTotal = Object.values(weights).reduce((sum, value) => sum + Number(value || 0), 0)
+  const completeness = maxTotal ? Math.min(100, Math.round((comparedWeight / maxTotal) * 100)) : 0
   return {
     total: round2(total),
     maxTotal,
-    normalizedTotal: maxTotal ? Math.min(100, Math.round((total / maxTotal) * 100)) : 0,
+    comparedWeight: round2(comparedWeight),
+    completeness,
+    // Fit among compared dimensions only; completeness is separate.
+    normalizedTotal: comparedWeight ? Math.min(100, Math.round((total / comparedWeight) * 100)) : null,
     detail,
-    dimensions
+    dimensions,
+    score_schema_version: 'algo_evidence_v3'
   }
 }
 
 function passesQualityGate(scoreA, scoreB, viewSimilarity, config) {
   const gate = (config || MATCH_CONFIG).qualityGate
   const reasons = []
-  if (Math.min(Number(scoreA.total || 0), Number(scoreB.total || 0)) < Number(gate.minSideScore || 0)) {
+  const diagnostics = []
+  const sidePoints = (score) => {
+    const compared = Number(score.comparedWeight || 0)
+    const maxTotal = Number(score.maxTotal || 0)
+    // Incomplete profiles keep absolute points; well-covered profiles use fit among compared dims.
+    if (compared > 0 && maxTotal > 0 && score.normalizedTotal != null && (compared / maxTotal) >= 0.5) {
+      return round2((Number(score.normalizedTotal) / 100) * maxTotal)
+    }
+    return Number(score.total || 0)
+  }
+  if (Math.min(sidePoints(scoreA), sidePoints(scoreB)) < Number(gate.minSideScore || 0)) {
     reasons.push('side_score')
   }
+  // ponytail: Jaccard is diagnostic only; must not eliminate synonym-capable pairs before RAG.
   if (Number(viewSimilarity || 0) < Number(gate.minViewSimilarity || 0)) {
-    reasons.push('view_similarity')
+    diagnostics.push('view_similarity')
   }
   const psychFailed = [scoreA, scoreB].some((score) => (
     Number(score.detail.psych_compared || 0) >= Number(gate.minPsychCompared || 0)
       && Number(score.detail.psych_score || 0) < Number(gate.minPsychScore || 0)
   ))
   if (psychFailed) reasons.push('psych_score')
-  return { pass: reasons.length === 0, reasons }
+  return { pass: reasons.length === 0, reasons, diagnostics }
 }
 
 function settingsOf(user, settingsByUserId) {
@@ -392,13 +464,17 @@ function rankCandidates(user, candidates, settingsByUserId, options) {
 function scoreDetailFor(result, side, rank) {
   const score = side === 'b' ? result.scoreB : result.scoreA
   return {
-    version: 'algo_evidence_v2',
+    version: 'algo_evidence_v3',
+    score_schema_version: 'algo_evidence_v3',
     total: score.total,
     max_total: score.maxTotal,
+    compared_weight: score.comparedWeight,
+    completeness: score.completeness,
     normalized_total: score.normalizedTotal,
     normalizedTotal: score.normalizedTotal,
     mutual_total: result.mutualScore,
     view_similarity: result.viewSimilarity,
+    view_similarity_role: 'jaccard_diagnostic',
     algorithm_rank: rank || 1,
     ai_rank: null,
     ai_weight: 0,
@@ -407,6 +483,7 @@ function scoreDetailFor(result, side, rank) {
     quality_gate: {
       pass: result.quality.pass,
       reasons: result.quality.reasons,
+      diagnostics: result.quality.diagnostics || [],
       fallback: false
     },
     side: Object.assign({}, score.detail, { dimensions: score.dimensions })

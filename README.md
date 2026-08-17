@@ -162,6 +162,20 @@ npm run dev
 
 ---
 
+## LangGraph AI 编排（本地候选）
+
+`miniprogram/cloudfunctions/agent-graph/` 提供独立 Node.js 20 TypeScript 状态图，用于平台客服人工介入和双向约会协调。现有 `api` 云函数仍是唯一业务读写执行者；图和模型不能直接访问用户库、支付、会员或匹配数据库。
+
+```bash
+npm --prefix miniprogram/cloudfunctions/agent-graph test
+npm --prefix miniprogram/cloudfunctions/agent-graph run build
+npm --prefix server run selfcheck:langgraph
+```
+
+该功能默认关闭，且当前没有部署。平台客服接入由 `LANGGRAPH_ENABLED` 控制；`LANGGRAPH_SHADOW_MODE=true` 只比较决策、不执行工具。约会协调 API 仍使用原流程，等待旧申请字段到新双方偏好状态的无损映射完成。部署 `agent-graph`、部署 `api` 和上传微信小程序是三个独立动作，必须分别验证和授权。
+
+---
+
 ## 文档索引
 
 - [腾讯云部署指南](./docs/deploy-tencent.md)

@@ -78,6 +78,11 @@ async function run() {
   }))
   assert.strictEqual(camel.totalScorePercent, 79)
 
+  const aiAdjusted = await render(Object.assign({}, base, {
+    score_detail: { final_match_score: 84, normalized_total: 79, total: 100, max_total: 128 }
+  }))
+  assert.strictEqual(aiAdjusted.totalScorePercent, 84)
+
   const derived = await render(Object.assign({}, base, {
     score_detail: { total: 100, max_total: 128 }
   }))
