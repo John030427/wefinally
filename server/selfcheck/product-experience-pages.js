@@ -71,6 +71,9 @@ function loadPage(relativePath, requestMocks) {
       if (request === '../../utils/util') {
         return require(path.join(root, 'miniprogram/utils/util.js'))
       }
+      if (request === '../../utils/aiMatchReportPresentation') {
+        return require(path.join(root, 'miniprogram/utils/aiMatchReportPresentation.js'))
+      }
       throw new Error(`Unexpected require: ${request}`)
     }
   }
