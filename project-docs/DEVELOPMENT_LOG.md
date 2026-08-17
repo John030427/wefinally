@@ -1291,3 +1291,28 @@ AI 编排 / 人工介入 / 安全边界 / 本地发布候选
 - 约会协调图已实现并测试，但 API 暂不切流，直到旧 `date_coordination_application` 字段到新偏好 schema 的无损映射有独立测试。
 - 未将 `wx-server-sdk@4.0.2` 加入新图函数，因为它固定的 CloudBase SDK 依赖链仍包含审计为高危的旧依赖。部署前必须确定安全的运行时数据库适配方式，并完成 collection、TTL/index、环境变量和真实云函数恢复验证。
 - `api` 云函数部署与小程序客户端上传是两个独立发布动作，必须分别验证和授权。
+
+---
+
+## 2026-08-16 — agent-graph 测试外移后 requireFromAgentGraph 缺失修复
+
+### 类型
+Bug修复 / 测试
+
+### 修改目的
+`fec4215`（修复微信开发者工具"非法的文件 / import.meta outside module"上传报错）将 agent-graph 的 8 个测试从 `cloudfunctions/agent-graph/test/` 外移至 `miniprogram/tests/agent-graph/`，同时把 4 个测试文件的 `import ... from '@langchain/langgraph'` 改写为 `requireFromAgentGraph('@langchain/langgraph')`，但从未定义该全局函数，导致 `checkpoint / customerService / dateCoordination / index` 四个测试文件在模块加载期直接 `ReferenceError` 整包失败，`npm run check` 从 33 项通过退化为 13 通过 / 4 文件失败。
+
+### 涉及文件
+- `miniprogram/tests/agent-graph/agentGraphRequire.ts`（新增：createRequire 锚定 `cloudfunctions/agent-graph/package.json`，兼容 tsx CJS/ESM 两种形态）
+- `miniprogram/tests/agent-graph/checkpoint.test.ts`
+- `miniprogram/tests/agent-graph/customerService.test.ts`
+- `miniprogram/tests/agent-graph/dateCoordination.test.ts`
+- `miniprogram/tests/agent-graph/index.test.ts`
+
+### 测试
+- [x] `npm --prefix miniprogram/cloudfunctions/agent-graph run check`：33/33 通过（build + tsc + tsx --test）
+- [x] 六组 server selfcheck（agent / safety / ai-report / cloudpay / member / cloud-match）复跑全绿
+
+### 备注
+提交 `7bffc93`（分支 `feature/partner-gated-aigc-plan`）。用户既有 dirty 文件未纳入提交；本会话另产出 `project-docs/HANDOFF_2026-08-16.md` 交接文档。
+
