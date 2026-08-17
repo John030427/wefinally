@@ -345,15 +345,24 @@ function scorePair(user, settings, candidate, viewSimilarity, config) {
     : null)
 
   const circleIds = String(settings.like_circle_ids || '').split(',').map((item) => item.trim()).filter(Boolean)
+  const candidateCircleIds = Array.isArray(candidate.identity_circle_ids) && candidate.identity_circle_ids.length
+    ? candidate.identity_circle_ids.map(String)
+    : [String(candidate.circle_id || '')].filter(Boolean)
   take('circle', '职业圈层', weights.circle, circleIds.length
-    ? (circleIds.includes(String(candidate.circle_id)) ? weights.circle : 0)
+    ? (circleIds.some((id) => candidateCircleIds.includes(String(id))) ? weights.circle : round2(weights.circle * 0.35))
     : null)
 
-  const userCity = String(user.city || '').trim()
-  const candidateCity = String(candidate.city || '').trim()
-  take('city', '城市距离', weights.city, (userCity && candidateCity)
-    ? (candidateCity === userCity ? weights.city : 0)
-    : null)
+  const userCity = String(user.city_name || user.city || '').trim()
+  const candidateCity = String(candidate.city_name || candidate.city || '').trim()
+  const userProvince = String(user.province_code || user.province_name || '').trim()
+  const candidateProvince = String(candidate.province_code || candidate.province_name || '').trim()
+  let cityRaw = null
+  if (userCity && candidateCity) {
+    if (candidateCity === userCity) cityRaw = weights.city
+    else if (userProvince && candidateProvince && userProvince === candidateProvince) cityRaw = round2(weights.city * 0.55)
+    else cityRaw = 0
+  }
+  take('city', '城市距离', weights.city, cityRaw)
 
   const appearanceRatio = cfg.useAppearanceInMatch ? scoreAppearancePreference(user, candidate) : 0
   take('appearance', '外貌偏好', weights.appearance, cfg.useAppearanceInMatch && appearanceRatio > 0
@@ -501,3 +510,14 @@ module.exports = {
   scoreDetailFor,
   scorePair
 }
+
+// Soft re-export for bilateral needs helpers (keeps import paths stable)
+try {
+  const bilateral = require('./bilateralNeedsMatch')
+  module.exports.bilateralAggregate = bilateral.bilateralAggregate
+  module.exports.scoreBilateralProfiles = bilateral.scoreBilateralProfiles
+  module.exports.blendStructuredWithBilateral = bilateral.blendStructuredWithBilateral
+} catch (error) {
+  // optional during partial deploys
+}
+

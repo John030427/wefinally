@@ -5,6 +5,11 @@ const { flagEnabled } = require('../lib/flags')
 const { MEMBER_STATUS, memberStatus, canUseMatching, normalizeMatchSettingInput } = require('../lib/memberPolicy')
 const { rankCandidates, scoreDetailFor } = require('../lib/matchPolicy')
 const { compileIntentProfile, normalizeMode } = require('../lib/intentProfile')
+const {
+  compileAiMatchProfile,
+  shouldInvalidateAiMatchProfile,
+  sourceFingerprint
+} = require('../lib/aiMatchProfile')
 const { canonicalPairKey, deliverPair, createCloudClaimStore, CLAIM_STATUS } = require('../lib/matchClaim')
 const { semanticRerank, intentMatchGate } = require('../lib/semanticMatchService')
 const reportTask = require('./reportTask')
@@ -229,6 +234,25 @@ async function saveSetting(data, wxContext) {
   const alreadyConfirmed = Boolean(
     existing && existing.intent_profile_confirmed_at && existing.intent_profile_json === intentProfileJson
   )
+  const profileSource = Object.assign({}, user, normalized, {
+    identity_tags: user.identity_tags,
+    secondary_circle_ids: user.secondary_circle_ids
+  })
+  let aiMatchProfile = null
+  const existingAi = existing && existing.ai_match_profile_json
+    ? (typeof existing.ai_match_profile_json === 'string'
+      ? (() => { try { return JSON.parse(existing.ai_match_profile_json) } catch (e) { return null } })()
+      : existing.ai_match_profile_json)
+    : null
+  if (!existingAi || shouldInvalidateAiMatchProfile(existingAi, profileSource)) {
+    aiMatchProfile = compileAiMatchProfile(profileSource, {
+      intent: intentProfile,
+      profile_version: Number(existing && existing.profile_version || 0) + 1,
+      confirmed_by_user: alreadyConfirmed
+    })
+  } else {
+    aiMatchProfile = existingAi
+  }
   const payload = {
     user_id: user.id,
     age_min: normalized.age_min,
@@ -247,6 +271,12 @@ async function saveSetting(data, wxContext) {
     intent_profile_json: intentProfileJson,
     intent_profile_confirmed_at: alreadyConfirmed ? existing.intent_profile_confirmed_at : null,
     psych_profile_json: data.psych_profile_json || data.psych_profile || null,
+    ai_match_profile_json: aiMatchProfile,
+    ai_match_profile_version: Number(aiMatchProfile.profile_version || 1),
+    ai_match_profile_source_version: aiMatchProfile.source_profile_version || sourceFingerprint(profileSource),
+    ai_match_profile_status: 'ready',
+    ai_match_profile_generated_at: aiMatchProfile.generated_at || now(),
+    profile_version: Number(aiMatchProfile.profile_version || 1),
     last_edit_time: memberStatus(user) === MEMBER_STATUS.APPROVED ? now() : null
   }
   const saved = existing
@@ -254,6 +284,7 @@ async function saveSetting(data, wxContext) {
     : await addWithId('user_match_setting', payload, 'match_setting')
   return Object.assign(saved, {
     intent_profile: intentProfile,
+    ai_match_profile: aiMatchProfile,
     intent_confirmation_required: intentProfile.requires_confirmation && !alreadyConfirmed
   })
 }

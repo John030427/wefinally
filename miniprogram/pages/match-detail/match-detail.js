@@ -3,6 +3,7 @@ const { API_PATHS } = require('../../utils/constants')
 const { buildFieldExplainItems, buildLocalMatchReport } = require('../../utils/matchReport')
 const { resolveTotalScorePercent } = require('../../utils/matchScore')
 const { buildMatchSummary } = require('../../utils/productExperience')
+const { presentAiMatchReport } = require('../../utils/aiMatchReportPresentation')
 const {
   formatDateOnly,
   getCompatibilityColor,
@@ -92,6 +93,7 @@ Page({
     matchId: '',
     autoReportPending: false,
     detail: null,
+    reportPresentation: { sections: [], summary: '', disclaimer: 'AI 生成内容，仅供参考' },
     compatibilityScore: 0,
     totalScore: 0,
     totalScorePercent: 0,
@@ -268,6 +270,14 @@ Page({
         lockMsg: detail.message || '开通 VIP 查看完整匹配详情'
       }
 
+      const aiReportPayload = normalized.aiReport
+      const reportPresentation = aiReportPayload
+        ? presentAiMatchReport(aiReportPayload, {
+          forYou: scoreDetail && (scoreDetail.a_to_b_reasons || scoreDetail.for_you),
+          forThem: scoreDetail && (scoreDetail.b_to_a_reasons || scoreDetail.for_them)
+        })
+        : { sections: [], summary: '' }
+
       const numScore = hasScore ? Number(score) : 0
       const numTotalScore = hasTotalScore ? normalized.totalScore : 0
 
@@ -275,6 +285,7 @@ Page({
         pageState: 'success',
         autoReportPending: false,
         detail: normalized,
+        reportPresentation,
         totalScore: numTotalScore,
         totalScorePercent: hasTotalScore ? normalized.totalScorePercent : 0,
         totalScoreText: hasTotalScore ? normalized.totalScoreText : '',
