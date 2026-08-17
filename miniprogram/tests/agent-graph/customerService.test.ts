@@ -1,5 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { requireFromAgentGraph } from './agentGraphRequire.js'
 const { Command, MemorySaver } = requireFromAgentGraph('@langchain/langgraph') as typeof import('@langchain/langgraph')
 import type { DecisionModel, ModelDecision } from '../../cloudfunctions/agent-graph/src/model.js'
 import { buildCustomerServiceGraph } from '../../cloudfunctions/agent-graph/src/graphs/customerService.js'
