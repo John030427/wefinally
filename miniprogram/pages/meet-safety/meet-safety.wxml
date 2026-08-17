@@ -47,17 +47,8 @@
     </view>
     <view class="info-row"><text>安全提示</text><text>{{safetyTips}}</text></view>
     <view class="note">{{form.meet_note || safetyTips}}</view>
-    <view class="guard-status {{guarding ? 'active' : ''}}">
-      {{shareMode ? '这是亲友只读分享卡，可查看报备信息与前台守护轨迹条数' : (guarding ? '前台安全守护已开启：页面保持打开时会记录定位轨迹' : '安全守护未开启：当前仅保留报备信息和最近一次定位')}}
-    </view>
-    <view class="guard-evidence">
-      <text>前台守护轨迹：{{locationCount}} 条</text>
-      <text wx:if="{{latestLocationText}}">最近记录：{{latestLocationText}}</text>
-    </view>
+    <view class="guard-status">仅保存你主动选择的见面地点，不会持续获取或追踪实时位置。</view>
     <button wx:if="{{!shareMode}}" class="share-btn" open-type="share">发送安全确认给对方或亲友</button>
-    <button wx:if="{{!shareMode}}" class="guard-btn {{guarding ? 'active' : ''}}" bindtap="toggleGuard">
-      {{guarding ? '结束安全守护' : '开启安全守护'}}
-    </button>
     <view wx:if="{{!shareMode}}" class="sos-btn" catchtap="sos">一键呼救 110</view>
   </view>
 </view>

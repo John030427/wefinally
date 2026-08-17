@@ -5,6 +5,8 @@ const STORAGE_KEYS = {
   AGREEMENT_ACCEPTED: 'wf_agreement_accepted',
   MATCH_SETTING_COOLDOWN: 'wf_match_setting_cooldown',
   PROMOTE_CODE: 'wf_promote_code',
+  PARTNER_TOKEN: 'wf_partner_token',
+  PARTNER_INFO: 'wf_partner_info',
   TRUST_ONBOARDING: 'wf_trust_onboarding_v1'
 }
 
@@ -14,6 +16,7 @@ const API_PATHS = {
   USER_PROFILE: '/api/user/profile',
   USER_PROFILE_UPDATE: '/api/user/profile',
   MATCH_SETTING: '/api/match/setting',
+  MATCH_INTENT_CONFIRM: '/api/match/intent/confirm',
   MATCH_SETTING_COOLDOWN: '/api/match/setting/cooldown',
   MATCH_START: '/api/match/start',
   MATCH_LIST: '/api/match/list',

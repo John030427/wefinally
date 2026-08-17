@@ -1212,3 +1212,107 @@ Bug 验证 / 云端只读审计 / 测试夹具 / 隐私加固
 - 六组总自检全部通过；归档 CloudBase 交付报告后产生的旧路径断言已同步到 `project-docs/archive/audits/`。
 - `server/selfcheck/partner-dashboard.js` 语法检查和 `git diff --check` 通过。
 - 首次基线使用独立临时 Git 仓库生成，不改写当前 `feature/ai-agent-system` 的 90 个旧提交和脏工作树。
+- 安全基线已推送到私有仓库 `John030427/wefinally` 的 `main`，提交为 `7d8d7549b5a5e5e4cd8905c44a7b47906e3d614e`，远端与本地快照 SHA 一致。
+- `Todou-er` 已接受邀请并具有 `write` 权限。
+- `main` 已要求 PR、1 人审批、对话解决和线性历史，禁止强推/删除并对管理员生效；仅允许 Squash 合并，合并后自动删除分支。
+- 已启用漏洞提醒和自动安全修复。
+
+## 2026-08-10 — 本地管理后台连接 CloudBase
+
+### 类型
+后台接入 / 鉴权隔离 / 云端版本核对
+
+### 修改目的
+- 为本地管理后台增加仅连接 CloudBase 的运行模式，避免本地夹具与真实云端数据混用。
+- 复用 CloudBase 现有管理员登录和业务 API，不在浏览器保存云端密钥，不让前端直接访问数据库。
+- 保留原有本地开发模式，便于继续使用脱敏夹具做界面和流程开发。
+
+### 结果
+- 新增 `npm run admin:cloudbase`，服务仅监听 `127.0.0.1`，并将后台请求指向已绑定环境的 CloudBase HTTP 访问服务。
+- CloudBase 模式只开放已迁移页面，登录态改用 `sessionStorage`，退出浏览器会话后自动失效。
+- 登录页、顶部环境标识和云端接口过旧提示已区分本地模式与真实环境。
+- CORS 预检通过；浏览器打开 `http://127.0.0.1:3107/admin` 正常，控制台无警告或错误；未提交真实管理员密码。
+- 只读核对发现线上 `api` 云函数尚缺少当前客服工作台所需的会话列表、会话详情、统一时间线和人工回复接口，因此连接层已完成，但完整客服功能需要在明确授权后部署当前云函数版本。
+
+### 测试与边界
+- [x] `npm run selfcheck:cloudbase-admin`
+- [x] 后台内联脚本语法检查
+- [x] `npm run selfcheck:agent`
+- [x] `npm run selfcheck:safety`
+- [x] `git diff --check`
+- 未部署云函数、未写入生产数据库、未提交 Git、未保存管理员口令。
+
+## 2026-08-10 — 管理员与合伙人后台 CloudBase 接入上线
+
+### 类型
+云函数部署 / 后台接入 / 角色权限隔离
+
+### 修改目的
+- 在用户明确授权后，将当前 `api` 云函数代码部署到既有 CloudBase 环境。
+- 让管理员后台与合伙人后台使用同一个云端业务 API，同时保持 `admin` / `partner` 的服务端权限边界。
+- 修复 CloudBase 服务地址重复拼接 `/api` 导致请求落到 `/api/api/...` 的连接错误。
+
+### 结果
+- `api` Event 云函数已更新，运行时仍为 `Nodejs16.13`，环境变量、网关和支付配置未改动。
+- 部署后函数状态为 `Active`，只读 `ping` 返回目标环境 `cloud1-d4gy8l52g08bba326`。
+- 管理员会话与合伙人申请接口的无凭据请求均返回 `401 后台Token无效`，确认新路由和角色鉴权已生效且未返回业务数据。
+- 本地连接器同时提供 `http://127.0.0.1:3107/admin` 与 `http://127.0.0.1:3107/partner`。
+- 合伙人 CloudBase 专用模式使用 `sessionStorage`，复用单次云端登录 Token，仅开放已迁移的“用户审核、推广工具”。看板、订单、提现仍依赖旧本地 MySQL，暂未暴露；提现迁移需要单独设计事务与幂等控制。
+
+### 测试与边界
+- [x] 交接第 8 节六组 selfcheck 全部通过。
+- [x] `npm --prefix server run selfcheck:cloudbase-admin`
+- [x] `npm --prefix server run selfcheck:cloudbase-partner`
+- [x] 管理员与合伙人登录页浏览器验证，控制台无警告或错误。
+- 未上传小程序客户端、未修改生产数据库、未提交 Git、未提交真实后台账号密码。
+
+## 2026-08-11 — LangGraph 客服与双向约会协调本地候选
+
+### 类型
+AI 编排 / 人工介入 / 安全边界 / 本地发布候选
+
+### 实现
+- 新增独立 `Nodejs20.19` TypeScript `agent-graph` 函数源码，固定使用 `@langchain/langgraph@1.4.9`。
+- 客服图支持普通咨询、投诉/支付争议转人工、提示词注入拦截、`interrupt()` 暂停及跨图实例恢复。
+- 双向约会图以确定性代码计算时间、行政区、场所类型、时长和预算交集；任一方修改后版本递增，旧 proposal 和双方旧确认立即失效。
+- 新增 CloudBase collection 抽象的 checkpoint saver：文档键不可猜测，write 幂等，限定 `wf_thread_`，保存过期时间，并可在新实例恢复。
+- API 侧新增 HMAC actor/thread 标识、严格结果 DTO、超时/不可用回退、shadow mode 和 8 项精确工具白名单。平台客服可通过默认关闭的开关接入；模型和图节点不直接访问业务数据库。
+
+### 安全与验证
+- 图函数 30 项测试通过（包括读取层主动忽略已过期 checkpoint），TypeScript 严格构建通过，生产依赖 `npm audit --omit=dev` 为 0。
+- `selfcheck:langgraph` 以及 Agent、安全、AI 报告、支付、会员、匹配六组基线全部通过。
+- 对抗测试覆盖伪造 actor/thread、任意工具、跨协调任务、旧版本、重复恢复、坏 checkpoint、手机号/OpenID/密钥泄漏、函数超时和不可用回退。
+- 最终验证时已临时启动 `localhost:3000`，总入口通过健康检查和纯逻辑匹配断言，随后因本机没有监听 `127.0.0.1:3306` 的 MySQL 服务，在 `match-psych-report` 清理步骤以 `ECONNREFUSED` 停止；逐组代码自检没有失败。
+- 变更扫描只命中测试中的明确假手机号/OpenID/密钥/私钥标记夹具，未发现真实凭据。
+
+### 部署边界
+- 当前未部署 `agent-graph`、未更新线上 `api`、未上传小程序客户端、未写生产数据库。
+- `LANGGRAPH_ENABLED` 默认关闭；`LANGGRAPH_SHADOW_MODE` 不执行工具。
+- 约会协调图已实现并测试，但 API 暂不切流，直到旧 `date_coordination_application` 字段到新偏好 schema 的无损映射有独立测试。
+- 未将 `wx-server-sdk@4.0.2` 加入新图函数，因为它固定的 CloudBase SDK 依赖链仍包含审计为高危的旧依赖。部署前必须确定安全的运行时数据库适配方式，并完成 collection、TTL/index、环境变量和真实云函数恢复验证。
+- `api` 云函数部署与小程序客户端上传是两个独立发布动作，必须分别验证和授权。
+
+---
+
+## 2026-08-16 — agent-graph 测试外移后 requireFromAgentGraph 缺失修复
+
+### 类型
+Bug修复 / 测试
+
+### 修改目的
+`fec4215`（修复微信开发者工具"非法的文件 / import.meta outside module"上传报错）将 agent-graph 的 8 个测试从 `cloudfunctions/agent-graph/test/` 外移至 `miniprogram/tests/agent-graph/`，同时把 4 个测试文件的 `import ... from '@langchain/langgraph'` 改写为 `requireFromAgentGraph('@langchain/langgraph')`，但从未定义该全局函数，导致 `checkpoint / customerService / dateCoordination / index` 四个测试文件在模块加载期直接 `ReferenceError` 整包失败，`npm run check` 从 33 项通过退化为 13 通过 / 4 文件失败。
+
+### 涉及文件
+- `miniprogram/tests/agent-graph/agentGraphRequire.ts`（新增：createRequire 锚定 `cloudfunctions/agent-graph/package.json`，兼容 tsx CJS/ESM 两种形态）
+- `miniprogram/tests/agent-graph/checkpoint.test.ts`
+- `miniprogram/tests/agent-graph/customerService.test.ts`
+- `miniprogram/tests/agent-graph/dateCoordination.test.ts`
+- `miniprogram/tests/agent-graph/index.test.ts`
+
+### 测试
+- [x] `npm --prefix miniprogram/cloudfunctions/agent-graph run check`：33/33 通过（build + tsc + tsx --test）
+- [x] 六组 server selfcheck（agent / safety / ai-report / cloudpay / member / cloud-match）复跑全绿
+
+### 备注
+提交 `7bffc93`（分支 `feature/partner-gated-aigc-plan`）。用户既有 dirty 文件未纳入提交；本会话另产出 `project-docs/HANDOFF_2026-08-16.md` 交接文档。
+

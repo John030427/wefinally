@@ -1,5 +1,6 @@
 const crypto = require('crypto')
 const { MEMBER_STATUS, memberStatus } = require('../lib/memberPolicy')
+const { syntheticWriteDefaults } = require('../lib/testIdentityPolicy')
 
 function defaultDeps() {
   const db = require('../lib/db')
@@ -94,10 +95,11 @@ function fixtureProfile(owner, ownerSetting, runId, now) {
       appearance_want_tags: '',
       promote_partner_id: Number(owner.promote_partner_id || 0),
       promote_code: '',
-      is_test_fixture: 1,
-      ab_test_run_id: runId,
-      ab_test_owner_user_id: owner.id,
-      ab_test_expires_at: new Date(now.getTime() + 86400000)
+      ...syntheticWriteDefaults({
+        ownerUserId: owner.id,
+        runId,
+        expiresAt: new Date(now.getTime() + 86400000)
+      })
     },
     setting: {
       age_min: Math.max(18, ownerAge - 2),

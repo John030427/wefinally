@@ -41,6 +41,13 @@ assert(listJs.includes('meet-safety?mode=create'), 'new record action must reque
 assert(pageWxml.includes('在地图中选择地点'), 'meet safety page must expose a map picker button')
 assert(pageWxml.includes('form.meet_address'), 'meet safety page must display the selected address')
 assert(appJson.requiredPrivateInfos.includes('chooseLocation'), 'app.json must declare chooseLocation')
+for (const api of ['getLocation', 'startLocationUpdate', 'onLocationChange', 'startLocationUpdateBackground']) {
+  assert(!appJson.requiredPrivateInfos.includes(api), `app.json must not declare rejected private API ${api}`)
+}
+for (const api of ['wx.getLocation', 'wx.startLocationUpdate', 'wx.onLocationChange', 'wx.startLocationUpdateBackground']) {
+  assert(!pageJs.includes(api), `meet safety page must not call rejected private API ${api}`)
+}
+assert(!pageWxml.includes('开启安全守护'), 'meet safety page must not advertise removed live location tracking')
 assert(cloudHandler.includes('meet_address'), 'cloud handler must persist the selected address')
 assert(cloudHandler.includes('location_source'), 'cloud handler must persist the location source')
 

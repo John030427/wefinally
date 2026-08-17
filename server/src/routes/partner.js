@@ -10,6 +10,7 @@ const { debounceMiddleware } = require('../middleware/guard');
 
 const { PARTNER_STATUS, USER_STATUS } = require('../config/constants');
 const { nextMemberStatus } = require('../utils/memberPolicy');
+const { createReferralToken } = require('../../../miniprogram/cloudfunctions/api/lib/partnerReferralPolicy');
 
 const {
 
@@ -423,12 +424,17 @@ router.get('/promote-tools', async (req, res, next) => {
 
 
     const code = partner[0].promote_code;
+    let referral = code;
+    if (process.env.PARTNER_REFERRAL_SECRET) {
+      try { referral = createReferralToken(req.auth.id); } catch (err) { referral = code; }
+    }
 
     return success(res, {
 
       promote_code: code,
-
-      mini_program_path: `/pages/register/register?promote_code=${code}`,
+      attribution_token: referral === code ? '' : referral,
+      mini_program_path: `/pages/register/register?promote_code=${encodeURIComponent(referral)}`,
+      scene: referral,
 
       share_title: 'WeFinally · 遇见对的人',
 

@@ -21,11 +21,6 @@ Page({
     meetClock: '',
     created: null,
     shareMode: false,
-    guarding: false,
-    locationCount: 0,
-    latestLocationText: '',
-    lastLocationUploadAt: 0,
-    locationUploadIntervalMs: 30000,
     safetyTips: '见面请选白天公共场所，提前告知亲友，保管财物，勿轻信任何转账要求。'
   },
 
@@ -48,10 +43,6 @@ Page({
       return
     }
     this.loadLatestReport()
-  },
-
-  onUnload() {
-    this.stopLocationWatch()
   },
 
   formatTimeText(value) {
@@ -122,9 +113,7 @@ Page({
         meetClock: timeParts.meetClock,
         ack: !!r.safety_ack,
         created: { id: r.id, card_no: r.card_no, share_token: r.share_token },
-        shareMode: false,
-        locationCount: Number(r.location_count || 0),
-        latestLocationText: this.formatTimeText(r.latest_location_time)
+        shareMode: false
       })
     } catch (e) {
       wx.showModal({ title: '加载失败', content: (e && e.message) || '记录不存在', showCancel: false })
@@ -153,10 +142,7 @@ Page({
         safetyTips: r.safety_prompt || this.data.safetyTips,
         ack: true,
         created: { id: r.id, card_no: r.card_no, share_token: r.share_token },
-        shareMode: true,
-        guarding: false,
-        locationCount: Number(r.location_count || 0),
-        latestLocationText: this.formatTimeText(r.latest_location_time)
+        shareMode: true
       })
     } catch (e) {
       wx.showModal({ title: '分享卡不可用', content: (e && e.message) || '该安全确认卡不存在或已失效', showCancel: false })
@@ -211,20 +197,6 @@ Page({
     })
   },
 
-  getCurrentLocation() {
-    return new Promise((resolve, reject) => {
-      if (!wx.getLocation) {
-        reject(new Error('当前环境不支持定位'))
-        return
-      }
-      wx.getLocation({
-        type: 'gcj02',
-        success: resolve,
-        fail: reject
-      })
-    })
-  },
-
   onInput(e) {
     this.setData({ [`form.${e.currentTarget.dataset.k}`]: e.detail.value })
   },
@@ -246,95 +218,11 @@ Page({
     if (!hasMapLocation(this.data.form)) return wx.showToast({ title: '请先在地图中选择见面地点', icon: 'none' })
     try {
       const d = await post('/api/meet/create', Object.assign({}, this.data.form, { safety_ack: 1 }), { showLoading: true })
-      this.setData({ created: d, shareMode: false, locationCount: 0, latestLocationText: '' })
+      this.setData({ created: d, shareMode: false })
       wx.showToast({ title: '已报备', icon: 'success' })
     } catch (e) {
       wx.showModal({ title: '失败', content: (e && e.message) || '', showCancel: false })
     }
-  },
-
-  async uploadLocation(r, source) {
-    const id = this.data.created && this.data.created.id
-    if (!id || !r) return
-    const lat = r.latitude
-    const lng = r.longitude
-    this.setData({
-      'form.lat': lat,
-      'form.lng': lng,
-      lastLocationUploadAt: Date.now()
-    })
-    const saved = await post(`/api/meet/${id}/location`, {
-      lat,
-      lng,
-      accuracy: r.accuracy,
-      source: source || 'watch'
-    }, { showError: false }).catch(() => {})
-    this.setData({
-      locationCount: saved && saved.location_count ? Number(saved.location_count) : this.data.locationCount + 1,
-      latestLocationText: this.formatTimeText(saved && saved.latest_location_time ? saved.latest_location_time : new Date())
-    })
-  },
-
-  async startGuard() {
-    const id = this.data.created && this.data.created.id
-    if (!id) return wx.showToast({ title: '请先提交安全确认', icon: 'none' })
-    if (this.data.guarding) return
-    if (!wx.startLocationUpdate || !wx.onLocationChange) {
-      wx.showModal({ title: '无法开启', content: '当前微信版本不支持实时位置守护，请升级微信后再试。', showCancel: false })
-      return
-    }
-
-    this._locationHandler = (r) => {
-      const now = Date.now()
-      if (now - this.data.lastLocationUploadAt < this.data.locationUploadIntervalMs) return
-      this.uploadLocation(r, 'watch')
-    }
-    wx.onLocationChange(this._locationHandler)
-    wx.startLocationUpdate({
-      type: 'gcj02',
-      success: async () => {
-        this.setData({ guarding: true })
-        wx.showToast({ title: '前台守护已开启', icon: 'success' })
-        try {
-          const loc = await this.getCurrentLocation()
-          await this.uploadLocation(loc, 'start')
-        } catch (e) {}
-      },
-      fail: () => {
-        this.stopLocationWatch()
-        wx.showModal({ title: '需要定位授权', content: '请在微信设置中允许位置权限后再开启安全守护。', showCancel: false })
-      }
-    })
-  },
-
-  stopLocationWatch() {
-    if (wx.offLocationChange && this._locationHandler) {
-      wx.offLocationChange(this._locationHandler)
-    }
-    this._locationHandler = null
-    if (wx.stopLocationUpdate) {
-      wx.stopLocationUpdate({})
-    }
-    if (this.data.guarding) {
-      this.setData({ guarding: false })
-    }
-  },
-
-  async stopGuard() {
-    const id = this.data.created && this.data.created.id
-    this.stopLocationWatch()
-    if (id) {
-      await post(`/api/meet/${id}/finish`, {}, { showError: false }).catch(() => {})
-    }
-    wx.showToast({ title: '守护已结束', icon: 'none' })
-  },
-
-  toggleGuard() {
-    if (this.data.guarding) {
-      this.stopGuard()
-      return
-    }
-    this.startGuard()
   },
 
   getCreatedId() {
@@ -352,14 +240,8 @@ Page({
   },
 
   async recordMeetSos(id, location) {
-    let lat = location && location.lat !== undefined ? location.lat : this.data.form.lat
-    let lng = location && location.lng !== undefined ? location.lng : this.data.form.lng
-    try {
-      const current = await this.getCurrentLocation()
-      lat = current.latitude
-      lng = current.longitude
-      this.setData({ 'form.lat': lat, 'form.lng': lng })
-    } catch (e) {}
+    const lat = location && location.lat !== undefined ? location.lat : this.data.form.lat
+    const lng = location && location.lng !== undefined ? location.lng : this.data.form.lng
     let r = {}
     try {
       r = await post(`/api/meet/${id}/sos`, { lat, lng }, { showError: false })

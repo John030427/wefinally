@@ -52,6 +52,120 @@
   border-bottom: none;
 }
 
+.lifecycle-card {
+  border: 2rpx solid #f3e4e8;
+  background: #fff;
+}
+
+.lifecycle-main {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20rpx;
+}
+
+.lifecycle-round {
+  color: #30292c;
+  font-size: 32rpx;
+  font-weight: 700;
+}
+
+.lifecycle-version,
+.lifecycle-note {
+  margin-top: 8rpx;
+  color: #8c7b80;
+  font-size: 23rpx;
+  line-height: 1.6;
+}
+
+.lifecycle-state {
+  flex: 0 0 auto;
+  padding: 8rpx 16rpx;
+  border-radius: 22rpx;
+  color: #b64d69;
+  background: #fff0f4;
+  font-size: 23rpx;
+}
+
+.compact-btn {
+  width: 100%;
+  margin-top: 20rpx;
+}
+
+.processing-card {
+  border-left: 8rpx solid #ff7896;
+}
+
+.processing-card-failed {
+  border-left-color: #c55b5b;
+  background: #fffafa;
+}
+
+.proposal-reject-btn {
+  margin-top: 18rpx;
+}
+
+.coordination-track {
+  position: relative;
+}
+
+.coordination-step {
+  display: flex;
+  gap: 18rpx;
+  position: relative;
+  padding: 14rpx 0 22rpx;
+  color: #746b70;
+}
+
+.coordination-step::after {
+  content: '';
+  position: absolute;
+  left: 9rpx;
+  top: 38rpx;
+  bottom: -4rpx;
+  width: 2rpx;
+  background: #ede4e6;
+}
+
+.coordination-step:last-child::after {
+  display: none;
+}
+
+.step-dot {
+  flex: 0 0 20rpx;
+  width: 20rpx;
+  height: 20rpx;
+  margin-top: 8rpx;
+  border: 4rpx solid #ede4e6;
+  border-radius: 50%;
+  background: #fff9f7;
+  box-sizing: border-box;
+}
+
+.coordination-step.active .step-dot {
+  border-color: #ff6b8a;
+  box-shadow: 0 0 0 8rpx rgba(255, 107, 138, 0.1);
+}
+
+.coordination-step.done .step-dot {
+  border-color: #2f8a68;
+  background: #2f8a68;
+}
+
+.step-title {
+  color: #2b2729;
+  font-size: 28rpx;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.step-desc {
+  margin-top: 6rpx;
+  color: #746b70;
+  font-size: 24rpx;
+  line-height: 1.65;
+}
+
 .choice-list,
 .action-row {
   display: flex;

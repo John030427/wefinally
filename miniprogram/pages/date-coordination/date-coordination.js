@@ -13,6 +13,39 @@ function normalizeCoordination(data) {
   return coordination || {}
 }
 
+function buildCoordinationDisplay(coordination) {
+  const status = String(coordination && coordination.status || '')
+  const processingStatus = String(coordination && coordination.processing_status || '')
+  const roundNumber = Math.max(1, Math.min(Number(coordination && coordination.round_number || 1), Number(coordination && coordination.max_rounds || 5)))
+  const maxRounds = Math.max(roundNumber, Number(coordination && coordination.max_rounds || 5))
+  const labels = {
+    collecting_initiator: '等待发起方填写',
+    inviting_partner: '等待对方接受邀请',
+    collecting_preferences: '等待双方填写',
+    computing_overlap: processingStatus === 'processing' ? '处理中' : (processingStatus === 'failed' ? '处理失败' : '待处理'),
+    waiting_confirmations: '等待双方确认',
+    no_overlap: '本轮暂无交集',
+    replanning: '请和AI协调员沟通',
+    arranged: '双方已确认',
+    invitation_declined: '邀请未被接受',
+    manual_handoff: '已转人工协助',
+    expired: '已过期',
+    cancelled: '已结束'
+  }
+  return {
+    roundNumber,
+    maxRounds,
+    version: Math.max(1, Number(coordination && coordination.coordination_version || 1)),
+    statusText: labels[status] || '协调中',
+    processing: status === 'computing_overlap' && ['queued', 'processing'].includes(processingStatus),
+    queued: status === 'computing_overlap' && processingStatus === 'queued',
+    failed: status === 'computing_overlap' && processingStatus === 'failed',
+    manualHandoff: status === 'manual_handoff',
+    completed: status === 'arranged',
+    shouldPoll: status === 'computing_overlap' && ['queued', 'processing'].includes(processingStatus)
+  }
+}
+
 function buildSelection(form) {
   const activities = {}
   const periods = {}
@@ -30,6 +63,13 @@ Page({
     errorMsg: '',
     coordinationId: '',
     coordination: null,
+    coordinationDisplay: buildCoordinationDisplay({}),
+    refreshingCoordination: false,
+    fixtureSimulation: null,
+    fixtureStage: '',
+    fixtureStatusText: '',
+    fixtureResponseMessage: '',
+    refreshingFixture: false,
     dateMin: '',
     dateMax: '',
     selectedDate: '',
@@ -98,10 +138,28 @@ Page({
   },
 
   onShow() {
+    this.pageVisible = true
+    if (this.hasShown && this.data.fixtureSimulation) {
+      this.refreshFixtureSimulation()
+      this.hasShown = true
+      return
+    }
     if (this.hasShown && this.data.coordinationId && this.data.pageState === 'success') {
       this.refreshCoordination()
     }
     this.hasShown = true
+  },
+
+  onHide() {
+    this.pageVisible = false
+    this.stopFixturePolling()
+    this.stopCoordinationPolling()
+  },
+
+  onUnload() {
+    this.pageVisible = false
+    this.stopFixturePolling()
+    this.stopCoordinationPolling()
   },
 
   async openCoordination(options) {
@@ -132,10 +190,35 @@ Page({
   },
 
   applyCoordination(coordination) {
+    if (coordination.test_simulation && coordination.fixture_response_job) {
+      this.applyFixtureSimulation(coordination)
+      return
+    }
+    if (coordination.test_simulation && coordination.await_application) {
+      this.fixtureDraft = {
+        match_log_id: Number(coordination.match_log_id || 0),
+        match_user_id: Number(coordination.match_user_id || 0)
+      }
+      this.setData({
+        pageState: 'success',
+        coordination: Object.assign({}, coordination, {
+          status: 'collecting_initiator',
+          role: 'initiator',
+          can_submit_application: true,
+          simulation_badge: '虚拟体验对象'
+        }),
+        coordinationId: '',
+        fixtureSimulation: null,
+        fixtureStage: '',
+        fixtureStatusText: '请完整填写约会偏好后提交'
+      })
+      return
+    }
     const status = String(coordination.status || '')
     const id = coordination.id || coordination.coordination_id || coordination.coordinationId || ''
     const application = coordination.application || coordination.my_application || {}
     const proposal = coordination.final_proposal || coordination.proposal || (coordination.proposals || [])[0] || null
+    const coordinationDisplay = buildCoordinationDisplay(coordination)
     const form = Object.assign({}, this.data.form, application, {
       availability: application.availability || this.data.form.availability || [],
       activities: application.activities || this.data.form.activities || []
@@ -143,12 +226,62 @@ Page({
     this.setData({
       coordinationId: String(id),
       coordination,
+      coordinationDisplay,
       form,
       selection: buildSelection(form),
       areaText: Array.isArray(form.areas) ? form.areas.join('、') : '',
       proposal,
       pageState: status === 'expired' ? 'expired' : 'success'
     })
+    if (coordinationDisplay.shouldPoll && this.pageVisible !== false) this.startCoordinationPolling()
+    else this.stopCoordinationPolling()
+  },
+
+  applyFixtureSimulation(result) {
+    const job = result.fixture_response_job || {}
+    const fixtureStage = job.status === 'delivered'
+      ? 'completed'
+      : (job.status === 'processing' ? 'generating' : 'queued')
+    const statusText = fixtureStage === 'completed'
+      ? 'AI协调已完成，对方未接受本次约会申请'
+      : (fixtureStage === 'generating' ? 'AI协调员正在整理协调结果' : '约会申请已收到，AI协调任务正在排队')
+    this.setData({
+      pageState: 'fixture-simulation',
+      fixtureSimulation: job,
+      fixtureStage,
+      fixtureStatusText: statusText,
+      fixtureResponseMessage: result.response_message || ''
+    })
+    if (fixtureStage === 'completed') this.stopFixturePolling()
+    else if (this.pageVisible !== false) this.startFixturePolling()
+  },
+
+  startFixturePolling() {
+    this.stopFixturePolling()
+    this.fixturePollTimer = setInterval(() => {
+      this.refreshFixtureSimulation(true)
+    }, 10000)
+  },
+
+  stopFixturePolling() {
+    if (!this.fixturePollTimer) return
+    clearInterval(this.fixturePollTimer)
+    this.fixturePollTimer = null
+  },
+
+  async refreshFixtureSimulation(silent) {
+    const isSilent = silent === true
+    const job = this.data.fixtureSimulation
+    if (!job || !job.id || this.data.refreshingFixture) return
+    this.setData({ refreshingFixture: true })
+    try {
+      const result = await get(`${API_PATHS.DATE_COORDINATIONS}/fixture-responses/${job.id}`, {}, { showError: false })
+      this.applyFixtureSimulation(result)
+    } catch (err) {
+      if (!isSilent) wx.showToast({ title: (err && err.message) || '刷新失败', icon: 'none' })
+    } finally {
+      this.setData({ refreshingFixture: false })
+    }
   },
 
   onRetry() {
@@ -157,9 +290,29 @@ Page({
       : (this.launchOptions || {}))
   },
 
-  refreshCoordination() {
-    if (!this.data.coordinationId) return
-    this.openCoordination({ coordinationId: this.data.coordinationId })
+  startCoordinationPolling() {
+    this.stopCoordinationPolling()
+    this.coordinationPollTimer = setInterval(() => this.refreshCoordination(true), 6000)
+  },
+
+  stopCoordinationPolling() {
+    if (!this.coordinationPollTimer) return
+    clearInterval(this.coordinationPollTimer)
+    this.coordinationPollTimer = null
+  },
+
+  async refreshCoordination(silent) {
+    if (!this.data.coordinationId || this.data.refreshingCoordination) return
+    const isSilent = silent === true
+    this.setData({ refreshingCoordination: true })
+    try {
+      const result = await get(`${API_PATHS.DATE_COORDINATIONS}/${this.data.coordinationId}`, {}, { showError: false })
+      this.applyCoordination(normalizeCoordination(result))
+    } catch (err) {
+      if (!isSilent) wx.showToast({ title: (err && err.message) || '刷新失败', icon: 'none' })
+    } finally {
+      this.setData({ refreshingCoordination: false })
+    }
   },
 
   onDateChange(e) {
@@ -259,8 +412,18 @@ Page({
       return
     }
     this.setData({ submitting: true })
-    const wasInitiatorDraft = this.data.coordination.status === 'collecting_initiator'
+    const wasInitiatorDraft = this.data.coordination && this.data.coordination.status === 'collecting_initiator'
     try {
+      if (this.fixtureDraft && this.data.coordination && this.data.coordination.test_simulation) {
+        const result = await post(`${API_PATHS.DATE_COORDINATIONS}/fixture-applications`, {
+          match_log_id: this.fixtureDraft.match_log_id,
+          match_user_id: this.fixtureDraft.match_user_id,
+          application: this.data.form
+        }, { showError: false })
+        this.applyFixtureSimulation(result)
+        wx.showToast({ title: '约会申请已提交', icon: 'success' })
+        return
+      }
       const result = await put(`${API_PATHS.DATE_COORDINATIONS}/${this.data.coordinationId}/application`, this.data.form, { showError: false })
       this.applyCoordination(normalizeCoordination(result))
       wx.showToast({
@@ -275,17 +438,39 @@ Page({
   },
 
   async confirmProposal() {
+    return this.respondToProposal('confirm')
+  },
+
+  async rejectProposal() {
+    return this.respondToProposal('reject')
+  },
+
+  async respondToProposal(decision) {
     if (!this.data.proposal || this.data.submitting) return
     this.setData({ submitting: true })
     try {
       const proposalId = this.data.proposal.id || this.data.proposal.proposal_id
       const result = await post(`${API_PATHS.DATE_COORDINATIONS}/${this.data.coordinationId}/proposals/${proposalId}/confirm`, {
         coordination_version: this.data.coordination.coordination_version,
-        decision: 'confirm'
+        decision
       }, { showError: false })
       this.applyCoordination(normalizeCoordination(result))
+      if (decision === 'reject') this.goCoordinator()
     } catch (err) {
-      wx.showToast({ title: (err && err.message) || '确认失败，请重试', icon: 'none' })
+      wx.showToast({ title: (err && err.message) || (decision === 'reject' ? '暂时无法继续协调' : '确认失败，请重试'), icon: 'none' })
+    } finally {
+      this.setData({ submitting: false })
+    }
+  },
+
+  async retryProcessing() {
+    if (!this.data.coordinationId || this.data.submitting) return
+    this.setData({ submitting: true })
+    try {
+      const result = await post(`${API_PATHS.DATE_COORDINATIONS}/${this.data.coordinationId}/retry-processing`, {}, { showError: false })
+      this.applyCoordination(normalizeCoordination(result))
+    } catch (err) {
+      wx.showToast({ title: (err && err.message) || '重新处理失败', icon: 'none' })
     } finally {
       this.setData({ submitting: false })
     }
@@ -297,6 +482,7 @@ Page({
     try {
       const result = await post(`${API_PATHS.DATE_COORDINATIONS}/${this.data.coordinationId}/recoordinate`, {}, { showError: false })
       this.applyCoordination(normalizeCoordination(result))
+      this.goCoordinator()
     } catch (err) {
       wx.showToast({ title: (err && err.message) || '暂时无法重新协调', icon: 'none' })
     } finally {
@@ -309,6 +495,10 @@ Page({
   },
 
   goCoordinator() {
+    if (!this.data.coordinationId) {
+      wx.showToast({ title: '请先填写上方约会表单', icon: 'none', duration: 3000 })
+      return
+    }
     wx.navigateTo({
       url: `/pages/chat/chat?agentType=date_coordinator&coordinationId=${this.data.coordinationId}`
     })

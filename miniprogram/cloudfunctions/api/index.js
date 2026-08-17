@@ -9,11 +9,18 @@ const { handleHttp } = require('./handlers/paymentNotify')
 const { processQueuedTasks } = require('./handlers/reportTask')
 const { processNotificationJobs } = require('./agent/notificationJobs')
 const { processCoordinationDeadlines } = require('./handlers/dateCoordination')
+const { processCoordinationTasks } = require('./handlers/dateCoordinationWorker')
+const { processFixtureResponseJobs } = require('./lib/fixtureResponseService')
+const { isHttpEvent } = require('./lib/httpEvent')
+const { runFormalMatchBatch } = require('./lib/matchingRunService')
+const { executeFormalMatching } = require('./lib/formalMatching')
+const { assertInternalWorkerSecret } = require('./lib/internalWorkerAuth')
+const db = require('./lib/db')
 
 const ENV_ID = 'cloud1-d4gy8l52g08bba326'
 
 exports.main = async (event = {}) => {
-  if (event.httpMethod || event.requestContext) {
+  if (isHttpEvent(event)) {
     return handleHttp(event)
   }
   const action = event.action
@@ -34,18 +41,49 @@ exports.main = async (event = {}) => {
           data: await handleRoute(payload, cloud.getWXContext())
         }
       case 'processReportTasks':
+        assertInternalWorkerSecret(payload.worker_secret)
         return {
           success: true,
           data: await processQueuedTasks(Number(payload.limit || 2))
         }
       case 'processWorkerTasks': {
-        const [reports, notifications, coordinations] = await Promise.all([
+        assertInternalWorkerSecret(payload.worker_secret)
+        const [reports, notifications, coordinationDeadlines, coordinationTasks, fixtureResponses] = await Promise.all([
           processQueuedTasks(Number(payload.report_limit || 2)),
           processNotificationJobs({ limit: Number(payload.notification_limit || 10) }),
-          processCoordinationDeadlines({ limit: Number(payload.coordination_limit || 50) })
+          processCoordinationDeadlines({ limit: Number(payload.coordination_limit || 50) }),
+          processCoordinationTasks({ limit: Number(payload.coordination_task_limit || 10) }),
+          processFixtureResponseJobs({
+            listDue: db.listDueFixtureResponseJobs,
+            claimJob: db.claimFixtureResponseJob,
+            completeJob: db.completeFixtureResponseJob,
+            retryJob: db.retryFixtureResponseJob,
+            now: db.now
+          }, { limit: Number(payload.fixture_limit || 20) })
         ])
-        return { success: true, data: { reports, notifications, coordinations } }
+        return { success: true, data: { reports, notifications, coordinationDeadlines, coordinationTasks, fixtureResponses } }
       }
+      case 'runFormalMatchBatch':
+        assertInternalWorkerSecret(payload.worker_secret)
+        return {
+          success: true,
+          data: await runFormalMatchBatch({
+            now: new Date(),
+            requestId: payload.request_id,
+            triggerSource: payload.trigger_source || 'timer'
+          }, {
+            acquireBatch: db.acquireFormalMatchBatch,
+            updateByDoc: db.updateByDoc,
+            list: db.list,
+            byId: db.byId,
+            now: db.now,
+            executeMatching: (ctx) => executeFormalMatching(Object.assign({}, ctx, {
+              deps: Object.assign({}, ctx.deps, {
+                ensureReportTask: require('./handlers/reportTask').ensureTaskForMatch
+              })
+            }))
+          })
+        }
       default:
         return {
           success: false,

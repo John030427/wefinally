@@ -76,6 +76,8 @@ async function notificationProcessorChecks() {
   const apiIndex = fs.readFileSync(path.join(root, 'miniprogram/cloudfunctions/api/index.js'), 'utf8')
   const worker = fs.readFileSync(path.join(root, 'miniprogram/cloudfunctions/report-worker/index.js'), 'utf8')
   assert(apiIndex.includes("case 'processWorkerTasks':"))
+  assert(apiIndex.includes('processCoordinationTasks'))
+  assert(apiIndex.includes('coordination_task_limit'))
   assert(worker.includes("action: 'processWorkerTasks'"))
 }
 

@@ -1,5 +1,6 @@
 const wechatpay = require('../lib/wechatpay')
 const { createVipOrderService } = require('../lib/vipOrder')
+const { httpMethod, httpPath } = require('../lib/httpEvent')
 
 function json(statusCode, body) {
   return {
@@ -39,8 +40,8 @@ async function handleWechatPayNotify(event = {}, deps = {}) {
 }
 
 async function handleHttp(event = {}) {
-  const method = String(event.httpMethod || '').toUpperCase()
-  const path = String(event.path || (event.requestContext && event.requestContext.path) || '')
+  const method = httpMethod(event)
+  const path = httpPath(event)
   if (method === 'POST' && /\/wxpay\/notify$/.test(path)) {
     return handleWechatPayNotify(event)
   }

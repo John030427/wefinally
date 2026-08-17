@@ -1,4 +1,5 @@
 const { first, list } = require('../lib/db')
+const { referralInput } = require('../lib/partnerReferralPolicy')
 const { demoFlags } = require('../lib/flags')
 
 const defaultCircles = [
@@ -28,15 +29,23 @@ async function circles() {
 }
 
 async function promoteCode(data) {
-  const code = String(data.code || '').trim().toUpperCase()
+  const code = String(data.code || '').trim()
   if (!code) throw new Error('请填写推广码')
-  const partner = await first('partner', { promote_code: code, status: 1 })
+  let referral
+  try {
+    referral = referralInput(code)
+  } catch (err) {
+    return { valid: false, message: '推广码无效或合伙人未激活' }
+  }
+  const partner = referral.partnerId
+    ? await first('partner', { id: referral.partnerId, status: 1 })
+    : await first('partner', { promote_code: referral.code, status: 1 })
   if (!partner) {
     return { valid: false, message: '推广码无效或合伙人未激活' }
   }
   return {
     valid: true,
-    message: `已识别 ${partner.name || '合伙人'} 推广码`,
+    message: '已识别合伙人推广码',
     partner_id: partner.id,
     circle_id: partner.circle_id
   }

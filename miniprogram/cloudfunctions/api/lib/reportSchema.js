@@ -39,15 +39,23 @@ function plainTextReport(value) {
   }
 }
 
-function normalizeStructuredReport(report, allowedEvidenceKeys) {
+function normalizeStructuredReport(report, allowedEvidenceKeys, options = {}) {
   if (!report || typeof report !== 'object' || Array.isArray(report)) throw new Error('report schema invalid')
   const requiredArrays = ['strengths', 'differences', 'hard_condition_checks', 'communication_suggestions', 'first_date_suggestions', 'data_limitations']
-  const summary = text(report.summary, 1200)
+  let summary = text(report.summary, 1200)
   if (!summary) throw new Error('report schema invalid: summary')
   if (!['high', 'medium', 'low'].includes(report.confidence)) throw new Error('report schema invalid: confidence')
   requiredArrays.forEach((key) => {
     if (!Array.isArray(report[key])) throw new Error(`report schema invalid: ${key}`)
   })
+
+  const hasPsychEvidence = Boolean(options.hasPsychEvidence)
+  if (!hasPsychEvidence) {
+    summary = summary
+      .replace(/心理高度一致/g, '关系偏好资料不足，暂不作心理层面判断')
+      .replace(/高度契合/g, '仍需当面确认')
+      .replace(/高度一致/g, '尚需更多资料确认')
+  }
 
   const evidenceItems = (items, includeSeverity) => items.slice(0, 12).map((item) => {
     const evidenceKey = item && resolveEvidenceKey(item.evidence_key, allowedEvidenceKeys)
@@ -61,9 +69,15 @@ function normalizeStructuredReport(report, allowedEvidenceKeys) {
     return normalized
   }).filter(Boolean).slice(0, 6)
 
+  const limitations = report.data_limitations.slice(0, 6).map((item) => text(item, 500)).filter(Boolean)
+  if (!hasPsychEvidence && !limitations.some((item) => /心理|关系偏好|资料不足/.test(item))) {
+    limitations.unshift('缺少可比较的关系偏好/心理测评资料，报告未对心理契合作肯定判断。')
+  }
+
   return {
+    schema_version: 'match_report_v2',
     summary,
-    confidence: report.confidence,
+    confidence: hasPsychEvidence ? report.confidence : (report.confidence === 'high' ? 'medium' : report.confidence),
     strengths: evidenceItems(report.strengths, false),
     differences: evidenceItems(report.differences, true),
     hard_condition_checks: report.hard_condition_checks.slice(0, 6).map((item) => ({
@@ -73,7 +87,7 @@ function normalizeStructuredReport(report, allowedEvidenceKeys) {
     })),
     communication_suggestions: report.communication_suggestions.slice(0, 6).map((item) => text(item, 500)).filter(Boolean),
     first_date_suggestions: report.first_date_suggestions.slice(0, 6).map((item) => text(item, 500)).filter(Boolean),
-    data_limitations: report.data_limitations.slice(0, 6).map((item) => text(item, 500)).filter(Boolean)
+    data_limitations: limitations.slice(0, 6)
   }
 }
 

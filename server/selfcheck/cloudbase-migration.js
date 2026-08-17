@@ -46,7 +46,7 @@ const indexJs = read('miniprogram/pages/index/index.js');
 const matchDetailJs = read('miniprogram/pages/match-detail/match-detail.js');
 const matchDetailWxml = read('miniprogram/pages/match-detail/match-detail.wxml');
 const meetSafetyJs = read('miniprogram/pages/meet-safety/meet-safety.js');
-const minimaxHardcodedKeySymbol = ['DEMO', 'MINIMAX', 'API', 'KEY'].join('_');
+const deepseekHardcodedKeySymbol = ['DEMO', 'DEEPSEEK', 'API', 'KEY'].join('_');
 const matchStartBody = cloudMatchJs.split('async function start')[1]
   ? cloudMatchJs.split('async function start')[1].split('module.exports')[0]
   : cloudMatchJs;
@@ -69,16 +69,16 @@ ok('cloud manual match avoids repeated partners', cloudMatchJs.includes('seenPar
 ok('cloud manual match uses bilateral ranking policy', matchStartBody.includes('rankCandidates') && matchStartBody.includes('quality.pass'));
 ok('cloud manual match does not persist a fixed demo score', !matchStartBody.includes('total_score: 88') && !matchStartBody.includes('view_similarity: 88'));
 ok('cloud manual match refuses quality fallback', matchStartBody.includes('本轮暂无通过严格质量门槛的匹配'));
-ok('cloud MiniMax report helper exists', exists('miniprogram/cloudfunctions/api/lib/minimax.js'));
-ok('cloud match report uses durable async task', cloudMatchJs.includes("require('./reportTask')") && cloudMatchJs.includes("ensureTaskForMatch(logA, 'auto')"));
-ok('cloud MiniMax key can be read from safe runtime config', read('miniprogram/cloudfunctions/api/lib/minimax.js').includes("systemValue('minimax_api_key')"));
-ok('cloud MiniMax has no hardcoded key fallback', !read('miniprogram/cloudfunctions/api/lib/minimax.js').includes(minimaxHardcodedKeySymbol));
-ok('cloud MiniMax request timeout stays below worker function limit', read('miniprogram/cloudfunctions/api/lib/minimax.js').includes('CLOUD_FUNCTION_SAFE_TIMEOUT_MS'));
-ok('cloud manual match no longer waits for MiniMax report', !matchStartBody.includes('generateMutualMatchReports'));
+ok('cloud DeepSeek report helper exists', exists('miniprogram/cloudfunctions/api/lib/deepseek.js'));
+ok('cloud match report uses durable async task', cloudMatchJs.includes("require('./reportTask')") && cloudMatchJs.includes("ensureTaskForMatch(deliveredLog, 'auto')") && cloudMatchJs.indexOf('deliverPair') < cloudMatchJs.indexOf("ensureTaskForMatch(deliveredLog, 'auto')"));
+ok('cloud DeepSeek key is read only from server environment', read('miniprogram/cloudfunctions/api/lib/deepseek.js').includes("envValue(['DEEPSEEK_API_KEY', 'LLM_API_KEY'])") && !read('miniprogram/cloudfunctions/api/lib/deepseek.js').includes('systemValue('));
+ok('cloud DeepSeek has no hardcoded key fallback', !read('miniprogram/cloudfunctions/api/lib/deepseek.js').includes(deepseekHardcodedKeySymbol));
+ok('cloud DeepSeek request timeout stays below worker function limit', read('miniprogram/cloudfunctions/api/lib/deepseek.js').includes('CLOUD_FUNCTION_SAFE_TIMEOUT_MS'));
+ok('cloud manual match no longer waits for DeepSeek report', !matchStartBody.includes('generateMutualMatchReports'));
 ok('cloud match detail keeps field breakdown scores', cloudMatchJs.includes('ensureScoreDetailDimensions') && cloudMatchJs.includes('buildDemoScoreDetail'));
 ok('cloud exposes manual AI report generation endpoint', cloudMatchJs.includes('async function generateReport') && cloudRouteJs.includes('POST /api/match/report'));
 ok('manual AI report endpoint only creates or returns task', cloudMatchJs.includes('return reportTask.create(data, wxContext)'));
-ok('new manual match can open detail with auto AI report generation', indexJs.includes('autoReport=1') && matchDetailJs.includes('autoReportPending') && matchDetailJs.includes('silentReport'));
+ok('match detail can resume automatic AI report generation', matchDetailJs.includes('autoReportPending') && matchDetailJs.includes('silentReport'));
 ok('match detail derives actions from canonical task status', matchDetailJs.includes('normalizeAiReportState') && matchDetailJs.includes("status === 'succeeded'") && matchDetailJs.includes("status === 'failed'"));
 ok('match detail hides generation after task succeeds', matchDetailJs.includes("canGenerateReport: status === 'not_requested' || status === 'failed'") && matchDetailWxml.includes('detail.canGenerateReport'));
 ok('match detail shows task progress without regenerate action', matchDetailJs.includes('startReportPolling') && matchDetailJs.includes('requestAiReport') && !matchDetailJs.includes('重新生成AI报告') && matchDetailWxml.includes('AI报告生成中'));
@@ -86,7 +86,7 @@ ok('cloud meet reports are scoped to match user', cloudMeetJs.includes('findExis
 ok('cloud customer service stores handoff context', cloudChatJs.includes('handoff_ticket_id') && cloudChatJs.includes('match_log_id'));
 ok('match handoff navigates into customer service chat', matchDetailJs.includes('/pages/chat/chat') && matchDetailJs.includes('handoffTicketId'));
 ok('meet safety can load existing report for selected match', meetSafetyJs.includes('loadExistingForMatch') && meetSafetyJs.includes('matchUserId'));
-ok('home manual match does not request rematch by default', indexJs.includes('allow_rematch: false'));
+ok('formal home contains no QA match entry or formal rematch reset', !indexJs.includes('MATCH_TEST_RUNS') && !indexJs.includes('reset_user_batch') && !indexJs.includes('allow_rematch'));
 ok('cloud demo vip grant is guarded by demo flag', cloudVipJs.includes('cloud_demo_vip_grant_enabled') && !cloudVipJs.includes('data.devGrant === true'));
 ok('cloud WeChat Pay utility uses API v3 RSA signing', cloudWechatPayJs.includes('WECHATPAY2-SHA256-RSA2048') && cloudWechatPayJs.includes('RSA-SHA256'));
 ok('cloud WeChat Pay utility decrypts APIv3 callback resources', cloudWechatPayJs.includes('aes-256-gcm') && cloudWechatPayJs.includes('decryptResource'));

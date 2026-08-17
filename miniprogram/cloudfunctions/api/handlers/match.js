@@ -1,10 +1,15 @@
-const { first, list, byId, addWithId, updateByDoc, authError, now } = require('../lib/db')
+const { first, list, byId, nextId, addWithId, updateByDoc, authError, now } = require('../lib/db')
 const { currentUser } = require('./user')
 const { isVipActive, ageBand, dateOnly } = require('../lib/format')
 const { flagEnabled } = require('../lib/flags')
 const { MEMBER_STATUS, memberStatus, canUseMatching, normalizeMatchSettingInput } = require('../lib/memberPolicy')
 const { rankCandidates, scoreDetailFor } = require('../lib/matchPolicy')
+const { compileIntentProfile, normalizeMode } = require('../lib/intentProfile')
+const { canonicalPairKey, deliverPair, createCloudClaimStore, CLAIM_STATUS } = require('../lib/matchClaim')
+const { semanticRerank, intentMatchGate } = require('../lib/semanticMatchService')
 const reportTask = require('./reportTask')
+const { isMatchOnlyFixture, canUseFixtureForMatch, canEnterFormalCandidatePool } = require('../lib/testFixturePolicy')
+const { createMatchTestRunHandlers } = require('../lib/matchTestRunService')
 
 function parseJson(value) {
   if (!value) return null
@@ -30,6 +35,9 @@ function settingDefaults(row) {
     like_house_car: '',
     self_view_text: '',
     target_view_text: '',
+    other_requirements: '',
+    intent_profile_json: null,
+    intent_profile_confirmed_at: null,
     last_edit_time: null
   }
 }
@@ -47,6 +55,17 @@ function fallbackMatchReportText(viewer, partner) {
     `${eduText}外貌期待只作为自述与偏好的契合参考，不做颜值判断，也不会向对方展示原文。`,
     '建议第一次对接先让客服协助确认三个问题：未来一到三年的城市安排、见面时间和公共场所选择、双方对婚育节奏与父母边界的基本想法。'
   ].join('\n\n')
+}
+
+async function transactionDocument(name, prefix, data) {
+  const id = await nextId(name)
+  const timestamp = now()
+  return Object.assign({}, data, {
+    _id: `${prefix || name}_${id}`,
+    id,
+    create_time: data.create_time || timestamp,
+    update_time: data.update_time || timestamp
+  })
 }
 
 function withReportStatus(scoreDetail, status, report) {
@@ -124,7 +143,7 @@ function hasScoreDetailSide(scoreDetail) {
 function buildDemoScoreDetail(viewer, partner, options) {
   const totalScore = Number((options && options.totalScore) || 88)
   return {
-    version: 'algo_evidence_v2',
+    version: 'algo_evidence_v3',
     algorithm_rank: options && options.algorithmRank ? options.algorithmRank : 1,
     ai_rank: null,
     ai_weight: 0,
@@ -150,9 +169,37 @@ function ensureScoreDetailDimensions(scoreDetail, row, viewer, partner) {
   })
 }
 
+function withSemanticRerankDetail(scoreDetail, best, reranked) {
+  const baseNormalizedTotal = Number(scoreDetail.normalized_total || scoreDetail.normalizedTotal || 0)
+  const semanticScore = Number(best && best.canonical_score)
+  const finalMatchScore = reranked && reranked.applied === true && Number.isFinite(semanticScore)
+    ? Math.max(0, Math.min(100, Math.round(semanticScore)))
+    : Math.max(0, Math.min(100, Math.round(baseNormalizedTotal)))
+  return Object.assign({}, scoreDetail, {
+    base_normalized_total: baseNormalizedTotal,
+    final_match_score: finalMatchScore,
+    normalized_total: finalMatchScore,
+    normalizedTotal: finalMatchScore,
+    ai_rerank: {
+      applied: Boolean(reranked && reranked.applied),
+      reason: reranked && reranked.reason || '',
+      model: reranked && reranked.model || ''
+    }
+  })
+}
+
 async function getSetting(data, wxContext) {
   const user = await currentUser(wxContext)
-  return settingDefaults(await first('user_match_setting', { user_id: user.id }))
+  const setting = settingDefaults(await first('user_match_setting', { user_id: user.id }))
+  const intentProfile = parseJson(setting.intent_profile_json)
+  return Object.assign(setting, {
+    intent_profile: intentProfile,
+    intent_confirmation_required: Boolean(
+      intentProfile
+      && intentProfile.mode === 'confirm'
+      && !setting.intent_profile_confirmed_at
+    )
+  })
 }
 
 async function cooldown(data, wxContext) {
@@ -175,6 +222,13 @@ async function saveSetting(data, wxContext) {
   const user = await currentUser(wxContext)
   const existing = await first('user_match_setting', { user_id: user.id })
   const normalized = normalizeMatchSettingInput(data)
+  const intentProfile = compileIntentProfile(Object.assign({}, user, normalized, {
+    mode: normalizeMode()
+  }))
+  const intentProfileJson = JSON.stringify(intentProfile)
+  const alreadyConfirmed = Boolean(
+    existing && existing.intent_profile_confirmed_at && existing.intent_profile_json === intentProfileJson
+  )
   const payload = {
     user_id: user.id,
     age_min: normalized.age_min,
@@ -189,11 +243,36 @@ async function saveSetting(data, wxContext) {
     like_house_car: data.like_house_car || '',
     self_view_text: normalized.self_view_text,
     target_view_text: normalized.target_view_text,
+    other_requirements: normalized.other_requirements,
+    intent_profile_json: intentProfileJson,
+    intent_profile_confirmed_at: alreadyConfirmed ? existing.intent_profile_confirmed_at : null,
     psych_profile_json: data.psych_profile_json || data.psych_profile || null,
     last_edit_time: memberStatus(user) === MEMBER_STATUS.APPROVED ? now() : null
   }
-  if (existing) return updateByDoc('user_match_setting', existing, payload)
-  return addWithId('user_match_setting', payload, 'match_setting')
+  const saved = existing
+    ? await updateByDoc('user_match_setting', existing, payload)
+    : await addWithId('user_match_setting', payload, 'match_setting')
+  return Object.assign(saved, {
+    intent_profile: intentProfile,
+    intent_confirmation_required: intentProfile.requires_confirmation && !alreadyConfirmed
+  })
+}
+
+async function confirmIntent(data, wxContext) {
+  const user = await currentUser(wxContext)
+  const setting = await first('user_match_setting', { user_id: user.id })
+  if (!setting || !setting.intent_profile_json) throw new Error('请先保存匹配设置')
+  const profile = parseJson(setting.intent_profile_json)
+  if (!profile || profile.mode !== 'confirm') throw new Error('当前无需确认 AI 理解')
+  const confirmedAt = now()
+  await updateByDoc('user_match_setting', setting, {
+    intent_profile_confirmed_at: confirmedAt
+  })
+  return {
+    confirmed: true,
+    confirmed_at: confirmedAt,
+    intent_profile: profile
+  }
 }
 
 async function formatMatch(row, viewer) {
@@ -242,7 +321,8 @@ async function formatMatch(row, viewer) {
     ai_report_task: taskView,
     local_report_text: localReportText,
     matched_user_id: row.match_user_id,
-    match_user_id: row.match_user_id
+    match_user_id: row.match_user_id,
+    match_only_fixture: isMatchOnlyFixture(partner)
   }
   if (!vip) return base
   return Object.assign(base, {
@@ -372,6 +452,23 @@ async function start(data, wxContext) {
   if (!canUseMatching({ member_status: memberStatus(user), vipActive: isVipActive(user) })) {
     throw authError(memberStatus(user) === MEMBER_STATUS.APPROVED ? '请先开通 VIP' : '会员审核通过后才能进入匹配流程')
   }
+  const currentSetting = await first('user_match_setting', { user_id: user.id })
+  const intentGate = intentMatchGate(currentSetting)
+  if (intentGate) {
+    const err = new Error(intentGate.message)
+    err.code = intentGate.code
+    err.clarification_questions = intentGate.clarification_questions
+    throw err
+  }
+  const userClaim = await first('match_claim', { user_id: Number(user.id), status: CLAIM_STATUS })
+  if (userClaim) {
+    return {
+      matched: 0,
+      users: 0,
+      evaluated_candidates: 0,
+      message: '你已成功匹配，不能再次发起匹配'
+    }
+  }
   const existingMatches = await list('user_match_log', { user_id: user.id }, 100)
   const seenPartnerIds = {}
   existingMatches.forEach((row) => {
@@ -379,6 +476,8 @@ async function start(data, wxContext) {
   })
   const candidates = (await list('user', { status: 1 }, 100))
     .filter((item) => memberStatus(item) === MEMBER_STATUS.APPROVED)
+    .filter((item) => canEnterFormalCandidatePool(item))
+    .filter((item) => canUseFixtureForMatch(user, item, now()))
   if (data.dev_seed_current_user_candidates && candidates.length === 0) {
     candidates.push(await seedDemoCandidate(user))
   }
@@ -387,10 +486,25 @@ async function start(data, wxContext) {
   settingRows.forEach((setting) => {
     settingsByUserId[String(setting.user_id)] = setting
   })
-  const blockedIds = new Set(Object.keys(seenPartnerIds).map(Number))
+  const claims = await list('match_claim', { status: CLAIM_STATUS }, 500)
+  const claimBlockedIds = []
+  claims.forEach((claim) => {
+    claimBlockedIds.push(Number(claim.user_id), Number(claim.match_user_id))
+  })
+  const blockedIds = new Set(Object.keys(seenPartnerIds).map(Number).concat(claimBlockedIds))
   const ranked = rankCandidates(user, candidates, settingsByUserId, { blockedIds })
-  const best = ranked.find((item) => item.quality.pass)
-  if (!best) {
+  const reranked = await semanticRerank(ranked, user, settingsByUserId)
+  if (!reranked || reranked.applied !== true) {
+    return {
+      matched: 0,
+      users: ranked.length + 1,
+      evaluated_candidates: ranked.length,
+      reason_code: reranked && reranked.reason || 'ai_rerank_unavailable',
+      message: 'AI匹配暂不可用，请稍后重试'
+    }
+  }
+  const eligible = reranked.ranked.filter((item) => item.quality.pass)
+  if (!eligible.length) {
     return {
       matched: 0,
       users: ranked.length + 1,
@@ -399,53 +513,135 @@ async function start(data, wxContext) {
       message: ranked.length ? '本轮暂无通过严格质量门槛的匹配' : '暂无新的可用候选'
     }
   }
-  const partner = best.candidate
-  const abTestRunId = String(partner.ab_test_run_id || '')
   const today = dateOnly(new Date())
-  const detailJsonA = scoreDetailFor(best, 'a', ranked.indexOf(best) + 1)
-  const detailJsonB = scoreDetailFor(best, 'b', ranked.indexOf(best) + 1)
-  const logA = await addWithId('user_match_log', {
-    user_id: user.id,
-    match_user_id: partner.id,
-    view_similarity: best.viewSimilarity,
-    total_score: best.scoreA.total,
-    score_detail_json: JSON.stringify(detailJsonA),
-    score_version: 'algo_evidence_v2',
-    ai_report_text: '',
-    ai_report_status: 0,
-    ai_report_error: '',
-    ai_report_time: null,
-    local_report_text: fallbackMatchReportText(user, partner),
-    match_date: today,
-    match_type: abTestRunId ? 'A/B内测' : '双向算法测试',
-    ab_test_run_id: abTestRunId
-  }, 'match_log')
-  const logB = await addWithId('user_match_log', {
-    user_id: partner.id,
-    match_user_id: user.id,
-    view_similarity: best.viewSimilarity,
-    total_score: best.scoreB.total,
-    score_detail_json: JSON.stringify(detailJsonB),
-    score_version: 'algo_evidence_v2',
-    ai_report_text: '',
-    ai_report_status: 0,
-    ai_report_error: '',
-    ai_report_time: null,
-    local_report_text: fallbackMatchReportText(partner, user),
-    match_date: today,
-    match_type: abTestRunId ? 'A/B内测' : '双向算法测试',
-    ab_test_run_id: abTestRunId
-  }, 'match_log')
-  await reportTask.ensureTaskForMatch(logA, 'auto')
+  const claimStore = createCloudClaimStore()
+  for (let index = 0; index < eligible.length; index += 1) {
+    const best = eligible[index]
+    const partner = best.candidate
+    const claimInput = {
+      userId: user.id,
+      partnerId: partner.id,
+      requestId: String(data.request_id || `match:${user.id}:${Date.now()}`)
+    }
+    const pairKey = canonicalPairKey(user.id, partner.id)
+    const abTestRunId = String(partner.ab_test_run_id || '')
+    const algorithmRank = ranked.findIndex((item) => Number(item.candidate.id) === Number(partner.id)) + 1
+    const detailJsonA = withSemanticRerankDetail(Object.assign(scoreDetailFor(best, 'a', algorithmRank), {
+        ai_rank: best.ai_rank || null,
+        ai_weight: best.ai_weight || 0,
+        semantic_score: best.semantic_score || null,
+        a_to_b_semantic_score: best.a_to_b_semantic_score || null,
+        b_to_a_semantic_score: best.b_to_a_semantic_score || null,
+        mutual_semantic_score: best.mutual_semantic_score || null,
+        semantic_strengths: best.semantic_strengths || [],
+        semantic_confidence: best.semantic_confidence || null,
+        data_completeness: best.data_completeness || null,
+        asymmetric_risks: best.asymmetric_risks || [],
+        confirmation_questions: best.confirmation_questions || [],
+        semantic_strength_evidence_keys: best.semantic_strength_evidence_keys || [],
+        semantic_risk_evidence_keys: best.semantic_risk_evidence_keys || [],
+        semantic_missing_categories: best.semantic_missing_categories || []
+    }), best, reranked)
+    const detailJsonB = withSemanticRerankDetail(Object.assign(scoreDetailFor(best, 'b', algorithmRank), {
+        ai_rank: best.ai_rank || null,
+        ai_weight: best.ai_weight || 0,
+        semantic_score: best.semantic_score || null,
+        a_to_b_semantic_score: best.a_to_b_semantic_score || null,
+        b_to_a_semantic_score: best.b_to_a_semantic_score || null,
+        mutual_semantic_score: best.mutual_semantic_score || null,
+        semantic_strengths: best.semantic_strengths || [],
+        semantic_confidence: best.semantic_confidence || null,
+        data_completeness: best.data_completeness || null,
+        asymmetric_risks: best.asymmetric_risks || [],
+        confirmation_questions: best.confirmation_questions || [],
+        semantic_strength_evidence_keys: best.semantic_strength_evidence_keys || [],
+        semantic_risk_evidence_keys: best.semantic_risk_evidence_keys || [],
+        semantic_missing_categories: best.semantic_missing_categories || []
+    }), best, reranked)
+    const logA = await transactionDocument('user_match_log', 'match_log', {
+        user_id: user.id,
+        match_user_id: partner.id,
+        view_similarity: best.viewSimilarity,
+        total_score: best.scoreA.total,
+        score_detail_json: JSON.stringify(detailJsonA),
+        score_version: 'algo_evidence_v3',
+        ai_report_text: '',
+        ai_report_status: 0,
+        ai_report_error: '',
+        ai_report_time: null,
+        local_report_text: fallbackMatchReportText(user, partner),
+        match_date: today,
+        match_type: abTestRunId ? 'A/B内测' : '双向算法测试',
+        ab_test_run_id: abTestRunId,
+      pair_key: pairKey
+    })
+    const logB = await transactionDocument('user_match_log', 'match_log', {
+        user_id: partner.id,
+        match_user_id: user.id,
+        view_similarity: best.viewSimilarity,
+        total_score: best.scoreB.total,
+        score_detail_json: JSON.stringify(detailJsonB),
+        score_version: 'algo_evidence_v3',
+        ai_report_text: '',
+        ai_report_status: 0,
+        ai_report_error: '',
+        ai_report_time: null,
+        local_report_text: fallbackMatchReportText(partner, user),
+        match_date: today,
+        match_type: abTestRunId ? 'A/B内测' : '双向算法测试',
+        ab_test_run_id: abTestRunId,
+      pair_key: pairKey
+    })
+    const deliveredAt = now()
+    const claimAudit = await transactionDocument('match_claim_audit', 'match_audit', {
+      request_id: claimInput.requestId,
+      pair_key: pairKey,
+      user_id: user.id,
+      match_user_id: partner.id,
+      status: 'matched',
+      action: 'claim_and_deliver'
+    })
+    const delivery = await deliverPair(Object.assign({}, claimInput, {
+      logA,
+      logB,
+      audit: claimAudit,
+      userDoc: user,
+      partnerDoc: partner,
+      userPatch: {
+        match_status: 'matched',
+        matched_partner_id: partner.id,
+        matched_at: deliveredAt,
+        update_time: deliveredAt
+      },
+      partnerPatch: {
+        match_status: 'matched',
+        matched_partner_id: user.id,
+        matched_at: deliveredAt,
+        update_time: deliveredAt
+      }
+    }), claimStore)
+    if (!delivery.delivered) continue
+    const deliveredLog = delivery.replayed
+      ? await byId('user_match_log', delivery.claim.match_log_ids.a)
+      : logA
+    if (deliveredLog) await reportTask.ensureTaskForMatch(deliveredLog, 'auto').catch(() => null)
+    return {
+      matched: 1,
+      users: ranked.length + 1,
+      evaluated_candidates: ranked.length,
+      match_id: deliveredLog ? deliveredLog.id : delivery.claim.match_log_ids.a,
+      match_user_id: partner.id,
+      view_similarity: best.viewSimilarity,
+      mutual_score: best.mutualScore,
+      pair_key: delivery.claim.pair_key,
+      algorithm_version: 'algo_evidence_v3'
+    }
+  }
   return {
-    matched: 1,
+    matched: 0,
     users: ranked.length + 1,
     evaluated_candidates: ranked.length,
-    match_id: logA.id,
-    match_user_id: partner.id,
-    view_similarity: best.viewSimilarity,
-    mutual_score: best.mutualScore,
-    algorithm_version: 'algo_evidence_v2'
+    message: '可用候选已被其他匹配占用，请稍后再试'
   }
 }
 
@@ -453,10 +649,23 @@ module.exports = {
   getSetting,
   cooldown,
   saveSetting,
+  confirmIntent,
   latest,
   matchList,
   detail,
   handoff,
   generateReport,
-  start
+  start,
+  ...createMatchTestRunHandlers({
+    currentUser,
+    first,
+    list,
+    byId,
+    acquireRun: require('../lib/db').acquireMatchTestRun,
+    claimRun: require('../lib/db').claimMatchTestRun,
+    completeRun: require('../lib/db').completeMatchTestRun,
+    now,
+    publicEnabled: () => flagEnabled('match_test_run_public_enabled'),
+    semanticRerank
+  })
 }

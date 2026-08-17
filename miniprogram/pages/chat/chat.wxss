@@ -5,6 +5,70 @@
   background: #f8f4f5;
 }
 
+.user-id-bar {
+  flex: 0 0 auto;
+  margin: 20rpx 28rpx 0;
+  padding: 20rpx 24rpx;
+  border: 1rpx solid #ede4e6;
+  border-radius: 16rpx;
+  background: #fff9f7;
+}
+
+.user-id-copy-row {
+  display: flex;
+  align-items: center;
+  min-height: 52rpx;
+}
+
+.user-id-label {
+  margin-right: 16rpx;
+  color: #746b70;
+  font-size: 22rpx;
+}
+
+.user-id-code {
+  flex: 1;
+  color: #2b2729;
+  font-size: 28rpx;
+  font-weight: 650;
+  letter-spacing: 1rpx;
+}
+
+.user-id-state {
+  flex: 1;
+  color: #746b70;
+  font-size: 24rpx;
+}
+
+.user-id-error {
+  color: #a86f32;
+}
+
+.user-id-copy {
+  width: auto;
+  min-width: 104rpx;
+  height: 52rpx;
+  margin: 0;
+  padding: 0 20rpx;
+  border: 1rpx solid #ff6b8a;
+  border-radius: 26rpx;
+  background: #fff;
+  color: #ff6b8a;
+  font-size: 22rpx;
+  line-height: 50rpx;
+}
+
+.user-id-copy::after {
+  border: 0;
+}
+
+.user-id-help {
+  margin-top: 8rpx;
+  color: #746b70;
+  font-size: 21rpx;
+  line-height: 1.5;
+}
+
 .chat-scroll {
   flex: 1;
   padding: 24rpx 32rpx;
@@ -222,4 +286,17 @@
 
 .send-btn[disabled] {
   background: #ccc !important;
+}
+
+.ai-disclaimer {
+  text-align: center;
+  padding: 16rpx 20rpx;
+  border-radius: 8rpx;
+  background: #fff8e1;
+  border: 2rpx solid #f2d879;
+  color: #8a6d1a;
+  font-size: 24rpx;
+  font-weight: 600;
+  line-height: 1.5;
+  margin-bottom: 16rpx;
 }

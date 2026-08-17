@@ -2,8 +2,18 @@ module.exports = {
   user: 'users',
   user_match_setting: 'user_match_settings',
   user_match_log: 'user_match_logs',
+  match_claim: 'match_claims',
+  match_claim_audit: 'match_claim_audits',
   occupation_circle: 'occupation_circles',
   user_order: 'user_orders',
+  partner_commission_ledger: 'partner_commission_ledgers',
+  partner_commission_rule: 'partner_commission_rules',
+  partner_dashboard_daily: 'partner_dashboard_daily',
+  partner_referral_attribution: 'partner_referral_attributions',
+  partner_share_event: 'partner_share_events',
+  partner_candidate: 'partner_candidates',
+  partner_audit_log: 'partner_audit_logs',
+  partner_binding: 'partner_bindings',
   marry_report: 'marry_reports',
   system_stat: 'system_stats',
   system_config: 'system_configs',
@@ -40,5 +50,8 @@ module.exports = {
   date_application_patch: 'date_application_patches',
   date_coordination_event: 'date_coordination_events',
   match_experience_feedback: 'match_experience_feedback',
-  date_experience_feedback: 'date_experience_feedback'
+  date_experience_feedback: 'date_experience_feedback',
+  match_batch_run: 'match_batch_runs',
+  fixture_response_job: 'fixture_response_jobs',
+  controlled_date_scenario_run: 'controlled_date_scenario_runs'
 }

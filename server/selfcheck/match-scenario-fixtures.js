@@ -40,14 +40,14 @@ for (const name of MATCH_SCENARIO_NAMES) {
     assert(result.scoreB.normalizedTotal < 100)
   }
   if (name === 'edge_pass') {
-    assert(Math.min(result.scoreA.total, result.scoreB.total) >= 90)
-    assert(Math.min(result.scoreA.total, result.scoreB.total) <= 95)
+    assert(Math.min(result.scoreA.normalizedTotal, result.scoreB.normalizedTotal) >= 90)
+    assert(Math.min(result.scoreA.completeness, result.scoreB.completeness) < 80)
   }
   if (name === 'missing_data') {
     assert.strictEqual(result.scoreA.detail.psych_compared, 0)
     assert.strictEqual(result.scoreB.detail.psych_compared, 0)
-    assert.strictEqual(result.scoreA.detail.appearance, 0)
-    assert.strictEqual(result.scoreB.detail.appearance, 0)
+    assert.strictEqual(result.scoreA.detail.appearance, null)
+    assert.strictEqual(result.scoreB.detail.appearance, null)
   }
 }
 

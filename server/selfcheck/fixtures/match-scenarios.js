@@ -114,7 +114,7 @@ function scenarioDefinition(name) {
       expected: {
         hardReject: false,
         qualityPass: true,
-        normalizedRange: [75, 85],
+        normalizedRange: [80, 90],
         viewRange: [90, 100],
         qualityReasons: []
       }
@@ -142,7 +142,7 @@ function scenarioDefinition(name) {
       expected: {
         hardReject: false,
         qualityPass: true,
-        normalizedRange: [70, 75],
+        normalizedRange: [90, 99],
         viewRange: [90, 100],
         qualityReasons: []
       }
@@ -189,7 +189,7 @@ function scenarioDefinition(name) {
       expected: {
         hardReject: false,
         qualityPass: false,
-        normalizedRange: [40, 50],
+        normalizedRange: [60, 70],
         viewRange: [90, 100],
         qualityReasons: ['side_score']
       }

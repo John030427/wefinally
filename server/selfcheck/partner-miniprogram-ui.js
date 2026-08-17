@@ -1,0 +1,53 @@
+const assert = require('assert')
+const fs = require('fs')
+const path = require('path')
+
+const root = path.resolve(__dirname, '../..')
+const read = (file) => fs.readFileSync(path.join(root, file), 'utf8')
+const api = read('miniprogram/utils/partnerApi.js')
+const profileJs = read('miniprogram/pages/profile/profile.js')
+const profileWxml = read('miniprogram/pages/profile/profile.wxml')
+const activationJs = read('miniprogram/pages/partner-login/partner-login.js')
+const activationWxml = read('miniprogram/pages/partner-login/partner-login.wxml')
+const dashboardJs = read('miniprogram/pages/partner-invite/partner-invite.js')
+const dashboardWxml = read('miniprogram/pages/partner-invite/partner-invite.wxml')
+const { activationErrorMessage } = require('../../miniprogram/utils/partnerActivationView')
+
+for (const route of ['/api/partner/onboarding/status', '/api/partner/activation', '/api/partner/session']) assert.ok(api.includes(route))
+assert.ok(!api.includes('/api/partner/applications'))
+assert.ok(profileJs.includes('loadPartnerStatus'))
+assert.ok(profileWxml.includes('partnerStatus.state'))
+assert.ok(!profileJs.includes('hasPartnerWorkspace: Boolean(wx.getStorageSync'))
+assert.ok(!activationWxml.includes('open-type="getPhoneNumber"'))
+assert.ok(activationWxml.includes('data-key="phone"'))
+assert.ok(activationJs.includes('activateByPhone'))
+assert.ok(!activationJs.includes('submitPartnerApplication'))
+assert.ok(!activationJs.includes('submitApplication'))
+assert.ok(!activationJs.includes('onVerifyPhone'))
+assert.ok(!activationWxml.includes('申请成为合伙人'))
+assert.ok(activationWxml.includes('受邀合伙人激活'))
+assert.ok(activationWxml.includes('验证合作身份'))
+assert.ok(activationWxml.includes('验证并进入工作台'))
+assert.ok(!activationWxml.includes('请输入合作名单手机号'))
+assert.ok(!activationWxml.includes('password'))
+assert.ok(!activationJs.includes('loginPartner'))
+assert.ok(activationJs.includes('activationErrorMessage'))
+assert.strictEqual(
+  activationErrorMessage(new Error('document.get:fail document with _id partner_activation_test does not exist')),
+  '激活未完成，请稍后重试；如仍失败请联系平台'
+)
+assert.strictEqual(
+  activationErrorMessage(new Error('手机号未获资格或验证不一致')),
+  '手机号未获资格或验证不一致'
+)
+assert.ok(dashboardJs.includes("'/api/partner/dashboard'"))
+assert.ok(dashboardJs.includes('restorePartnerSession'))
+assert.ok(dashboardWxml.includes('metrics.available_amount'))
+assert.ok(dashboardWxml.includes('metrics.attributed_registrations'))
+assert.ok(dashboardWxml.includes("partner.display_name || '合伙人'"))
+assert.ok(!dashboardWxml.includes("partner.name || '合伙人'"))
+assert.ok(!dashboardWxml.includes('partner.partner_code'))
+assert.ok(!profileWxml.includes('partnerStatus.partner_code'))
+assert.ok(!activationWxml.includes('status.partner_code'))
+
+console.log('PASS state-driven partner mini program activation and dashboard UI contract')

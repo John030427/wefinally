@@ -3,7 +3,8 @@ const assert = require('assert')
 const {
   createVipOrderService,
   nextVipExpire,
-  validatePaidTransaction
+  validatePaidTransaction,
+  buildCommissionLedgerEntry
 } = require('../../miniprogram/cloudfunctions/api/lib/vipOrder')
 
 function makeFakeDeps() {
@@ -15,13 +16,16 @@ function makeFakeDeps() {
       openid: 'openid_1',
       is_vip: 0,
       vip_expire_time: null,
-      status: 1
+      status: 1,
+      promote_partner_id: 7
     }],
-    now: new Date('2026-07-09T00:00:00.000Z')
+    now: new Date('2026-07-09T00:00:00.000Z'),
+    partner_commission_ledger: []
   }
   const collections = {
     user_order: state.orders,
-    user: state.users
+    user: state.users,
+    partner_commission_ledger: state.partner_commission_ledger
   }
   function matches(row, query) {
     return Object.keys(query || {}).every((key) => {
@@ -57,7 +61,17 @@ function makeFakeDeps() {
       Object.assign(row, data, { update_time: new Date(state.now) })
       return row
     },
+    withCollection: async (name, operation) => operation(),
     col: (name) => ({
+      doc: (id) => ({
+        set: async ({ data }) => {
+          const rows = collections[name] || []
+          const existing = rows.find((row) => row._id === id)
+          if (existing) Object.assign(existing, data, { _id: id })
+          else rows.push(Object.assign({}, data, { _id: id }))
+          return { stats: { updated: existing ? 1 : 0 } }
+        }
+      }),
       where: (query) => ({
         update: async ({ data }) => {
           let updated = 0
@@ -86,6 +100,22 @@ async function main() {
 
   assert.strictEqual(nextVipExpire(null, new Date('2026-07-09T00:00:00.000Z'), 30).toISOString(), '2026-08-08T00:00:00.000Z')
   assert.strictEqual(nextVipExpire('2026-08-01T00:00:00.000Z', new Date('2026-07-09T00:00:00.000Z'), 30).toISOString(), '2026-08-31T00:00:00.000Z')
+
+  const paidLedger = buildCommissionLedgerEntry({
+    partner_id: 7,
+    user_id: 1,
+    order_no: 'WF_LEDGER_1',
+    partner_commission: 94
+  }, { eventTime: new Date('2026-07-09T00:00:00.000Z') })
+  const refundLedger = buildCommissionLedgerEntry({
+    partner_id: 7,
+    user_id: 1,
+    order_no: 'WF_LEDGER_1',
+    partner_commission: 94
+  }, { direction: 'debit', reference: 'refund-1' })
+  assert.strictEqual(paidLedger.idempotency_key, 'credit:WF_LEDGER_1')
+  assert.strictEqual(refundLedger.entry_type, 'refund_reversal')
+  assert.notStrictEqual(paidLedger._id, refundLedger._id)
 
   const order = await service.createPendingVipOrder(user, {
     orderNo: 'WF_TEST_ORDER_1',
@@ -122,6 +152,8 @@ async function main() {
   assert.strictEqual(deps.state.orders[0].pay_status, 1)
   assert.strictEqual(deps.state.orders[0].vip_granted, 1)
   assert.strictEqual(deps.state.users[0].is_vip, 1)
+  assert.strictEqual(deps.state.partner_commission_ledger.length, 1)
+  assert.strictEqual(deps.state.partner_commission_ledger[0].direction, 'credit')
   const firstExpire = String(deps.state.users[0].vip_expire_time)
 
   const duplicate = await service.finalizePaidVipOrder({
@@ -136,6 +168,7 @@ async function main() {
 
   assert.strictEqual(duplicate.idempotent, true)
   assert.strictEqual(String(deps.state.users[0].vip_expire_time), firstExpire)
+  assert.strictEqual(deps.state.partner_commission_ledger.length, 1)
 
   const status = await service.getStatusForUser(user, order.order_no)
   assert.strictEqual(status.order_no, order.order_no)

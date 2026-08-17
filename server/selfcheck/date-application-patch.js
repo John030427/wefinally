@@ -66,7 +66,8 @@ async function serviceChecks() {
       user_b_id: 2,
       status: 'waiting_confirmations',
       business_state: 'proposal_generated',
-      coordination_version: 1
+      coordination_version: 1,
+      recoordination_count: 0
     }],
     date_coordination_application: [
       { id: 1, coordination_id: 50, user_id: 1, coordination_version: 1, application: current },
@@ -142,10 +143,15 @@ async function serviceChecks() {
   assert.strictEqual(applied.patch.status, 'applied')
   assert.strictEqual(applied.coordination_version, 2)
   assert.strictEqual(tables.date_coordination[0].coordination_version, 2)
-  assert.strictEqual(tables.date_coordination[0].business_state, 'proposal_generated')
+  assert.strictEqual(tables.date_coordination[0].status, 'computing_overlap')
+  assert.strictEqual(tables.date_coordination[0].business_state, 'processing')
+  assert.strictEqual(tables.date_coordination[0].processing_status, 'queued')
+  assert.strictEqual(tables.date_coordination[0].processing_version, 2)
+  assert.strictEqual(tables.date_coordination[0].recoordination_count, 1)
   assert.strictEqual(tables.date_coordination_proposal[0].status, 'superseded')
   assert.strictEqual(tables.date_coordination_confirmation[0].status, 'superseded')
   assert.strictEqual(tables.date_coordination_application.filter((row) => row.coordination_version === 2).length, 2)
+  assert.strictEqual(tables.date_coordination_proposal.filter((row) => row.coordination_version === 2).length, 0)
   const partnerMessage = tables.agent_message.find((row) => row.session_id === 200)
   assert(partnerMessage.content.includes('对方的约会条件发生调整'))
   assert.strictEqual(partnerMessage.content.includes('电影'), false)
@@ -165,8 +171,11 @@ async function serviceChecks() {
     patch_id: noOverlapPreview.id
   }, tables.user[0])
   assert.strictEqual(noOverlap.coordination_version, 3)
-  assert.strictEqual(noOverlap.status, 'no_overlap')
-  assert.strictEqual(noOverlap.business_state, 'waiting_partner')
+  assert.strictEqual(noOverlap.status, 'computing_overlap')
+  assert.strictEqual(noOverlap.business_state, 'processing')
+  assert.strictEqual(tables.date_coordination[0].processing_status, 'queued')
+  assert.strictEqual(tables.date_coordination[0].processing_version, 3)
+  assert.strictEqual(tables.date_coordination[0].recoordination_count, 2)
   assert.strictEqual(noOverlap.proposal_generated, false)
   const stalePreview = await handlers.createPreviewForUser({
     coordination_id: 50,
@@ -177,6 +186,30 @@ async function serviceChecks() {
   await assert.rejects(
     () => handlers.confirmForUser({ coordination_id: 50, patch_id: stalePreview.id }, tables.user[0]),
     /已更新.*重新生成/
+  )
+
+  tables.date_coordination[0] = Object.assign({}, tables.date_coordination[0], {
+    status: 'no_overlap',
+    business_state: 'waiting_partner',
+    coordination_version: 5,
+    recoordination_count: 4
+  })
+  const fifthRoundPreview = await handlers.createPreviewForUser({
+    coordination_id: 50,
+    session_id: 100,
+    changes: { budget: 'flexible' }
+  }, tables.user[0])
+  const fifthRoundHandoff = await handlers.confirmForUser({
+    coordination_id: 50,
+    patch_id: fifthRoundPreview.id
+  }, tables.user[0])
+  assert.strictEqual(fifthRoundHandoff.status, 'manual_handoff')
+  assert.strictEqual(fifthRoundHandoff.coordination_version, 5)
+  assert.strictEqual(tables.date_coordination[0].coordination_version, 5)
+  assert.strictEqual(tables.date_coordination[0].recoordination_count, 4)
+  await assert.rejects(
+    () => handlers.createPreviewForUser({ coordination_id: 50, changes: { budget: 'under-50' } }, tables.user[0]),
+    /已经结束/
   )
 }
 

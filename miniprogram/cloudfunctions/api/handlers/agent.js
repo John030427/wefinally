@@ -9,6 +9,9 @@ const { createDateApplicationPatchHandlers, claimPendingPatch } = require('./dat
 const { createDateCoordinationHandlers } = require('./dateCoordination')
 const { PATCH_TOOL } = require('../lib/dateApplicationPatchPolicy')
 const { readHumanServiceConfig, buildHumanServiceHandoff } = require('../agent/humanService')
+const { readLangGraphConfig, createActorRef, createThreadId, runLangGraphStep } = require('../agent/langgraphClient')
+const { executeGraphTool } = require('../agent/langgraphToolBridge')
+const { buildDateCoordinationGraphInput, latestApplication } = require('../agent/dateCoordinationGraphState')
 
 const FREE_DAILY_LIMIT = 5
 const VIP_DAILY_LIMIT = 30
@@ -33,6 +36,7 @@ function guardUnverifiedSuccessClaim(reply) {
 
 function defaultDeps() {
   const db = require('../lib/db')
+  const cloud = require('wx-server-sdk')
   return {
     currentUser: require('./user').currentUser,
     first: db.first,
@@ -42,7 +46,9 @@ function defaultDeps() {
     updateByDoc: db.updateByDoc,
     claimPendingPatch,
     now: db.now,
-    generateDecision
+    generateDecision,
+    env: process.env,
+    invokeGraphFunction: (name, payload) => cloud.callFunction({ name, data: payload })
   }
 }
 
@@ -272,6 +278,71 @@ function createAgentHandlers(overrides = {}) {
       return { session_id: session.id, agent_type: session.agent_type, reply, risk_level: risk.category, manual_pending: risk.category === RISK.HIGH_RISK }
     }
 
+    const graphConfig = readLangGraphConfig(dep('env'))
+    if (session.agent_type === AGENT_TYPES.PLATFORM_SERVICE && graphConfig.enabled) {
+      try {
+        const actorSecret = graphConfig.actorSecret
+        const graphStep = await runLangGraphStep({
+          threadId: createThreadId(session.id, actorSecret),
+          actorRef: createActorRef(user.id, actorSecret),
+          mode: 'customer_service',
+          userText: content,
+          safeSummary: String(session.summary || '').slice(0, 800)
+        }, {
+          env: dep('env'),
+          invokeFunction: dep('invokeGraphFunction'),
+          executeTool: (action) => executeGraphTool(action, {
+            userId: Number(user.id),
+            sessionId: Number(session.id),
+            coordinationId: 0,
+            coordinationVersion: 0
+          }, {
+            create_human_ticket: async (args) => {
+              const ticket = await createTicketFor(session, user, {
+                priority: args.priority || 'P1',
+                category: args.category || 'graph_manual_review',
+                summary: args.summary || 'AI 客服转人工核查'
+              })
+              return {
+                ok: true,
+                data: {
+                  ticketId: String(ticket.id || ''),
+                  status: ticket.status || 'open',
+                  priority: ticket.priority || args.priority || 'P1'
+                }
+              }
+            }
+          })
+        })
+        if (graphStep.kind === 'result') {
+          const graphResult = graphStep.result
+          const reply = graphResult.replyDraft || (graphResult.status === 'manual_pending'
+            ? '已转人工客服核查，请耐心等待工作人员回复。'
+            : '我已收到你的问题。')
+          await dep('addWithId')('agent_run', {
+            session_id: session.id,
+            user_id: user.id,
+            agent_type: session.agent_type,
+            status: graphResult.status,
+            provider: 'langgraph',
+            risk_level: 'safe',
+            error_code: graphResult.errorCode || ''
+          }, 'agent_run')
+          await saveMessage(session, user, 'assistant', reply, { graph_phase: graphResult.phase })
+          return {
+            session_id: session.id,
+            agent_type: session.agent_type,
+            reply,
+            provider: 'langgraph',
+            manual_pending: graphResult.status === 'manual_pending',
+            risk_level: 'safe'
+          }
+        }
+      } catch (_) {
+        // A typed graph/config/tool failure deliberately falls through to the legacy path.
+      }
+    }
+
     if (session.agent_type === AGENT_TYPES.DATE_COORDINATOR) {
       const coordination = await dep('byId')('date_coordination', Number(session.coordination_id || 0))
       if (!coordination || ![Number(coordination.user_a_id), Number(coordination.user_b_id)].includes(Number(user.id))) {
@@ -307,6 +378,56 @@ function createAgentHandlers(overrides = {}) {
         now: dep('now'),
         saveApplicationForUser: coordinationHandlers.saveApplicationForUser
       })
+      const allApplications = await dep('list')('date_coordination_application', {
+        coordination_id: Number(coordination.id)
+      }, 200)
+      let dateGraphResult = null
+      if (graphConfig.enabled) {
+        const graphInput = buildDateCoordinationGraphInput(coordination, allApplications, user)
+        try {
+          const graphStep = await runLangGraphStep({
+            threadId: createThreadId(`date:${coordination.id}`, graphConfig.actorSecret),
+            actorRef: createActorRef(user.id, graphConfig.actorSecret),
+            mode: 'date_coordination',
+            userText: content,
+            safeSummary: String(session.summary || '').slice(0, 800),
+            ...graphInput
+          }, {
+            env: dep('env'),
+            invokeFunction: dep('invokeGraphFunction')
+          })
+          if (graphStep.kind === 'result') {
+            dateGraphResult = graphStep.result
+            await dep('addWithId')('agent_run', {
+              session_id: session.id,
+              user_id: user.id,
+              agent_type: session.agent_type,
+              coordination_id: Number(coordination.id),
+              coordination_version: Number(dateGraphResult.coordinationVersion || coordination.coordination_version || 1),
+              status: dateGraphResult.status,
+              provider: 'langgraph',
+              intent: 'date_coordination_state',
+              risk_level: 'safe',
+              error_code: dateGraphResult.errorCode || ''
+            }, 'agent_run')
+          } else {
+            await dep('addWithId')('agent_run', {
+              session_id: session.id,
+              user_id: user.id,
+              agent_type: session.agent_type,
+              coordination_id: Number(coordination.id),
+              coordination_version: Number(coordination.coordination_version || 1),
+              status: 'fallback',
+              provider: 'langgraph',
+              intent: 'date_coordination_state',
+              risk_level: 'safe',
+              error_code: String(graphStep.code || graphStep.kind || 'graph_fallback').slice(0, 80)
+            }, 'agent_run')
+          }
+        } catch (_) {
+          // Graph failures fall through to the established backend/DeepSeek path.
+        }
+      }
       const pendingPatches = await dep('list')('date_application_patch', {
         coordination_id: Number(coordination.id),
         session_id: Number(session.id),
@@ -368,25 +489,23 @@ function createAgentHandlers(overrides = {}) {
         return { session_id: session.id, agent_type: session.agent_type, reply, cancelled: true, risk_level: 'safe' }
       }
       if (/进度|状态|哪一步|怎么样了/.test(content)) {
-        const reply = `当前进度：${statusText}。我只会说明共同进度，不会展示对方的原始回答。`
+        const reply = dateGraphResult && dateGraphResult.replyDraft
+          ? `${dateGraphResult.replyDraft} 我只会说明共同进度，不会展示对方的原始回答。`
+          : `当前进度：${statusText}。我只会说明共同进度，不会展示对方的原始回答。`
         await recordTool(session, user, TOOL_NAMES.DATE_COORDINATION, 'completed')
-        await saveMessage(session, user, 'assistant', reply)
+        await saveMessage(session, user, 'assistant', reply, dateGraphResult ? { graph_phase: dateGraphResult.phase } : {})
         return {
           session_id: session.id,
           agent_type: session.agent_type,
           reply,
           tool: TOOL_NAMES.DATE_COORDINATION,
+          provider: dateGraphResult ? 'langgraph' : 'backend',
+          graph_phase: dateGraphResult ? dateGraphResult.phase : undefined,
           risk_level: 'safe'
         }
       }
 
-      const applications = await dep('list')('date_coordination_application', {
-        coordination_id: Number(coordination.id),
-        user_id: Number(user.id)
-      }, 100)
-      const ownApplicationRow = applications
-        .filter((row) => Number(row.coordination_version || 0) <= Number(coordination.coordination_version || 1))
-        .sort((a, b) => Number(b.coordination_version || 0) - Number(a.coordination_version || 0))[0]
+      const ownApplicationRow = latestApplication(allApplications, user.id, coordination.coordination_version)
       const context = buildContext({
         summary: session.summary || '',
         turns: await recentTurns(session),
@@ -475,7 +594,7 @@ function createAgentHandlers(overrides = {}) {
             session_id: session.id,
             agent_type: session.agent_type,
             reply,
-            provider: decision.provider || 'minimax',
+            provider: decision.provider || 'deepseek',
             tool: PATCH_TOOL,
             patch_preview: patchPreview,
             requires_confirmation: true,
@@ -504,7 +623,7 @@ function createAgentHandlers(overrides = {}) {
             session_id: session.id,
             agent_type: session.agent_type,
             reply,
-            provider: decision.provider || 'minimax',
+            provider: decision.provider || 'deepseek',
             tool: CREATE_APPLICATION_PREVIEW_TOOL,
             patch_preview: patchPreview,
             requires_confirmation: true,

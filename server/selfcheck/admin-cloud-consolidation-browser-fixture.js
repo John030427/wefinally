@@ -1,0 +1,169 @@
+const fs = require('fs')
+const http = require('http')
+const path = require('path')
+
+const port = Number(process.env.ADMIN_CLOUD_FIXTURE_PORT || 3112)
+const htmlPath = path.resolve(__dirname, '../public/admin/index.html')
+
+const official = { id: 7, support_code: 'WF-000007', display_label: 'WF-000007 · 女 · 深圳', gender: 2, gender_text: '女', city: '深圳', is_test: false, status: 1, member_status: 'approved', is_vip: 1, vip_source: 'partner_invite', vip_expire_time: '2027-08-13T00:00:00.000Z', create_time: '2026-08-01T10:00:00.000Z', openid: 'official-openid-7' }
+const testUser = { id: 118, support_code: 'TEST-000118', display_label: 'TEST-000118 · 男 · 汕头', gender: 1, gender_text: '男', city: '汕头', is_test: true, status: 1, member_status: 'approved', is_vip: 1, vip_source: 'internal_test', create_time: '2026-08-12T10:00:00.000Z', openid: 'dev_wefinally_local_openid' }
+const datePartner = { id: 8, support_code: 'WF-000008', display_label: 'WF-000008 · 男 · 潮州', gender: 1, gender_text: '男', city: '潮州', is_test: false, status: 1, member_status: 'approved', is_vip: 1, vip_source: 'partner_invite', create_time: '2026-08-01T10:10:00.000Z', openid: 'official-openid-8' }
+
+const conversations = [
+  { id: 301, session_ref: 'WF-S-000301', user_ref: 'WF-000007', user: official, agent_type: 'match_advisor', status: 'active', summary: '询问本周匹配建议', create_time: '2026-08-13T09:00:00.000Z' },
+  { id: 302, session_ref: 'WF-S-000302', user_ref: 'WF-000007', user: official, agent_type: 'platform_service', status: 'active', summary: '询问会员权益', create_time: '2026-08-13T09:10:00.000Z' },
+  { id: 303, session_ref: 'WF-S-000303', user_ref: 'WF-000007', user: official, agent_type: 'date_coordinator', status: 'active', summary: '协调周末见面', coordination_ref: 'WF-D-000401', create_time: '2026-08-13T09:20:00.000Z' },
+  { id: 318, session_ref: 'WF-S-000318', user_ref: 'TEST-000118', user: testUser, agent_type: 'match_advisor', status: 'active', summary: '不可约会测试案例', create_time: '2026-08-13T09:30:00.000Z' }
+]
+const pairedDateSession = { id: 304, session_ref: 'WF-S-000304', user_ref: 'WF-000008', user: datePartner, agent_type: 'date_coordinator', status: 'active', summary: '回应周末见面协调', coordination_ref: 'WF-D-000401', create_time: '2026-08-13T09:21:00.000Z' }
+
+const messages = new Map(conversations.concat([pairedDateSession]).map((item) => [item.id, [
+  { message_ref: `WF-M-${item.id}01`, source_type: 'message', role: 'user', sender_type: 'user', content: item.id === 318 ? '这是测试账号，不允许约会。' : (item.id === 303 ? 'A侧：周六下午可以喝咖啡。' : (item.id === 304 ? 'B侧：周六下午也可以。' : '请帮我看看最近的业务记录。')), create_time: item.create_time },
+  { message_ref: `WF-M-${item.id}02`, source_type: 'message', role: 'assistant', sender_type: 'agent', content: '已整理资料并等待人工客服确认。', create_time: '2026-08-13T09:31:00.000Z' }
+]]))
+
+const tickets = [{ id: 501, ticket_ref: 'WF-T-000501', session_ref: 'WF-S-000301', user_ref: 'WF-000007', user: official, priority: 'P2', category: 'match', summary: '匹配记录说明', status: 'processing', assigned_admin_ref: 'WF-A-000001', create_time: '2026-08-13T09:35:00.000Z' }]
+
+const order = { id: 601, order_no: 'WF-ORDER-000601', user: official, amount: 199, pay_status: 1, settle_status: 0, pay_time: '2026-08-12T08:00:00.000Z', create_time: '2026-08-12T07:55:00.000Z' }
+const match = { id: 701, owner: official, matched: { ...official, id: 8, support_code: 'WF-000008', display_label: 'WF-000008 · 男 · 潮州', gender: 1, gender_text: '男', city: '潮州' }, total_score: 86.5, view_similarity: 91, match_date: '2026-08-13', match_type: 'daily', score_version: 'v2' }
+const partnerCandidates = [{ id: 31, source: 'application', phone_masked: '138****0015', applicant_user_id: 15, review_status: 'pending', activation_status: 'unbound', review_note: '', create_time: '2026-08-14T09:00:00.000Z' }]
+const fixturePartners = [{ id: 7, name: 'Grace', partner_code: 'WF-P-0007', promote_code: 'WFP0007', phone_masked: '139****8001', user_id: 15, status: 1, balance: 88.5, binding_version: 1 }]
+
+function aggregate(user = official) {
+  return {
+    user,
+    match_settings: { age_min: 28, age_max: 38, min_education: '本科', self_view_text: '重视诚信和家庭责任', target_view_text: '沟通坦诚、尊重边界' },
+    member_application: { id: 801, status: 'approved' },
+    attribution: { source: 'partner_share', promote_code: 'GRACE2026' },
+    partner: { id: 1, name: 'Grace', promote_code: 'GRACE2026' },
+    orders: user.is_test ? [] : [order],
+    matches: user.is_test ? [] : [match],
+    conversations: conversations.filter((item) => item.user.id === user.id).map(({ user: ignored, ...item }) => item),
+    tickets: user.is_test ? [] : [{ id: 501, category: 'match', summary: '匹配记录说明', status: 'processing' }],
+    coordinations: user.is_test ? [] : [{ id: 401, status: 'arranged' }],
+    notification_jobs: user.is_test ? [] : [{ id: 901, stage: 'proposal_generated', status: 'sent', sent_at: '2026-08-13T09:25:00.000Z' }],
+    sensitive_fields_included: true
+  }
+}
+
+function send(res, status, payload, type = 'application/json; charset=utf-8') {
+  res.writeHead(status, { 'content-type': type, 'access-control-allow-origin': '*' })
+  res.end(type.startsWith('application/json') ? JSON.stringify(payload) : payload)
+}
+
+function readBody(req) {
+  return new Promise((resolve, reject) => {
+    let raw = ''
+    req.on('data', (chunk) => { raw += chunk })
+    req.on('end', () => { try { resolve(raw ? JSON.parse(raw) : {}) } catch (error) { reject(error) } })
+    req.on('error', reject)
+  })
+}
+
+function listPayload(list, pageSize = 20) {
+  return { list, total: list.length, page: 1, pageSize }
+}
+
+function conversationDetail(session) {
+  const detail = {
+    read_only: true,
+    session,
+    messages: messages.get(session.id) || [],
+    timeline: messages.get(session.id) || [],
+    coordination: session.coordination_ref ? { coordination_ref: session.coordination_ref, participant_refs: ['WF-000007', 'WF-000008'], status: 'arranged', coordination_version: 1, missing_dimensions: [] } : null,
+    runs: [{ run_ref: 'WF-R-000001', provider: 'deepseek', status: 'completed' }],
+    notification_jobs: [{ job_ref: 'WF-N-000901', stage: 'proposal_generated', status: 'sent' }],
+    user_context: aggregate(session.user)
+  }
+  if ([303, 304].includes(session.id)) {
+    const side = (item, label, selected) => ({
+      side: label,
+      selected,
+      session: item,
+      messages: messages.get(item.id) || [],
+      timeline: messages.get(item.id) || [],
+      runs: [{ run_ref: `WF-R-00000${label === 'A' ? 1 : 2}`, provider: 'langgraph', status: 'completed' }],
+      notification_jobs: []
+    })
+    detail.paired_conversation = {
+      read_only: true,
+      coordination: detail.coordination,
+      sides: {
+        a: side(conversations.find((item) => item.id === 303), 'A', session.id === 303),
+        b: side(pairedDateSession, 'B', session.id === 304)
+      },
+      shared_events: [{ source_type: 'coordination_event', event_ref: 'WF-E-000001', role: 'assistant', sender_type: 'system', event_type: 'proposal_generated', content: '系统已生成新的候选方案。', create_time: '2026-08-13T09:30:00.000Z' }]
+    }
+  }
+  return detail
+}
+
+http.createServer(async (req, res) => {
+  const url = new URL(req.url, `http://127.0.0.1:${port}`)
+  if (url.pathname === '/admin' || url.pathname === '/admin/') {
+    const html = fs.readFileSync(htmlPath, 'utf8').replace('<script>', `<script>window.WF_CLOUD_ONLY = true; window.WF_CLOUD_BACKOFFICE_API = 'http://127.0.0.1:${port}';</script><script>`)
+    return send(res, 200, html, 'text/html; charset=utf-8')
+  }
+  if (req.method === 'POST' && url.pathname === '/api/auth/admin-login') return send(res, 200, { code: 0, data: { token: 'fixture-token', admin: { username: 'Grace', role: 'super_admin', admin_role: 'super_admin' } } })
+  if (req.method === 'GET' && url.pathname === '/api/admin/dashboard') return send(res, 200, { code: 0, data: { users: 1, vip_users: 1, partners: 1, paid_orders: 1, revenue: 199, pending_member_applications: 0, open_service_tickets: 1 } })
+  if (req.method === 'GET' && url.pathname === '/api/admin/partner-candidates') return send(res, 200, { code: 0, data: { list: partnerCandidates } })
+  if (req.method === 'GET' && url.pathname === '/api/admin/partners') return send(res, 200, { code: 0, data: { list: fixturePartners } })
+  if (req.method === 'POST' && url.pathname === '/api/admin/partner-candidates') {
+    const body = await readBody(req)
+    const candidate = { id: 32, source: 'roster', phone_masked: '137****5678', applicant_user_id: 0, review_status: 'approved', activation_status: 'unbound', review_note: body.note || '', create_time: new Date().toISOString() }
+    partnerCandidates.push(candidate)
+    return send(res, 200, { code: 0, data: candidate })
+  }
+  if (req.method === 'GET' && url.pathname === '/api/admin/users') return send(res, 200, { code: 0, data: listPayload(url.searchParams.get('include_test') === '1' ? [official, testUser] : [official]) })
+  if (req.method === 'GET' && url.pathname === '/api/admin/orders') return send(res, 200, { code: 0, data: listPayload([order], 50) })
+  if (req.method === 'GET' && url.pathname === '/api/admin/matches') return send(res, 200, { code: 0, data: listPayload([match], 50) })
+  if (req.method === 'GET' && url.pathname === '/api/admin/agent/tickets') return send(res, 200, { code: 0, data: { list: tickets } })
+  if (req.method === 'GET' && url.pathname === '/api/admin/date-coordinations') return send(res, 200, { code: 0, data: { list: [{ id: 401, status: 'arranged' }] } })
+  if (req.method === 'GET' && url.pathname === '/api/admin/agent/conversations') {
+    let list = url.searchParams.get('include_test') === '1' ? conversations : conversations.filter((item) => !item.user.is_test)
+    const query = String(url.searchParams.get('query') || '').toLowerCase()
+    if (query) list = list.filter((item) => [item.session_ref, item.user_ref, item.user.display_label, item.summary].join(' ').toLowerCase().includes(query))
+    return send(res, 200, { code: 0, data: { list } })
+  }
+  let matched = url.pathname.match(/^\/api\/admin\/users\/(\d+)$/)
+  matched = url.pathname.match(/^\/api\/admin\/partner-candidates\/(\d+)$/)
+  if (req.method === 'GET' && matched) {
+    const candidate = partnerCandidates.find((item) => item.id === Number(matched[1]))
+    return send(res, candidate ? 200 : 404, candidate ? { code: 0, data: { candidate, partner: null, audits: [{ id: 1, action: 'application_submit', reason: 'self_application', create_time: candidate.create_time }] } } : { code: 404, message: 'candidate not found' })
+  }
+  matched = url.pathname.match(/^\/api\/admin\/partner-candidates\/(\d+)\/(approve|reject)$/)
+  if (req.method === 'POST' && matched) {
+    const candidate = partnerCandidates.find((item) => item.id === Number(matched[1]))
+    const body = await readBody(req)
+    candidate.review_status = matched[2] === 'approve' ? 'approved' : 'rejected'
+    candidate.review_note = body.reason
+    return send(res, 200, { code: 0, data: candidate })
+  }
+  matched = url.pathname.match(/^\/api\/admin\/partners\/(\d+)\/(suspend|resume|unbind|revoke)$/)
+  if (req.method === 'POST' && matched) {
+    const partner = fixturePartners.find((item) => item.id === Number(matched[1]))
+    partner.status = matched[2] === 'resume' ? 1 : matched[2] === 'unbind' ? 0 : 2
+    return send(res, 200, { code: 0, data: partner })
+  }
+  matched = url.pathname.match(/^\/api\/admin\/users\/(\d+)$/)
+  if (req.method === 'GET' && matched) {
+    const user = Number(matched[1]) === 118 ? testUser : Number(matched[1]) === 7 ? official : null
+    return send(res, user ? 200 : 404, user ? { code: 0, data: aggregate(user) } : { code: 404, message: 'fixture user not found' })
+  }
+  matched = url.pathname.match(/^\/api\/admin\/matches\/(\d+)$/)
+  if (req.method === 'GET' && matched) return send(res, 200, { code: 0, data: { log: match, owner: { ...official, match_settings: aggregate().match_settings }, partner: { ...match.matched, match_settings: aggregate().match_settings }, score_detail: { version: 'v2', quality_gate: { pass: true, reasons: [] }, side: { dimensions: {} } } } })
+  matched = url.pathname.match(/^\/api\/admin\/agent\/conversations\/(\d+)$/)
+  if (req.method === 'GET' && matched) {
+    const session = conversations.concat([pairedDateSession]).find((item) => item.id === Number(matched[1]))
+    return send(res, session ? 200 : 404, session ? { code: 0, data: conversationDetail(session) } : { code: 404, message: 'fixture conversation not found' })
+  }
+  matched = url.pathname.match(/^\/api\/admin\/agent\/conversations\/(\d+)\/reply$/)
+  if (req.method === 'POST' && matched) {
+    const session = conversations.find((item) => item.id === Number(matched[1]))
+    const body = await readBody(req)
+    if (!session) return send(res, 404, { code: 404, message: 'fixture conversation not found' })
+    messages.get(session.id).push({ message_ref: `WF-M-${Date.now()}`, source_type: 'message', role: 'assistant', sender_type: 'human_agent', content: String(body.content || ''), create_time: new Date().toISOString() })
+    return send(res, 200, { code: 0, data: { created: false, ticket: tickets[0] } })
+  }
+  return send(res, 404, { code: 404, message: `fixture route not found: ${req.method} ${url.pathname}` })
+}).listen(port, '127.0.0.1', () => console.log(`admin cloud browser fixture listening on ${port}`))

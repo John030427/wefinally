@@ -147,11 +147,12 @@ AI 报告由 `cloudfunctions/api` 云函数调用 MiniMax，不从小程序端�
 在云函数 `api` 的环境变量里填写：
 
 ```text
-MINIMAX_API_KEY=<MiniMax Key>
-MINIMAX_BASE_URL=https://api.minimaxi.com/anthropic
-MINIMAX_MODEL=MiniMax-M3
-MINIMAX_TIMEOUT_MS=12000
-MINIMAX_MATCH_REPORT_ENABLED=true
+DEEPSEEK_API_KEY=<DeepSeek Key>
+DEEPSEEK_BASE_URL=https://api.deepseek.com
+DEEPSEEK_MODEL=deepseek-chat
+DEEPSEEK_TIMEOUT_MS=20000
+DEEPSEEK_MATCH_REPORT_ENABLED=true
+AGENT_LLM_ENABLED=true
 ```
 
 保存后重新上传并部署 `cloudfunctions/api`。Key 不要写进源码、不要导入数据库、不要发到前端。

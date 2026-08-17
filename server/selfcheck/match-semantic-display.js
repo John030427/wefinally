@@ -1,0 +1,23 @@
+const assert = require('assert')
+const fs = require('fs')
+const path = require('path')
+
+const detailJs = fs.readFileSync(path.resolve(__dirname, '../../miniprogram/pages/match-detail/match-detail.js'), 'utf8')
+const detailWxml = fs.readFileSync(path.resolve(__dirname, '../../miniprogram/pages/match-detail/match-detail.wxml'), 'utf8')
+const handler = fs.readFileSync(path.resolve(__dirname, '../../miniprogram/cloudfunctions/api/handlers/match.js'), 'utf8')
+
+assert(detailJs.includes('semanticConfidence'))
+assert(detailJs.includes('dataCompleteness'))
+assert(detailJs.includes('semanticStrengths'))
+assert(detailJs.includes('asymmetricRisks'))
+assert(detailJs.includes('confirmationQuestions'))
+assert(detailWxml.includes('共同满足点'))
+assert(detailWxml.includes('潜在不对称'))
+assert(detailWxml.includes('待确认问题'))
+assert(detailWxml.includes('数据完整度'))
+assert(detailWxml.includes('AI置信度'))
+assert(handler.includes('semantic_strengths: best.semantic_strengths'))
+assert(handler.includes('a_to_b_semantic_score: best.a_to_b_semantic_score'))
+assert(handler.includes('data_completeness: best.data_completeness'))
+
+console.log('PASS match detail displays bilateral semantic evidence and confidence')

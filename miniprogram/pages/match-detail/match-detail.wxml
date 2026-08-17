@@ -72,64 +72,6 @@
       </view>
     </view>
 
-    <view class="feedback-card card" wx:if="{{!detail.locked}}">
-      <view class="feedback-head">
-        <view>
-          <view class="feedback-kicker">帮助平台校准匹配</view>
-          <view class="feedback-title">这份结果符合你的实际感受吗？</view>
-        </view>
-        <view class="saved-pill" wx:if="{{matchFeedback}}">已保存</view>
-      </view>
-      <view class="feedback-options">
-        <view
-          class="feedback-option {{feedbackVerdict === item.value ? 'selected' : ''}}"
-          wx:for="{{feedbackVerdictOptions}}"
-          wx:key="value"
-          data-value="{{item.value}}"
-          bindtap="selectFeedbackVerdict"
-        >{{item.label}}</view>
-      </view>
-      <block wx:if="{{feedbackVerdict}}">
-        <view class="feedback-subtitle">哪些方面影响了你的判断？</view>
-        <view class="feedback-reasons">
-          <view
-            class="reason-chip {{feedbackReasonSelection[item.value] ? 'selected' : ''}}"
-            wx:for="{{feedbackReasonOptions}}"
-            wx:key="value"
-            data-value="{{item.value}}"
-            bindtap="toggleFeedbackReason"
-          >{{item.label}}</view>
-        </view>
-        <textarea class="feedback-note" maxlength="200" value="{{feedbackNote}}" bindinput="onFeedbackNoteInput" placeholder="选填：补充不含联系方式的说明"></textarea>
-        <label class="review-row">
-          <checkbox-group bindchange="onFeedbackReviewChange">
-            <label><checkbox value="review" checked="{{feedbackReview}}" color="#FF6B8A" />希望人工复核这次匹配</label>
-          </checkbox-group>
-        </label>
-        <button class="feedback-submit" loading="{{feedbackSubmitting}}" disabled="{{feedbackSubmitting}}" bindtap="submitMatchFeedback">保存反馈</button>
-      </block>
-    </view>
-
-    <view class="algorithm-toggle card" wx:if="{{!detail.locked}}" bindtap="toggleAlgorithmDetails">
-      <view>
-        <view class="algorithm-title">算法与报告细节</view>
-        <view class="algorithm-desc">综合分、字段拆解和 AI 报告仅作辅助参考</view>
-      </view>
-      <view class="algorithm-action">{{showAlgorithmDetails ? '收起' : '展开'}} ›</view>
-    </view>
-
-    <block wx:if="{{showAlgorithmDetails}}">
-    <view class="compat-card card" wx:if="{{hasTotalScore}}">
-      <view class="compat-title">综合匹配参考</view>
-      <view class="compat-score-row">
-        <text class="compat-score-num compat-score-text">{{totalScoreText}}</text>
-      </view>
-      <view class="progress-bar progress-lg">
-        <view class="progress-fill progress-pink" style="width: {{totalScorePercent}}%"></view>
-      </view>
-      <view class="compat-hint">基于资料、择偶条件、三观文本和关系偏好测算，仅作优先了解参考</view>
-    </view>
-
     <view class="report-card card" wx:if="{{!detail.locked}}">
       <view class="report-header">
         <view class="meet-title">AI匹配报告</view>
@@ -137,6 +79,7 @@
           {{detail.reportStatusText}}
         </view>
       </view>
+      <view class="ai-disclaimer">🤖 AI 生成内容，仅供参考</view>
       <view wx:if="{{detail.aiReportStatus === 'succeeded' && detail.aiReport}}" class="structured-report">
         <view class="report-text">{{detail.aiReport.summary}}</view>
         <view wx:if="{{detail.aiReport.strengths.length}}" class="local-report-title">契合点</view>
@@ -177,6 +120,90 @@
           disabled="{{reportGenerating}}"
           bindtap="onRetry"
         >刷新进度</button>
+      </view>
+    </view>
+
+    <view class="feedback-card card" wx:if="{{!detail.locked}}">
+      <view class="feedback-head">
+        <view>
+          <view class="feedback-kicker">帮助平台改进匹配</view>
+          <view class="feedback-title">这份结果符合你的实际感受吗？</view>
+        </view>
+        <view class="saved-pill" wx:if="{{matchFeedback}}">已保存</view>
+      </view>
+      <view class="feedback-options">
+        <view
+          class="feedback-option {{feedbackVerdict === item.value ? 'selected' : ''}}"
+          wx:for="{{feedbackVerdictOptions}}"
+          wx:key="value"
+          data-value="{{item.value}}"
+          bindtap="selectFeedbackVerdict"
+        >{{item.label}}</view>
+      </view>
+      <view class="feedback-purpose">反馈用于人工复核和后续优化，不会立即改变本次分数。</view>
+      <block wx:if="{{feedbackVerdict}}">
+        <view class="feedback-subtitle">哪些方面影响了你的判断？</view>
+        <view class="feedback-reasons">
+          <view
+            class="reason-chip {{feedbackReasonSelection[item.value] ? 'selected' : ''}}"
+            wx:for="{{feedbackReasonOptions}}"
+            wx:key="value"
+            data-value="{{item.value}}"
+            bindtap="toggleFeedbackReason"
+          >{{item.label}}</view>
+        </view>
+        <textarea class="feedback-note" maxlength="200" value="{{feedbackNote}}" bindinput="onFeedbackNoteInput" placeholder="选填：补充不含联系方式的说明"></textarea>
+        <label class="review-row">
+          <checkbox-group bindchange="onFeedbackReviewChange">
+            <label><checkbox value="review" checked="{{feedbackReview}}" color="#FF6B8A" />希望人工复核这次匹配</label>
+          </checkbox-group>
+        </label>
+        <button class="feedback-submit" loading="{{feedbackSubmitting}}" disabled="{{feedbackSubmitting}}" bindtap="submitMatchFeedback">保存反馈</button>
+      </block>
+    </view>
+
+    <view class="algorithm-toggle card" wx:if="{{!detail.locked}}" bindtap="toggleAlgorithmDetails">
+      <view>
+        <view class="algorithm-title">算法与报告细节</view>
+        <view class="algorithm-desc">综合分、细项解释和 AI 报告仅作辅助参考</view>
+      </view>
+      <view class="algorithm-action">{{showAlgorithmDetails ? '收起' : '展开'}} ›</view>
+    </view>
+
+    <block wx:if="{{showAlgorithmDetails}}">
+    <view class="compat-card card" wx:if="{{hasTotalScore}}">
+      <view class="compat-title">综合匹配参考</view>
+      <view class="compat-score-row">
+        <text class="compat-score-num compat-score-text">{{totalScoreText}}</text>
+        <text class="total-score-value">{{totalScorePercent}}分</text>
+      </view>
+      <view class="progress-bar progress-lg">
+        <view class="progress-fill progress-pink" style="width: {{totalScorePercent}}%"></view>
+      </view>
+      <view class="compat-hint">基于资料、择偶条件、三观文本和关系偏好测算，仅作优先了解参考</view>
+    </view>
+
+    <view class="compat-card card" wx:if="{{detail.semanticScore !== null || detail.semanticConfidence !== null}}">
+      <view class="compat-title">双向语义理解（辅助参考）</view>
+      <view class="semantic-score-row" wx:if="{{detail.semanticScore !== null}}">
+        <text>双向语义分 {{detail.semanticScore}}</text>
+        <text wx:if="{{detail.aToBSemanticScore !== null && detail.bToASemanticScore !== null}}">A→B {{detail.aToBSemanticScore}} · B→A {{detail.bToASemanticScore}}</text>
+      </view>
+      <view class="semantic-metrics">
+        <text wx:if="{{detail.dataCompleteness !== null}}">数据完整度 {{detail.dataCompleteness}}%</text>
+        <text wx:if="{{detail.semanticConfidence !== null}}">AI置信度 {{detail.semanticConfidence}}%</text>
+      </view>
+      <view wx:if="{{detail.semanticStrengths.length}}" class="semantic-group">
+        <view class="local-report-title">共同满足点</view>
+        <view wx:for="{{detail.semanticStrengths}}" wx:key="*this" class="compat-hint">{{item}}</view>
+      </view>
+      <view wx:if="{{detail.asymmetricRisks.length}}" class="semantic-group">
+        <view class="local-report-title">潜在不对称</view>
+        <view wx:for="{{detail.asymmetricRisks}}" wx:key="*this" class="compat-hint">{{item}}</view>
+      </view>
+      <view wx:if="{{detail.confirmationQuestions.length}}" class="semantic-group">
+        <view class="local-report-title">待确认问题</view>
+        <view wx:for="{{detail.confirmationQuestions}}" wx:key="*this" class="compat-hint">{{item}}</view>
       </view>
     </view>
 
@@ -228,13 +255,22 @@
     </view>
     </block>
 
-    <view class="meet-card card">
-      <view class="meet-title">官方第一次约会</view>
+    <view class="meet-card card sticky-cta" wx:if="{{detail.matchOnlyFixture}}">
+      <view class="meet-badge">虚拟体验对象</view>
+      <view class="meet-title">申请第一次约会</view>
+      <view class="meet-desc">可以完整填写约会偏好，AI 协调员会记录申请并在后台整理反馈结果。</view>
+      <navigator wx:if="{{!detail.locked}}" url="/pages/date-coordination/date-coordination?matchUserId={{detail.matchedUserId}}&matchLogId={{matchId}}&fixtureSimulation=1" class="meet-action-btn meet-action-primary">申请约会</navigator>
+      <button class="meet-action-btn" open-type="contact">匹配异常联系人工客服</button>
+    </view>
+
+    <view class="meet-card card sticky-cta" wx:else>
+      <view class="meet-title">申请约会</view>
       <view class="meet-desc">匹配成功后，由平台协助双方分别填写偏好、生成共同方案并确认。双方不开放私聊，也不会展示对方原始回答。</view>
       <view class="meet-actions">
-        <navigator wx:if="{{!detail.locked}}" url="/pages/date-coordination/date-coordination?matchUserId={{detail.matchedUserId}}&matchLogId={{matchId}}" class="meet-action-btn meet-action-primary">开始约会协调</navigator>
+        <navigator wx:if="{{!detail.locked}}" url="/pages/date-coordination/date-coordination?matchUserId={{detail.matchedUserId}}&matchLogId={{matchId}}" class="meet-action-btn meet-action-primary">申请约会</navigator>
         <view wx:if="{{dateFeedbackEligibility && dateFeedbackEligibility.can_submit}}" class="meet-action-btn date-feedback-action" bindtap="goDateFeedback">填写约会后反馈</view>
-        <navigator url="/pages/meet-safety/meet-safety?matchUserId={{detail.matchedUserId}}&matchLogId={{matchId}}" class="meet-action-btn meet-action-primary">线下见面安全确认</navigator>
+        <navigator url="/pages/meet-safety/meet-safety?matchUserId={{detail.matchedUserId}}&matchLogId={{matchId}}" class="meet-action-btn">线下见面安全确认</navigator>
+        <button class="meet-action-btn" open-type="contact">匹配异常联系人工客服</button>
       </view>
     </view>
 
