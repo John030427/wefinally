@@ -30,7 +30,9 @@ function semanticDetail(best, side, rank) {
     confirmation_questions: best.confirmation_questions || [],
     semantic_strength_evidence_keys: best.semantic_strength_evidence_keys || [],
     semantic_risk_evidence_keys: best.semantic_risk_evidence_keys || [],
-    semantic_missing_categories: best.semantic_missing_categories || []
+    semantic_missing_categories: best.semantic_missing_categories || [],
+    bilateral_fit: best.bilateral_fit || null,
+    bilateral_mutual_score: best.bilateral_fit ? Number(best.bilateral_fit.mutual_score || 0) : null
   })
 }
 
@@ -70,6 +72,9 @@ async function executeFormalMatching(ctx = {}) {
     evaluated += ranked.length
     const reranked = await rerank(ranked, user, settingsByUserId)
     if (!reranked || reranked.applied !== true) continue
+    if (reranked.degraded === true) {
+      console.warn('[formal-matching] degraded mode:', String(reranked.reason || 'fallback_deterministic'))
+    }
     const best = reranked.ranked.find((item) => item.quality && item.quality.pass)
     if (!best) continue
     const partner = best.candidate
@@ -104,7 +109,10 @@ async function executeFormalMatching(ctx = {}) {
         user_id: user.id,
         match_user_id: partner.id,
         status: 'matched',
-        action: 'formal_batch'
+        action: 'formal_batch',
+        ...(reranked && reranked.degraded === true
+          ? { degraded: true, degraded_reason: String(reranked.reason || 'fallback_deterministic') }
+          : {})
       }
     }
     const delivery = await deliver({

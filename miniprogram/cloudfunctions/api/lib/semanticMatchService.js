@@ -9,11 +9,16 @@ const { compileIntentProfile } = require('./intentProfile')
 const { retrieveBidirectional } = require('./matchSemanticRetrieval')
 const { createEmbeddingProvider } = require('./embeddingProvider')
 const { computeFinalMatchScore } = require('./matchFinalScore')
+const { scoreBilateralProfiles } = require('./bilateralNeedsMatch')
 
 function parseJson(value) {
   if (!value) return null
   if (typeof value === 'object') return value
   try { return JSON.parse(value) } catch (err) { return null }
+}
+
+function aiProfileOf(setting) {
+  return parseJson(setting && setting.ai_match_profile_json)
 }
 
 function intentFor(user, setting) {
@@ -76,6 +81,33 @@ async function attachRetrieval(eligible, user, settingsByUserId) {
   return enriched
 }
 
+/**
+ * Deterministic bilateral AI Match Profile fit (A→B / B→A / min-sensitive mutual).
+ * Never throws; missing profiles simply leave bilateral_fit absent so the
+ * final-score blend falls back to the other components.
+ */
+function attachBilateralFit(ranked, user, settingsByUserId) {
+  const viewer = aiProfileOf(settingsByUserId[String(user && user.id)])
+  if (!viewer) return (Array.isArray(ranked) ? ranked : []).slice()
+  return (Array.isArray(ranked) ? ranked : []).map((item) => {
+    if (!item || !item.candidate) return item
+    const partner = aiProfileOf(settingsByUserId[String(item.candidate.id)])
+    if (!partner) return item
+    const bilateral = scoreBilateralProfiles(viewer, partner)
+    if (bilateral.mutual_score == null) return item
+    return Object.assign({}, item, {
+      bilateral_fit: {
+        mutual_score: Number(bilateral.mutual_score),
+        a_to_b: Number(bilateral.a_to_b && bilateral.a_to_b.score || 0),
+        b_to_a: Number(bilateral.b_to_a && bilateral.b_to_a.score || 0),
+        asymmetric: Boolean(bilateral.asymmetric),
+        aggregation: bilateral.aggregation || 'min_sensitive_harmonic',
+        compared: true
+      }
+    })
+  })
+}
+
 function withFinalScores(ranked) {
   const scored = (Array.isArray(ranked) ? ranked : []).map((item, originalIndex) => {
     const structured = normalizedMutualScore(item)
@@ -85,6 +117,7 @@ function withFinalScores(ranked) {
     ) / 2)
     const finalScore = computeFinalMatchScore({
       structured_fit: structured,
+      bilateral_fit: item.bilateral_fit ? item.bilateral_fit.mutual_score : undefined,
       retrieval_mutual: item.retrieval && item.retrieval.mutual_score,
       prompt_mutual: item.mutual_semantic_score,
       completeness,
@@ -106,13 +139,24 @@ function withFinalScores(ranked) {
   })
 }
 
+function degradedResult(reason, ranked, model) {
+  return {
+    applied: true,
+    degraded: true,
+    reason: reason || 'fallback_deterministic',
+    model: model || '',
+    ranked: withFinalScores(ranked)
+  }
+}
+
 async function semanticRerank(ranked, user, settingsByUserId) {
   const eligible = ranked.filter((item) => item.quality && item.quality.pass === true)
-  if (!eligible.length) return { applied: false, reason: 'no_candidates', ranked }
+  if (!eligible.length) return { applied: false, reason: 'no_candidates', ranked: withFinalScores(ranked) }
+  const withBilateral = attachBilateralFit(ranked, user, settingsByUserId)
   try {
     const withRetrieval = await attachRetrieval(eligible, user, settingsByUserId)
     const byId = new Map(withRetrieval.map((item) => [String(item.candidate.id), item]))
-    const rankedWithRetrieval = ranked.map((item) => byId.get(String(item.candidate.id)) || item)
+    const rankedWithRetrieval = withBilateral.map((item) => byId.get(String(item.candidate.id)) || item)
 
     const currentSetting = settingsByUserId[String(user.id)] || {}
     const request = buildSemanticRerankRequest({
@@ -137,21 +181,21 @@ async function semanticRerank(ranked, user, settingsByUserId) {
     })
     const remote = await rerankMutualMatchCandidates(request)
     if (!remote || !remote.enabled || !remote.response) {
-      return {
-        applied: false,
-        reason: 'disabled',
-        model: '',
-        ranked: withFinalScores(rankedWithRetrieval)
-      }
+      return degradedResult('disabled', rankedWithRetrieval, '')
     }
     const validated = validateSemanticRerankResponse(remote.response, request)
     const merged = mergeSemanticRerank(rankedWithRetrieval, validated, { minConfidence: 0.65, maxWeight: 0.2 })
+    if (!merged.applied) {
+      return degradedResult(merged.reason || 'low_confidence', merged.ranked, remote.model || '')
+    }
     return Object.assign({}, merged, {
+      degraded: false,
+      reason: '',
       model: remote.model || '',
       ranked: withFinalScores(merged.ranked)
     })
   } catch (err) {
-    return { applied: false, reason: classifySemanticRerankError(err), model: '', ranked: withFinalScores(ranked) }
+    return degradedResult(classifySemanticRerankError(err), withBilateral)
   }
 }
 
@@ -167,4 +211,11 @@ function intentMatchGate(setting) {
   return null
 }
 
-module.exports = { semanticRerank, intentMatchGate, classifySemanticRerankError, withFinalScores }
+module.exports = {
+  semanticRerank,
+  intentMatchGate,
+  classifySemanticRerankError,
+  withFinalScores,
+  attachBilateralFit,
+  aiProfileOf
+}

@@ -1,10 +1,13 @@
-const FINAL_SCORE_VERSION = 'final_score_v1'
+const FINAL_SCORE_VERSION = 'final_score_v2'
 
 // ponytail: weights not calibrated against real date outcomes yet.
+// v2: AI Match Profile bilateral fit becomes a first-class ranking input
+// (min-sensitive harmonic+min aggregation in bilateralNeedsMatch).
 const FINAL_SCORE_WEIGHTS = Object.freeze({
-  structured_fit: 0.55,
-  retrieval_mutual: 0.25,
-  prompt_mutual: 0.2
+  structured_fit: 0.45,
+  bilateral_fit: 0.35,
+  retrieval_mutual: 0.12,
+  prompt_mutual: 0.08
 })
 
 function clamp(value) {
@@ -15,6 +18,7 @@ function clamp(value) {
 
 function computeFinalMatchScore(input = {}) {
   const structured = clamp(input.structured_fit)
+  const bilateral = clamp(input.bilateral_fit)
   const retrieval = clamp(input.retrieval_mutual)
   const prompt = clamp(input.prompt_mutual)
   const completeness = clamp(input.completeness)
@@ -27,6 +31,10 @@ function computeFinalMatchScore(input = {}) {
   if (structured != null) {
     total += structured * FINAL_SCORE_WEIGHTS.structured_fit
     weightSum += FINAL_SCORE_WEIGHTS.structured_fit
+  }
+  if (bilateral != null && Number.isFinite(Number(bilateral))) {
+    total += bilateral * FINAL_SCORE_WEIGHTS.bilateral_fit
+    weightSum += FINAL_SCORE_WEIGHTS.bilateral_fit
   }
   if (retrieval != null) {
     total += retrieval * FINAL_SCORE_WEIGHTS.retrieval_mutual
@@ -42,6 +50,7 @@ function computeFinalMatchScore(input = {}) {
     weights: FINAL_SCORE_WEIGHTS,
     calibrated: false,
     structured_fit: structured,
+    bilateral_fit: bilateral,
     retrieval_mutual: retrieval,
     prompt_mutual: prompt,
     completeness,

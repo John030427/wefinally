@@ -10,7 +10,7 @@ const {
 } = require('../../miniprogram/cloudfunctions/api/lib/matchSemanticRerank')
 const { withFinalScores } = require('../../miniprogram/cloudfunctions/api/lib/semanticMatchService')
 
-assert.strictEqual(FINAL_SCORE_VERSION, 'final_score_v1')
+assert.strictEqual(FINAL_SCORE_VERSION, 'final_score_v2')
 assert.strictEqual(FINAL_SCORE_WEIGHTS.calibrated, undefined)
 
 const scored = computeFinalMatchScore({

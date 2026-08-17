@@ -74,7 +74,9 @@ async function main() {
     '1': synonymPair.settingsA,
     '2': synonymPair.settingsB
   })
-  assert.strictEqual(unavailableRerank.applied, false)
+  // Provider unavailable must NOT abort matching: deterministic fallback with degraded marker
+  assert.strictEqual(unavailableRerank.applied, true)
+  assert.strictEqual(unavailableRerank.degraded, true)
   assert.strictEqual(unavailableRerank.reason, 'semantic_retrieval_unavailable')
   if (previousProvider === undefined) delete process.env.MATCH_EMBEDDING_PROVIDER
   else process.env.MATCH_EMBEDDING_PROVIDER = previousProvider

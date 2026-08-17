@@ -92,6 +92,8 @@ async function main() {
   assert.strictEqual(reportLog.id, 1)
 
   let unavailableDelivered = false
+  let unavailableAudit = null
+  let unavailableLog = null
   const unavailable = await executeFormalMatching({
     clock: { businessDate: '2026-08-14', matchType: '周五' },
     deps: {
@@ -101,12 +103,21 @@ async function main() {
         if (name === 'user_match_setting') return settings
         return []
       },
-      semanticRerank: async (ranked) => ({ applied: false, reason: 'semantic_retrieval_unavailable', ranked }),
-      deliverPair: async () => { unavailableDelivered = true; return { delivered: true } }
+      semanticRerank: async (ranked) => ({ applied: true, degraded: true, reason: 'semantic_retrieval_unavailable', ranked }),
+      deliverPair: async (input) => {
+        unavailableDelivered = true
+        unavailableAudit = input.deliveryData && input.deliveryData.audit
+        unavailableLog = input.deliveryData && input.deliveryData.logA
+        return { delivered: true }
+      }
     }
   })
-  assert.strictEqual(unavailable.matched_count, 0)
-  assert.strictEqual(unavailableDelivered, false)
+  // Provider unavailable must fall back to deterministic delivery, not abort the batch.
+  assert.strictEqual(unavailable.matched_count, 1)
+  assert.strictEqual(unavailableDelivered, true)
+  assert.strictEqual(unavailableAudit.degraded, true)
+  assert.strictEqual(unavailableAudit.degraded_reason, 'semantic_retrieval_unavailable')
+  assert.ok(unavailableLog.score_detail_json.includes('semantic_score'))
 
   let fixtureOnlySemanticCalls = 0
   let fixtureOnlyDeliveryCalls = 0
