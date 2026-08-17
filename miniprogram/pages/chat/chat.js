@@ -172,7 +172,7 @@ Page({
       return '你好，我是 WeFinally AI恋爱助手。可以陪你聊沟通、边界和见面准备；信息有限时，我会明确说明知识不足。'
     }
     if (this.data.agentType === AGENT_TYPES.DATE_COORDINATOR) {
-      return '你好，我是 WeFinally AI约会协调员。我只会基于当前协调任务的安全摘要解释进度，不会透露对方原始回答。'
+      return '我是你的 AI 约会协调员。\n\n你可以随时告诉我希望调整的时间、区域、活动、预算或其他要求。\n\n我会先展示修改预览，经你确认后才更新本次协调。\n\n我不会向你透露对方的私人回答。\n\nAI生成内容仅供参考。'
     }
     return '你好，我是 WeFinally 平台AI客服，可协助查询会员、匹配、规则、见面与订单问题。'
   },

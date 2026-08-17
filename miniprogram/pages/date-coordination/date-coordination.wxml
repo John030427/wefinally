@@ -72,6 +72,14 @@
       <button class="outline-btn full-btn" bindtap="goService">联系人工客服</button>
     </view>
 
+    <view class="coordinator-hero card" wx:if="{{showCoordinatorCta}}">
+      <view class="section-title">约会协调状态</view>
+      <view class="public-note">{{coordinatorHeroText}}</view>
+      <button class="primary-btn full-btn" bindtap="goCoordinator">和 AI 约会协调员沟通</button>
+      <view class="muted coordinator-hint">你可以随时调整时间、区域、活动、预算或其他要求。修改前会先展示预览，确认后才更新。</view>
+      <button class="outline-btn compact-btn" bindtap="refreshCoordination" loading="{{refreshingCoordination}}">刷新协调进度</button>
+    </view>
+
     <view class="processing-card card" wx:if="{{coordination.status === 'replanning'}}">
       <view class="section-title">由AI继续协调</view>
       <view class="public-note">首次填写的偏好已经保留，不需要再次填写表单。请告诉AI协调员你希望调整的地方，确认修改预览后系统会继续生成方案。</view>
@@ -164,6 +172,7 @@
       <view class="proposal-line">活动：{{proposal.activity || proposal.activities || '待确认'}}</view>
       <view class="public-note">方案仅在双方确认后生效。</view>
       <button class="primary-btn full-btn" bindtap="confirmProposal" loading="{{submitting}}" disabled="{{submitting || coordination.confirmed_by_me}}">{{coordination.confirmed_by_me ? '已确认，等待对方' : '确认这个方案'}}</button>
+      <button class="outline-btn full-btn" bindtap="goCoordinator">和 AI 继续协调</button>
       <button class="outline-btn full-btn proposal-reject-btn" bindtap="rejectProposal" loading="{{submitting}}" disabled="{{submitting}}">这个方案不合适，继续协调</button>
     </view>
 

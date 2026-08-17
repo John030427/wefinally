@@ -32,6 +32,14 @@ function buildCoordinationDisplay(coordination) {
     expired: '已过期',
     cancelled: '已结束'
   }
+  const activeCoordinatorStatuses = new Set([
+    'inviting_partner',
+    'collecting_preferences',
+    'computing_overlap',
+    'waiting_confirmations',
+    'no_overlap',
+    'replanning'
+  ])
   return {
     roundNumber,
     maxRounds,
@@ -42,7 +50,13 @@ function buildCoordinationDisplay(coordination) {
     failed: status === 'computing_overlap' && processingStatus === 'failed',
     manualHandoff: status === 'manual_handoff',
     completed: status === 'arranged',
-    shouldPoll: status === 'computing_overlap' && ['queued', 'processing'].includes(processingStatus)
+    shouldPoll: status === 'computing_overlap' && ['queued', 'processing'].includes(processingStatus),
+    showCoordinatorCta: activeCoordinatorStatuses.has(status),
+    coordinatorHeroText: status === 'no_overlap'
+      ? '目前还没有找到完整共同安排。你可以随时和 AI 协调员沟通，调整条件后再计算。'
+      : (status === 'waiting_confirmations'
+        ? '已有推荐方案待确认。你也可以继续和 AI 协调员沟通微调。'
+        : '正在寻找双方共同安排。你可以随时和 AI 约会协调员沟通。')
   }
 }
 
@@ -64,6 +78,8 @@ Page({
     coordinationId: '',
     coordination: null,
     coordinationDisplay: buildCoordinationDisplay({}),
+    showCoordinatorCta: false,
+    coordinatorHeroText: '正在寻找双方共同安排。你可以随时和 AI 约会协调员沟通。',
     refreshingCoordination: false,
     fixtureSimulation: null,
     fixtureStage: '',
@@ -227,6 +243,8 @@ Page({
       coordinationId: String(id),
       coordination,
       coordinationDisplay,
+      showCoordinatorCta: Boolean(id) && Boolean(coordinationDisplay.showCoordinatorCta),
+      coordinatorHeroText: coordinationDisplay.coordinatorHeroText,
       form,
       selection: buildSelection(form),
       areaText: Array.isArray(form.areas) ? form.areas.join('、') : '',
