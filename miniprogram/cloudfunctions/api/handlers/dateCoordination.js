@@ -3,6 +3,13 @@ const { MEMBER_STATUS, memberStatus } = require('../lib/memberPolicy')
 const { createReminderJob } = require('../agent/notificationJobs')
 const { assertOfflineDatingAllowed } = require('../lib/testFixturePolicy')
 const { canScheduleFixtureDecline, scheduleFixtureDecline, publicJob, politeDeclineMessage } = require('../lib/fixtureResponseService')
+const {
+  canUseRealCoordinationWithFixture,
+  resolveFixtureJourney,
+  advanceSyntheticPartner,
+  publicSafeDeclineMessage,
+  syntheticPartnerPreferences
+} = require('../lib/syntheticPartnerJourney')
 const { MAX_COORDINATION_ROUNDS, roundNumber, canStartAnotherRound, enqueueProcessing } = require('../lib/dateCoordinationProcessingPolicy')
 const { publishCoordinationEvent } = require('../agent/dateCoordinationEvents')
 
@@ -176,7 +183,11 @@ function createDateCoordinationHandlers(overrides = {}) {
     if (!match) throw new Error('仅可与当前匹配对象发起日期协调')
     const partner = await dep('byId')('user', partnerId)
     if (!isEligible(partner, now)) throw new Error('匹配对象暂不满足日期协调条件')
-    if (canScheduleFixtureDecline(user, partner, now, { allowMatchedPublicFixture: true })) {
+
+    // REAL UI path for synthetic partners with accept/reject/full journeys.
+    // Legacy polite_decline queue only when fixture_journey=legacy_queue.
+    const useRealFixtureJourney = canUseRealCoordinationWithFixture(user, partner, now)
+    if (!useRealFixtureJourney && canScheduleFixtureDecline(user, partner, now, { allowMatchedPublicFixture: true })) {
       const responseJob = await dep('first')('fixture_response_job', {
         interaction_id: `match:${match.id}`
       })
@@ -187,7 +198,7 @@ function createDateCoordinationHandlers(overrides = {}) {
           test_simulation: true,
           fixture_response_job: publicJob(responseJob),
           response_message: responseJob.status === 'delivered' ? politeDeclineMessage() : '',
-          simulation_badge: '虚拟体验对象'
+          test_data_badge: '测试数据'
         }
       }
       return {
@@ -195,11 +206,14 @@ function createDateCoordinationHandlers(overrides = {}) {
         await_application: true,
         match_log_id: Number(match.id),
         match_user_id: partnerId,
-        simulation_badge: '虚拟体验对象'
+        test_data_badge: '测试数据'
       }
     }
-    assertOfflineDatingAllowed(partner)
+    if (!useRealFixtureJourney) {
+      assertOfflineDatingAllowed(partner)
+    }
 
+    const journey = useRealFixtureJourney ? resolveFixtureJourney(partner) : ''
     const created = await dep('addWithId')('date_coordination', {
       pair_key: key,
       user_a_id: Number(user.id),
@@ -211,7 +225,9 @@ function createDateCoordinationHandlers(overrides = {}) {
       invitation_deadline_at: null,
       application_deadline_at: addHours(now, 72),
       confirmation_deadline_at: null,
-      final_proposal_id: 0
+      final_proposal_id: 0,
+      synthetic_partner_journey: journey || '',
+      is_test_data: useRealFixtureJourney ? 1 : 0
     }, 'date_coordination')
     return detailFor(created, user)
   }
@@ -266,6 +282,10 @@ function createDateCoordinationHandlers(overrides = {}) {
 
   async function respondInvitation(data, wxContext) {
     const user = await dep('currentUser')(wxContext)
+    return respondInvitationForUser(data, user)
+  }
+
+  async function respondInvitationForUser(data, user) {
     const coordination = await dep('byId')('date_coordination', coordinationId(data))
     if (!coordination) throw new Error('日期协调不存在')
     if (Number(coordination.user_b_id) !== Number(user.id)) throw new Error('仅受邀参与者可以处理邀请')
@@ -310,8 +330,56 @@ function createDateCoordinationHandlers(overrides = {}) {
       } catch (err) {
         console.warn('inbox invitation notification skipped:', err.message || err)
       }
+    } else if (event === 'decline_invitation') {
+      try {
+        await dep('writeInboxNotification')({
+          coordination: updated,
+          user_id: Number(updated.user_a_id),
+          event_type: 'invitation_declined',
+          coordination_version: Number(updated.coordination_version || 1),
+          title: '约会邀请状态更新',
+          body: publicSafeDeclineMessage(),
+          stage: 'invitation_declined'
+        })
+      } catch (err) {
+        console.warn('inbox invitation decline notification skipped:', err.message || err)
+      }
     }
     return detailFor(updated, user)
+  }
+
+  async function maybeAdvanceSyntheticPartner(coordination) {
+    if (!coordination || !Number(coordination.is_test_data || 0)) return null
+    const partner = await dep('byId')('user', Number(coordination.user_b_id))
+    if (!partner) return null
+    const journey = String(coordination.synthetic_partner_journey || resolveFixtureJourney(partner) || '')
+    if (!journey || journey === 'legacy_queue') return null
+    try {
+      const result = await advanceSyntheticPartner({
+        coordination,
+        partner: Object.assign({}, partner, { fixture_journey: journey })
+      }, {
+        first: dep('first'),
+        list: dep('list'),
+        respondInvitation: (data) => respondInvitationForUser(data, partner),
+        saveApplicationForUser: (data, user) => saveApplicationForUser(data, user),
+        confirmProposalForUser: (data, user) => confirmProposalForUser(data, user)
+      })
+      if (result && result.advanced && result.step === 'accept_invitation') {
+        const nextCoordination = await dep('byId')('date_coordination', Number(coordination.id))
+        if (nextCoordination && String(nextCoordination.status) === STATUS.COLLECTING_PREFERENCES) {
+          const prefs = syntheticPartnerPreferences(journey)
+          if (prefs) {
+            await saveApplicationForUser(Object.assign({ coordination_id: coordination.id }, prefs), partner)
+            return { advanced: true, step: 'accept_and_submit_prefs', journey }
+          }
+        }
+      }
+      return result
+    } catch (err) {
+      console.warn('synthetic partner advance skipped:', err.message || err)
+      return { advanced: false, error: err.message || String(err) }
+    }
   }
 
   async function saveApplication(data, wxContext) {
@@ -397,7 +465,10 @@ function createDateCoordinationHandlers(overrides = {}) {
       } catch (err) {
         console.warn('inbox invitation-created notification skipped:', err.message || err)
       }
-      return detailFor(updated, user)
+      // Synthetic B: accept/reject via the same invitation service as a real partner
+      await maybeAdvanceSyntheticPartner(updated)
+      const afterSynthetic = await dep('byId')('date_coordination', Number(updated.id))
+      return detailFor(afterSynthetic || updated, user)
     }
 
     const applications = await dep('list')('date_coordination_application', {
@@ -509,6 +580,12 @@ function createDateCoordinationHandlers(overrides = {}) {
         proposal_confirmed: confirmedUsers.has(participantId)
       })),
       my_application: mine ? Object.assign({}, mine.application) : null,
+      is_test_data: Number(coordination.is_test_data || 0) === 1,
+      test_data_badge: Number(coordination.is_test_data || 0) === 1 ? '测试数据' : '',
+      synthetic_partner_journey: coordination.synthetic_partner_journey || '',
+      declined_public_message: coordination.status === STATUS.INVITATION_DECLINED
+        ? publicSafeDeclineMessage()
+        : '',
       proposals: proposals.filter((item) => item.status === 'active').map((item) => ({
         id: Number(item.id),
         proposal_key: item.proposal_key,
@@ -526,12 +603,32 @@ function createDateCoordinationHandlers(overrides = {}) {
 
   async function detail(data, wxContext) {
     const user = await dep('currentUser')(wxContext)
-    const coordination = await dep('byId')('date_coordination', coordinationId(data))
+    let coordination = await dep('byId')('date_coordination', coordinationId(data))
+    if (coordination
+      && Number(coordination.is_test_data || 0) === 1
+      && Number(user.id) === Number(coordination.user_a_id)
+      && coordination.status === STATUS.WAITING_CONFIRMATIONS) {
+      const version = Number(coordination.coordination_version || 1)
+      const aConfirmed = await dep('first')('date_coordination_confirmation', {
+        coordination_id: Number(coordination.id),
+        user_id: Number(coordination.user_a_id),
+        coordination_version: version,
+        decision: 'confirm'
+      })
+      if (aConfirmed) {
+        await maybeAdvanceSyntheticPartner(coordination)
+        coordination = await dep('byId')('date_coordination', Number(coordination.id)) || coordination
+      }
+    }
     return detailFor(coordination, user)
   }
 
   async function confirmProposal(data, wxContext) {
     const user = await dep('currentUser')(wxContext)
+    return confirmProposalForUser(data, user)
+  }
+
+  async function confirmProposalForUser(data, user) {
     const coordination = await dep('byId')('date_coordination', coordinationId(data))
     if (!coordination) throw new Error('日期协调不存在')
     if (!participant(coordination, user.id)) throw new Error('无权确认该约会方案')
@@ -679,6 +776,7 @@ function createDateCoordinationHandlers(overrides = {}) {
           proposal
         }
       })
+      return detailFor(updated, user)
     }
     return detailFor(updated, user)
   }
@@ -772,7 +870,21 @@ function createDateCoordinationHandlers(overrides = {}) {
     return detailFor(updated, user)
   }
 
-  return { create, submitFixtureApplication, fixtureResponse, respondInvitation, saveApplication, saveApplicationForUser, detail, confirmProposal, recoordinate, retryProcessing }
+  return {
+    create,
+    submitFixtureApplication,
+    fixtureResponse,
+    respondInvitation,
+    respondInvitationForUser,
+    saveApplication,
+    saveApplicationForUser,
+    detail,
+    confirmProposal,
+    confirmProposalForUser,
+    recoordinate,
+    retryProcessing,
+    maybeAdvanceSyntheticPartner
+  }
 }
 
 const handlers = {}

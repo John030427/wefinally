@@ -50,7 +50,7 @@ function activeInternalTestVip(user, now) {
     && new Date(user.vip_expire_time || 0).getTime() > now.getTime()
 }
 
-function fixtureProfile(owner, ownerSetting, runId, now) {
+function fixtureProfile(owner, ownerSetting, runId, now, journey = 'accept') {
   const candidateGender = Number(owner.gender) === 1 ? 2 : 1
   const targetAge = Number(ownerSetting.age_min || 20) <= 23
     && Number(ownerSetting.age_max || 65) >= 23
@@ -63,6 +63,7 @@ function fixtureProfile(owner, ownerSetting, runId, now) {
   const candidateHeight = `${candidateHeightMin}-${candidateHeightMax}cm`
   const selfText = String(ownerSetting.target_view_text || '').trim()
   const targetText = String(ownerSetting.self_view_text || '').trim()
+  const resolvedJourney = String(journey || 'accept').toLowerCase() === 'reject' ? 'reject' : 'accept'
   return {
     user: {
       openid: `ab_test_fixture_${runId}`,
@@ -99,7 +100,8 @@ function fixtureProfile(owner, ownerSetting, runId, now) {
         ownerUserId: owner.id,
         runId,
         expiresAt: new Date(now.getTime() + 86400000)
-      })
+      }),
+      fixture_journey: resolvedJourney
     },
     setting: {
       age_min: Math.max(18, ownerAge - 2),
@@ -178,7 +180,8 @@ function createAbMatchFixtureService(overrides = {}) {
     }
 
     const runId = dep('randomId')()
-    const fixture = fixtureProfile(owner, ownerSetting, runId, now)
+    const journey = String(input.fixture_journey || input.journey || 'accept').toLowerCase()
+    const fixture = fixtureProfile(owner, ownerSetting, runId, now, journey)
     const candidate = await dep('addWithId')('user', fixture.user, 'user')
     let setting
     try {
