@@ -4,6 +4,27 @@
 
 ---
 
+## 2026-08-18 — 真实 UI + LangGraph 约会协调 Fixture 主路径
+
+### 类型
+修复 + E2E + 文档
+
+### 目的
+测试用户走与生产一致的 Match Detail → 申请约会 → 真实 coordinationId → LangGraph date_coordinator；取消「虚拟体验 / 排队刷新」作为主路径。
+
+### 完成
+- `syntheticPartnerJourney`：accept/reject 调用真实 respondInvitation / saveApplication / confirmProposal
+- Match Detail / Date Coordination 统一生产 UI；弱「测试数据」badge
+- 记录 Tab 未读红点；REJECT inbox 安全文案
+- `selfcheck/real-ui-fixture-date-langgraph-e2e.js` PASS
+- 报告：`project-docs/WORK_REPORT_REAL_UI_LANGGRAPH_DATE_E2E.md`
+
+### 未做
+- 微信开发者工具真机视觉验收（pending_manual_visual_verification）
+- 未 push / merge / deploy / 上传小程序
+
+---
+
 ## 2026-06-29 — 第一阶段：文档体系搭建
 
 ### 类型
