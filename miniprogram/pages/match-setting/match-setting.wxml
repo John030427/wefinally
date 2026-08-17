@@ -175,6 +175,30 @@
       <button class="btn-secondary intent-edit-btn" bindtap="onEditIntent" disabled="{{submitting}}">返回修改补充</button>
     </view>
 
+    <view class="card ai-profile-card" wx:if="{{aiProfile}}">
+      <view class="section-title">AI 对你的理解</view>
+      <view class="section-hint">系统根据你的资料、三观与补充回答整理成下面这份理解。它只用于匹配，不会把推测当成你的明确要求。</view>
+      <view class="ai-profile-version">版本 v{{aiProfileVersion}}{{aiConfirmed ? ' · 已确认' : ' · 待确认'}}</view>
+      <view class="intent-group" wx:for="{{aiProfile.sections}}" wx:key="key" wx:for-item="section">
+        <view class="intent-label">{{section.title}}</view>
+        <view wx:for="{{section.items}}" wx:for-item="item" wx:key="*this" class="intent-item">{{item}}</view>
+      </view>
+      <view class="ai-profile-actions" wx:if="{{!aiCorrectionMode}}">
+        <button class="btn-primary ai-confirm-btn" bindtap="onConfirmAiProfile" loading="{{aiFeedbackLoading}}" disabled="{{aiFeedbackLoading || aiConfirmed}}">{{aiConfirmed ? '已确认基本准确' : '基本准确'}}</button>
+        <button class="btn-secondary ai-correct-btn" bindtap="onToggleAiCorrection" disabled="{{aiFeedbackLoading}}">有些地方不像我</button>
+      </view>
+      <view class="ai-correction-box" wx:else>
+        <view class="section-hint">告诉我们哪里不像，例如“我其实没有那么事业优先”。你的纠正会作为 USER_DECLARED 证据保存，并触发 AI 理解重新生成（版本 +1）。</view>
+        <textarea class="textarea-input" placeholder="简短说明哪里不像你（200字以内）" maxlength="200" value="{{aiCorrectionText}}" bindinput="onAiCorrectionInput" show-confirm-bar="{{false}}" />
+        <view class="ai-correction-actions">
+          <button class="btn-primary" bindtap="onSubmitAiCorrection" loading="{{aiFeedbackLoading}}" disabled="{{aiFeedbackLoading}}">提交纠正并更新</button>
+          <button class="btn-secondary" bindtap="onToggleAiCorrection" disabled="{{aiFeedbackLoading}}">取消</button>
+        </view>
+      </view>
+      <view class="ai-profile-disclaimer">AI 生成内容，仅供参考</view>
+      <view class="ai-profile-footnote">置信度 {{aiProfile.overall_confidence || '--'}}；你的纠正只会用于帮助匹配，不会被摊开给另一方。</view>
+    </view>
+
     <view class="safe-bottom">
       <button
         wx:if="{{!intentConfirmation}}"

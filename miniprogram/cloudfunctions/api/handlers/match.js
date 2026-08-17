@@ -8,8 +8,10 @@ const { compileIntentProfile, normalizeMode } = require('../lib/intentProfile')
 const {
   compileAiMatchProfile,
   shouldInvalidateAiMatchProfile,
-  sourceFingerprint
+  sourceFingerprint,
+  applyAiProfileCorrection
 } = require('../lib/aiMatchProfile')
+const { presentAiMatchProfile } = require('../lib/aiMatchProfilePresentation')
 const { canonicalPairKey, deliverPair, createCloudClaimStore, CLAIM_STATUS } = require('../lib/matchClaim')
 const { semanticRerank, intentMatchGate } = require('../lib/semanticMatchService')
 const reportTask = require('./reportTask')
@@ -248,7 +250,8 @@ async function saveSetting(data, wxContext) {
     aiMatchProfile = compileAiMatchProfile(profileSource, {
       intent: intentProfile,
       profile_version: Number(existing && existing.profile_version || 0) + 1,
-      confirmed_by_user: alreadyConfirmed
+      confirmed_by_user: alreadyConfirmed,
+      corrections: (existingAi && existingAi.corrections) || (existing && existing.ai_profile_corrections) || []
     })
   } else {
     aiMatchProfile = existingAi
@@ -303,6 +306,100 @@ async function confirmIntent(data, wxContext) {
     confirmed: true,
     confirmed_at: confirmedAt,
     intent_profile: profile
+  }
+}
+
+function parseAiProfilePayload(value) {
+  if (!value) return null
+  if (typeof value === 'object' && !Array.isArray(value)) return value
+  try {
+    const parsed = JSON.parse(value)
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null
+  } catch (error) {
+    return null
+  }
+}
+
+async function getAiProfile(data, wxContext) {
+  const user = await currentUser(wxContext)
+  const setting = await first('user_match_setting', { user_id: user.id })
+  if (!setting || !setting.ai_match_profile_json) {
+    return { available: false, presentation: null, confirmed: false, profile_version: 0, corrections: [] }
+  }
+  const profile = parseAiProfilePayload(setting.ai_match_profile_json)
+  return {
+    available: true,
+    presentation: presentAiMatchProfile(profile),
+    confirmed: Boolean(setting.ai_match_profile_confirmed_at || (profile && profile.confirmed_by_user)),
+    confirmed_at: setting.ai_match_profile_confirmed_at || null,
+    profile_version: Number(setting.ai_match_profile_version || (profile && profile.profile_version) || 0),
+    corrections: Array.isArray(setting.ai_profile_corrections)
+      ? setting.ai_profile_corrections.map((item) => String(item && item.text || '').slice(0, 200))
+      : [],
+    source_profile_version: String(setting.ai_match_profile_source_version || (profile && profile.source_profile_version) || '')
+  }
+}
+
+async function confirmAiProfile(data, wxContext) {
+  const user = await currentUser(wxContext)
+  const setting = await first('user_match_setting', { user_id: user.id })
+  if (!setting) throw new Error('请先保存匹配设置')
+  const profile = parseAiProfilePayload(setting.ai_match_profile_json)
+  if (!profile) throw new Error('AI 理解尚未生成，请先保存匹配设置')
+  const confirmedAt = now()
+  const patched = Object.assign({}, profile, { confirmed_by_user: true })
+  await updateByDoc('user_match_setting', setting, {
+    ai_match_profile_json: patched,
+    ai_match_profile_confirmed_at: confirmedAt,
+    ai_match_profile_status: 'ready'
+  })
+  return {
+    confirmed: true,
+    confirmed_at: confirmedAt,
+    presentation: presentAiMatchProfile(patched),
+    profile_version: Number(setting.ai_match_profile_version || patched.profile_version || 1)
+  }
+}
+
+async function correctAiProfile(data, wxContext) {
+  const user = await currentUser(wxContext)
+  const setting = await first('user_match_setting', { user_id: user.id })
+  if (!setting) throw new Error('请先保存匹配设置')
+  const correctionText = String(data.correction_text || data.text || '').trim()
+  if (!correctionText) throw new Error('请填写纠正意见')
+  if (correctionText.length > 200) throw new Error('纠正意见最多200字')
+  let profile = parseAiProfilePayload(setting.ai_match_profile_json)
+  if (!profile) {
+    const intentProfile = parseJson(setting.intent_profile_json) || compileIntentProfile(Object.assign({}, user, setting, { mode: 'automatic' }))
+    profile = compileAiMatchProfile(Object.assign({}, user, setting), {
+      intent: intentProfile,
+      profile_version: Number(setting.profile_version || 0) + 1,
+      confirmed_by_user: true
+    })
+  }
+  const corrected = applyAiProfileCorrection(profile, { text: correctionText }, { now: now() })
+  const corrections = Array.isArray(setting.ai_profile_corrections) ? setting.ai_profile_corrections.slice() : []
+  corrections.push({
+    text: correctionText,
+    created_at: now(),
+    evidence_key: `user_correction.${corrected.correction_count || 1}`
+  })
+  const updated = await updateByDoc('user_match_setting', setting, {
+    ai_match_profile_json: corrected,
+    ai_match_profile_version: Number(corrected.profile_version || 1),
+    ai_match_profile_source_version: String(corrected.source_profile_version || setting.ai_match_profile_source_version || ''),
+    ai_match_profile_status: 'ready',
+    ai_match_profile_confirmed_at: setting.ai_match_profile_confirmed_at || now(),
+    ai_profile_corrections: corrections,
+    profile_version: Number(corrected.profile_version || 1)
+  })
+  return {
+    corrected: true,
+    presentation: presentAiMatchProfile(corrected),
+    profile_version: corrected.profile_version,
+    previous_version: Number(profile.profile_version || 1),
+    evidence_key: `user_correction.${corrected.correction_count || 1}`,
+    corrections: corrections.map((item) => String(item.text || '').slice(0, 200))
   }
 }
 
@@ -571,7 +668,9 @@ async function start(data, wxContext) {
         confirmation_questions: best.confirmation_questions || [],
         semantic_strength_evidence_keys: best.semantic_strength_evidence_keys || [],
         semantic_risk_evidence_keys: best.semantic_risk_evidence_keys || [],
-        semantic_missing_categories: best.semantic_missing_categories || []
+        semantic_missing_categories: best.semantic_missing_categories || [],
+        bilateral_fit: best.bilateral_fit || null,
+        bilateral_mutual_score: best.bilateral_fit ? Number(best.bilateral_fit.mutual_score || 0) : null
     }), best, reranked)
     const detailJsonB = withSemanticRerankDetail(Object.assign(scoreDetailFor(best, 'b', algorithmRank), {
         ai_rank: best.ai_rank || null,
@@ -587,7 +686,9 @@ async function start(data, wxContext) {
         confirmation_questions: best.confirmation_questions || [],
         semantic_strength_evidence_keys: best.semantic_strength_evidence_keys || [],
         semantic_risk_evidence_keys: best.semantic_risk_evidence_keys || [],
-        semantic_missing_categories: best.semantic_missing_categories || []
+        semantic_missing_categories: best.semantic_missing_categories || [],
+        bilateral_fit: best.bilateral_fit || null,
+        bilateral_mutual_score: best.bilateral_fit ? Number(best.bilateral_fit.mutual_score || 0) : null
     }), best, reranked)
     const logA = await transactionDocument('user_match_log', 'match_log', {
         user_id: user.id,
@@ -681,6 +782,9 @@ module.exports = {
   cooldown,
   saveSetting,
   confirmIntent,
+  getAiProfile,
+  confirmAiProfile,
+  correctAiProfile,
   latest,
   matchList,
   detail,

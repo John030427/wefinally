@@ -4,10 +4,12 @@ const {
   SOURCE_KINDS,
   compileAiMatchProfile,
   shouldInvalidateAiMatchProfile,
+  applyAiProfileCorrection,
   extractHardGateCandidates,
   assertInferredCannotHardGate,
   sourceFingerprint
 } = require('../../miniprogram/cloudfunctions/api/lib/aiMatchProfile')
+const { presentAiMatchProfile } = require('../../miniprogram/cloudfunctions/api/lib/aiMatchProfilePresentation')
 const { scoreBilateralProfiles, bilateralAggregate, blendStructuredWithBilateral } = require('../../miniprogram/cloudfunctions/api/lib/bilateralNeedsMatch')
 const { presentAiMatchReport } = require('../../miniprogram/cloudfunctions/api/lib/aiMatchReportPresentation')
 
@@ -94,4 +96,37 @@ assert.ok(presented.sections.some((section) => section.key === 'why'))
 assert.ok(!JSON.stringify(presented).includes('13800138000'))
 assert.ok(!JSON.stringify(presented).includes('对方说'))
 
-console.log('PASS ai match profile + bilateral needs + report presentation')
+// ---- user confirmation + correction loop (versioned evidence) ----
+const confirmedProfile = compileAiMatchProfile(source, { confirmed_by_user: true })
+assert.strictEqual(confirmedProfile.profile_version, 1)
+assert.strictEqual(confirmedProfile.confirmed_by_user, true)
+const correctedProfile = applyAiProfileCorrection(confirmedProfile, { text: '我其实没有那么事业优先' })
+assert.strictEqual(correctedProfile.profile_version, confirmedProfile.profile_version + 1)
+assert.strictEqual(correctedProfile.correction_count, 1)
+assert.strictEqual(correctedProfile.corrections[0].kind, SOURCE_KINDS.USER_CORRECTION)
+assert.strictEqual(correctedProfile.corrections[0].evidence_key, 'user_correction.1')
+assert.strictEqual(correctedProfile.corrections[0].can_become_hard_gate, false)
+assert.ok(correctedProfile.evidence.some((item) => item.kind === SOURCE_KINDS.USER_CORRECTION && item.key === 'user_correction.1'))
+assert.strictEqual(correctedProfile.confirmed_by_user, true)
+assert.strictEqual(correctedProfile.source_profile_version, confirmedProfile.source_profile_version)
+assertInferredCannotHardGate(correctedProfile)
+
+const carried = compileAiMatchProfile(source, {
+  confirmed_by_user: true,
+  corrections: correctedProfile.corrections.map((item) => ({ text: item.value, created_at: item.created_at }))
+})
+assert.strictEqual(carried.correction_count, 1)
+assert.strictEqual(carried.corrections[0].kind, SOURCE_KINDS.USER_CORRECTION)
+
+const presentedProfile = presentAiMatchProfile(correctedProfile)
+assert.strictEqual(presentedProfile.disclaimer, 'AI 生成内容，仅供参考')
+assert.ok(presentedProfile.sections.some((section) => section.key === 'goal'))
+assert.ok(presentedProfile.sections.some((section) => section.key === 'corrections'))
+assert.ok(!JSON.stringify(presentedProfile).includes('user_correction.'))
+assert.ok(!JSON.stringify(presentedProfile).includes('identity_tags'))
+assert.ok(!JSON.stringify(presentedProfile).includes('evidence'))
+
+// version discipline: correction must change the version so old profile is not reused
+assert.notStrictEqual(String(confirmedProfile.profile_version), String(correctedProfile.profile_version))
+
+console.log('PASS ai match profile + bilateral needs + report presentation + user correction loop')

@@ -59,6 +59,12 @@ Page({
     otherRequirementsLen: 0,
     otherRequirementsMaxLen: 500,
     intentConfirmation: null,
+    aiProfile: null,
+    aiConfirmed: false,
+    aiCorrectionMode: false,
+    aiCorrectionText: '',
+    aiProfileVersion: 0,
+    aiFeedbackLoading: false,
     memberStatus: '',
     textMinLen: TEXT_MIN_LEN,
     textMaxLen: TEXT_MAX_LEN,
@@ -98,14 +104,16 @@ Page({
     }
 
     try {
-      const [settingData, cooldownData, profileData] = await Promise.all([
+      const [settingData, cooldownData, profileData, aiProfileData] = await Promise.all([
         get(API_PATHS.MATCH_SETTING, {}, { showError: false }).catch(() => null),
         get(API_PATHS.MATCH_SETTING_COOLDOWN, {}, { showError: false }).catch(() => null),
-        get(API_PATHS.USER_PROFILE, {}, { showError: false }).catch(() => null)
+        get(API_PATHS.USER_PROFILE, {}, { showError: false }).catch(() => null),
+        get(API_PATHS.MATCH_AI_PROFILE, {}, { showError: false }).catch(() => null)
       ])
 
       if (settingData) this.fillForm(settingData)
       if (profileData) this.fillAppearance(profileData)
+      if (aiProfileData) this.fillAiProfile(aiProfileData)
 
       const canEditWithoutCooldown = cooldownData && (
         cooldownData.can_edit === true || cooldownData.canEdit === true || cooldownData.can_update === true
@@ -172,6 +180,75 @@ Page({
       appearanceDescriptionLen: appearanceDescription.length,
       appearanceWantLen: appearanceWant.length
     })
+  },
+
+  fillAiProfile(data) {
+    if (!data || data.available !== true || !data.presentation) return
+    this.setData({
+      aiProfile: data.presentation,
+      aiConfirmed: data.confirmed === true,
+      aiProfileVersion: Number(data.profile_version || 0),
+      aiCorrectionMode: false,
+      aiCorrectionText: ''
+    })
+  },
+
+  onToggleAiCorrection() {
+    if (this.data.aiFeedbackLoading) return
+    this.setData({ aiCorrectionMode: !this.data.aiCorrectionMode, aiCorrectionText: '' })
+  },
+
+  onAiCorrectionInput(e) {
+    this.setData({ aiCorrectionText: String(e.detail.value || '').slice(0, 200) })
+  },
+
+  async onConfirmAiProfile() {
+    if (this.data.aiFeedbackLoading || !this.data.aiProfile) return
+    this.setData({ aiFeedbackLoading: true })
+    try {
+      const result = await post(API_PATHS.MATCH_AI_PROFILE_CONFIRM, {}, { showError: false })
+      if (result && result.presentation) {
+        this.setData({ aiProfile: result.presentation, aiConfirmed: true, aiProfileVersion: Number(result.profile_version || this.data.aiProfileVersion) })
+      } else {
+        this.setData({ aiConfirmed: true })
+      }
+      wx.showToast({ title: '已记录，谢谢确认', icon: 'success' })
+    } catch (err) {
+      wx.showToast({ title: (err && err.message) || '确认失败，请稍后重试', icon: 'none' })
+    } finally {
+      this.setData({ aiFeedbackLoading: false })
+    }
+  },
+
+  async onSubmitAiCorrection() {
+    const text = String(this.data.aiCorrectionText || '').trim()
+    if (!text) {
+      wx.showToast({ title: '请先填写纠正意见', icon: 'none' })
+      return
+    }
+    if (text.length > 200) {
+      wx.showToast({ title: '纠正意见最多200字', icon: 'none' })
+      return
+    }
+    if (this.data.aiFeedbackLoading) return
+    this.setData({ aiFeedbackLoading: true })
+    try {
+      const result = await post(API_PATHS.MATCH_AI_PROFILE_CORRECT, { correction_text: text }, { showError: false })
+      if (result && result.presentation) {
+        this.setData({
+          aiProfile: result.presentation,
+          aiConfirmed: true,
+          aiProfileVersion: Number(result.profile_version || this.data.aiProfileVersion),
+          aiCorrectionMode: false,
+          aiCorrectionText: ''
+        })
+      }
+      wx.showToast({ title: '已更新AI对你的理解', icon: 'success' })
+    } catch (err) {
+      wx.showToast({ title: (err && err.message) || '提交失败，请稍后重试', icon: 'none' })
+    } finally {
+      this.setData({ aiFeedbackLoading: false })
+    }
   },
 
   startCooldownTimer(cooldownEnd) {

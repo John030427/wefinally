@@ -6,7 +6,8 @@ const { resolveRegion } = require('./regionNormalize')
 const AI_MATCH_PROFILE_VERSION = 'ai_match_profile_v1'
 const SOURCE_KINDS = {
   USER_DECLARED: 'USER_DECLARED',
-  AI_INFERRED: 'AI_INFERRED'
+  AI_INFERRED: 'AI_INFERRED',
+  USER_CORRECTION: 'USER_CORRECTION'
 }
 
 const MEANINGFUL_SOURCE_KEYS = [
@@ -145,7 +146,7 @@ function compileAiMatchProfile(input = {}, options = {}) {
     ? safeJson(input.psych_profile_json)
     : (input.psych_profile_json || {})
 
-  return {
+  const profile = {
     schema_version: AI_MATCH_PROFILE_VERSION,
     intent_profile_version: INTENT_PROFILE_VERSION,
     status: 'ready',
@@ -225,6 +226,12 @@ function compileAiMatchProfile(input = {}, options = {}) {
       ai_inferred_cannot_become_hard_gate: true
     }
   }
+
+  let result = profile
+  for (const correction of options.corrections || []) {
+    result = applyAiProfileCorrection(result, correction, { now: options.correctionNow || now })
+  }
+  return result
 }
 
 function safeJson(text) {
@@ -244,6 +251,47 @@ function shouldInvalidateAiMatchProfile(existingProfile, source = {}) {
     || ''
   )
   return !previous || previous !== next
+}
+
+function applyAiProfileCorrection(profile = {}, correction = {}, options = {}) {
+  const text = String(correction && correction.text || '').trim()
+  if (!text) throw new Error('纠正内容不能为空')
+  if (text.length > 200) throw new Error('纠正内容最多200字')
+  const existing = profile && typeof profile === 'object' ? profile : {}
+  const now = options.now || new Date().toISOString()
+  const next = JSON.parse(JSON.stringify(existing))
+  if (!next.flexible_preferences) next.flexible_preferences = []
+  if (!next.corrections) next.corrections = []
+  if (!next.evidence) next.evidence = []
+  const count = Number(next.correction_count || next.corrections.length || 0)
+  const evidenceKey = `user_correction.${count + 1}`
+  const item = {
+    value: text,
+    kind: SOURCE_KINDS.USER_CORRECTION,
+    confidence: 0.95,
+    evidence_key: evidenceKey,
+    can_become_hard_gate: false
+  }
+  next.flexible_preferences.push(item)
+  next.corrections.push(Object.assign({}, item, { created_at: now, source: 'user_correction' }))
+  next.evidence.push({
+    key: evidenceKey,
+    kind: SOURCE_KINDS.USER_CORRECTION,
+    source: 'user_correction',
+    text,
+    confidence: 0.95,
+    created_at: now
+  })
+  next.correction_count = count + 1
+  next.last_correction_at = now
+  next.patched_from_version = Number(existing.profile_version || 1)
+  next.profile_version = Number(existing.profile_version || 1) + 1
+  next.confirmed_by_user = true
+  next.status = 'ready'
+  next.patch_applied = true
+  next.generated_at = now
+  next.source_profile_version = String(existing.source_profile_version || '')
+  return next
 }
 
 function extractHardGateCandidates(profile) {
@@ -275,6 +323,7 @@ module.exports = {
   sourceFingerprint,
   compileAiMatchProfile,
   shouldInvalidateAiMatchProfile,
+  applyAiProfileCorrection,
   extractHardGateCandidates,
   assertInferredCannotHardGate
 }
