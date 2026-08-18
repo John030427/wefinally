@@ -4,6 +4,36 @@
 
 ---
 
+## 2026-08-19 — 第一次约会邀请 / AI 双边协调产品化
+
+### 类型
+产品化改造 + 测试 + CloudBase 部署 + 文档
+
+### 目的
+把约会协调从「双方各填一张完整申请表再比对」改成：A 发出第一次约会邀请 + 建议方案；B 可直接接受、和 AI 协调局部差异、或这次暂不方便。事实用卡片，AI 只负责沟通。
+
+### 完成
+- Invitation Proposal + `invitation_version`；A 在 INVITING_PARTNER 可 AI patch，状态不变
+- B 直接接受当前 invitation version → ARRANGED；stale version 拒绝并刷新
+- B「和 AI 协调」进入双边协调，不复制 A 整表为 B 明确填写；支持 partial override evidence
+- B「这次暂不方便」→ INVITATION_DECLINED；NO RESPONSE ≠ DECLINE；超时 EXPIRED
+- 同一 Date Coordination 页按 ViewModel 渲染 Invitation / Shared / Proposal / Result Card
+- Fixture：`accept_direct` / `coordinate` / `decline` / `no_response` / `accept_no_prefs` + AUTO / MANUAL_STEP
+- 报告：`project-docs/WORK_REPORT_FIRST_DATE_INVITATION_AI_COORDINATION.md`
+
+### 验证
+selfcheck:agent / langgraph / synthetic-coordination / ai-profile-bilateral / cloud-match / member / ai-report / safety PASS  
+agent-graph `npm run check` PASS  
+CloudBase `api` / `agent-graph` 代码更新后 ping + health PASS
+
+### 未做
+- 微信开发者工具视觉验收（pending_manual_visual_verification）
+- 未上传微信正式版 / 体验版
+- 未 merge main、未 force push
+- 无破坏性 database migration
+
+---
+
 ## 2026-08-18 — Date Coordination / LangGraph / Fixture / Notification 逻辑审计修复
 
 ### 类型
