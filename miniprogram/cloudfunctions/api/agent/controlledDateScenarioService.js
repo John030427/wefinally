@@ -151,7 +151,7 @@ function createDefaultServices(deps) {
     },
     async submitApplications({ run }) {
       await dateHandlers.saveApplication({ coordination_id: run.coordination_id, ...applicationFor('A') }, contextFor(run.user_a_id))
-      await dateHandlers.respondInvitation({ coordination_id: run.coordination_id, decision: 'accept' }, contextFor(run.user_b_id))
+      await dateHandlers.respondInvitation({ coordination_id: run.coordination_id, decision: 'coordinate' }, contextFor(run.user_b_id))
       await dateHandlers.saveApplication({ coordination_id: run.coordination_id, ...applicationFor('B') }, contextFor(run.user_b_id))
     },
     async processProposal({ run }) {

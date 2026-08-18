@@ -125,11 +125,11 @@ function projectParticipantEvent(event = {}, context = {}) {
     },
     invitation_accepted: {
       stage: mine ? 'invitation_accepted' : 'partner_joined',
-      content: mine ? '你已接受约会协调邀请，可以继续填写偏好。' : '对方已接受约会协调邀请，正在准备约会偏好。'
+      content: mine ? '你已选择和 AI 协调这次第一次约会。' : '对方已接受约会邀请，目前正在补充自己的安排。'
     },
     invitation_declined: {
       stage: mine ? 'invitation_declined' : 'partner_declined',
-      content: mine ? '你已拒绝本次约会邀请，本次协调已结束。' : '对方未接受本次约会邀请，本次协调已结束。'
+      content: mine ? '你已选择这次暂不方便，本次协调已结束。' : '对方暂未接受本次约会邀请，本次协调已结束。'
     },
     processing_queued: {
       stage: 'processing_queued',

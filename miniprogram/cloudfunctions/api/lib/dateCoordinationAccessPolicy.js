@@ -80,14 +80,14 @@ function canModifyApplication(coordination, user, options = {}) {
 function canOpenCoordinatorChat(coordination, user, options = {}) {
   if (!coordination || !isParticipant(coordination, user)) return false
   const status = statusOf(coordination)
-  if (status === STATUS.INVITATION_DECLINED) return false
   if (status === STATUS.INVITING_PARTNER) {
     return isInitiator(coordination, user) && Boolean(options.hasOwnApplication)
   }
   if (status === STATUS.COLLECTING_INITIATOR) return isInitiator(coordination, user)
+  if (status === STATUS.COLLECTING_PREFERENCES) return true
   if (isActiveCoordination(status)) return true
-  // Arranged / manual_handoff: history may be opened read-only.
-  if ([STATUS.ARRANGED, STATUS.MANUAL_HANDOFF].includes(status)) return true
+  // Terminal states: history may be opened read-only for result explanation.
+  if ([STATUS.ARRANGED, STATUS.MANUAL_HANDOFF, STATUS.INVITATION_DECLINED, STATUS.EXPIRED].includes(status)) return true
   return false
 }
 
@@ -107,6 +107,9 @@ function terminalWriteError(status) {
   if (status === STATUS.INVITATION_DECLINED) {
     return '对方暂未接受本次约会邀请。本次协调已结束，不能继续修改。'
   }
+  if (status === STATUS.EXPIRED) {
+    return '本次约会邀请暂未得到回应，协调已结束，不能继续修改。'
+  }
   if (status === STATUS.ARRANGED) {
     return '双方已确认最终方案，不能再修改本次协调。'
   }
@@ -114,7 +117,7 @@ function terminalWriteError(status) {
 }
 
 function inviteeCoordinatorBlockedError() {
-  return '请先接受或拒绝本次约会邀请，再进入 AI 约会协调。'
+  return '请先选择接受这个安排、和 AI 协调其他安排，或这次暂不方便。'
 }
 
 module.exports = {

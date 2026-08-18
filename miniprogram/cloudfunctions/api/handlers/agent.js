@@ -17,10 +17,12 @@ const {
   canOpenCoordinatorChat,
   canWriteCoordinatorAction,
   isInvitee,
+  isInitiator,
   isTerminalCoordination,
   terminalWriteError,
   inviteeCoordinatorBlockedError
 } = require('../lib/dateCoordinationAccessPolicy')
+const { coordinatorWelcomeText } = require('../lib/invitationCoordination')
 
 const FREE_DAILY_LIMIT = 5
 const VIP_DAILY_LIMIT = 30
@@ -176,8 +178,7 @@ function createAgentHandlers(overrides = {}) {
       .filter((row) => !['closed', 'cancelled'].includes(row.status))
       .filter((row) => agentType !== AGENT_TYPES.DATE_COORDINATOR || Number(row.coordination_id) === coordinationId)
       .sort((a, b) => Number(b.id || 0) - Number(a.id || 0))[0]
-    if (reusable) return publicSession(reusable)
-    const row = await dep('addWithId')('agent_session', {
+    const sessionRow = reusable || await dep('addWithId')('agent_session', {
       user_id: user.id,
       agent_type: agentType,
       coordination_id: coordinationId,
@@ -185,7 +186,21 @@ function createAgentHandlers(overrides = {}) {
       summary: '',
       unresolved_count: 0
     }, 'agent_session')
-    return publicSession(row)
+    const publicRow = publicSession(sessionRow)
+    if (agentType === AGENT_TYPES.DATE_COORDINATOR && coordinationId) {
+      const coordination = await dep('byId')('date_coordination', coordinationId)
+      const role = isInitiator(coordination, user) ? 'initiator' : 'invitee'
+      const ownApp = await dep('first')('date_coordination_application', {
+        coordination_id: coordinationId,
+        user_id: Number(user.id)
+      }).catch(() => null)
+      publicRow.coordinator_welcome = coordinatorWelcomeText(Object.assign({}, coordination, {
+        my_application: ownApp && ownApp.application
+      }), role)
+      publicRow.coordinator_read_only = !canWriteCoordinatorAction(coordination, user, { hasOwnApplication: Boolean(ownApp) })
+      publicRow.coordination_status = coordination && coordination.status
+    }
+    return publicRow
   }
 
   async function messages(data, wxContext) {
@@ -298,9 +313,16 @@ function createAgentHandlers(overrides = {}) {
         return { session_id: session.id, agent_type: session.agent_type, reply, declined: false }
       }
       if (coordination && isTerminalCoordination(coordination.status) && !canWriteCoordinatorAction(coordination, user, { hasOwnApplication: Boolean(ownApp) })) {
-        const reply = terminalWriteError(coordination.status)
+        const role = isInitiator(coordination, user) ? 'initiator' : 'invitee'
+        const reply = coordinatorWelcomeText(coordination, role) || terminalWriteError(coordination.status)
         await saveMessage(session, user, 'assistant', reply)
-        return { session_id: session.id, agent_type: session.agent_type, reply, declined: coordination.status === 'invitation_declined' }
+        return {
+          session_id: session.id,
+          agent_type: session.agent_type,
+          reply,
+          declined: coordination.status === 'invitation_declined',
+          read_only: true
+        }
       }
     }
     if (session.agent_type === AGENT_TYPES.LOVE_ADVISOR) await enforceLoveQuota(user)

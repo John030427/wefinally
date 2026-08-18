@@ -151,7 +151,7 @@ export function computeSafeOverlap(
   return { hasOverlap: true, missingFields: [], conflictFields: [], proposal }
 }
 
-function mapBackendDimension(value: string): CoordinationConflictField | 'partner' | null {
+function mapBackendDimension(value: string): CoordinationConflictField | 'partner' | 'own_preference' | null {
   const key = String(value || '')
   if (key === 'time' || key === 'dateWindows') return 'dateWindows'
   if (key === 'area' || key === 'regions') return 'regions'
@@ -160,6 +160,7 @@ function mapBackendDimension(value: string): CoordinationConflictField | 'partne
   if (key === 'budget') return 'budget'
   if (key === 'payment' || key === 'payment_preference') return 'payment'
   if (key === 'partner') return 'partner'
+  if (key === 'own_preference' || key === 'own') return 'own_preference'
   return null
 }
 
@@ -167,7 +168,10 @@ export function resolveOverlap(state: DateCoordinationState): CoordinationOverla
   const canonical = state.canonicalOverlap
   if (canonical && canonical.source === 'backend') {
     const rawMissing = Array.isArray(canonical.missingDimensions) ? canonical.missingDimensions : []
-    const waitingPartner = rawMissing.includes('partner') || state.partnerProgress === 'waiting'
+    const waitingPartner = rawMissing.includes('partner')
+      || rawMissing.includes('own_preference')
+      || state.partnerProgress === 'waiting'
+      || state.partnerProgress === 'accepted'
     const mappedMissing = rawMissing
       .map(mapBackendDimension)
       .filter((item): item is 'dateWindows' | 'regions' | 'venueTypes' | 'partner' => (
@@ -175,10 +179,10 @@ export function resolveOverlap(state: DateCoordinationState): CoordinationOverla
       ))
     const conflictSource = Array.isArray(canonical.conflictDimensions) && canonical.conflictDimensions.length
       ? canonical.conflictDimensions
-      : rawMissing.filter((item) => item !== 'partner')
+      : rawMissing.filter((item) => item !== 'partner' && item !== 'own_preference')
     const conflictFields = conflictSource
       .map(mapBackendDimension)
-      .filter((item): item is CoordinationConflictField => Boolean(item && item !== 'partner'))
+      .filter((item): item is CoordinationConflictField => Boolean(item && item !== 'partner' && item !== 'own_preference'))
     const proposal = canonical.proposal && typeof canonical.proposal === 'object'
       ? canonical.proposal as CoordinationProposal
       : null
@@ -332,12 +336,26 @@ export function buildDateCoordinationGraph(dependencies: DateCoordinationGraphDe
     })
     .addNode('computeOverlap', (state) => {
       const overlap = resolveOverlap(state)
-      if (overlap.waitingPartner) {
+      const missingDimensions = state.canonicalOverlap?.missingDimensions
+      const missingOwn = Array.isArray(missingDimensions) && missingDimensions.includes('own_preference')
+      if (missingOwn && state.party === 'B') {
         return {
-          phase: 'wait_partner',
+          phase: 'clarify_overrides',
           proposal: null,
           pendingAction: null,
-          replyDraft: ('对方还没有接受邀请。你可以先补充自己的安排，确认后只会更新你自己的条件。' + (state.replyDraft ? '\n' + state.replyDraft : '')).trim()
+          replyDraft: ('你不需要重新填写全部约会信息。如果大部分安排都可以，直接告诉我你希望调整的地方就可以。例如：“时间可以，但我更方便福田。”' + (state.replyDraft ? '\n' + state.replyDraft : '')).trim()
+        }
+      }
+      if (overlap.waitingPartner) {
+        const waitingPrefs = state.partnerProgress === 'accepted'
+        const waitText = waitingPrefs
+          ? '对方已接受约会邀请，目前正在补充自己的安排。已经一致的条件我不会再重复询问。'
+          : '你的约会邀请已经发送。等待对方回应期间，你可以继续告诉我希望调整的时间、区域或其他安排。'
+        return {
+          phase: waitingPrefs ? 'wait_invitee_preference' : 'wait_partner',
+          proposal: null,
+          pendingAction: null,
+          replyDraft: (waitText + (state.replyDraft ? '\n' + state.replyDraft : '')).trim()
         }
       }
       if (overlap.missingFields.length > 0) {

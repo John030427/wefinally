@@ -7,6 +7,8 @@
 const NOTIFY_MERGE_WINDOW_MS = Number(process.env.COORDINATION_NOTIFY_MERGE_WINDOW_MS || 120000)
 
 const WECHAT_WORTHY_EVENTS = new Set([
+  'INVITATION_CREATED',
+  'invitation_created',
   'INVITATION_ACCEPTED',
   'invitation_accepted',
   'ACTION_REQUIRED',

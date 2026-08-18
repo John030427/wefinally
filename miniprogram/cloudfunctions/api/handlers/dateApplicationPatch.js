@@ -7,6 +7,13 @@ const {
   terminalWriteError,
   WRITE_BLOCKED_STATUSES
 } = require('../lib/dateCoordinationAccessPolicy')
+const {
+  publicInvitationProposal,
+  invitationProposalOf,
+  evidenceFromChanges,
+  mergeInvitationWithOverrides,
+  allExplicitEvidence
+} = require('../lib/invitationCoordination')
 
 async function claimPendingPatch(patch) {
   const db = require('../lib/db')
@@ -109,7 +116,16 @@ function createDateApplicationPatchHandlers(overrides = {}) {
     const version = Number(coordination.coordination_version || 1)
     const rows = await applicationsFor(coordination.id)
     const mine = latestForUser(rows, user.id, version)
-    if (!mine || !mine.application) throw new Error('请先完成自己的约会偏好表单')
+    if (!mine || !mine.application) {
+      const isInvitee = Number(user.id) === Number(coordination.user_b_id)
+      if (isInvitee && (coordination.invitation_proposal || latestForUser(rows, coordination.user_a_id, version))) {
+        return createInitialPreviewForUser(Object.assign({}, data, {
+          changes: data.changes,
+          application: data.changes
+        }), user, session)
+      }
+      throw new Error('请先完成自己的约会偏好表单')
+    }
     const changes = cleanChanges(data.changes)
     const activeProposals = await dep('list')('date_coordination_proposal', {
       coordination_id: Number(coordination.id),
@@ -146,11 +162,24 @@ function createDateApplicationPatchHandlers(overrides = {}) {
     const rows = await applicationsFor(coordination.id)
     const mine = latestForUser(rows, user.id, version)
     if (mine && mine.application) throw new Error('约会申请已经存在，请使用修改预览')
-    const application = normalizeApplication(data.application || data.changes || {}, dep('now')())
+    const initiatorApp = latestForUser(rows, coordination.user_a_id, version)
+    const invitation = invitationProposalOf(coordination, initiatorApp)
+    const rawInput = data.application || data.changes || {}
+    const merged = invitation.areas.length
+      ? mergeInvitationWithOverrides(invitation, rawInput)
+      : rawInput
+    const application = normalizeApplication(merged, dep('now')())
+    const changed = Object.keys(rawInput || {}).filter((key) => (
+      JSON.stringify(rawInput[key]) !== JSON.stringify(invitation[key])
+    ))
+    const evidence = invitation.areas.length ? evidenceFromChanges(changed) : allExplicitEvidence()
     const preview = {
-      before: null,
+      before: invitation.areas.length ? invitation : null,
       after: application,
-      changed_fields: Object.keys(application),
+      changed_fields: changed,
+      preference_evidence: evidence,
+      application_source: invitation.areas.length ? 'invitee_override' : 'invitee_full_form',
+      accepted_base_invitation_version: Number(coordination.invitation_version || coordination.accepted_base_invitation_version || version),
       affects_existing_proposal: false,
       will_notify_partner: true
     }
@@ -245,7 +274,12 @@ function createDateApplicationPatchHandlers(overrides = {}) {
     }
     if (patch.operation === 'create') {
       const result = await dep('saveApplicationForUser')(Object.assign({}, patch.preview.after, {
-        coordination_id: Number(coordination.id)
+        coordination_id: Number(coordination.id),
+        preference_evidence: patch.preview.preference_evidence || allExplicitEvidence(),
+        application_source: patch.preview.application_source || 'invitee_override',
+        accepted_base_invitation_version: patch.preview.accepted_base_invitation_version
+          || coordination.accepted_base_invitation_version
+          || coordination.invitation_version
       }), user)
       const appliedPatch = await dep('updateByDoc')('date_application_patch', patch, {
         status: 'applied',
@@ -319,11 +353,16 @@ function createDateApplicationPatchHandlers(overrides = {}) {
 
     const participants = [Number(coordination.user_a_id), Number(coordination.user_b_id)]
     const nextApplications = new Map()
+    let initiatorPreferenceVersion = Number(coordination.invitation_version || oldVersion)
     for (const participantId of participants) {
       const source = latestForUser(rows, participantId, oldVersion)
       if (!source || !source.application) continue
       const isActor = participantId === Number(user.id)
       const application = isActor ? nextApplication : source.application
+      const preferenceVersion = isActor
+        ? Number(source.preference_version || source.coordination_version || oldVersion || 1) + 1
+        : Number(source.preference_version || source.coordination_version || oldVersion || 1)
+      if (participantId === Number(coordination.user_a_id)) initiatorPreferenceVersion = preferenceVersion
       await dep('addWithId')('date_coordination_application', {
         coordination_id: Number(coordination.id),
         user_id: participantId,
@@ -331,10 +370,11 @@ function createDateApplicationPatchHandlers(overrides = {}) {
         application,
         submitted_at: dep('now')(),
         source: isActor ? 'agent_confirmed_patch' : 'version_snapshot',
-        // 修改方 preference_version +1；对方仅做版本快照，不伪造其偏好版本
-        preference_version: isActor
-          ? Number(source.preference_version || source.coordination_version || oldVersion || 1) + 1
-          : Number(source.preference_version || source.coordination_version || oldVersion || 1)
+        preference_version: preferenceVersion,
+        preference_evidence: isActor
+          ? (source.preference_evidence || allExplicitEvidence())
+          : (source.preference_evidence || null),
+        accepted_base_invitation_version: Number(source.accepted_base_invitation_version || coordination.accepted_base_invitation_version || 0)
       }, 'date_coordination_application')
       nextApplications.set(participantId, application)
     }
@@ -357,7 +397,7 @@ function createDateApplicationPatchHandlers(overrides = {}) {
         : (hasBothApplications ? queued.status : STATUS.COLLECTING_PREFERENCES),
       business_state: stillInviting
         ? 'waiting_partner'
-        : (hasBothApplications ? queued.business_state : 'waiting_partner'),
+        : (hasBothApplications ? queued.business_state : (coordination.invitee_intent === 'coordinate' ? 'waiting_invitee_preference' : 'waiting_partner')),
       processing_status: stillInviting || !hasBothApplications ? '' : queued.processing_status,
       processing_version: stillInviting || !hasBothApplications ? 0 : queued.processing_version,
       processing_token: '',
@@ -370,6 +410,11 @@ function createDateApplicationPatchHandlers(overrides = {}) {
       confirmation_deadline_at: stillInviting ? coordination.confirmation_deadline_at || null : null,
       invitation_deadline_at: stillInviting ? coordination.invitation_deadline_at : coordination.invitation_deadline_at,
       last_changed_by_user_id: Number(user.id)
+    }
+    if (stillInviting && Number(user.id) === Number(coordination.user_a_id)) {
+      update.invitation_proposal = publicInvitationProposal(nextApplication)
+      update.invitation_version = initiatorPreferenceVersion
+      update.initiator_agreed_invitation_version = initiatorPreferenceVersion
     }
     const updatedCoordination = await dep('updateByDoc')('date_coordination', coordination, update)
     const appliedPatch = await dep('updateByDoc')('date_application_patch', patch, {

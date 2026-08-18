@@ -1,4 +1,5 @@
 const { computeOverlap, STATUS } = require('../lib/dateCoordinationPolicy')
+const { buildInvitationCard, invitationProposalOf, invitationVersionOf } = require('../lib/invitationCoordination')
 
 function uniqueStrings(values, limit, maxLength) {
   return [...new Set((values || [])
@@ -61,12 +62,42 @@ function latestApplication(rows, userId, coordinationVersion) {
     .sort((a, b) => Number(b.coordination_version || 0) - Number(a.coordination_version || 0))[0] || null
 }
 
-function canonicalFromBackend(overlap, status) {
-  if (status === STATUS.INVITING_PARTNER || status === STATUS.COLLECTING_INITIATOR) {
+function canonicalFromBackend(overlap, status, options = {}) {
+  if (status === STATUS.COLLECTING_INITIATOR) {
+    return {
+      source: 'backend',
+      hasOverlap: false,
+      missingDimensions: ['own_preference'],
+      conflictDimensions: [],
+      commonTime: [],
+      commonArea: [],
+      commonActivity: [],
+      budgetCompatibility: '',
+      paymentCompatibility: '',
+      durationCompatibility: '',
+      proposal: null
+    }
+  }
+  if (status === STATUS.INVITING_PARTNER) {
     return {
       source: 'backend',
       hasOverlap: false,
       missingDimensions: ['partner'],
+      conflictDimensions: [],
+      commonTime: [],
+      commonArea: [],
+      commonActivity: [],
+      budgetCompatibility: '',
+      paymentCompatibility: '',
+      durationCompatibility: '',
+      proposal: null
+    }
+  }
+  if (options.waitingInviteePreference) {
+    return {
+      source: 'backend',
+      hasOverlap: false,
+      missingDimensions: options.party === 'B' ? ['own_preference'] : ['partner'],
       conflictDimensions: [],
       commonTime: [],
       commonArea: [],
@@ -151,28 +182,48 @@ function buildDateCoordinationGraphInput(coordination, applications, user, optio
   const ownRow = latestApplication(applications, user.id, version)
   const ownPreference = safePreference(ownRow && ownRow.application)
   const empty = emptyPreference()
-  let overlap = { proposals: [], missing_dimensions: ['partner'] }
-  if (![STATUS.INVITING_PARTNER, STATUS.COLLECTING_INITIATOR].includes(coordination.status)) {
-    const applicationA = latestApplication(applications, coordination.user_a_id, version)
-    const applicationB = latestApplication(applications, coordination.user_b_id, version)
-    if (applicationA && applicationA.application && applicationB && applicationB.application) {
-      overlap = computeOverlap(applicationA.application, applicationB.application, { version })
-    } else {
-      overlap = { proposals: [], missing_dimensions: ['partner'] }
-    }
+  const initiatorApp = latestApplication(applications, coordination.user_a_id, version)
+  const inviteeApp = latestApplication(applications, coordination.user_b_id, version)
+  const waitingInviteePreference = coordination.status === STATUS.COLLECTING_PREFERENCES && !inviteeApp
+  let overlap = { proposals: [], missing_dimensions: waitingInviteePreference ? ['partner'] : ['partner'] }
+  if (![STATUS.INVITING_PARTNER, STATUS.COLLECTING_INITIATOR].includes(coordination.status) && initiatorApp && inviteeApp) {
+    overlap = computeOverlap(initiatorApp.application, inviteeApp.application, { version })
   }
-  const canonicalOverlap = canonicalFromBackend(overlap, coordination.status)
+  const canonicalOverlap = canonicalFromBackend(overlap, coordination.status, {
+    waitingInviteePreference,
+    party
+  })
   const confirmations = options.confirmations || []
   const snapshot = confirmationSnapshot(coordination, confirmations, user)
+  const invitationCard = buildInvitationCard(
+    invitationProposalOf(coordination, initiatorApp),
+    invitationVersionOf(coordination, initiatorApp)
+  )
+  const actionRequired = canonicalOverlap.hasOverlap
+    ? 'confirm_or_adjust'
+    : (canonicalOverlap.missingDimensions.includes('own_preference')
+      ? 'clarify_overrides'
+      : (canonicalOverlap.missingDimensions.includes('partner')
+        ? (waitingInviteePreference ? 'wait_invitee_preference' : 'wait_partner')
+        : 'adjust_unresolved_dimension'))
   return {
     coordinationId: Number(coordination.id),
     coordinationVersion: version,
     party,
     ownPreference,
+    ownEvidence: ownRow && ownRow.preference_evidence ? ownRow.preference_evidence : null,
     partyAState: party === 'A' ? ownPreference : empty,
     partyBState: party === 'B' ? ownPreference : empty,
     canonicalOverlap,
     sharedState: {
+      invitationCard: {
+        time_text: invitationCard.time_text,
+        area_text: invitationCard.area_text,
+        activity_text: invitationCard.activity_text,
+        budget_text: invitationCard.budget_text,
+        duration_text: invitationCard.duration_text,
+        invitation_version: invitationCard.invitation_version
+      },
       commonTime: canonicalOverlap.commonTime,
       commonArea: canonicalOverlap.commonArea,
       commonActivity: canonicalOverlap.commonActivity,
@@ -180,10 +231,9 @@ function buildDateCoordinationGraphInput(coordination, applications, user, optio
       paymentCompatibility: canonicalOverlap.paymentCompatibility,
       durationCompatibility: canonicalOverlap.durationCompatibility,
       missingDimensions: canonicalOverlap.missingDimensions,
+      unresolvedDimensions: (canonicalOverlap.conflictDimensions || []).slice(),
       activeProposalSummary: canonicalOverlap.proposal,
-      actionRequired: canonicalOverlap.hasOverlap
-        ? 'confirm_or_adjust'
-        : (canonicalOverlap.missingDimensions.includes('partner') ? 'wait_partner' : 'adjust_own_preference')
+      actionRequired
     },
     partnerProgress: partnerProgress(coordination, applications, confirmations, user),
     confirmationSnapshot: snapshot

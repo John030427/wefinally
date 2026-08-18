@@ -178,7 +178,8 @@ function nextStatus(current, event) {
       cancel: STATUS.CANCELLED
     },
     [STATUS.INVITING_PARTNER]: {
-      accept_invitation: STATUS.COLLECTING_PREFERENCES,
+      accept_invitation: STATUS.ARRANGED,
+      coordinate_invitation: STATUS.COLLECTING_PREFERENCES,
       decline_invitation: STATUS.INVITATION_DECLINED,
       expire: STATUS.EXPIRED,
       cancel: STATUS.CANCELLED
