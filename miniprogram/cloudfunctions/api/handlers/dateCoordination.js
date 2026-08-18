@@ -265,7 +265,7 @@ function createDateCoordinationHandlers(overrides = {}) {
     return {
       test_simulation: true,
       fixture_response_job: publicJob(job),
-      simulation_badge: '虚拟体验对象'
+      test_data_badge: '测试数据'
     }
   }
 
@@ -348,6 +348,27 @@ function createDateCoordinationHandlers(overrides = {}) {
     return detailFor(updated, user)
   }
 
+  function patchHelpers() {
+    const { createDateApplicationPatchHandlers } = require('./dateApplicationPatch')
+    return createDateApplicationPatchHandlers({
+      first: dep('first'),
+      list: dep('list'),
+      byId: dep('byId'),
+      addWithId: dep('addWithId'),
+      updateByDoc: dep('updateByDoc'),
+      now: dep('now'),
+      publishCoordinationEvent: (input) => dep('publishCoordinationEvent')(input),
+      writeInboxNotification: (input) => dep('writeInboxNotification')(input),
+      saveApplicationForUser: (data, user) => saveApplicationForUser(data, user),
+      claimPendingPatch: overrides.claimPendingPatch || (async (patch) => {
+        const current = await dep('byId')('date_application_patch', Number(patch.id))
+        if (!current || current.status !== 'pending_confirmation') return false
+        await dep('updateByDoc')('date_application_patch', current, { status: 'applying' })
+        return true
+      })
+    })
+  }
+
   async function maybeAdvanceSyntheticPartner(coordination) {
     if (!coordination || !Number(coordination.is_test_data || 0)) return null
     const partner = await dep('byId')('user', Number(coordination.user_b_id))
@@ -355,6 +376,7 @@ function createDateCoordinationHandlers(overrides = {}) {
     const journey = String(coordination.synthetic_partner_journey || resolveFixtureJourney(partner) || '')
     if (!journey || journey === 'legacy_queue') return null
     try {
+      const patches = patchHelpers()
       const result = await advanceSyntheticPartner({
         coordination,
         partner: Object.assign({}, partner, { fixture_journey: journey })
@@ -363,7 +385,9 @@ function createDateCoordinationHandlers(overrides = {}) {
         list: dep('list'),
         respondInvitation: (data) => respondInvitationForUser(data, partner),
         saveApplicationForUser: (data, user) => saveApplicationForUser(data, user),
-        confirmProposalForUser: (data, user) => confirmProposalForUser(data, user)
+        confirmProposalForUser: (data, user) => confirmProposalForUser(data, user),
+        createPreviewForUser: (data, user) => patches.createPreviewForUser(data, user),
+        confirmForUser: (data, user) => patches.confirmForUser(data, user)
       })
       if (result && result.advanced && result.step === 'accept_invitation') {
         const nextCoordination = await dep('byId')('date_coordination', Number(coordination.id))
@@ -607,15 +631,16 @@ function createDateCoordinationHandlers(overrides = {}) {
     if (coordination
       && Number(coordination.is_test_data || 0) === 1
       && Number(user.id) === Number(coordination.user_a_id)
-      && coordination.status === STATUS.WAITING_CONFIRMATIONS) {
+      && [STATUS.NO_OVERLAP, STATUS.REPLANNING, STATUS.WAITING_CONFIRMATIONS].includes(coordination.status)) {
       const version = Number(coordination.coordination_version || 1)
-      const aConfirmed = await dep('first')('date_coordination_confirmation', {
-        coordination_id: Number(coordination.id),
-        user_id: Number(coordination.user_a_id),
-        coordination_version: version,
-        decision: 'confirm'
-      })
-      if (aConfirmed) {
+      const shouldAdvance = coordination.status !== STATUS.WAITING_CONFIRMATIONS
+        || await dep('first')('date_coordination_confirmation', {
+          coordination_id: Number(coordination.id),
+          user_id: Number(coordination.user_a_id),
+          coordination_version: version,
+          decision: 'confirm'
+        })
+      if (shouldAdvance) {
         await maybeAdvanceSyntheticPartner(coordination)
         coordination = await dep('byId')('date_coordination', Number(coordination.id)) || coordination
       }

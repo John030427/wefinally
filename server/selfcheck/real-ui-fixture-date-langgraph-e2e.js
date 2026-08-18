@@ -257,6 +257,8 @@ async function main() {
 
   // NL patch preview then confirm
   const session = await agent.createSession({ agent_type: 'date_coordinator', coordination_id: cid }, { userIndex: 0 })
+  const resumed = await agent.createSession({ agent_type: 'date_coordinator', coordination_id: cid }, { userIndex: 0 })
+  assert.strictEqual(Number(resumed.id), Number(session.id), 'same coordinationId must resume the same thread')
   const first = await agent.send({ session_id: session.id, message: '周六下午也可以' }, { userIndex: 0 })
   assert.ok(first.patch_preview, 'NL must produce patch preview')
   assert.strictEqual(first.patch_preview.status, 'pending_confirmation')
@@ -271,21 +273,11 @@ async function main() {
   const second = await agent.send({ session_id: session.id, message: '区域也可以换成车公庙' }, { userIndex: 0 })
   assert.ok(second.patch_preview)
   await patches.confirmForUser({ coordination_id: cid, patch_id: second.patch_preview.id }, db.tables.user[0])
-  // Align B to 车公庙 for proposal (synthetic auto area response)
   live = db.tables.date_coordination.find((r) => Number(r.id) === cid)
-  const version = Number(live.coordination_version)
-  const bApp = db.tables.date_coordination_application.find((r) => Number(r.user_id) === 2 && Number(r.coordination_version) === version)
-  if (bApp) {
-    await db.updateByDoc('date_coordination_application', bApp, {
-      application: Object.assign({}, bApp.application, { areas: ['车公庙', '福田'] })
-    })
-  }
-  await db.updateByDoc('date_coordination', live, {
-    status: STATUS.COMPUTING_OVERLAP,
-    processing_status: 'queued',
-    processing_version: version
-  })
-  await runWorker()
+  if (live.status === STATUS.COMPUTING_OVERLAP) await runWorker()
+  await coordination.detail({ id: cid, coordination_id: cid }, { userIndex: 0 })
+  live = db.tables.date_coordination.find((r) => Number(r.id) === cid)
+  if (live.status === STATUS.COMPUTING_OVERLAP) await runWorker()
   live = db.tables.date_coordination.find((r) => Number(r.id) === cid)
   assert.strictEqual(live.status, STATUS.WAITING_CONFIRMATIONS)
   const proposals = db.tables.date_coordination_proposal.filter((r) => r.status === 'active' && Number(r.coordination_id) === cid)
@@ -319,6 +311,14 @@ async function main() {
     () => coordination.saveApplication({ coordination_id: rejected.id, ...app() }, { userIndex: 0 }),
     /当前状态不能提交日期申请/
   )
+  await assert.rejects(
+    () => agent.createSession({ agent_type: 'date_coordinator', coordination_id: rejected.id }, { userIndex: 0 }),
+    /对方暂未接受本次约会邀请/
+  )
+
+  const profileJs = fs.readFileSync(path.join(root, 'miniprogram/pages/profile/profile.js'), 'utf8')
+  assert(profileJs.includes('AI 对你的理解'))
+  assert(profileJs.includes('focus=ai-profile'))
 
   console.log('PASS real-ui fixture ACCEPT/REJECT LangGraph date E2E')
 }

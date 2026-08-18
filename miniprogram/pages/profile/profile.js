@@ -14,6 +14,7 @@ Page({
     readiness: null,
     menuList: [
       { icon: '⚙️', title: '择偶配置', url: '/pages/match-setting/match-setting' },
+      { icon: '🧠', title: 'AI 对你的理解', url: '/pages/match-setting/match-setting?focus=ai-profile' },
       { icon: '📝', title: '外貌描述', url: '/pages/appearance/appearance' },
       { icon: '👑', title: 'VIP 会员', url: '/pages/vip/vip' },
       { icon: '🧾', title: '我的订单', url: '/pages/orders/orders' },

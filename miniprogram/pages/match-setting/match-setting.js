@@ -75,7 +75,8 @@ Page({
 
   _cooldownTimer: null,
 
-  onLoad() {
+  onLoad(options) {
+    this.focusAiProfile = String((options && options.focus) || '') === 'ai-profile'
     this.initPage()
   },
 
@@ -129,6 +130,11 @@ Page({
 
       if (cooldownEnd) this.startCooldownTimer(cooldownEnd)
       this.setData({ pageState: 'success' })
+      if (this.focusAiProfile) {
+        setTimeout(() => {
+          wx.pageScrollTo({ selector: '#ai-profile', duration: 280 })
+        }, 80)
+      }
     } catch (err) {
       const localEnd = wx.getStorageSync(STORAGE_KEYS.MATCH_SETTING_COOLDOWN)
       if (localEnd) this.startCooldownTimer(localEnd)

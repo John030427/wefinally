@@ -152,6 +152,9 @@ function createAgentHandlers(overrides = {}) {
       if (!coordination || ![Number(coordination.user_a_id), Number(coordination.user_b_id)].includes(Number(user.id))) {
         throw new Error('无权进入该约会协调会话')
       }
+      if (coordination.status === 'invitation_declined') {
+        throw new Error('对方暂未接受本次约会邀请。本次协调已结束，不能继续与 AI 约会协调员沟通。')
+      }
     }
     const sessions = await dep('list')('agent_session', { user_id: user.id, agent_type: agentType }, 100)
     const reusable = sessions
@@ -264,6 +267,14 @@ function createAgentHandlers(overrides = {}) {
         reply: '你的会话已转人工客服，请耐心等待工作人员回复。',
         manual_pending: true,
         handoff: buildHumanServiceHandoff()
+      }
+    }
+    if (session.agent_type === AGENT_TYPES.DATE_COORDINATOR && Number(session.coordination_id || 0)) {
+      const coordination = await dep('byId')('date_coordination', Number(session.coordination_id))
+      if (coordination && coordination.status === 'invitation_declined') {
+        const reply = '对方暂未接受本次约会邀请。本次协调已结束，不能继续修改条件。'
+        await saveMessage(session, user, 'assistant', reply)
+        return { session_id: session.id, agent_type: session.agent_type, reply, declined: true }
       }
     }
     if (session.agent_type === AGENT_TYPES.LOVE_ADVISOR) await enforceLoveQuota(user)

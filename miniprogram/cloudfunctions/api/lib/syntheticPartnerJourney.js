@@ -174,6 +174,40 @@ async function advanceSyntheticPartner(input = {}, deps = {}) {
     return { advanced: true, step: 'confirm_proposal', detail, journey }
   }
 
+  if ((status === 'no_overlap' || status === 'replanning') && (journey === 'accept' || journey === 'full_coordination')) {
+    if (typeof deps.createPreviewForUser !== 'function' || typeof deps.confirmForUser !== 'function') {
+      return { advanced: false, reason: 'patch_helpers_missing' }
+    }
+    const version = Number(coordination.coordination_version || 1)
+    const aApp = deps.first
+      ? await deps.first('date_coordination_application', {
+        coordination_id: Number(coordination.id),
+        user_id: Number(coordination.user_a_id),
+        coordination_version: version
+      })
+      : null
+    const bApp = deps.first
+      ? await deps.first('date_coordination_application', {
+        coordination_id: Number(coordination.id),
+        user_id: Number(partner.id),
+        coordination_version: version
+      })
+      : null
+    const aAreas = (aApp && aApp.application && aApp.application.areas) || []
+    const bAreas = (bApp && bApp.application && bApp.application.areas) || []
+    if (!aAreas.includes('车公庙')) return { advanced: false, reason: 'waiting_initiator_area' }
+    if (bAreas.includes('车公庙')) return { advanced: false, reason: 'area_already_aligned' }
+    const preview = await deps.createPreviewForUser({
+      coordination_id: coordination.id,
+      changes: { areas: Array.from(new Set(bAreas.concat(['车公庙']))) }
+    }, partner)
+    const detail = await deps.confirmForUser({
+      coordination_id: coordination.id,
+      patch_id: preview.id
+    }, partner)
+    return { advanced: true, step: 'accept_compromise_area', detail, journey }
+  }
+
   return { advanced: false, reason: `idle_at_${status}`, journey }
 }
 

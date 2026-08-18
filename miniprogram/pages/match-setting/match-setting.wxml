@@ -175,7 +175,7 @@
       <button class="btn-secondary intent-edit-btn" bindtap="onEditIntent" disabled="{{submitting}}">返回修改补充</button>
     </view>
 
-    <view class="card ai-profile-card" wx:if="{{aiProfile}}">
+    <view id="ai-profile" class="card ai-profile-card" wx:if="{{aiProfile}}">
       <view class="section-title">AI 对你的理解</view>
       <view class="section-hint">系统根据你的资料、三观与补充回答整理成下面这份理解。它只用于匹配，不会把推测当成你的明确要求。</view>
       <view class="ai-profile-version">版本 v{{aiProfileVersion}}{{aiConfirmed ? ' · 已确认' : ' · 待确认'}}</view>

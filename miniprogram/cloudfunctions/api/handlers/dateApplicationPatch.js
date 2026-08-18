@@ -98,7 +98,7 @@ function createDateApplicationPatchHandlers(overrides = {}) {
   async function createPreviewForUser(data, user, session) {
     const coordination = await dep('byId')('date_coordination', Number(data.coordination_id || 0))
     if (!owns(coordination, user && user.id)) throw new Error('无权修改该约会协调')
-    if ([STATUS.CANCELLED, STATUS.CLOSED, STATUS.EXPIRED, STATUS.MANUAL_HANDOFF].includes(coordination.status)) {
+    if ([STATUS.CANCELLED, STATUS.CLOSED, STATUS.EXPIRED, STATUS.MANUAL_HANDOFF, STATUS.INVITATION_DECLINED].includes(coordination.status)) {
       throw new Error('当前约会协调已经结束，不能修改')
     }
     const version = Number(coordination.coordination_version || 1)
@@ -134,7 +134,7 @@ function createDateApplicationPatchHandlers(overrides = {}) {
   async function createInitialPreviewForUser(data, user, session) {
     const coordination = await dep('byId')('date_coordination', Number(data.coordination_id || 0))
     if (!owns(coordination, user && user.id)) throw new Error('无权创建该约会申请')
-    if ([STATUS.CANCELLED, STATUS.CLOSED, STATUS.EXPIRED, STATUS.MANUAL_HANDOFF].includes(coordination.status)) {
+    if ([STATUS.CANCELLED, STATUS.CLOSED, STATUS.EXPIRED, STATUS.MANUAL_HANDOFF, STATUS.INVITATION_DECLINED].includes(coordination.status)) {
       throw new Error('当前约会协调已经结束，不能发送申请')
     }
     const version = Number(coordination.coordination_version || 1)

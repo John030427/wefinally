@@ -13,9 +13,10 @@
 测试用户走与生产一致的 Match Detail → 申请约会 → 真实 coordinationId → LangGraph date_coordinator；取消「虚拟体验 / 排队刷新」作为主路径。
 
 ### 完成
-- `syntheticPartnerJourney`：accept/reject 调用真实 respondInvitation / saveApplication / confirmProposal
+- `syntheticPartnerJourney`：accept/reject 调用真实 respondInvitation / saveApplication / confirmProposal；区域妥协走真实 patch
 - Match Detail / Date Coordination 统一生产 UI；弱「测试数据」badge
-- 记录 Tab 未读红点；REJECT inbox 安全文案
+- 记录 Tab 未读红点；REJECT inbox 安全文案；declined 禁止 AI session
+- 我的 →「AI 对你的理解」入口
 - `selfcheck/real-ui-fixture-date-langgraph-e2e.js` PASS
 - 报告：`project-docs/WORK_REPORT_REAL_UI_LANGGRAPH_DATE_E2E.md`
 

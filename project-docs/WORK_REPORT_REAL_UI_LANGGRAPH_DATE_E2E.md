@@ -83,8 +83,9 @@ A → match B_REJECT
 
 - Thread：按 `user + agentType + coordinationId` 持久化（既有实现）
 - Private A/B：各会话私有；共享层只放 overlap / safe summary
-- Resume：同 coordinationId 恢复 checkpoint（既有）
+- Resume：同 coordinationId 恢复同一 `agent_session`（E2E 断言）
 - Patch：NL → tool preview → 用户确认后 business apply；确认前不写 preference
+- Declined：`createSession` / `send` / patch preview 均拒绝继续协调
 
 ## 8. Deterministic State
 
@@ -105,6 +106,7 @@ LangGraph **不是** DB truth。下列由 business service 负责：
 - 记录 Tab：`match-list` `loadUnread` → redDot/badge
 - 入口：「消息通知」→ `/pages/notifications`
 - REJECT：`invitation_declined` inbox，公开安全文案
+- 我的 Tab：新增「AI 对你的理解」→ 择偶配置页 `#ai-profile`
 
 ## 11. Privacy
 
@@ -119,8 +121,9 @@ LangGraph **不是** DB truth。下列由 business service 负责：
 
 | 用例 | Command | Result |
 |---|---|---|
-| ACCEPT + NL PATCH + DOUBLE CONFIRM + PRIVACY | `node selfcheck/real-ui-fixture-date-langgraph-e2e.js` | PASS |
-| REJECT + unread + declined guard | 同上 | PASS |
+| ACCEPT + NL PATCH + DOUBLE CONFIRM + PRIVACY + thread resume | `node selfcheck/real-ui-fixture-date-langgraph-e2e.js` | PASS |
+| REJECT + unread + declined guard（含禁止进入 coordinator） | 同上 | PASS |
+| B 接受车公庙走真实 patch confirm（无直接 UPDATE） | 同上 | PASS |
 | Bilateral / concurrent / stale | `node selfcheck/synthetic-coordination-bilateral-e2e.js` | PASS |
 | Legacy queue isolation | `node selfcheck/match-only-fixture-safety.js` | PASS |
 | Legacy fixture-response | `node selfcheck/fixture-response-job.js` | PASS |
