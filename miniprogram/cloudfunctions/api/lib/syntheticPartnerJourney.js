@@ -3,13 +3,28 @@
  * Data is fake; UI / state machine / LangGraph / patch / proposal are production.
  *
  * fixture_journey on synthetic user:
- *   accept | reject | full_coordination | legacy_queue
- * Default for matched QA fixtures: accept (real UI path).
+ *   accept_direct | accept (alias)
+ *   coordinate | full_coordination (alias)
+ *   decline | reject (alias)
+ *   no_response
+ *   accept_no_prefs
+ *   legacy_queue
  */
 
 const { isInternalQaAccount, isSyntheticFixture, fixtureOwnerId, fixtureNotExpired, resolveTestIdentity } = require('./testIdentityPolicy')
+const { resolveFixtureJourneyName } = require('./invitationCoordination')
 
-const JOURNEYS = new Set(['accept', 'reject', 'full_coordination', 'legacy_queue'])
+const JOURNEYS = new Set([
+  'accept_direct',
+  'accept',
+  'coordinate',
+  'full_coordination',
+  'decline',
+  'reject',
+  'no_response',
+  'accept_no_prefs',
+  'legacy_queue'
+])
 
 function text(value) {
   return String(value || '').trim()
@@ -17,14 +32,18 @@ function text(value) {
 
 function resolveFixtureJourney(partner = {}) {
   const raw = text(partner.fixture_journey || partner.fixture_scenario || partner.journey).toLowerCase()
-  if (JOURNEYS.has(raw)) return raw
-  // Named helpers for DevTools seeding
+  const canonical = resolveFixtureJourneyName(raw)
+  if (canonical) return canonical
+  if (JOURNEYS.has(raw)) return resolveFixtureJourneyName(raw) || raw
   const name = text(partner.fixture_label || partner.display_name || partner.nickname || partner.openid)
-  if (/reject|婉拒|拒绝/i.test(name)) return 'reject'
-  if (/accept|接受|同意/i.test(name)) return 'accept'
+  if (/no[_-]?response|不回应|无响应/i.test(name)) return 'no_response'
+  if (/accept_no_prefs|不填/i.test(name)) return 'accept_no_prefs'
+  if (/coordinate|协调/i.test(name)) return 'coordinate'
+  if (/reject|decline|婉拒|拒绝|暂不方便/i.test(name)) return 'decline'
+  if (/accept_direct|直接接受/i.test(name)) return 'accept_direct'
+  if (/accept|接受|同意/i.test(name)) return 'accept_direct'
   if (/legacy|queue|排队/i.test(name)) return 'legacy_queue'
-  // Prefer real-UI accept path over old polite_decline queue
-  if (isSyntheticFixture(partner)) return 'accept'
+  if (isSyntheticFixture(partner)) return 'accept_direct'
   return ''
 }
 
@@ -40,7 +59,6 @@ function canUseRealCoordinationWithFixture(actor, partner, now = new Date()) {
   const publicPool = text(partner.fixture_access_mode) === 'public_test_pool'
   if (owner && Number(actor && actor.id) === owner) return true
   if (publicPool && isInternalQaAccount(actor)) return true
-  // Matched demo: internal QA may coordinate with owned-or-public synthetic partners only
   return false
 }
 
@@ -52,18 +70,17 @@ function assertFixtureOfflineDatingAllowed(partner, options = {}) {
   throw new Error('测试画像仅用于匹配效果验证，不能发起约会或线下见面')
 }
 
-function futureDate(daysAhead) {
-  const value = new Date()
+function futureDate(daysAhead, now = new Date()) {
+  const value = new Date(now)
   value.setUTCDate(value.getUTCDate() + Number(daysAhead || 0))
   return value.toISOString().slice(0, 10)
 }
 
 /** Default prefs that conflict with typical A Friday/Nanshan so NL can resolve */
-function syntheticPartnerPreferences(journey = 'accept') {
-  const sat = futureDate(6)
-  if (journey === 'reject') {
-    return null
-  }
+function syntheticPartnerPreferences(journey = 'coordinate', now = new Date()) {
+  const canonical = resolveFixtureJourneyName(journey) || journey
+  if (canonical === 'decline' || canonical === 'no_response') return null
+  const sat = futureDate(6, now)
   return {
     availability: [{ date: sat, periods: ['afternoon'] }],
     areas: ['福田'],
@@ -73,12 +90,21 @@ function syntheticPartnerPreferences(journey = 'accept') {
     duration: '1-2h',
     transport_constraints: '',
     other_requirements: '',
-    share_message: ''
+    share_message: '',
+    preference_evidence: {
+      availability: 'explicit',
+      areas: 'explicit',
+      activities: 'explicit',
+      budget: 'explicit',
+      payment_preference: 'explicit',
+      duration: 'explicit'
+    },
+    application_source: 'invitee_full_form'
   }
 }
 
-function initiatorSeedPreferences() {
-  const fri = futureDate(5)
+function initiatorSeedPreferences(now = new Date()) {
+  const fri = futureDate(5, now)
   return {
     availability: [{ date: fri, periods: ['evening'] }],
     areas: ['南山'],
@@ -94,7 +120,6 @@ function initiatorSeedPreferences() {
 
 /**
  * Drive synthetic B through the same handlers a real B would call.
- * deps must expose respondInvitation / saveApplicationForUser / processWorker as needed.
  */
 async function advanceSyntheticPartner(input = {}, deps = {}) {
   const coordination = input.coordination
@@ -103,27 +128,45 @@ async function advanceSyntheticPartner(input = {}, deps = {}) {
   if (!coordination || !partner || !journey || journey === 'legacy_queue') {
     return { advanced: false, reason: 'not_applicable' }
   }
+  if (journey === 'no_response') {
+    return { advanced: false, reason: 'no_response', journey }
+  }
 
   const status = String(coordination.status || '')
   const partnerWx = { OPENID: partner.openid, __synthetic_user_id: Number(partner.id) }
+  const invitationVersion = Number(coordination.invitation_version || coordination.coordination_version || 1)
 
   if (status === 'inviting_partner') {
-    if (journey === 'reject') {
+    if (journey === 'decline') {
       const detail = await deps.respondInvitation(
         { coordination_id: coordination.id, decision: 'decline' },
         partnerWx
       )
-      return { advanced: true, step: 'reject_invitation', detail, journey }
+      return { advanced: true, step: 'decline_invitation', detail, journey }
     }
-    const detail = await deps.respondInvitation(
-      { coordination_id: coordination.id, decision: 'accept' },
-      partnerWx
-    )
-    return { advanced: true, step: 'accept_invitation', detail, journey }
+    if (journey === 'accept_direct') {
+      const detail = await deps.respondInvitation(
+        {
+          coordination_id: coordination.id,
+          decision: 'accept',
+          invitation_version: invitationVersion
+        },
+        partnerWx
+      )
+      return { advanced: true, step: 'accept_direct', detail, journey }
+    }
+    if (journey === 'coordinate' || journey === 'accept_no_prefs') {
+      const detail = await deps.respondInvitation(
+        { coordination_id: coordination.id, decision: 'coordinate' },
+        partnerWx
+      )
+      return { advanced: true, step: 'coordinate_invitation', detail, journey }
+    }
+    return { advanced: false, reason: `unknown_journey_${journey}`, journey }
   }
 
-  if (status === 'collecting_preferences' && (journey === 'accept' || journey === 'full_coordination')) {
-    const prefs = syntheticPartnerPreferences(journey)
+  if (status === 'collecting_preferences' && journey === 'coordinate') {
+    const prefs = syntheticPartnerPreferences(journey, deps.now ? deps.now() : new Date())
     if (!prefs) return { advanced: false, reason: 'no_prefs' }
     const existing = deps.first
       ? await deps.first('date_coordination_application', {
@@ -140,7 +183,11 @@ async function advanceSyntheticPartner(input = {}, deps = {}) {
     return { advanced: true, step: 'submit_partner_application', detail, journey }
   }
 
-  if (status === 'waiting_confirmations' && (journey === 'accept' || journey === 'full_coordination')) {
+  if (status === 'collecting_preferences' && journey === 'accept_no_prefs') {
+    return { advanced: false, reason: 'waiting_invitee_preference', journey }
+  }
+
+  if (status === 'waiting_confirmations' && journey === 'coordinate') {
     if (typeof deps.confirmProposalForUser !== 'function') {
       return { advanced: false, reason: 'confirm_helper_missing' }
     }
@@ -174,7 +221,7 @@ async function advanceSyntheticPartner(input = {}, deps = {}) {
     return { advanced: true, step: 'confirm_proposal', detail, journey }
   }
 
-  if ((status === 'no_overlap' || status === 'replanning') && (journey === 'accept' || journey === 'full_coordination')) {
+  if ((status === 'no_overlap' || status === 'replanning') && journey === 'coordinate') {
     if (typeof deps.createPreviewForUser !== 'function' || typeof deps.confirmForUser !== 'function') {
       return { advanced: false, reason: 'patch_helpers_missing' }
     }
@@ -220,13 +267,16 @@ function fixtureSceneBadge(source = {}) {
     || text(source.profile_origin) === 'synthetic_fixture'
   if (!isTest) return ''
   const journey = resolveFixtureJourney(source) || text(source.fixture_journey || source.synthetic_partner_journey)
-  if (journey === 'reject') return '测试 · 拒绝场景'
-  if (journey === 'accept' || journey === 'full_coordination') return '测试 · 接受场景'
+  if (journey === 'decline') return '测试 · 暂不方便'
+  if (journey === 'accept_direct') return '测试 · 直接接受'
+  if (journey === 'coordinate') return '测试 · AI协调'
+  if (journey === 'no_response') return '测试 · 不回应'
+  if (journey === 'accept_no_prefs') return '测试 · 接受未填偏好'
   return '测试数据'
 }
 
 function buildFixtureSeedProfile(overrides = {}) {
-  const journey = resolveFixtureJourney(overrides) || 'accept'
+  const journey = resolveFixtureJourney(overrides) || 'accept_direct'
   return Object.assign({
     profile_origin: 'synthetic_fixture',
     is_test_fixture: 1,

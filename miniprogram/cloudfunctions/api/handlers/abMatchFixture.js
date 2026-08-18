@@ -22,14 +22,32 @@ function validateActor(actor) {
   }
 }
 
-const ALLOWED_JOURNEYS = new Set(['accept', 'reject'])
-const INTERNAL_JOURNEYS = new Set(['accept', 'reject', 'legacy_queue'])
+const ALLOWED_JOURNEYS = new Set([
+  'accept_direct',
+  'accept',
+  'coordinate',
+  'decline',
+  'reject',
+  'no_response',
+  'accept_no_prefs'
+])
+const INTERNAL_JOURNEYS = new Set([
+  'accept_direct',
+  'accept',
+  'coordinate',
+  'full_coordination',
+  'decline',
+  'reject',
+  'no_response',
+  'accept_no_prefs',
+  'legacy_queue'
+])
 
 function resolveFixtureJourneyInput(input = {}) {
   const raw = String(input.fixture_journey || input.journey || '').trim().toLowerCase()
   if (!raw) return 'accept'
   if (INTERNAL_JOURNEYS.has(raw)) return raw
-  throw new Error('fixture_journey 仅支持 accept、reject，或显式内部值 legacy_queue')
+  throw new Error('fixture_journey 仅支持 accept_direct、coordinate、decline、no_response、accept_no_prefs，或显式内部值 legacy_queue')
 }
 
 function resolveFixtureModeInput(input = {}) {
@@ -94,7 +112,9 @@ function fixtureProfile(owner, ownerSetting, runId, now, journey = 'accept', mod
   const candidateHeight = `${candidateHeightMin}-${candidateHeightMax}cm`
   const selfText = String(ownerSetting.target_view_text || '').trim()
   const targetText = String(ownerSetting.self_view_text || '').trim()
-  const resolvedJourney = String(journey || 'accept').toLowerCase() === 'reject' ? 'reject' : 'accept'
+  const resolvedJourney = INTERNAL_JOURNEYS.has(String(journey || '').toLowerCase())
+    ? String(journey).toLowerCase()
+    : 'accept_direct'
   return {
     user: {
       openid: `ab_test_fixture_${runId}`,

@@ -222,7 +222,7 @@ async function main() {
   await coordination.saveApplication({ coordination_id: 50, ...app() }, { userIndex: 0 })
   assert.strictEqual(db.tables.date_coordination[0].status, STATUS.INVITING_PARTNER, 'initiator submit invites partner')
   assert.strictEqual(db.tables.user_notification_cursor.length, 1, 'invitee got inbox cursor')
-  await coordination.respondInvitation({ coordination_id: 50, decision: 'accept' }, { userIndex: 1 })
+  await coordination.respondInvitation({ coordination_id: 50, decision: 'coordinate' }, { userIndex: 1 })
   assert.strictEqual(db.tables.date_coordination[0].status, STATUS.COLLECTING_PREFERENCES)
   await coordination.saveApplication({ coordination_id: 50, ...app({ availability: [{ date: SAT, periods: ['afternoon'] }], areas: ['福田', '车公庙'] }) }, { userIndex: 1 })
   assert.strictEqual(db.tables.date_coordination[0].status, STATUS.COMPUTING_OVERLAP)
@@ -290,7 +290,7 @@ async function main() {
   const cid = Number(coord2.id)
   // 双方先各自提交第一版偏好（v1）
   await coordination.saveApplication({ coordination_id: cid, ...app({ availability: [{ date: FRI, periods: ['afternoon'] }] }) }, { userIndex: 0 })
-  await coordination.respondInvitation({ coordination_id: cid, decision: 'accept' }, { userIndex: 2 })
+  await coordination.respondInvitation({ coordination_id: cid, decision: 'coordinate' }, { userIndex: 2 })
   await coordination.saveApplication({ coordination_id: cid, ...app({ availability: [{ date: SAT, periods: ['evening'] }], areas: ['车公庙'] }) }, { userIndex: 2 })
   assert.strictEqual(db.tables.date_coordination.find((r) => Number(r.id) === cid).status, STATUS.COMPUTING_OVERLAP)
   // A 在同一版本上先创建“周六下午”的修改预览；B 创建“周五下午”的修改预览（并发意图）

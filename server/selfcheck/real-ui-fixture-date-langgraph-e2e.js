@@ -40,7 +40,7 @@ function memoryDb() {
   const tables = {
     user: [
       { id: 1, openid: 'qa_a', account_mode: 'internal_qa', profile_origin: 'real_user', member_status: 'approved', is_vip: 1, vip_expire_time: '2099-01-01T00:00:00.000Z', free_member: 1 },
-      { id: 2, openid: 'b_accept', profile_origin: 'synthetic_fixture', is_test_fixture: 1, fixture_owner_user_id: 1, fixture_expires_at: '2099-01-01T00:00:00.000Z', fixture_journey: 'accept', member_status: 'approved', is_vip: 1, vip_expire_time: '2099-01-01T00:00:00.000Z', free_member: 1 },
+      { id: 2, openid: 'b_accept', profile_origin: 'synthetic_fixture', is_test_fixture: 1, fixture_owner_user_id: 1, fixture_expires_at: '2099-01-01T00:00:00.000Z', fixture_journey: 'coordinate', member_status: 'approved', is_vip: 1, vip_expire_time: '2099-01-01T00:00:00.000Z', free_member: 1 },
       { id: 3, openid: 'b_reject', profile_origin: 'synthetic_fixture', is_test_fixture: 1, fixture_owner_user_id: 1, fixture_expires_at: '2099-01-01T00:00:00.000Z', fixture_journey: 'reject', member_status: 'approved', is_vip: 1, vip_expire_time: '2099-01-01T00:00:00.000Z', free_member: 1 }
     ],
     date_coordination: [],
@@ -144,7 +144,7 @@ async function main() {
   assert(matchDetail.includes('测试数据'))
   assert(dateView.includes('和 AI 约会协调员沟通'))
   assert(dateView.includes('对方暂未接受本次约会邀请'))
-  assert(dateView.includes('你的邀请已经发送'))
+  assert(dateView.includes('约会邀请已发送'))
   assert(dateJs.includes('agentType=date_coordinator&coordinationId='))
   assert(dateJs.includes('can_open_coordinator_chat'))
   assert(matchListJs.includes('refreshNotificationBadge'))
@@ -230,9 +230,9 @@ async function main() {
   assert.ok(created.id, 'must mint real coordination_id')
   assert.strictEqual(created.test_simulation, undefined)
   assert.strictEqual(created.is_test_data, true)
-  assert.strictEqual(created.test_data_badge, '测试 · 接受场景')
+  assert.strictEqual(created.test_data_badge, '测试 · AI协调')
   assert.strictEqual(created.status, STATUS.COLLECTING_INITIATOR)
-  assert.strictEqual(created.synthetic_partner_journey, 'accept')
+  assert.strictEqual(created.synthetic_partner_journey, 'coordinate')
   const cid = Number(created.id)
 
   const afterInvite = await coordination.saveApplication({ coordination_id: cid, ...app() }, { userIndex: 0 })
@@ -301,7 +301,7 @@ async function main() {
   // ===== REJECT =====
   const rejected = await coordination.create({ match_log_id: 6, match_user_id: 3 }, { userIndex: 0 })
   assert.ok(rejected.id)
-  assert.strictEqual(rejected.synthetic_partner_journey, 'reject')
+  assert.strictEqual(rejected.synthetic_partner_journey, 'decline')
   const declined = await coordination.saveApplication({ coordination_id: rejected.id, ...app() }, { userIndex: 0 })
   assert.strictEqual(declined.status, STATUS.INVITATION_DECLINED)
   assert.strictEqual(declined.declined_public_message, publicSafeDeclineMessage())
@@ -312,10 +312,13 @@ async function main() {
     () => coordination.saveApplication({ coordination_id: rejected.id, ...app() }, { userIndex: 0 }),
     /当前状态不能提交日期申请/
   )
-  await assert.rejects(
-    () => agent.createSession({ agent_type: 'date_coordinator', coordination_id: rejected.id }, { userIndex: 0 }),
-    /对方暂未接受本次约会邀请/
-  )
+  const declinedSession = await agent.createSession({ agent_type: 'date_coordinator', coordination_id: rejected.id }, { userIndex: 0 })
+  assert.strictEqual(declinedSession.coordinator_read_only, true)
+  assert.ok(String(declinedSession.coordinator_welcome).includes('对方暂未接受'))
+  const declinedReply = await agent.send({ session_id: declinedSession.id, message: '改成周日吧' }, { userIndex: 0 })
+  assert.strictEqual(declinedReply.read_only, true)
+  assert.ok(!declinedReply.patch_preview)
+  assert.ok(String(declinedReply.reply).includes('对方暂未接受'))
 
   const profileJs = fs.readFileSync(path.join(root, 'miniprogram/pages/profile/profile.js'), 'utf8')
   assert(profileJs.includes('AI 对你的理解'))

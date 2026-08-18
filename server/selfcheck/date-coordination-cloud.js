@@ -345,10 +345,11 @@ async function main() {
   assert.strictEqual(invitedDetail.my_application, null)
   assert.strictEqual(JSON.stringify(invitedDetail).includes(applicationA.share_message), false)
 
-  const accepted = await handlers.respondInvitation({ coordination_id: first.id, decision: 'accept' }, { user_id: 2 })
+  const accepted = await handlers.respondInvitation({ coordination_id: first.id, decision: 'coordinate' }, { user_id: 2 })
   assert.strictEqual(accepted.status, 'collecting_preferences')
-  assert.strictEqual(accepted.business_state, 'coordinating')
+  assert.strictEqual(accepted.business_state, 'waiting_invitee_preference')
   assert.strictEqual(accepted.can_submit_application, true)
+  assert.strictEqual(accepted.can_open_coordinator_chat, true)
   assert.strictEqual(accepted.application_deadline_at.toISOString(), '2026-07-15T08:00:00.000Z')
   const initiatorWaiting = await handlers.detail({ coordination_id: first.id }, { user_id: 1 })
   assert.strictEqual(initiatorWaiting.can_submit_application, false)
@@ -600,7 +601,7 @@ async function main() {
   })
   await assert.rejects(
     () => createDateCoordinationHandlers(expiredDeps).respondInvitation({ coordination_id: 90, decision: 'accept' }, { user_id: 2 }),
-    /邀请已过期/
+    /本次约会邀请暂未得到回应，协调已结束/
   )
 
   const concurrentWorkerDeps = memoryDeps({

@@ -179,13 +179,14 @@ async function main() {
 
   await assert.rejects(
     () => agent.createSession({ agent_type: AGENT_TYPES.DATE_COORDINATOR, coordination_id: 80 }, contextB),
-    /请先接受或拒绝/
+    /请先选择接受这个安排/
   )
   const sessionA = await agent.createSession({ agent_type: AGENT_TYPES.DATE_COORDINATOR, coordination_id: 80 }, contextA)
   assert.ok(sessionA.id)
 
-  const accepted = await coordination.respondInvitation({ coordination_id: 80, decision: 'accept' }, contextB)
-  assert.strictEqual(accepted.status, STATUS.COLLECTING_PREFERENCES)
+  const coordinated = await coordination.respondInvitation({ coordination_id: 80, decision: 'coordinate' }, contextB)
+  assert.strictEqual(coordinated.status, STATUS.COLLECTING_PREFERENCES)
+  assert.strictEqual(coordinated.invitee_intent, 'coordinate')
 
   const rejectDeps = memory({
     date_coordination: [{
@@ -220,13 +221,14 @@ async function main() {
   const declined = await rejectCoordination.respondInvitation({ coordination_id: 81, decision: 'decline' }, { user_id: 2 })
   assert.strictEqual(declined.status, STATUS.INVITATION_DECLINED)
   const rejectAgent = createAgentHandlers(rejectDeps)
-  await assert.rejects(
-    () => rejectAgent.createSession({ agent_type: AGENT_TYPES.DATE_COORDINATOR, coordination_id: 81 }, { user_id: 1 }),
-    /对方暂未接受本次约会邀请/
-  )
+  const declinedSession = await rejectAgent.createSession({ agent_type: AGENT_TYPES.DATE_COORDINATOR, coordination_id: 81 }, { user_id: 1 })
+  assert.ok(declinedSession.id)
+  assert.strictEqual(declinedSession.coordinator_read_only, true)
+  const declinedSend = await rejectAgent.send({ session_id: declinedSession.id, message: '还能改时间吗' }, { user_id: 1 })
+  assert.strictEqual(declinedSend.read_only, true)
   await assert.rejects(
     () => rejectPatches.createPreviewForUser({ coordination_id: 81, changes: { areas: ['福田'] } }, rejectDeps.rows.user[0]),
-    /不能继续修改|已经结束/
+    /不能继续修改|已经结束|暂未接受|暂未得到回应/
   )
 
   const inviteeAfterAccept = await agent.createSession({ agent_type: AGENT_TYPES.DATE_COORDINATOR, coordination_id: 80 }, contextB)
@@ -459,7 +461,8 @@ async function main() {
   const advanced = await manualHandlers.advanceSynthetic({ coordination_id: 70 }, { user_id: 1 })
   assert.notStrictEqual(advanced.status, STATUS.INVITING_PARTNER)
 
-  assert.strictEqual(nextStatus(STATUS.INVITING_PARTNER, 'accept_invitation'), STATUS.COLLECTING_PREFERENCES)
+  assert.strictEqual(nextStatus(STATUS.INVITING_PARTNER, 'accept_invitation'), STATUS.ARRANGED)
+  assert.strictEqual(nextStatus(STATUS.INVITING_PARTNER, 'coordinate_invitation'), STATUS.COLLECTING_PREFERENCES)
   assert.throws(() => nextStatus(STATUS.COLLECTING_PREFERENCES, 'accept_invitation'), /当前状态不能执行该协调操作/)
 
   console.log('PASS date coordination logic audit matrix')

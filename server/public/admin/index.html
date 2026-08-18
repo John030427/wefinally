@@ -604,7 +604,7 @@
         ? '<p>系统将创建一个与 A 双向条件有交集的一次性 B 测试候选。接受场景与拒绝场景可以同时存在。</p>'
         : '<p>只会清理测试编号 <code>' + esc(runId) + '</code> 对应的测试候选和关联测试协调，不会按 pair_key 删除生产数据。</p>') +
       (prepare
-        ? '<div class="form-group"><label for="adminAbMatchJourney">测试旅程</label><select id="adminAbMatchJourney"><option value="accept">accept · 接受场景</option><option value="reject">reject · 拒绝场景</option></select></div>' +
+        ? '<div class="form-group"><label for="adminAbMatchJourney">测试旅程</label><select id="adminAbMatchJourney"><option value="accept_direct">accept_direct · 直接接受</option><option value="coordinate">coordinate · 和AI协调</option><option value="accept_no_prefs">accept_no_prefs · 接受后不填偏好</option><option value="no_response">no_response · 不回应</option><option value="reject">decline · 这次暂不方便</option></select></div>' +
           '<div class="form-group"><label for="adminAbMatchMode">推进模式</label><select id="adminAbMatchMode"><option value="auto">auto · 自动推进（自检）</option><option value="manual_step">manual_step · 人工分步</option></select></div>'
         : '') +
       '<div class="form-group"><label for="adminAbMatchReason">' + (prepare ? '测试原因' : '清理原因') + '</label>' +
