@@ -1,5 +1,6 @@
 const { get, post } = require('../../utils/request')
 const { API_PATHS } = require('../../utils/constants')
+const { refreshNotificationBadge } = require('../../utils/notificationBadge')
 
 const EVENT_ICONS = {
   invitation_created: '💌',
@@ -58,14 +59,22 @@ Page({
         list,
         unreadCount: Number((data && (data.unread_count || data.unreadCount)) || 0)
       })
+      await refreshNotificationBadge()
     } catch (err) {
-      this.setData({ pageState: 'error', errorMsg: (err && err.message) || '加载失败' })
+      const deploymentMismatch = Boolean(err && (err.deploymentMismatch || err.routeMissing))
+      this.setData({
+        pageState: 'error',
+        errorMsg: deploymentMismatch
+          ? '当前 CloudBase 后端版本尚未包含消息服务，请更新 api 云函数后再试。'
+          : ((err && err.message) || '加载失败')
+      })
     }
   },
 
   async onMarkAllRead() {
     try {
       await post(API_PATHS.NOTIFICATIONS_READ, {}, { showError: false })
+      await refreshNotificationBadge()
       this.load()
       wx.showToast({ title: '已全部标记为已读', icon: 'success' })
     } catch (err) {

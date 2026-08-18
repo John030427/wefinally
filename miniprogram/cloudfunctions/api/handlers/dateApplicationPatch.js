@@ -2,6 +2,11 @@ const { normalizeApplication, STATUS } = require('../lib/dateCoordinationPolicy'
 const { previewApplicationChange, shareableSummary, cleanChanges } = require('../lib/dateApplicationPatchPolicy')
 const { publishCoordinationEvent } = require('../agent/dateCoordinationEvents')
 const { canStartAnotherRound, enqueueProcessing } = require('../lib/dateCoordinationProcessingPolicy')
+const {
+  canModifyApplication,
+  terminalWriteError,
+  WRITE_BLOCKED_STATUSES
+} = require('../lib/dateCoordinationAccessPolicy')
 
 async function claimPendingPatch(patch) {
   const db = require('../lib/db')
@@ -98,8 +103,8 @@ function createDateApplicationPatchHandlers(overrides = {}) {
   async function createPreviewForUser(data, user, session) {
     const coordination = await dep('byId')('date_coordination', Number(data.coordination_id || 0))
     if (!owns(coordination, user && user.id)) throw new Error('无权修改该约会协调')
-    if ([STATUS.CANCELLED, STATUS.CLOSED, STATUS.EXPIRED, STATUS.MANUAL_HANDOFF, STATUS.INVITATION_DECLINED].includes(coordination.status)) {
-      throw new Error('当前约会协调已经结束，不能修改')
+    if (WRITE_BLOCKED_STATUSES.includes(coordination.status) || !canModifyApplication(coordination, user, { hasOwnApplication: true })) {
+      throw new Error(terminalWriteError(coordination.status))
     }
     const version = Number(coordination.coordination_version || 1)
     const rows = await applicationsFor(coordination.id)
@@ -134,8 +139,8 @@ function createDateApplicationPatchHandlers(overrides = {}) {
   async function createInitialPreviewForUser(data, user, session) {
     const coordination = await dep('byId')('date_coordination', Number(data.coordination_id || 0))
     if (!owns(coordination, user && user.id)) throw new Error('无权创建该约会申请')
-    if ([STATUS.CANCELLED, STATUS.CLOSED, STATUS.EXPIRED, STATUS.MANUAL_HANDOFF, STATUS.INVITATION_DECLINED].includes(coordination.status)) {
-      throw new Error('当前约会协调已经结束，不能发送申请')
+    if (WRITE_BLOCKED_STATUSES.includes(coordination.status) || !canModifyApplication(coordination, user, { hasOwnApplication: false })) {
+      throw new Error(terminalWriteError(coordination.status))
     }
     const version = Number(coordination.coordination_version || 1)
     const rows = await applicationsFor(coordination.id)
@@ -169,6 +174,9 @@ function createDateApplicationPatchHandlers(overrides = {}) {
     const partnerId = Number(coordination.user_a_id) === Number(user.id)
       ? Number(coordination.user_b_id)
       : Number(coordination.user_a_id)
+    if (coordination.status === STATUS.INVITING_PARTNER) {
+      return { partner_id: partnerId, session_id: 0, shareable_summary: summary, skipped: 'waiting_partner_consent' }
+    }
     const published = await dep('publishCoordinationEvent')({
       coordination,
       event: {
@@ -186,7 +194,7 @@ function createDateApplicationPatchHandlers(overrides = {}) {
         event_type: 'preference_changed',
         coordination_version: Number(version),
         title: '对方更新了可约条件',
-        body: '对方的约会条件发生调整，涉及：' + (Array.isArray(summary.changed_dimensions) ? summary.changed_dimensions.join('、') : '') + '。请进入查看共同进度。',
+        body: '对方更新了可约时间，目前双方在共同条件上可能出现新的交集。请进入查看共同进度。',
         changed_dimensions: summary.changed_dimensions || [],
         stage: 'preference_changed'
       })
@@ -214,6 +222,9 @@ function createDateApplicationPatchHandlers(overrides = {}) {
     if (Number(patch.user_id) !== Number(user && user.id)) throw new Error('无权确认该修改预览')
     const coordination = await dep('byId')('date_coordination', Number(patch.coordination_id))
     if (!owns(coordination, user.id)) throw new Error('无权确认该修改预览')
+    if (!canModifyApplication(coordination, user, { hasOwnApplication: true })) {
+      throw new Error(terminalWriteError(coordination.status))
+    }
     if (patch.status === 'applied') {
       return { patch: publicPatch(patch), coordination_version: Number(patch.applied_version || coordination.coordination_version) }
     }
@@ -330,20 +341,25 @@ function createDateApplicationPatchHandlers(overrides = {}) {
 
     const hasBothApplications = nextApplications.has(Number(coordination.user_a_id))
       && nextApplications.has(Number(coordination.user_b_id))
+    const stillInviting = coordination.status === STATUS.INVITING_PARTNER
     const nextCoordination = Object.assign({}, coordination, {
       coordination_version: newVersion,
       recoordination_count: Number(coordination.recoordination_count || 0) + 1
     })
-    const queued = hasBothApplications
+    const queued = hasBothApplications && !stillInviting
       ? enqueueProcessing(nextCoordination, { version: newVersion, now: dep('now')() })
       : nextCoordination
     const update = {
       coordination_version: newVersion,
       recoordination_count: nextCoordination.recoordination_count,
-      status: hasBothApplications ? queued.status : STATUS.COLLECTING_PREFERENCES,
-      business_state: hasBothApplications ? queued.business_state : 'waiting_partner',
-      processing_status: hasBothApplications ? queued.processing_status : '',
-      processing_version: hasBothApplications ? queued.processing_version : 0,
+      status: stillInviting
+        ? STATUS.INVITING_PARTNER
+        : (hasBothApplications ? queued.status : STATUS.COLLECTING_PREFERENCES),
+      business_state: stillInviting
+        ? 'waiting_partner'
+        : (hasBothApplications ? queued.business_state : 'waiting_partner'),
+      processing_status: stillInviting || !hasBothApplications ? '' : queued.processing_status,
+      processing_version: stillInviting || !hasBothApplications ? 0 : queued.processing_version,
       processing_token: '',
       processing_attempts: 0,
       processing_started_at: null,
@@ -351,7 +367,8 @@ function createDateApplicationPatchHandlers(overrides = {}) {
       processing_error_code: '',
       missing_dimensions: [],
       final_proposal_id: 0,
-      confirmation_deadline_at: null,
+      confirmation_deadline_at: stillInviting ? coordination.confirmation_deadline_at || null : null,
+      invitation_deadline_at: stillInviting ? coordination.invitation_deadline_at : coordination.invitation_deadline_at,
       last_changed_by_user_id: Number(user.id)
     }
     const updatedCoordination = await dep('updateByDoc')('date_coordination', coordination, update)

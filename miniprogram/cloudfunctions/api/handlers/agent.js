@@ -13,6 +13,14 @@ const { readLangGraphConfig, createActorRef, createThreadId, runLangGraphStep } 
 const { executeGraphTool } = require('../agent/langgraphToolBridge')
 const { buildDateCoordinationGraphInput, latestApplication } = require('../agent/dateCoordinationGraphState')
 const { buildResumeSummary } = require('../lib/coordinationConcurrency')
+const {
+  canOpenCoordinatorChat,
+  canWriteCoordinatorAction,
+  isInvitee,
+  isTerminalCoordination,
+  terminalWriteError,
+  inviteeCoordinatorBlockedError
+} = require('../lib/dateCoordinationAccessPolicy')
 
 const FREE_DAILY_LIMIT = 5
 const VIP_DAILY_LIMIT = 30
@@ -152,8 +160,15 @@ function createAgentHandlers(overrides = {}) {
       if (!coordination || ![Number(coordination.user_a_id), Number(coordination.user_b_id)].includes(Number(user.id))) {
         throw new Error('无权进入该约会协调会话')
       }
-      if (coordination.status === 'invitation_declined') {
-        throw new Error('对方暂未接受本次约会邀请。本次协调已结束，不能继续与 AI 约会协调员沟通。')
+      const ownApp = await dep('first')('date_coordination_application', {
+        coordination_id: coordinationId,
+        user_id: Number(user.id)
+      }).catch(() => null)
+      if (coordination.status === 'inviting_partner' && isInvitee(coordination, user)) {
+        throw new Error(inviteeCoordinatorBlockedError())
+      }
+      if (!canOpenCoordinatorChat(coordination, user, { hasOwnApplication: Boolean(ownApp) })) {
+        throw new Error(terminalWriteError(coordination.status))
       }
     }
     const sessions = await dep('list')('agent_session', { user_id: user.id, agent_type: agentType }, 100)
@@ -271,10 +286,21 @@ function createAgentHandlers(overrides = {}) {
     }
     if (session.agent_type === AGENT_TYPES.DATE_COORDINATOR && Number(session.coordination_id || 0)) {
       const coordination = await dep('byId')('date_coordination', Number(session.coordination_id))
-      if (coordination && coordination.status === 'invitation_declined') {
-        const reply = '对方暂未接受本次约会邀请。本次协调已结束，不能继续修改条件。'
+      const ownApp = coordination
+        ? await dep('first')('date_coordination_application', {
+          coordination_id: Number(coordination.id),
+          user_id: Number(user.id)
+        }).catch(() => null)
+        : null
+      if (coordination && coordination.status === 'inviting_partner' && isInvitee(coordination, user)) {
+        const reply = inviteeCoordinatorBlockedError()
         await saveMessage(session, user, 'assistant', reply)
-        return { session_id: session.id, agent_type: session.agent_type, reply, declined: true }
+        return { session_id: session.id, agent_type: session.agent_type, reply, declined: false }
+      }
+      if (coordination && isTerminalCoordination(coordination.status) && !canWriteCoordinatorAction(coordination, user, { hasOwnApplication: Boolean(ownApp) })) {
+        const reply = terminalWriteError(coordination.status)
+        await saveMessage(session, user, 'assistant', reply)
+        return { session_id: session.id, agent_type: session.agent_type, reply, declined: coordination.status === 'invitation_declined' }
       }
     }
     if (session.agent_type === AGENT_TYPES.LOVE_ADVISOR) await enforceLoveQuota(user)
@@ -393,6 +419,9 @@ function createAgentHandlers(overrides = {}) {
       const allApplications = await dep('list')('date_coordination_application', {
         coordination_id: Number(coordination.id)
       }, 200)
+      const confirmations = await dep('list')('date_coordination_confirmation', {
+        coordination_id: Number(coordination.id)
+      }, 50).catch(() => [])
       let dateGraphResult = null
       const coordinationEvents = await dep('list')('date_coordination_event', {
         coordination_id: Number(coordination.id)
@@ -406,7 +435,7 @@ function createAgentHandlers(overrides = {}) {
         }).catch(() => null)
       }
       if (graphConfig.enabled) {
-        const graphInput = buildDateCoordinationGraphInput(coordination, allApplications, user)
+        const graphInput = buildDateCoordinationGraphInput(coordination, allApplications, user, { confirmations })
         try {
           const graphStep = await runLangGraphStep({
             threadId: createThreadId('date:' + coordination.id + ':user:' + user.id, graphConfig.actorSecret),

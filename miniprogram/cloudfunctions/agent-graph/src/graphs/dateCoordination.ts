@@ -22,13 +22,29 @@ export type CoordinationProposal = {
   budgetBand?: 'low' | 'medium' | 'high'
 }
 
-export type CoordinationConflictField = 'dateWindows' | 'regions' | 'venueTypes' | 'duration' | 'budget'
+export type CoordinationConflictField = 'dateWindows' | 'regions' | 'venueTypes' | 'duration' | 'budget' | 'payment'
 
 export type CoordinationOverlap = {
   hasOverlap: boolean
-  missingFields: Array<'dateWindows' | 'regions' | 'venueTypes'>
+  missingFields: Array<'dateWindows' | 'regions' | 'venueTypes' | 'partner'>
   conflictFields: CoordinationConflictField[]
   proposal: CoordinationProposal | null
+  waitingPartner?: boolean
+}
+
+export type CanonicalOverlapSnapshot = {
+  source?: 'backend' | 'graph_legacy'
+  hasOverlap?: boolean
+  missingDimensions?: string[]
+  conflictDimensions?: string[]
+  proposal?: Record<string, unknown> | null
+}
+
+export type ConfirmationSnapshot = {
+  myConfirmed: boolean
+  partnerConfirmed: boolean
+  proposalStatus: string
+  source?: 'database' | 'graph_legacy'
 }
 
 export type DateCoordinationState = {
@@ -53,6 +69,11 @@ export type DateCoordinationState = {
   party: 'A' | 'B'
   partyAState: CoordinationPreference
   partyBState: CoordinationPreference
+  ownPreference: CoordinationPreference | undefined
+  canonicalOverlap: CanonicalOverlapSnapshot | undefined
+  sharedState: Record<string, unknown> | undefined
+  partnerProgress: 'waiting' | 'submitted' | 'accepted' | 'confirmed' | undefined
+  confirmationSnapshot: ConfirmationSnapshot | undefined
   errorCode: string | undefined
 }
 
@@ -78,6 +99,11 @@ const DateCoordinationAnnotation = Annotation.Root({
   party: Annotation<'A' | 'B'>,
   partyAState: Annotation<CoordinationPreference>,
   partyBState: Annotation<CoordinationPreference>,
+  ownPreference: Annotation<CoordinationPreference | undefined>,
+  canonicalOverlap: Annotation<CanonicalOverlapSnapshot | undefined>,
+  sharedState: Annotation<Record<string, unknown> | undefined>,
+  partnerProgress: Annotation<DateCoordinationState['partnerProgress']>,
+  confirmationSnapshot: Annotation<ConfirmationSnapshot | undefined>,
   errorCode: Annotation<string | undefined>
 })
 
@@ -125,16 +151,64 @@ export function computeSafeOverlap(
   return { hasOverlap: true, missingFields: [], conflictFields: [], proposal }
 }
 
+function mapBackendDimension(value: string): CoordinationConflictField | 'partner' | null {
+  const key = String(value || '')
+  if (key === 'time' || key === 'dateWindows') return 'dateWindows'
+  if (key === 'area' || key === 'regions') return 'regions'
+  if (key === 'activity' || key === 'venueTypes') return 'venueTypes'
+  if (key === 'duration') return 'duration'
+  if (key === 'budget') return 'budget'
+  if (key === 'payment' || key === 'payment_preference') return 'payment'
+  if (key === 'partner') return 'partner'
+  return null
+}
+
+export function resolveOverlap(state: DateCoordinationState): CoordinationOverlap {
+  const canonical = state.canonicalOverlap
+  if (canonical && canonical.source === 'backend') {
+    const rawMissing = Array.isArray(canonical.missingDimensions) ? canonical.missingDimensions : []
+    const waitingPartner = rawMissing.includes('partner') || state.partnerProgress === 'waiting'
+    const mappedMissing = rawMissing
+      .map(mapBackendDimension)
+      .filter((item): item is 'dateWindows' | 'regions' | 'venueTypes' | 'partner' => (
+        item === 'dateWindows' || item === 'regions' || item === 'venueTypes' || item === 'partner'
+      ))
+    const conflictSource = Array.isArray(canonical.conflictDimensions) && canonical.conflictDimensions.length
+      ? canonical.conflictDimensions
+      : rawMissing.filter((item) => item !== 'partner')
+    const conflictFields = conflictSource
+      .map(mapBackendDimension)
+      .filter((item): item is CoordinationConflictField => Boolean(item && item !== 'partner'))
+    const proposal = canonical.proposal && typeof canonical.proposal === 'object'
+      ? canonical.proposal as CoordinationProposal
+      : null
+    return {
+      hasOverlap: canonical.hasOverlap === true && !waitingPartner,
+      missingFields: mappedMissing.filter((item) => item !== 'partner') as Array<'dateWindows' | 'regions' | 'venueTypes'>,
+      conflictFields,
+      proposal: canonical.hasOverlap === true ? proposal : null,
+      waitingPartner
+    }
+  }
+  return computeSafeOverlap(state.partyAState, state.partyBState)
+}
+
 const CONFLICT_ASK: Record<CoordinationConflictField, string> = {
   dateWindows: '目前双方还没有找到共同时间。你之前选择的是：',
   regions: '时间已经对齐，但区域还没有交集。你之前填写的是：',
   venueTypes: '区域已经对齐，但活动类型还没有交集。你之前选择的是：',
   duration: '时间、区域和活动都已对齐，但时长还需要协调。是否可以放宽时长要求？',
-  budget: '其他条件都已对齐，但预算还需要协调。是否可以放宽预算范围？'
+  budget: '其他条件都已对齐，但预算还需要协调。是否可以放宽预算范围？',
+  payment: '时间、区域、活动和预算已经对齐，但费用方式还不兼容。是否可以调整付款方式？'
+}
+
+function ownPreferenceOf(state: DateCoordinationState): CoordinationPreference {
+  if (state.ownPreference !== undefined) return state.ownPreference
+  return state.party === 'A' ? state.partyAState : state.partyBState
 }
 
 function proactiveAsk(state: DateCoordinationState, focus: CoordinationConflictField): string {
-  const own = state.party === 'A' ? state.partyAState : state.partyBState
+  const own = ownPreferenceOf(state)
   if (focus === 'dateWindows') {
     const windows = (own.dateWindows || []).slice(0, 3).join('；') || '你还没有填写可约时间'
     return CONFLICT_ASK.dateWindows + windows + '。如果方便，你是否还有其他可以接受的时间？'
@@ -155,7 +229,8 @@ const FOCUS_PHASE: Record<CoordinationConflictField, string> = {
   regions: 'ask_area',
   venueTypes: 'ask_activity',
   duration: 'ask_duration',
-  budget: 'ask_budget'
+  budget: 'ask_budget',
+  payment: 'ask_payment'
 }
 
 export function applyPreferenceChange(
@@ -222,7 +297,7 @@ export function buildDateCoordinationGraph(dependencies: DateCoordinationGraphDe
     .addNode('coordinator', async (state) => {
       if (!dependencies.model) return { phase: 'compute_overlap', replyDraft: '' }
       try {
-        const overlap = computeSafeOverlap(state.partyAState, state.partyBState)
+        const overlap = resolveOverlap(state)
         const decision = await dependencies.model.decide({
           mode: 'date_coordination',
           phase: sanitizeGraphText(state.phase || 'start', 80),
@@ -232,12 +307,15 @@ export function buildDateCoordinationGraph(dependencies: DateCoordinationGraphDe
             coordinationId: state.coordinationId,
             coordinationVersion: state.coordinationVersion,
             party: state.party,
-            partyAState: state.partyAState,
-            partyBState: state.partyBState,
+            ownPreference: ownPreferenceOf(state),
+            sharedState: state.sharedState || {},
+            partnerProgress: state.partnerProgress || '',
+            confirmationSnapshot: state.confirmationSnapshot || null,
             overlap: {
               has_overlap: overlap.hasOverlap,
               missing_fields: overlap.missingFields,
               conflict_fields: overlap.conflictFields || [],
+              waiting_partner: Boolean(overlap.waitingPartner),
               proposal: overlap.proposal
             }
           }
@@ -253,7 +331,15 @@ export function buildDateCoordinationGraph(dependencies: DateCoordinationGraphDe
       }
     })
     .addNode('computeOverlap', (state) => {
-      const overlap = computeSafeOverlap(state.partyAState, state.partyBState)
+      const overlap = resolveOverlap(state)
+      if (overlap.waitingPartner) {
+        return {
+          phase: 'wait_partner',
+          proposal: null,
+          pendingAction: null,
+          replyDraft: ('对方还没有接受邀请。你可以先补充自己的安排，确认后只会更新你自己的条件。' + (state.replyDraft ? '\n' + state.replyDraft : '')).trim()
+        }
+      }
       if (overlap.missingFields.length > 0) {
         return {
           phase: 'missing_data',
@@ -270,6 +356,27 @@ export function buildDateCoordinationGraph(dependencies: DateCoordinationGraphDe
           proposal: null,
           pendingAction: null,
           replyDraft: state.replyDraft ? ask + '\n' + state.replyDraft : ask
+        }
+      }
+      const snapshot = state.confirmationSnapshot
+      if (snapshot && snapshot.source === 'database') {
+        if (snapshot.proposalStatus === 'arranged' || (snapshot.myConfirmed && snapshot.partnerConfirmed)) {
+          return {
+            phase: 'arranged_readonly',
+            proposal: overlap.proposal,
+            pendingAction: null,
+            replyDraft: snapshot.myConfirmed && !snapshot.partnerConfirmed
+              ? '你已确认当前方案，正在等待对方确认。'
+              : '双方已确认最终方案。本次协调不能再修改。'
+          }
+        }
+        return {
+          phase: snapshot.myConfirmed ? 'awaiting_partner_confirmation' : 'awaiting_confirmation',
+          proposal: overlap.proposal,
+          pendingAction: null,
+          replyDraft: snapshot.myConfirmed
+            ? '你已确认当前方案，正在等待对方确认。'
+            : '已找到双方都可以接受的方案，等待双方确认。'
         }
       }
       const confirmationsCurrent =

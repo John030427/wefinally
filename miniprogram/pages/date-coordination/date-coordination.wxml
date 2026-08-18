@@ -79,12 +79,13 @@
     </view>
 
     <view class="coordinator-hero card" wx:if="{{showCoordinatorCta}}">
-      <view class="section-title">约会协调状态</view>
+      <view class="section-title">{{coordination.status === 'inviting_partner' ? '第一次约会' : '约会协调状态'}}</view>
       <view class="public-note">{{coordinatorHeroText}}</view>
       <button class="primary-btn full-btn" bindtap="goCoordinator">和 AI 约会协调员沟通</button>
-      <view class="muted coordinator-hint">你可以随时调整时间、区域、活动、预算或其他要求。修改前会先展示预览，确认后才更新。</view>
+      <view class="muted coordinator-hint">可调整：时间 · 区域 · 活动 · 预算 · 时长 · 其他要求。修改前会先展示预览，确认后才更新。</view>
       <button class="outline-btn compact-btn" bindtap="onEnableSubscribe">开启约会协调提醒</button>
-      <button class="outline-btn compact-btn" bindtap="refreshCoordination" loading="{{refreshingCoordination}}">刷新协调进度</button>
+      <button class="outline-btn compact-btn" bindtap="refreshCoordination" loading="{{refreshingCoordination}}">{{coordination.status === 'inviting_partner' ? '刷新邀请状态' : '刷新协调进度'}}</button>
+      <button class="outline-btn compact-btn" wx:if="{{showAdvanceSynthetic}}" bindtap="advanceSynthetic" loading="{{advancingSynthetic}}">推进测试对象（分步）</button>
     </view>
 
     <view class="processing-card card" wx:if="{{coordination.status === 'replanning'}}">
@@ -103,12 +104,12 @@
     <view class="invite-card card" wx:if="{{coordination.status === 'inviting_partner'}}">
       <view class="section-title">第一次约会</view>
       <view class="invite-text" wx:if="{{coordination.can_respond_invitation}}">对方希望和你一起协调一次轻松、安全的初次见面。</view>
-      <view class="invite-text" wx:else>当前进度：等待对方回应。对方接受后，AI 约会协调员会继续帮助双方确认时间、区域和活动安排。</view>
+      <view class="invite-text" wx:else>当前进度：等待对方回应。你的邀请已经发送。在等待期间，你仍然可以和 AI 协调员补充或修改自己的安排。</view>
       <view class="action-row" wx:if="{{coordination.can_respond_invitation}}">
         <button class="outline-btn" bindtap="respondInvitation" data-accepted="false" loading="{{responding}}">暂不参与</button>
         <button class="primary-btn" bindtap="respondInvitation" data-accepted="true" loading="{{responding}}">接受邀请</button>
       </view>
-      <view wx:else>
+      <view wx:elif="{{!showCoordinatorCta}}">
         <view class="muted">此时不会假装 AI 已与对方协调。你可以开启提醒，并稍后刷新邀请状态。</view>
         <button class="outline-btn full-btn" bindtap="onEnableSubscribe">开启约会协调提醒</button>
         <button class="outline-btn full-btn" bindtap="refreshCoordination">刷新邀请状态</button>

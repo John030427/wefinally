@@ -18,6 +18,8 @@ function buildCoordinationDisplay(coordination) {
   const processingStatus = String(coordination && coordination.processing_status || '')
   const roundNumber = Math.max(1, Math.min(Number(coordination && coordination.round_number || 1), Number(coordination && coordination.max_rounds || 5)))
   const maxRounds = Math.max(roundNumber, Number(coordination && coordination.max_rounds || 5))
+  const role = String(coordination && coordination.role || '')
+  const hasOwnApplication = Boolean(coordination && coordination.my_application)
   const labels = {
     collecting_initiator: '等待发起方填写',
     inviting_partner: '等待对方回应',
@@ -30,15 +32,25 @@ function buildCoordinationDisplay(coordination) {
     invitation_declined: '邀请未被接受',
     manual_handoff: '已转人工协助',
     expired: '已过期',
-    cancelled: '已结束'
+    cancelled: '已结束',
+    closed: '已结束'
   }
   const activeCoordinatorStatuses = new Set([
     'collecting_preferences',
     'computing_overlap',
     'waiting_confirmations',
     'no_overlap',
-    'replanning'
+    'replanning',
+    'proposing'
   ])
+  const showCoordinatorCta = status === 'collecting_initiator'
+    ? false
+    : (coordination && coordination.can_open_coordinator_chat !== undefined
+      ? Boolean(coordination.can_open_coordinator_chat)
+      : (status === 'inviting_partner'
+        ? role === 'initiator' && hasOwnApplication
+        : activeCoordinatorStatuses.has(status) || status === 'arranged' || status === 'manual_handoff'))
+  const waitingPartnerHero = '你的邀请已经发送。在等待期间，你仍然可以和 AI 协调员补充或修改自己的安排。'
   return {
     roundNumber,
     maxRounds,
@@ -50,13 +62,19 @@ function buildCoordinationDisplay(coordination) {
     manualHandoff: status === 'manual_handoff',
     completed: status === 'arranged',
     declined: status === 'invitation_declined',
+    waitingPartner: status === 'inviting_partner' && role !== 'invitee',
     shouldPoll: status === 'computing_overlap' && ['queued', 'processing'].includes(processingStatus),
-    showCoordinatorCta: activeCoordinatorStatuses.has(status),
-    coordinatorHeroText: status === 'no_overlap'
-      ? '目前还没有找到完整共同安排。你可以随时和 AI 协调员沟通，调整条件后再计算。'
-      : (status === 'waiting_confirmations'
-        ? '已有推荐方案待确认。你也可以继续和 AI 协调员沟通微调。'
-        : '正在帮助双方寻找共同安排。你可以随时告诉 AI 想调整的时间、区域、活动或预算。')
+    showCoordinatorCta,
+    showAdvanceSynthetic: Boolean(coordination && coordination.is_test_data)
+      && String(coordination && coordination.synthetic_partner_mode || '') === 'manual_step'
+      && role === 'initiator',
+    coordinatorHeroText: status === 'inviting_partner' && role !== 'invitee'
+      ? waitingPartnerHero
+      : (status === 'no_overlap'
+        ? '目前还没有找到完整共同安排。你可以随时和 AI 协调员沟通，调整条件后再计算。'
+        : (status === 'waiting_confirmations'
+          ? '已有推荐方案待确认。你也可以继续和 AI 协调员沟通微调。'
+          : '正在帮助双方寻找共同安排。你可以随时告诉 AI 想调整的时间、区域、活动或预算。'))
   }
 }
 
@@ -79,6 +97,8 @@ Page({
     coordination: null,
     coordinationDisplay: buildCoordinationDisplay({}),
     showCoordinatorCta: false,
+    showAdvanceSynthetic: false,
+    advancingSynthetic: false,
     coordinatorHeroText: '正在寻找双方共同安排。你可以随时和 AI 约会协调员沟通。',
     refreshingCoordination: false,
     fixtureSimulation: null,
@@ -234,6 +254,7 @@ Page({
       coordination,
       coordinationDisplay,
       showCoordinatorCta: Boolean(id) && Boolean(coordinationDisplay.showCoordinatorCta),
+      showAdvanceSynthetic: Boolean(coordinationDisplay.showAdvanceSynthetic),
       coordinatorHeroText: coordinationDisplay.coordinatorHeroText,
       form,
       selection: buildSelection(form),
@@ -523,6 +544,20 @@ Page({
     }
   },
 
+  async advanceSynthetic() {
+    if (!this.data.coordinationId || this.data.advancingSynthetic) return
+    this.setData({ advancingSynthetic: true })
+    try {
+      const result = await post(`${API_PATHS.DATE_COORDINATIONS}/${this.data.coordinationId}/advance-synthetic`, {}, { showError: false })
+      this.applyCoordination(normalizeCoordination(result))
+      wx.showToast({ title: '已推进测试对象一步', icon: 'success' })
+    } catch (err) {
+      wx.showToast({ title: (err && err.message) || '暂时无法推进测试对象', icon: 'none' })
+    } finally {
+      this.setData({ advancingSynthetic: false })
+    }
+  },
+
   goService() {
     wx.navigateTo({ url: '/pages/chat/chat?agentType=platform_service' })
   },
@@ -534,6 +569,10 @@ Page({
     }
     if (this.data.coordination && this.data.coordination.status === 'invitation_declined') {
       wx.showToast({ title: '对方暂未接受本次约会邀请', icon: 'none', duration: 3000 })
+      return
+    }
+    if (this.data.coordination && this.data.coordination.status === 'inviting_partner' && this.data.coordination.role === 'invitee') {
+      wx.showToast({ title: '请先接受或拒绝本次约会邀请', icon: 'none', duration: 3000 })
       return
     }
     wx.navigateTo({

@@ -52,6 +52,7 @@
         <text class="item-tag">{{item.matchType || 'AI匹配'}}</text>
         <text class="item-date">{{item.matchDate}}</text>
       </view>
+      <view class="item-test-badge" wx:if="{{item.testDataBadge}}">{{item.testDataBadge}}</view>
       <view class="item-body">{{item.gender}} · {{item.ageText}} · {{item.city}}</view>
       <view class="item-score" wx:if="{{item.score !== null}}">
         <text class="tag tag-pink" wx:if="{{item.totalScore !== null}}">{{item.totalScoreText}}</text>

@@ -601,8 +601,12 @@
     const prepare = action === 'prepare';
     modal(prepare ? '准备 A/B 匹配测试' : '清理 A/B 匹配测试',
       (prepare
-        ? '<p>系统将创建一个与 A 双向条件有交集的一次性 B 测试候选，不会修改霞姐或其他真实会员资料。</p>'
-        : '<p>只会清理测试编号 <code>' + esc(runId) + '</code> 对应的候选、偏好和测试匹配记录，审计记录保留。</p>') +
+        ? '<p>系统将创建一个与 A 双向条件有交集的一次性 B 测试候选。接受场景与拒绝场景可以同时存在。</p>'
+        : '<p>只会清理测试编号 <code>' + esc(runId) + '</code> 对应的测试候选和关联测试协调，不会按 pair_key 删除生产数据。</p>') +
+      (prepare
+        ? '<div class="form-group"><label for="adminAbMatchJourney">测试旅程</label><select id="adminAbMatchJourney"><option value="accept">accept · 接受场景</option><option value="reject">reject · 拒绝场景</option></select></div>' +
+          '<div class="form-group"><label for="adminAbMatchMode">推进模式</label><select id="adminAbMatchMode"><option value="auto">auto · 自动推进（自检）</option><option value="manual_step">manual_step · 人工分步</option></select></div>'
+        : '') +
       '<div class="form-group"><label for="adminAbMatchReason">' + (prepare ? '测试原因' : '清理原因') + '</label>' +
       '<textarea id="adminAbMatchReason" rows="3" maxlength="500" placeholder="' + (prepare ? '例如：验证成功匹配双向链路' : '例如：A/B 测试已完成') + '"></textarea></div>',
       '<button class="btn btn-outline" onclick="closeM()">取消</button>' +
@@ -617,10 +621,12 @@
     if (button) button.disabled = true;
     const randomPart = crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + '_' + Math.random().toString(16).slice(2);
     const requestId = 'ab_fixture_' + action + '_' + userId + '_' + randomPart;
+    const fixtureJourney = action === 'prepare' ? (document.getElementById('adminAbMatchJourney')?.value || 'accept') : '';
+    const fixtureMode = action === 'prepare' ? (document.getElementById('adminAbMatchMode')?.value || 'auto') : '';
     try {
       const result = await memberApi('/admin/users/' + userId + '/ab-match-fixture', {
         method:'POST',
-        body:{ action, reason, request_id:requestId, run_id:runId || '' }
+        body:{ action, reason, request_id:requestId, run_id:runId || '', fixture_journey: fixtureJourney, fixture_mode: fixtureMode }
       });
       closeM();
       toast(action === 'prepare'

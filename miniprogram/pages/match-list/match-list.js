@@ -1,5 +1,6 @@
 const { get } = require('../../utils/request')
 const { API_PATHS } = require('../../utils/constants')
+const { refreshNotificationBadge } = require('../../utils/notificationBadge')
 const {
   formatDateOnly,
   genderText,
@@ -25,24 +26,8 @@ Page({
 
   async loadUnread() {
     try {
-      const data = await get(API_PATHS.NOTIFICATIONS_UNREAD, {}, { showError: false })
-      const unread = Math.max(0, Number((data && (data.unread_count || data.unreadCount)) || 0))
+      const unread = await refreshNotificationBadge()
       this.setData({ unreadCount: unread })
-      if (typeof wx !== 'undefined' && wx.showTabBarRedDot && wx.hideTabBarRedDot) {
-        if (unread > 0) {
-          try {
-            wx.showTabBarRedDot({ index: 1 })
-          } catch (err) { /* ignore */ }
-          try {
-            if (wx.setTabBarBadge) {
-              wx.setTabBarBadge({ index: 1, text: unread > 99 ? '99+' : String(unread) })
-            }
-          } catch (err) { /* ignore */ }
-        } else {
-          try { wx.hideTabBarRedDot({ index: 1 }) } catch (err) { /* ignore */ }
-          try { if (wx.removeTabBarBadge) wx.removeTabBarBadge({ index: 1 }) } catch (err) { /* ignore */ }
-        }
-      }
     } catch (err) { /* 未读数加载失败不阻断列表 */ }
   },
 
@@ -87,7 +72,8 @@ Page({
           score: score !== null && score !== undefined ? Number(score) : null,
           scoreText: score != null ? getCompatibilityDisplayText(score) : '',
           scoreColor: score != null ? getCompatibilityColor(score) : '',
-          scoreTag: score != null ? getCompatibilityTagClass(score) : ''
+          scoreTag: score != null ? getCompatibilityTagClass(score) : '',
+          testDataBadge: item.test_data_badge || ''
         }
       })
       this.setData({

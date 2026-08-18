@@ -3,10 +3,11 @@ const { STATUS } = require('../../miniprogram/cloudfunctions/api/lib/dateCoordin
 const { computeOverlap } = require('../../miniprogram/cloudfunctions/api/lib/dateCoordinationPolicy')
 
 /**
- * Synthetic bilateral coordination E2E (in-memory):
+ * Deterministic bilateral coordination E2E (in-memory):
  * NL patch -> preview -> confirm -> version+1 -> recompute -> safe partner event
  * -> area continuation -> proposal -> two-party confirmation -> arranged,
  * plus concurrent A/B updates and a stale-notification guard.
+ * Classification: Deterministic Coordination E2E. LANGGRAPH_ENABLED is not required.
  * No cloud, no LLM beyond a scripted decision, no real notifications.
  */
 

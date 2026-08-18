@@ -83,7 +83,20 @@ function safePayload(input) {
     payload.mode = input.mode
     payload.userText = sanitizeText(input.userText, 2000)
     payload.safeSummary = sanitizeText(input.safeSummary, 800)
-    for (const key of ['coordinationId', 'coordinationVersion', 'party', 'partyAState', 'partyBState']) {
+    for (const key of [
+      'coordinationId',
+      'coordinationVersion',
+      'party',
+      'partyAState',
+      'partyBState',
+      'ownPreference',
+      'canonicalOverlap',
+      'sharedState',
+      'partnerProgress',
+      'confirmationSnapshot',
+      'confirmationA',
+      'confirmationB'
+    ]) {
       if (input[key] !== undefined) payload[key] = input[key]
     }
   } else if (payload.operation === 'resume_tool') {

@@ -89,7 +89,14 @@ async function config() {
       desc: '每周三、周五 0:00 系统自动空投 1 位匹配对象，无手动刷新'
     },
     safety: safetyConfig(),
-    demo: await demoFlags()
+    demo: await demoFlags(),
+    api_schema_version: 2,
+    date_coordination_contract_version: 2,
+    capabilities: {
+      notifications: true,
+      date_coordinator_pre_accept_chat: true,
+      bilateral_coordination: true
+    }
   }
 }
 

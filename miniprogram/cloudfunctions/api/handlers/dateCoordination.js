@@ -8,10 +8,19 @@ const {
   resolveFixtureJourney,
   advanceSyntheticPartner,
   publicSafeDeclineMessage,
-  syntheticPartnerPreferences
+  syntheticPartnerPreferences,
+  fixtureSceneBadge
 } = require('../lib/syntheticPartnerJourney')
 const { MAX_COORDINATION_ROUNDS, roundNumber, canStartAnotherRound, enqueueProcessing } = require('../lib/dateCoordinationProcessingPolicy')
 const { publishCoordinationEvent } = require('../agent/dateCoordinationEvents')
+const {
+  ACTIVE_COORDINATION_STATUSES,
+  canOpenCoordinatorChat,
+  canRecoordinate,
+  canWriteCoordinatorAction,
+  isTerminalCoordination,
+  terminalWriteError
+} = require('../lib/dateCoordinationAccessPolicy')
 
 async function upsertConfirmation(existing, data) {
   const db = require('../lib/db')
@@ -173,8 +182,9 @@ function createDateCoordinationHandlers(overrides = {}) {
     if (!isEligible(user, now)) throw new Error('需审核通过且为有效 VIP 才能发起日期协调')
 
     const key = pairKey(user.id, partnerId)
-    const existing = await dep('first')('date_coordination', { pair_key: key })
-    if (existing) return detailFor(existing, user)
+    const existingRows = await dep('list')('date_coordination', { pair_key: key }, 50)
+    const activeExisting = (existingRows || []).find((row) => ACTIVE_COORDINATION_STATUSES.includes(row.status))
+    if (activeExisting) return detailFor(activeExisting, user)
 
     if (!match) match = await dep('first')('user_match_log', {
       user_id: Number(user.id),
@@ -227,6 +237,8 @@ function createDateCoordinationHandlers(overrides = {}) {
       confirmation_deadline_at: null,
       final_proposal_id: 0,
       synthetic_partner_journey: journey || '',
+      synthetic_partner_mode: useRealFixtureJourney ? (String(partner.fixture_mode || 'auto').toLowerCase() === 'manual_step' ? 'manual_step' : 'auto') : '',
+      ab_test_run_id: useRealFixtureJourney ? String(partner.ab_test_run_id || partner.fixture_run_id || '') : '',
       is_test_data: useRealFixtureJourney ? 1 : 0
     }, 'date_coordination')
     return detailFor(created, user)
@@ -369,12 +381,16 @@ function createDateCoordinationHandlers(overrides = {}) {
     })
   }
 
-  async function maybeAdvanceSyntheticPartner(coordination) {
+  async function maybeAdvanceSyntheticPartner(coordination, options = {}) {
     if (!coordination || !Number(coordination.is_test_data || 0)) return null
     const partner = await dep('byId')('user', Number(coordination.user_b_id))
     if (!partner) return null
     const journey = String(coordination.synthetic_partner_journey || resolveFixtureJourney(partner) || '')
     if (!journey || journey === 'legacy_queue') return null
+    const mode = String(coordination.synthetic_partner_mode || partner.fixture_mode || 'auto').toLowerCase()
+    if (mode === 'manual_step' && options.force !== true) {
+      return { advanced: false, reason: 'manual_step', journey, mode }
+    }
     try {
       const patches = patchHelpers()
       const result = await advanceSyntheticPartner({
@@ -587,6 +603,8 @@ function createDateCoordinationHandlers(overrides = {}) {
       missing_dimensions: coordination.missing_dimensions || [],
       role,
       can_respond_invitation: coordination.status === STATUS.INVITING_PARTNER && role === 'invitee',
+      can_open_coordinator_chat: canOpenCoordinatorChat(coordination, user, { hasOwnApplication: Boolean(mine) }),
+      can_write_coordinator: canWriteCoordinatorAction(coordination, user, { hasOwnApplication: Boolean(mine) }),
       can_submit_application: (coordination.status === STATUS.COLLECTING_INITIATOR && role === 'initiator')
         || (coordination.status === STATUS.COLLECTING_PREFERENCES && !mine),
       confirmed_by_me: mineConfirmed,
@@ -605,8 +623,11 @@ function createDateCoordinationHandlers(overrides = {}) {
       })),
       my_application: mine ? Object.assign({}, mine.application) : null,
       is_test_data: Number(coordination.is_test_data || 0) === 1,
-      test_data_badge: Number(coordination.is_test_data || 0) === 1 ? '测试数据' : '',
+      test_data_badge: fixtureSceneBadge(Object.assign({}, coordination, {
+        fixture_journey: coordination.synthetic_partner_journey
+      })),
       synthetic_partner_journey: coordination.synthetic_partner_journey || '',
+      synthetic_partner_mode: coordination.synthetic_partner_mode || '',
       declined_public_message: coordination.status === STATUS.INVITATION_DECLINED
         ? publicSafeDeclineMessage()
         : '',
@@ -628,6 +649,10 @@ function createDateCoordinationHandlers(overrides = {}) {
   async function detail(data, wxContext) {
     const user = await dep('currentUser')(wxContext)
     let coordination = await dep('byId')('date_coordination', coordinationId(data))
+    if (data && (data.advance_synthetic === true || data.advanceSynthetic === true)) {
+      await advanceSyntheticForUser(coordination, user)
+      coordination = await dep('byId')('date_coordination', Number(coordination && coordination.id)) || coordination
+    }
     if (coordination
       && Number(coordination.is_test_data || 0) === 1
       && Number(user.id) === Number(coordination.user_a_id)
@@ -646,6 +671,25 @@ function createDateCoordinationHandlers(overrides = {}) {
       }
     }
     return detailFor(coordination, user)
+  }
+
+  async function advanceSynthetic(data, wxContext) {
+    const user = await dep('currentUser')(wxContext)
+    const coordination = await dep('byId')('date_coordination', coordinationId(data))
+    await advanceSyntheticForUser(coordination, user)
+    const updated = await dep('byId')('date_coordination', Number(coordination && coordination.id))
+    return detailFor(updated || coordination, user)
+  }
+
+  async function advanceSyntheticForUser(coordination, user) {
+    if (!coordination) throw new Error('日期协调不存在')
+    if (!participant(coordination, user.id)) throw new Error('无权操作该日期协调')
+    if (Number(coordination.is_test_data || 0) !== 1) throw new Error('仅测试协调可推进合成对象')
+    if (Number(user.id) !== Number(coordination.user_a_id)) throw new Error('仅发起方可推进测试对象')
+    if (String(coordination.synthetic_partner_mode || '') !== 'manual_step') {
+      throw new Error('当前不是分步测试模式')
+    }
+    await maybeAdvanceSyntheticPartner(coordination, { force: true })
   }
 
   async function confirmProposal(data, wxContext) {
@@ -811,8 +855,10 @@ function createDateCoordinationHandlers(overrides = {}) {
     const coordination = await dep('byId')('date_coordination', coordinationId(data))
     if (!coordination) throw new Error('日期协调不存在')
     if (!participant(coordination, user.id)) throw new Error('无权操作该日期协调')
-    if (![STATUS.NO_OVERLAP, STATUS.REPLANNING].includes(coordination.status)) {
-      throw new Error('当前状态不能重新协调')
+    if (!canRecoordinate(coordination, user)) {
+      throw new Error(isTerminalCoordination(coordination.status)
+        ? terminalWriteError(coordination.status)
+        : '当前状态不能重新协调')
     }
     const rounds = Number(coordination.recoordination_count || 0)
     if (!canStartAnotherRound(coordination)) {
@@ -908,7 +954,8 @@ function createDateCoordinationHandlers(overrides = {}) {
     confirmProposalForUser,
     recoordinate,
     retryProcessing,
-    maybeAdvanceSyntheticPartner
+    maybeAdvanceSyntheticPartner,
+    advanceSynthetic
   }
 }
 
@@ -931,6 +978,7 @@ module.exports = {
   confirmProposal: handler('confirmProposal'),
   recoordinate: handler('recoordinate'),
   retryProcessing: handler('retryProcessing'),
+  advanceSynthetic: handler('advanceSynthetic'),
   createDateCoordinationHandlers,
   processCoordinationDeadlines,
   upsertConfirmation,

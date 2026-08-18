@@ -7,6 +7,7 @@ import {
   applyPreferenceChange,
   buildDateCoordinationGraph,
   computeSafeOverlap,
+  resolveOverlap,
   type DateCoordinationState
 } from '../../cloudfunctions/agent-graph/src/graphs/dateCoordination.js'
 
@@ -50,6 +51,11 @@ function state(overrides: Partial<DateCoordinationState> = {}): DateCoordination
     party: 'A',
     partyAState: a,
     partyBState: b,
+    ownPreference: undefined,
+    canonicalOverlap: undefined,
+    sharedState: undefined,
+    partnerProgress: undefined,
+    confirmationSnapshot: undefined,
     lastResult: undefined,
     errorCode: undefined,
     ...overrides
@@ -162,4 +168,35 @@ test('has overlap graph waits for bilateral confirmation without exposing partne
   const result = await graph.invoke(state({}), { configurable: { thread_id: 'wf_thread_coordination_wait' } })
   assert.equal(result.phase, 'awaiting_confirmation')
   assert.match(String(result.replyDraft), /等待双方确认/)
+})
+
+test('backend canonical overlap wins over graph budget-band mismatch', () => {
+  const current = state({
+    partyAState: { ...a, budgetBand: 'low' },
+    partyBState: { ...b, budgetBand: 'medium' },
+    canonicalOverlap: {
+      source: 'backend',
+      hasOverlap: true,
+      missingDimensions: [],
+      conflictDimensions: [],
+      proposal: { dateWindow: '2026-08-16:afternoon', region: '福田区', venueType: '咖啡' }
+    }
+  })
+  const overlap = resolveOverlap(current)
+  assert.equal(overlap.hasOverlap, true)
+  assert.equal(overlap.proposal?.region, '福田区')
+})
+
+test('backend payment conflict prevents graph from claiming a complete plan', () => {
+  const overlap = resolveOverlap(state({
+    canonicalOverlap: {
+      source: 'backend',
+      hasOverlap: false,
+      missingDimensions: ['payment'],
+      conflictDimensions: ['payment'],
+      proposal: null
+    }
+  }))
+  assert.equal(overlap.hasOverlap, false)
+  assert.deepEqual(overlap.conflictFields, ['payment'])
 })

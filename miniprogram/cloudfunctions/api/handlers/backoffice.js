@@ -416,7 +416,9 @@ async function handleBackofficeHttp(event = {}) {
         action: body.action,
         reason: body.reason,
         requestId: body.request_id,
-        runId: body.run_id
+        runId: body.run_id,
+        fixture_journey: body.fixture_journey || body.journey,
+        fixture_mode: body.fixture_mode || body.mode
       }, actor)
       return ok(result, body.action === 'cleanup' ? 'A/B 测试数据已清理' : 'A/B 测试候选已准备')
     }

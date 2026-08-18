@@ -6,11 +6,10 @@ const { publicSafeDeclineMessage } = require('../../miniprogram/cloudfunctions/a
 const { unreadCount } = require('../../miniprogram/cloudfunctions/api/lib/coordinationInbox')
 
 /**
- * Real-UI + synthetic partner journey E2E.
- * Differs from synthetic-coordination-bilateral-e2e by requiring:
- * - fixture_journey accept/reject on synthetic B
- * - create() mints real date_coordination (no await_application queue)
- * - synthetic B advances via respondInvitation / confirmProposal services
+ * Deterministic real-UI + synthetic partner journey E2E.
+ * This file keeps LANGGRAPH_ENABLED off (or unused). It is NOT a LangGraph runtime test.
+ * Classification: Deterministic Coordination E2E.
+ * True LangGraph provider assertions live in date-coordination-logic-audit.js and agent-chat.js.
  */
 
 function futureDate(days) {
@@ -145,8 +144,10 @@ async function main() {
   assert(matchDetail.includes('测试数据'))
   assert(dateView.includes('和 AI 约会协调员沟通'))
   assert(dateView.includes('对方暂未接受本次约会邀请'))
+  assert(dateView.includes('你的邀请已经发送'))
   assert(dateJs.includes('agentType=date_coordinator&coordinationId='))
-  assert(matchListJs.includes('showTabBarRedDot'))
+  assert(dateJs.includes('can_open_coordinator_chat'))
+  assert(matchListJs.includes('refreshNotificationBadge'))
 
   const db = memoryDb()
   const currentUser = async (wx) => Promise.resolve(db.tables.user[wx.userIndex != null ? wx.userIndex : 0])
@@ -229,7 +230,7 @@ async function main() {
   assert.ok(created.id, 'must mint real coordination_id')
   assert.strictEqual(created.test_simulation, undefined)
   assert.strictEqual(created.is_test_data, true)
-  assert.strictEqual(created.test_data_badge, '测试数据')
+  assert.strictEqual(created.test_data_badge, '测试 · 接受场景')
   assert.strictEqual(created.status, STATUS.COLLECTING_INITIATOR)
   assert.strictEqual(created.synthetic_partner_journey, 'accept')
   const cid = Number(created.id)

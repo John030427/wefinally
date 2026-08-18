@@ -215,6 +215,16 @@ function publicSafeDeclineMessage() {
   return '对方暂未接受本次约会邀请。'
 }
 
+function fixtureSceneBadge(source = {}) {
+  const isTest = Number(source.is_test_fixture || source.is_test_data || 0) === 1
+    || text(source.profile_origin) === 'synthetic_fixture'
+  if (!isTest) return ''
+  const journey = resolveFixtureJourney(source) || text(source.fixture_journey || source.synthetic_partner_journey)
+  if (journey === 'reject') return '测试 · 拒绝场景'
+  if (journey === 'accept' || journey === 'full_coordination') return '测试 · 接受场景'
+  return '测试数据'
+}
+
 function buildFixtureSeedProfile(overrides = {}) {
   const journey = resolveFixtureJourney(overrides) || 'accept'
   return Object.assign({
@@ -249,6 +259,7 @@ module.exports = {
   initiatorSeedPreferences,
   advanceSyntheticPartner,
   publicSafeDeclineMessage,
+  fixtureSceneBadge,
   buildFixtureSeedProfile,
   futureDate
 }

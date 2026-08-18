@@ -24,6 +24,39 @@ export const SafeToolResultSchema = z.object({
   data: z.record(z.string(), z.unknown()).optional()
 }).strict()
 
+export const CanonicalOverlapSchema = z.object({
+  source: z.enum(['backend', 'graph_legacy']).optional(),
+  hasOverlap: z.boolean().optional(),
+  missingDimensions: z.array(z.string().max(40)).max(12).optional(),
+  conflictDimensions: z.array(z.string().max(40)).max(12).optional(),
+  commonTime: z.array(z.string().max(64)).max(12).optional(),
+  commonArea: z.array(z.string().max(40)).max(8).optional(),
+  commonActivity: z.array(z.string().max(32)).max(8).optional(),
+  budgetCompatibility: z.string().max(40).optional(),
+  paymentCompatibility: z.string().max(40).optional(),
+  durationCompatibility: z.string().max(40).optional(),
+  proposal: z.record(z.string(), z.unknown()).nullable().optional()
+}).strict()
+
+export const SharedCoordinationStateSchema = z.object({
+  commonTime: z.array(z.string().max(64)).max(12).optional(),
+  commonArea: z.array(z.string().max(40)).max(8).optional(),
+  commonActivity: z.array(z.string().max(32)).max(8).optional(),
+  budgetCompatibility: z.string().max(40).optional(),
+  paymentCompatibility: z.string().max(40).optional(),
+  durationCompatibility: z.string().max(40).optional(),
+  missingDimensions: z.array(z.string().max(40)).max(12).optional(),
+  activeProposalSummary: z.record(z.string(), z.unknown()).nullable().optional(),
+  actionRequired: z.string().max(80).optional()
+}).strict()
+
+export const ConfirmationSnapshotSchema = z.object({
+  myConfirmed: z.boolean(),
+  partnerConfirmed: z.boolean(),
+  proposalStatus: z.string().min(1).max(40),
+  source: z.enum(['database', 'graph_legacy']).optional()
+}).strict()
+
 export const GraphRunInputSchema = z.object({
   operation: z.literal('run'),
   threadId: ThreadIdSchema,
@@ -35,7 +68,12 @@ export const GraphRunInputSchema = z.object({
   coordinationVersion: z.number().int().positive().optional(),
   party: z.enum(['A', 'B']).optional(),
   partyAState: CoordinationPreferenceSchema.optional(),
-  partyBState: CoordinationPreferenceSchema.optional()
+  partyBState: CoordinationPreferenceSchema.optional(),
+  ownPreference: CoordinationPreferenceSchema.optional(),
+  canonicalOverlap: CanonicalOverlapSchema.optional(),
+  sharedState: SharedCoordinationStateSchema.optional(),
+  partnerProgress: z.enum(['waiting', 'submitted', 'accepted', 'confirmed']).optional(),
+  confirmationSnapshot: ConfirmationSnapshotSchema.optional()
 }).strict()
 
 export const GraphResumeInputSchema = z.object({

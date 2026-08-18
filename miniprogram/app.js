@@ -46,6 +46,14 @@ App({
     if (options.query) this.globalData.launchQuery = options.query
   },
 
+  onShow() {
+    if (!this.globalData.isLoggedIn) return
+    try {
+      const { refreshNotificationBadge } = require('./utils/notificationBadge')
+      refreshNotificationBadge().catch(() => 0)
+    } catch (err) { /* badge refresh is best-effort */ }
+  },
+
   initCloud() {
     if (this.globalData.cloudInited) return
     if (!wx.cloud) {

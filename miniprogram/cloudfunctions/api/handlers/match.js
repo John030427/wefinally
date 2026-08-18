@@ -16,6 +16,7 @@ const { canonicalPairKey, deliverPair, createCloudClaimStore, CLAIM_STATUS } = r
 const { semanticRerank, intentMatchGate } = require('../lib/semanticMatchService')
 const reportTask = require('./reportTask')
 const { isMatchOnlyFixture, canUseFixtureForMatch, canEnterFormalCandidatePool } = require('../lib/testFixturePolicy')
+const { fixtureSceneBadge } = require('../lib/syntheticPartnerJourney')
 const { createMatchTestRunHandlers } = require('../lib/matchTestRunService')
 
 function parseJson(value) {
@@ -450,7 +451,9 @@ async function formatMatch(row, viewer) {
     local_report_text: localReportText,
     matched_user_id: row.match_user_id,
     match_user_id: row.match_user_id,
-    match_only_fixture: isMatchOnlyFixture(partner)
+    match_only_fixture: isMatchOnlyFixture(partner),
+    test_data_badge: fixtureSceneBadge(partner),
+    fixture_journey: Number(partner.is_test_fixture || 0) === 1 ? String(partner.fixture_journey || '') : ''
   }
   if (!vip) return base
   return Object.assign(base, {
