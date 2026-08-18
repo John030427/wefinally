@@ -69,14 +69,14 @@
     <view class="chat-input-bar safe-bottom">
       <input
         class="chat-input"
-        placeholder="输入您的问题..."
+        placeholder="{{coordinatorReadOnly ? '当前结果仅供查看' : '输入您的问题...'}}"
         value="{{inputText}}"
         bindinput="onInput"
         confirm-type="send"
         bindconfirm="onSend"
-        disabled="{{sending}}"
+        disabled="{{sending || coordinatorReadOnly}}"
       />
-      <button class="send-btn" bindtap="onSend" disabled="{{sending || !inputText}}" loading="{{sending}}">发送</button>
+      <button class="send-btn" bindtap="onSend" disabled="{{sending || coordinatorReadOnly || !inputText}}" loading="{{sending}}">发送</button>
     </view>
   </block>
 </view>

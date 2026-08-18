@@ -103,6 +103,8 @@ Page({
     sessionId: '',
     sessionReady: false,
     coordinationId: '',
+    coordinatorWelcome: '',
+    coordinatorReadOnly: false,
     patchSubmitting: false,
     supportCode: '',
     supportCodeState: 'loading',
@@ -168,6 +170,7 @@ Page({
   },
 
   welcomeMessage() {
+    if (this.data.coordinatorWelcome) return this.data.coordinatorWelcome
     if (this.data.agentType === AGENT_TYPES.LOVE_ADVISOR) {
       return '你好，我是 WeFinally AI恋爱助手。可以陪你聊沟通、边界和见面准备；信息有限时，我会明确说明知识不足。'
     }
@@ -187,7 +190,12 @@ Page({
     const session = result && (result.session || result)
     const sessionId = session && (session.id || session.session_id || session.sessionId)
     if (!sessionId) throw new Error('会话创建失败')
-    this.setData({ sessionId: String(sessionId), sessionReady: true })
+    this.setData({
+      sessionId: String(sessionId),
+      sessionReady: true,
+      coordinatorWelcome: String(session.coordinator_welcome || ''),
+      coordinatorReadOnly: Boolean(session.coordinator_read_only)
+    })
     return String(sessionId)
   },
 

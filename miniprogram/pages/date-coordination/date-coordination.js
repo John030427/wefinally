@@ -20,37 +20,35 @@ function buildCoordinationDisplay(coordination) {
   const maxRounds = Math.max(roundNumber, Number(coordination && coordination.max_rounds || 5))
   const role = String(coordination && coordination.role || '')
   const hasOwnApplication = Boolean(coordination && coordination.my_application)
+  const vm = coordination && coordination.view_model ? coordination.view_model : {}
   const labels = {
-    collecting_initiator: '等待发起方填写',
-    inviting_partner: '等待对方回应',
-    collecting_preferences: '等待双方填写',
+    collecting_initiator: '填写第一次约会建议',
+    inviting_partner: role === 'invitee' ? '请回应邀请' : '等待对方回应',
+    collecting_preferences: role === 'initiator' && coordination.invitee_intent === 'coordinate' && !(coordination.participant_progress || []).find((item) => item.side === 'partner' && item.application_submitted)
+      ? '对方正在补充安排'
+      : '双方协调中',
     computing_overlap: processingStatus === 'processing' ? '处理中' : (processingStatus === 'failed' ? '处理失败' : '待处理'),
     waiting_confirmations: '等待双方确认',
-    no_overlap: '本轮暂无交集',
+    no_overlap: '还需要继续协调',
     replanning: '请和AI协调员沟通',
     arranged: '双方已确认',
-    invitation_declined: '邀请未被接受',
+    invitation_declined: '对方暂未接受',
     manual_handoff: '已转人工协助',
-    expired: '已过期',
+    expired: '邀请已结束',
     cancelled: '已结束',
     closed: '已结束'
   }
-  const activeCoordinatorStatuses = new Set([
-    'collecting_preferences',
-    'computing_overlap',
-    'waiting_confirmations',
-    'no_overlap',
-    'replanning',
-    'proposing'
-  ])
-  const showCoordinatorCta = status === 'collecting_initiator'
-    ? false
+  const showCoordinatorCta = vm.show_coordinator_cta !== undefined
+    ? Boolean(vm.show_coordinator_cta)
     : (coordination && coordination.can_open_coordinator_chat !== undefined
       ? Boolean(coordination.can_open_coordinator_chat)
       : (status === 'inviting_partner'
         ? role === 'initiator' && hasOwnApplication
-        : activeCoordinatorStatuses.has(status) || status === 'arranged' || status === 'manual_handoff'))
-  const waitingPartnerHero = '你的邀请已经发送。在等待期间，你仍然可以和 AI 协调员补充或修改自己的安排。'
+        : status !== 'collecting_initiator'))
+  const waitingPartnerHero = '约会邀请已发送。当前正在等待对方回应。你仍然可以和 AI 协调员补充或修改自己的安排。'
+  const coordinatingHero = coordination.invitee_intent === 'coordinate' && role === 'initiator' && !(coordination.participant_progress || []).find((item) => item.side === 'partner' && item.application_submitted)
+    ? '对方已接受约会邀请，目前正在补充自己的安排。'
+    : '目前我正在根据双方已经确认的信息继续协调。'
   return {
     roundNumber,
     maxRounds,
@@ -62,19 +60,31 @@ function buildCoordinationDisplay(coordination) {
     manualHandoff: status === 'manual_handoff',
     completed: status === 'arranged',
     declined: status === 'invitation_declined',
+    expired: status === 'expired',
     waitingPartner: status === 'inviting_partner' && role !== 'invitee',
+    receivedInvitation: status === 'inviting_partner' && role === 'invitee',
     shouldPoll: status === 'computing_overlap' && ['queued', 'processing'].includes(processingStatus),
     showCoordinatorCta,
+    showAcceptInvitation: Boolean(vm.show_accept_invitation || (status === 'inviting_partner' && role === 'invitee')),
+    showCoordinateInstead: Boolean(vm.show_coordinate_instead || (status === 'inviting_partner' && role === 'invitee')),
+    showDecline: Boolean(vm.show_decline || (status === 'inviting_partner' && role === 'invitee')),
+    showApplicationForm: vm.show_application_form !== undefined
+      ? Boolean(vm.show_application_form)
+      : Boolean(coordination && coordination.can_submit_application && status === 'collecting_initiator'),
+    showOptionalFullForm: Boolean(vm.show_optional_full_form),
+    showSharedCard: Boolean(coordination && coordination.shared_coordination && coordination.shared_coordination.ready),
+    showInvitationCard: Boolean(coordination && coordination.invitation_card),
     showAdvanceSynthetic: Boolean(coordination && coordination.is_test_data)
       && String(coordination && coordination.synthetic_partner_mode || '') === 'manual_step'
       && role === 'initiator',
     coordinatorHeroText: status === 'inviting_partner' && role !== 'invitee'
       ? waitingPartnerHero
-      : (status === 'no_overlap'
-        ? '目前还没有找到完整共同安排。你可以随时和 AI 协调员沟通，调整条件后再计算。'
-        : (status === 'waiting_confirmations'
-          ? '已有推荐方案待确认。你也可以继续和 AI 协调员沟通微调。'
-          : '正在帮助双方寻找共同安排。你可以随时告诉 AI 想调整的时间、区域、活动或预算。'))
+      : (status === 'collecting_preferences' ? coordinatingHero
+        : (status === 'no_overlap'
+          ? '目前还没有找到完整共同安排。已经一致的条件不会再重复询问。'
+          : (status === 'waiting_confirmations'
+            ? '已有推荐方案待确认。你也可以继续和 AI 协调员沟通微调。'
+            : '正在帮助双方寻找共同安排。你可以随时告诉 AI 想调整的地方。')))
   }
 }
 
@@ -98,6 +108,16 @@ Page({
     coordinationDisplay: buildCoordinationDisplay({}),
     showCoordinatorCta: false,
     showAdvanceSynthetic: false,
+    showAcceptInvitation: false,
+    showCoordinateInstead: false,
+    showDecline: false,
+    showApplicationForm: false,
+    showOptionalFullForm: false,
+    showOptionalForm: false,
+    invitationCard: null,
+    sharedCoordination: null,
+    proposalCard: null,
+    resultCard: null,
     advancingSynthetic: false,
     coordinatorHeroText: '正在寻找双方共同安排。你可以随时和 AI 约会协调员沟通。',
     refreshingCoordination: false,
@@ -236,14 +256,17 @@ Page({
       // users recreate via real journey (accept/reject fixtures now mint real rows).
       this.setData({
         pageState: 'error',
-        errorMsg: '当前测试对象仍走旧版排队模拟。请将测试对象 fixture_journey 设为 accept/reject 后重新匹配并发起约会。'
+        errorMsg: '当前测试对象仍走旧版排队模拟。请将测试对象 fixture_journey 设为 accept_direct / coordinate / decline 后重新匹配并发起约会。'
       })
       return
     }
-    const status = String(coordination.status || '')
     const id = coordination.id || coordination.coordination_id || coordination.coordinationId || ''
     const application = coordination.application || coordination.my_application || {}
-    const proposal = coordination.final_proposal || coordination.proposal || (coordination.proposals || [])[0] || null
+    const proposal = (coordination.proposal_card)
+      || coordination.final_proposal
+      || coordination.proposal
+      || (coordination.proposals || [])[0]
+      || null
     const coordinationDisplay = buildCoordinationDisplay(coordination)
     const form = Object.assign({}, this.data.form, application, {
       availability: application.availability || this.data.form.availability || [],
@@ -255,12 +278,21 @@ Page({
       coordinationDisplay,
       showCoordinatorCta: Boolean(id) && Boolean(coordinationDisplay.showCoordinatorCta),
       showAdvanceSynthetic: Boolean(coordinationDisplay.showAdvanceSynthetic),
+      showAcceptInvitation: Boolean(coordinationDisplay.showAcceptInvitation),
+      showCoordinateInstead: Boolean(coordinationDisplay.showCoordinateInstead),
+      showDecline: Boolean(coordinationDisplay.showDecline),
+      showApplicationForm: Boolean(coordinationDisplay.showApplicationForm) || Boolean(this.data.showOptionalForm && coordinationDisplay.showOptionalFullForm),
+      showOptionalFullForm: Boolean(coordinationDisplay.showOptionalFullForm),
+      invitationCard: coordination.invitation_card || null,
+      sharedCoordination: coordination.shared_coordination || null,
+      proposalCard: proposal,
+      resultCard: coordination.view_model && coordination.view_model.result_card || null,
       coordinatorHeroText: coordinationDisplay.coordinatorHeroText,
       form,
       selection: buildSelection(form),
       areaText: Array.isArray(form.areas) ? form.areas.join('、') : '',
       proposal,
-      pageState: status === 'expired' ? 'expired' : 'success'
+      pageState: 'success'
     })
     if (coordinationDisplay.shouldPoll && this.pageVisible !== false) this.startCoordinationPolling()
     else this.stopCoordinationPolling()
@@ -444,18 +476,34 @@ Page({
 
   async respondInvitation(e) {
     if (this.data.responding) return
-    const decision = e.currentTarget.dataset.accepted === 'true' ? 'accept' : 'decline'
+    const decision = String(e.currentTarget.dataset.decision || '')
+    if (!['accept', 'coordinate', 'decline'].includes(decision)) return
     this.setData({ responding: true })
     try {
-      const result = await post(`${API_PATHS.DATE_COORDINATIONS}/${this.data.coordinationId}/invitation-response`, {
-        decision
-      }, { showError: false })
+      const payload = { decision }
+      if (decision === 'accept' && this.data.invitationCard) {
+        payload.invitation_version = Number(this.data.invitationCard.invitation_version || this.data.coordination.invitation_version || 1)
+      }
+      const result = await post(`${API_PATHS.DATE_COORDINATIONS}/${this.data.coordinationId}/invitation-response`, payload, { showError: false })
       this.applyCoordination(normalizeCoordination(result))
+      if (decision === 'coordinate') this.goCoordinator()
     } catch (err) {
-      wx.showToast({ title: (err && err.message) || '操作失败，请重试', icon: 'none' })
+      const message = (err && err.message) || '操作失败，请重试'
+      wx.showToast({ title: message, icon: 'none', duration: 3000 })
+      if (/刚刚更新了约会安排|请查看最新方案/.test(message)) {
+        this.refreshCoordination()
+      }
     } finally {
       this.setData({ responding: false })
     }
+  },
+
+  toggleOptionalForm() {
+    const next = !this.data.showOptionalForm
+    this.setData({
+      showOptionalForm: next,
+      showApplicationForm: next && this.data.showOptionalFullForm
+    })
   },
 
   async submitApplication() {
@@ -572,7 +620,7 @@ Page({
       return
     }
     if (this.data.coordination && this.data.coordination.status === 'inviting_partner' && this.data.coordination.role === 'invitee') {
-      wx.showToast({ title: '请先接受或拒绝本次约会邀请', icon: 'none', duration: 3000 })
+      wx.showToast({ title: '请先选择接受这个安排、和 AI 协调，或这次暂不方便', icon: 'none', duration: 3000 })
       return
     }
     wx.navigateTo({

@@ -407,3 +407,60 @@
   font-size: 46rpx;
   line-height: 1;
 }
+
+.fact-card,
+.invite-actions,
+.result-card {
+  background: #fff;
+}
+
+.fact-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 16rpx;
+  padding: 14rpx 0;
+  border-bottom: 1rpx solid #f5e8eb;
+}
+
+.fact-row:last-child {
+  border-bottom: none;
+}
+
+.fact-mark {
+  width: 36rpx;
+  flex: 0 0 36rpx;
+  font-size: 28rpx;
+}
+
+.fact-mark.ok {
+  color: #2f9d63;
+}
+
+.fact-mark.warn {
+  color: #c48a2a;
+}
+
+.fact-label {
+  width: 120rpx;
+  flex: 0 0 120rpx;
+  color: #888;
+  font-size: 25rpx;
+}
+
+.fact-value {
+  flex: 1;
+  color: #333;
+  font-size: 27rpx;
+  line-height: 1.5;
+}
+
+.text-btn {
+  margin-top: 12rpx;
+  background: transparent;
+  color: #8b7c80;
+  font-size: 26rpx;
+}
+
+.optional-form-entry {
+  margin: 8rpx 0 24rpx;
+}
