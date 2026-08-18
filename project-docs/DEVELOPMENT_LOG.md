@@ -4,6 +4,32 @@
 
 ---
 
+## 2026-08-18 — Date Coordination / LangGraph / Fixture / Notification 逻辑审计修复
+
+### 类型
+修复 + 测试 + 文档
+
+### 目的
+验证并修复邀请态被 pre-accept patch 破坏、LangGraph 重复业务真相、Fixture 旅程冲突、以及通知部署诊断不清的问题。不是重新设计产品。
+
+### 完成
+- 统一 `dateCoordinationAccessPolicy`：inviting_partner 仅 initiator 可 AI chat / 改自己的申请；terminal 全写守卫含 ARRANGED
+- A 在 INVITING_PARTNER 确认 patch 后 status 仍为 waiting_partner；B 仍可 accept/reject
+- LangGraph 只消费 backend `canonicalOverlap` + `ownPreference` + DB `confirmationSnapshot`
+- Fixture：`fixture_journey` 进入 normalize；ACCEPT/REJECT 可并存；cleanup 关闭测试 coordination；`manual_step` 可停步
+- `/api/common/config` capabilities；通知页识别 CloudBase route missing
+- 报告：`project-docs/WORK_REPORT_DATE_COORDINATION_LOGIC_AUDIT_FIX.md`
+
+### 验证
+selfcheck:agent / langgraph / synthetic-coordination / ai-profile-bilateral / cloud-match / member / safety / ai-report PASS  
+agent-graph `npm run check` PASS
+
+### 未做
+- 微信开发者工具视觉验收（pending_manual_visual_verification）
+- 未 push / merge / deploy / 上传小程序 / 生产 migration
+
+---
+
 ## 2026-08-18 — 真实 UI + LangGraph 约会协调 Fixture 主路径
 
 ### 类型
