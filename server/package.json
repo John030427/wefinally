@@ -42,7 +42,13 @@
     "sample:match-seed": "node sample-data/matching-system/seed.js",
     "sample:match-run": "node sample-data/matching-system/run.js",
     "sample:match-e2e": "node sample-data/matching-system/e2e.js",
-    "selfcheck:synthetic-coordination": "node selfcheck/synthetic-coordination-bilateral-e2e.js && node selfcheck/real-ui-fixture-date-langgraph-e2e.js && node selfcheck/date-coordination-logic-audit.js && node selfcheck/first-date-invitation-coordination.js"
+    "selfcheck:synthetic-coordination": "node selfcheck/synthetic-coordination-bilateral-e2e.js && node selfcheck/real-ui-fixture-date-langgraph-e2e.js && node selfcheck/date-coordination-logic-audit.js && node selfcheck/first-date-invitation-coordination.js",
+    "e2e:wefinally:reset": "node e2e/wefinally/index.js reset",
+    "e2e:wefinally:seed": "node e2e/wefinally/index.js seed",
+    "e2e:wefinally": "node e2e/wefinally/index.js run",
+    "e2e:wefinally:live": "node e2e/wefinally/index.js run --smoke-ai",
+    "e2e:wefinally:scenario": "node e2e/wefinally/index.js run --scenario",
+    "selfcheck:e2e-release-guard": "node selfcheck/e2e-release-guard.js"
   },
   "engines": {
     "node": ">=18.0.0"
