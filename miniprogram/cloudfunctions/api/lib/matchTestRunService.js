@@ -1,4 +1,5 @@
-const { isInternalQaAccount, canUseFixtureForMatch, isSyntheticFixture } = require('./testIdentityPolicy')
+const { resolveQaTestRunEnabled } = require('./qaAccessPolicy')
+const { canUseFixtureForMatch, isSyntheticFixture } = require('./testIdentityPolicy')
 const { memberStatus, MEMBER_STATUS, canUseMatching } = require('./memberPolicy')
 const { isVipActive } = require('./format')
 const { rankCandidates, scoreDetailFor } = require('./matchPolicy')
@@ -14,7 +15,7 @@ function deny(message, code = 403) {
 
 async function assertTestAccess(user, deps) {
   const publicEnabled = deps.publicEnabled && await deps.publicEnabled()
-  if (!isInternalQaAccount(user) && !publicEnabled) deny('仅内部测试账号可以运行测试匹配', 403)
+  if (!resolveQaTestRunEnabled(user, publicEnabled)) deny('仅内部测试账号可以运行测试匹配', 403)
 }
 
 function publicRun(row) {

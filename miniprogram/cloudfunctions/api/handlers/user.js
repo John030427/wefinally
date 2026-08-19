@@ -9,6 +9,7 @@ const {
   resolveInvitation
 } = require('../lib/memberPolicy')
 const { resolveTestIdentity } = require('../lib/testIdentityPolicy')
+const { resolveQaTestRunEnabled } = require('../lib/qaAccessPolicy')
 const { flagEnabled } = require('../lib/flags')
 const { resolveRegion } = require('../lib/regionNormalize')
 const {
@@ -80,7 +81,7 @@ async function profilePayload(user) {
     member_status: memberStatus(user),
     account_mode: identity.account_mode,
     identity_kind: identity.kind,
-    qa_test_run_enabled: identity.kind === 'internal_qa' || publicTestRunEnabled,
+    qa_test_run_enabled: resolveQaTestRunEnabled(user, publicTestRunEnabled),
     primary_circle_id: summarized.primary_circle_id || user.circle_id,
     secondary_circle_ids: summarized.secondary_circle_ids,
     identity_tags: summarized.tags,

@@ -246,10 +246,9 @@ async function main() {
   assert(!indexJs.includes('testRunStatus'))
   assert(!indexJs.includes('reset_user_batch'))
   assert(!indexJs.includes('MATCH_TEST_RUN') && !indexJs.includes('/api/match/test-runs'))
-  assert(matchListWxml.includes('qaTestRunEnabled'))
-  assert(matchListJs.includes('qa_test_run_enabled'))
-  assert(matchListJs.includes('fixture_journey'))
-  assert(matchListWxml.includes('10秒后模拟匹配'))
+  assert(matchListWxml.includes('qa-match-panel'))
+  assert(indexWxml.includes('qa-match-panel'))
+  assert(!matchListJs.includes('onQaSimulateMatch'))
   assert(profileWxml.includes('userInfo.support_code'))
   assert(userHandler.includes('match_test_run_public_enabled'))
 

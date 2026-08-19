@@ -132,6 +132,10 @@ Page({
     wx.navigateTo({ url: state.url })
   },
 
+  onQaMatchCompleted() {
+    this.loadPage()
+  },
+
   goLoveAdvisor() {
     wx.navigateTo({ url: '/pages/love-advisor/love-advisor' })
   },

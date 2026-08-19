@@ -3,7 +3,8 @@ const {
   normalizeDateFeedback,
   matchFeedbackDocId,
   dateFeedbackDocId,
-  businessDateKey
+  businessDateKey,
+  dateFeedbackWindowState
 } = require('../lib/experienceFeedbackPolicy')
 
 function defaultDeps() {
@@ -91,11 +92,7 @@ function createExperienceFeedbackHandlers(overrides) {
     if (!proposalDate) {
       return { can_submit: false, reason: '约会日期尚未确认', proposal_date: '' }
     }
-    const today = businessDateKey(dep('now')())
-    if (proposalDate > today) {
-      return { can_submit: false, reason: `约会后可填写（约会日期：${proposalDate}）`, proposal_date: proposalDate }
-    }
-    return { can_submit: true, reason: '', proposal_date: proposalDate }
+    return dateFeedbackWindowState(proposal, dep('now')())
   }
 
   async function ensureReviewTicket(input) {

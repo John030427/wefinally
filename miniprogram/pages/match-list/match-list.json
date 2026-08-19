@@ -1,4 +1,6 @@
 {
   "navigationBarTitleText": "匹配记录",
-  "usingComponents": {}
+  "usingComponents": {
+    "qa-match-panel": "/components/qa-match-panel/qa-match-panel"
+  }
 }

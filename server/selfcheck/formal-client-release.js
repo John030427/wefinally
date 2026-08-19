@@ -25,7 +25,13 @@ const forbidden = [
 const qaAllowedFiles = new Set([
   path.join(clientRoot, 'pages/match-list/match-list.js'),
   path.join(clientRoot, 'pages/match-list/match-list.wxml'),
-  path.join(clientRoot, 'pages/match-list/match-list.wxss'),
+  path.join(clientRoot, 'pages/match-list/match-list.json'),
+  path.join(clientRoot, 'pages/index/index.js'),
+  path.join(clientRoot, 'pages/index/index.wxml'),
+  path.join(clientRoot, 'pages/index/index.json'),
+  path.join(clientRoot, 'components/qa-match-panel/qa-match-panel.js'),
+  path.join(clientRoot, 'components/qa-match-panel/qa-match-panel.wxml'),
+  path.join(clientRoot, 'utils/qaMatchSimulator.js'),
   path.join(clientRoot, 'utils/constants.js')
 ])
 
@@ -49,13 +55,16 @@ assert.deepStrictEqual(leaks, [], `正式客户端仍包含未授权的测试入
 
 const matchListJs = fs.readFileSync(path.join(clientRoot, 'pages/match-list/match-list.js'), 'utf8')
 const matchListWxml = fs.readFileSync(path.join(clientRoot, 'pages/match-list/match-list.wxml'), 'utf8')
-assert(matchListJs.includes('qaTestRunEnabled'))
-assert(matchListWxml.includes('qaTestRunEnabled'))
+const indexWxml = fs.readFileSync(path.join(clientRoot, 'pages/index/index.wxml'), 'utf8')
+const qaComponent = fs.readFileSync(path.join(clientRoot, 'components/qa-match-panel/qa-match-panel.js'), 'utf8')
+assert(matchListWxml.includes('qa-match-panel'))
+assert(indexWxml.includes('qa-match-panel'))
+assert(qaComponent.includes('refreshQaAccess'))
 
 const serverRoute = fs.readFileSync(path.join(root, 'miniprogram/cloudfunctions/api/handlers/route.js'), 'utf8')
 const testRunService = fs.readFileSync(path.join(root, 'miniprogram/cloudfunctions/api/lib/matchTestRunService.js'), 'utf8')
 assert(serverRoute.includes('/api/match/test-runs'))
-assert(testRunService.includes('isInternalQaAccount'))
+assert(testRunService.includes('resolveQaTestRunEnabled'))
 assert(testRunService.includes('publicEnabled'))
 
 console.log('PASS formal mini program keeps QA match test entry internal-only on match-list')

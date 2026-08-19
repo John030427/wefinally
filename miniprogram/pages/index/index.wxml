@@ -56,6 +56,8 @@
       </view>
     </view>
 
+    <qa-match-panel title="内部测试" bind:completed="onQaMatchCompleted" />
+
     <view class="vip-banner card" wx:if="{{!isVip}}">
       <view class="vip-banner-text">开通 VIP 参与每周 2 次 AI 匹配</view>
       <button class="btn-primary btn-sm" bindtap="goVip">188元/30天 开通</button>

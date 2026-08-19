@@ -1,0 +1,44 @@
+<view class="qa-panel card" wx:if="{{visible}}">
+  <view class="qa-panel-header">
+    <text class="qa-panel-badge">内部 QA</text>
+    <text class="qa-panel-title">{{title}}</text>
+  </view>
+  <view class="qa-panel-hint">仅测试账号可见，正式用户不会看到此区域</view>
+
+  <view class="qa-scenario-block" wx:if="{{scenarioPickerVisible}}">
+    <view class="qa-scenario-label">测试场景</view>
+    <radio-group class="qa-scenario-group" bindchange="onScenarioChange">
+      <label
+        class="qa-scenario-option {{scenario === item.value ? 'qa-scenario-option-active' : ''}}"
+        wx:for="{{scenarios}}"
+        wx:key="value"
+      >
+        <radio value="{{item.value}}" checked="{{scenario === item.value}}" color="#b8860b" />
+        <text>{{item.label}}</text>
+      </label>
+    </radio-group>
+  </view>
+
+  <view class="qa-actions">
+    <button
+      class="qa-btn qa-btn-outline"
+      bindtap="onToggleScenario"
+      disabled="{{running || scenarioPickerVisible}}"
+    >
+      测试下一轮匹配
+    </button>
+    <button
+      class="qa-btn qa-btn-primary"
+      bindtap="onSimulateMatch"
+      disabled="{{running || !scenarioPickerVisible}}"
+      loading="{{running && countdown === 0}}"
+    >
+      {{countdown > 0 ? countdown + '秒后模拟匹配' : '10秒后模拟匹配'}}
+    </button>
+  </view>
+
+  <view class="qa-status" wx:if="{{statusText || countdown > 0}}">
+    <text wx:if="{{countdown > 0}}">倒计时 {{countdown}} 秒</text>
+    <text wx:if="{{statusText}}">{{statusText}}</text>
+  </view>
+</view>
