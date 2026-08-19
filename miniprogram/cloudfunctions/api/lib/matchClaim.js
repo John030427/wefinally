@@ -15,11 +15,24 @@ function canonicalPairKey(left, right) {
   return `${ids[0]}-${ids[1]}`
 }
 
-function claimDocumentIds(pairKey, userId, partnerId) {
-  return {
+function cycleSlug(cycleId) {
+  return String(cycleId || '').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 80)
+}
+
+function claimDocumentIds(pairKey, userId, partnerId, cycleId) {
+  const base = {
     pair: `pair_${pairKey}`,
     user: `user_${numericUserId(userId)}`,
-    partner: `user_${numericUserId(partnerId)}`
+    partner: `user_${numericUserId(partnerId)}`,
+    history: `pair_hist_${pairKey}`
+  }
+  if (!cycleId) return base
+  const slug = cycleSlug(cycleId)
+  return {
+    pair: `${base.pair}__${slug}`,
+    user: `${base.user}__${slug}`,
+    partner: `${base.partner}__${slug}`,
+    history: base.history
   }
 }
 
@@ -29,21 +42,30 @@ function claimPayload(input) {
   const pairKey = canonicalPairKey(userId, partnerId)
   const requestId = String(input.requestId || '').trim().slice(0, 120)
   if (!requestId) throw new Error('匹配请求号缺失')
+  const matchCycleId = String(input.matchCycleId || input.match_cycle_id || '').trim()
+  const isTest = input.isTest === true || Number(input.is_test || 0) === 1
+  const qaCycle = input.qaCycle === true || Number(input.qa_cycle || 0) === 1
+  const matchedAt = input.matchedAt || input.matched_at || new Date()
   return {
     user_id: userId,
     match_user_id: partnerId,
     pair_key: pairKey,
     request_id: requestId,
-    status: CLAIM_STATUS
+    status: CLAIM_STATUS,
+    match_cycle_id: matchCycleId || null,
+    is_test: isTest ? 1 : 0,
+    qa_cycle: qaCycle ? 1 : 0,
+    matched_at: matchedAt
   }
 }
 
 async function claimPair(input, store) {
   const claim = claimPayload(input)
   const adapter = store && typeof store.runAtomic === 'function' ? store : createCloudClaimStore()
+  const cycleId = claim.match_cycle_id || null
   return adapter.runAtomic(async (transaction) => {
-    const existingUsers = await transaction.findByUserIds([claim.user_id, claim.match_user_id])
-    const existingPair = await transaction.findByPairKey(claim.pair_key)
+    const existingUsers = await transaction.findByUserIds([claim.user_id, claim.match_user_id], cycleId)
+    const existingPair = await transaction.findByPairKey(claim.pair_key, cycleId)
     const existing = existingUsers[0] || existingPair
     if (existing) {
       if (existing.request_id === claim.request_id && existing.pair_key === claim.pair_key) {
@@ -91,9 +113,10 @@ async function deliverPair(input, store) {
   let delivery = deliveryPayload(input)
   const claim = delivery.claim
   const adapter = store && typeof store.runAtomic === 'function' ? store : createCloudClaimStore()
+  const cycleId = claim.match_cycle_id || null
   return adapter.runAtomic(async (transaction) => {
-    const existingUsers = await transaction.findByUserIds([claim.user_id, claim.match_user_id])
-    const existingPair = await transaction.findByPairKey(claim.pair_key)
+    const existingUsers = await transaction.findByUserIds([claim.user_id, claim.match_user_id], cycleId)
+    const existingPair = await transaction.findByPairKey(claim.pair_key, cycleId)
     const existing = existingUsers[0] || existingPair
     if (existing) {
       if (existing.request_id === claim.request_id && existing.pair_key === claim.pair_key) {
@@ -151,20 +174,28 @@ function createCloudClaimStore() {
   return {
     runAtomic(work) {
       return withCollection('match_claim', () => db.runTransaction(async (transaction) => work({
-        findByUserIds: async (ids) => {
+        findByUserIds: async (ids, cycleId) => {
           const rows = []
           for (const id of ids) {
-            const row = await readDocument(transaction, `user_${numericUserId(id)}`)
+            const scopedId = cycleId
+              ? `user_${numericUserId(id)}__${cycleSlug(cycleId)}`
+              : `user_${numericUserId(id)}`
+            const row = await readDocument(transaction, scopedId)
             if (row && row.status === CLAIM_STATUS) rows.push(row)
           }
           return rows
         },
-        findByPairKey: async (pairKey) => {
-          const row = await readDocument(transaction, `pair_${pairKey}`)
+        findByPairKey: async (pairKey, cycleId) => {
+          const scopedId = cycleId ? `pair_${pairKey}__${cycleSlug(cycleId)}` : `pair_${pairKey}`
+          const row = await readDocument(transaction, scopedId)
           return row && row.status === CLAIM_STATUS ? row : null
         },
+        findHistoricalPair: async (pairKey) => {
+          const row = await readDocument(transaction, `pair_hist_${pairKey}`)
+          return row || null
+        },
         createClaim: async (claim) => {
-          const ids = claimDocumentIds(claim.pair_key, claim.user_id, claim.match_user_id)
+          const ids = claimDocumentIds(claim.pair_key, claim.user_id, claim.match_user_id, claim.match_cycle_id)
           const data = Object.assign({}, claim, {
             claim_id: ids.pair,
             pair_key: claim.pair_key
@@ -202,7 +233,7 @@ function createCloudClaimStore() {
           }
         },
         createDelivery: async (claim, delivery) => {
-          const ids = claimDocumentIds(claim.pair_key, claim.user_id, claim.match_user_id)
+          const ids = claimDocumentIds(claim.pair_key, claim.user_id, claim.match_user_id, claim.match_cycle_id)
           const claimData = Object.assign({}, claim, {
             claim_id: ids.pair,
             pair_key: claim.pair_key
@@ -210,6 +241,10 @@ function createCloudClaimStore() {
           await transaction.collection(CLAIM_COLLECTION).doc(ids.user).set({ data: claimData })
           await transaction.collection(CLAIM_COLLECTION).doc(ids.partner).set({ data: claimData })
           await transaction.collection(CLAIM_COLLECTION).doc(ids.pair).set({ data: claimData })
+          await transaction.collection(CLAIM_COLLECTION).doc(ids.history).set({ data: Object.assign({}, claimData, {
+            status: CLAIM_STATUS,
+            history_marker: 1
+          }) })
           await transaction.collection(collections.user_match_log).doc(delivery.logA._id).set({ data: documentData(delivery.logA) })
           await transaction.collection(collections.user_match_log).doc(delivery.logB._id).set({ data: documentData(delivery.logB) })
           await transaction.collection(collections.user).doc(delivery.userDoc._id).update({ data: delivery.userPatch })
@@ -221,7 +256,7 @@ function createCloudClaimStore() {
     },
     async releaseClaim(claim) {
       return withCollection('match_claim', () => db.runTransaction(async (transaction) => {
-        const ids = claimDocumentIds(claim.pair_key, claim.user_id, claim.match_user_id)
+        const ids = claimDocumentIds(claim.pair_key, claim.user_id, claim.match_user_id, claim.match_cycle_id)
         const existing = await readDocument(transaction, ids.pair)
         if (!existing || existing.request_id !== claim.request_id) return false
         await transaction.collection(CLAIM_COLLECTION).doc(ids.user).remove()
@@ -236,6 +271,8 @@ function createCloudClaimStore() {
 module.exports = {
   CLAIM_STATUS,
   canonicalPairKey,
+  cycleSlug,
+  claimDocumentIds,
   claimPair,
   deliverPair,
   releasePair,

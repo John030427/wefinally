@@ -2,6 +2,9 @@ const { isInternalQaAccount, canUseFixtureForMatch, isSyntheticFixture } = requi
 const { memberStatus, MEMBER_STATUS, canUseMatching } = require('./memberPolicy')
 const { isVipActive } = require('./format')
 const { rankCandidates, scoreDetailFor } = require('./matchPolicy')
+const { buildQaMatchCycle } = require('./matchCycleService')
+const { normalizeJourneyInput, ensureQaFixturePool, filterCandidatesByJourney } = require('./qaFixturePool')
+const { fixtureSceneBadge } = require('./syntheticPartnerJourney')
 
 function deny(message, code = 403) {
   const error = new Error(message)
@@ -29,7 +32,9 @@ function publicRun(row) {
     match_id: row.match_id || null,
     ai_applied: row.ai_rerank_applied === true,
     ai_model: row.ai_rerank_model || '',
-    message: row.message || ''
+    message: row.message || '',
+    fixture_journey: row.fixture_journey || '',
+    match_cycle_id: row.match_cycle_id || ''
   }
 }
 
@@ -73,7 +78,9 @@ function createMatchTestRunHandlers(deps) {
     await assertTestAccess(user, deps)
     const requestId = String(data.request_id || '').trim()
     if (requestId.length < 8) throw new Error('请求编号无效')
-    const batchKey = `test:${user.id}:${requestId}`
+    const fixtureJourney = normalizeJourneyInput(data.fixture_journey || data.scenario || 'coordinate')
+    const qaCycle = buildQaMatchCycle(user.id, deps.now())
+    const batchKey = qaCycle.batchKey
     const executeAfter = new Date(deps.now().getTime() + 10000)
     const acquired = await deps.acquireRun({
       batch_key: batchKey,
@@ -83,7 +90,11 @@ function createMatchTestRunHandlers(deps) {
       trigger_source: 'internal_test_button',
       requester_user_id: Number(user.id),
       execute_after: executeAfter,
-      matched_count: 0
+      matched_count: 0,
+      fixture_journey: fixtureJourney,
+      match_cycle_id: qaCycle.matchCycleId,
+      is_test: 1,
+      qa_cycle: 1
     })
     return publicRun(acquired.batch)
   }
@@ -107,19 +118,24 @@ function createMatchTestRunHandlers(deps) {
     const claim = await deps.claimRun(run, deps.now())
     if (!claim.acquired) return publicRun(claim.batch || run)
     const claimedRun = claim.batch
+    const fixtureJourney = normalizeJourneyInput(claimedRun.fixture_journey || data.fixture_journey || 'coordinate')
     try {
       if (!canUseMatching({ member_status: memberStatus(user), vipActive: isVipActive(user) })) {
         return publicRun(await deps.completeRun(claimedRun, { patch: {
           status: 'blocked', reason_code: 'not_eligible', message: '资料或会员资格不满足测试匹配条件'
         } }))
       }
-      const candidates = (await deps.list('user', { status: 1 }, 200) || [])
+      await ensureQaFixturePool(user, deps)
+      let candidates = (await deps.list('user', { status: 1 }, 200) || [])
         .filter((item) => Number(item.id) !== Number(user.id))
         .filter((item) => isSyntheticFixture(item) && canUseFixtureForMatch(user, item, deps.now()))
         .filter((item) => memberStatus(item) === MEMBER_STATUS.APPROVED)
+      candidates = filterCandidatesByJourney(candidates, fixtureJourney)
       if (!candidates.length) {
         return publicRun(await deps.completeRun(claimedRun, { patch: {
-          status: 'blocked', reason_code: 'no_owned_fixture', message: '没有归属当前账号且未过期的合成测试画像'
+          status: 'blocked',
+          reason_code: 'no_fixture_for_journey',
+          message: `没有符合「${fixtureJourney}」场景的测试画像，请稍后重试`
         } }))
       }
       const settings = await deps.list('user_match_setting', {}, 200)
@@ -146,6 +162,7 @@ function createMatchTestRunHandlers(deps) {
       const algorithmRank = ranked.findIndex((item) => Number(item.candidate.id) === Number(partner.id)) + 1
       const scoreDetailA = semanticDetail(best, 'a', algorithmRank, reranked)
       const scoreDetailB = semanticDetail(best, 'b', algorithmRank, reranked)
+      const qaCycleId = String(claimedRun.match_cycle_id || buildQaMatchCycle(user.id, deps.now()).matchCycleId)
       return publicRun(await deps.completeRun(claimedRun, {
         log: {
           user_id: user.id,
@@ -158,7 +175,13 @@ function createMatchTestRunHandlers(deps) {
           match_date: deps.now(),
           match_type: 'AI测试匹配',
           internal_test_run_id: claimedRun.id,
-          pair_key: `test:${claimedRun.id}`
+          pair_key: `qa:${claimedRun.id}`,
+          match_cycle_id: qaCycleId,
+          is_test_data: 1,
+          qa_cycle: 1,
+          profile_origin: 'synthetic_fixture',
+          fixture_journey: fixtureJourney,
+          test_data_badge: fixtureSceneBadge(partner) || `测试 · ${fixtureJourney}`
         },
         patch: {
           status: 'completed_matched',
@@ -166,6 +189,8 @@ function createMatchTestRunHandlers(deps) {
           matched_count: 1,
           ai_rerank_applied: true,
           ai_rerank_model: reranked.model || '',
+          fixture_journey: fixtureJourney,
+          match_cycle_id: qaCycleId,
           message: 'AI测试匹配成功'
         }
       }))

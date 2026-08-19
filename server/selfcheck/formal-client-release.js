@@ -15,8 +15,6 @@ function clientFiles(directory) {
 }
 
 const forbidden = [
-  'MATCH_TEST_RUNS',
-  '/api/match/test-runs',
   'wf_test_run_id',
   'startQaTestRun',
   'executeQaTestRun',
@@ -24,15 +22,35 @@ const forbidden = [
   '开发测试：重新注册用户'
 ]
 
+const qaAllowedFiles = new Set([
+  path.join(clientRoot, 'pages/match-list/match-list.js'),
+  path.join(clientRoot, 'pages/match-list/match-list.wxml'),
+  path.join(clientRoot, 'pages/match-list/match-list.wxss'),
+  path.join(clientRoot, 'utils/constants.js')
+])
+
+const qaOnlyTokens = ['MATCH_TEST_RUNS', '/api/match/test-runs']
+
 const leaks = []
 for (const file of clientFiles(clientRoot)) {
   const source = fs.readFileSync(file, 'utf8')
   for (const token of forbidden) {
     if (source.includes(token)) leaks.push(`${path.relative(root, file)} -> ${token}`)
   }
+  for (const token of qaOnlyTokens) {
+    if (!source.includes(token)) continue
+    if (!qaAllowedFiles.has(file)) {
+      leaks.push(`${path.relative(root, file)} -> ${token}`)
+    }
+  }
 }
 
-assert.deepStrictEqual(leaks, [], `正式客户端仍包含测试入口：\n${leaks.join('\n')}`)
+assert.deepStrictEqual(leaks, [], `正式客户端仍包含未授权的测试入口：\n${leaks.join('\n')}`)
+
+const matchListJs = fs.readFileSync(path.join(clientRoot, 'pages/match-list/match-list.js'), 'utf8')
+const matchListWxml = fs.readFileSync(path.join(clientRoot, 'pages/match-list/match-list.wxml'), 'utf8')
+assert(matchListJs.includes('qaTestRunEnabled'))
+assert(matchListWxml.includes('qaTestRunEnabled'))
 
 const serverRoute = fs.readFileSync(path.join(root, 'miniprogram/cloudfunctions/api/handlers/route.js'), 'utf8')
 const testRunService = fs.readFileSync(path.join(root, 'miniprogram/cloudfunctions/api/lib/matchTestRunService.js'), 'utf8')
@@ -40,4 +58,4 @@ assert(serverRoute.includes('/api/match/test-runs'))
 assert(testRunService.includes('isInternalQaAccount'))
 assert(testRunService.includes('publicEnabled'))
 
-console.log('PASS formal mini program contains no match test entry or API reference')
+console.log('PASS formal mini program keeps QA match test entry internal-only on match-list')

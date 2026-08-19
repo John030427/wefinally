@@ -4,6 +4,7 @@ const { isVipActive } = require('./format')
 const { canEnterFormalCandidatePool } = require('./testIdentityPolicy')
 const { canonicalPairKey, deliverPair, createCloudClaimStore, CLAIM_STATUS } = require('./matchClaim')
 const { semanticRerank, intentMatchGate } = require('./semanticMatchService')
+const { indexClaimsForMatching } = require('./matchCycleService')
 
 function semanticDetail(best, side, rank) {
   const detail = scoreDetailFor(best, side, rank)
@@ -36,9 +37,18 @@ function semanticDetail(best, side, rank) {
   })
 }
 
+function isHistoricalPair(userId, partnerId, historicalPairKeys) {
+  try {
+    return historicalPairKeys.has(canonicalPairKey(userId, partnerId))
+  } catch (err) {
+    return false
+  }
+}
+
 async function executeFormalMatching(ctx = {}) {
   const deps = ctx.deps || {}
   const clock = ctx.clock || {}
+  const matchCycleId = String(clock.matchCycleId || clock.match_cycle_id || '')
   if (typeof deps.list !== 'function') {
     return { matched_count: 0, users_considered: 0, candidates_evaluated: 0 }
   }
@@ -47,18 +57,14 @@ async function executeFormalMatching(ctx = {}) {
     .filter((row) => memberStatus(row) === MEMBER_STATUS.APPROVED)
     .filter((row) => isVipActive(row))
   const claims = await deps.list('match_claim', { status: CLAIM_STATUS }, 500)
-  const claimed = new Set()
-  ;(claims || []).forEach((row) => {
-    claimed.add(Number(row.user_id))
-    claimed.add(Number(row.match_user_id))
-  })
+  const { cycleClaimed, historicalPairKeys } = indexClaimsForMatching(claims, matchCycleId)
   const settings = await deps.list('user_match_setting', {}, 500)
   const settingsByUserId = {}
   ;(settings || []).forEach((row) => {
     settingsByUserId[String(row.user_id)] = row
   })
   const pool = users
-    .filter((row) => !claimed.has(Number(row.id)))
+    .filter((row) => !cycleClaimed.has(Number(row.id)))
     .filter((row) => !intentMatchGate(settingsByUserId[String(row.id)]))
   let matchedCount = 0
   let evaluated = 0
@@ -68,7 +74,8 @@ async function executeFormalMatching(ctx = {}) {
   const rerank = typeof deps.semanticRerank === 'function' ? deps.semanticRerank : semanticRerank
   while (remaining.length >= 2) {
     const user = remaining.shift()
-    const ranked = rankCandidates(user, remaining, settingsByUserId, { blockedIds: claimed })
+    const ranked = rankCandidates(user, remaining, settingsByUserId, { blockedIds: cycleClaimed })
+      .filter((item) => !isHistoricalPair(user.id, item.candidate.id, historicalPairKeys))
     evaluated += ranked.length
     const reranked = await rerank(ranked, user, settingsByUserId)
     if (!reranked || reranked.applied !== true) continue
@@ -78,7 +85,9 @@ async function executeFormalMatching(ctx = {}) {
     const best = reranked.ranked.find((item) => item.quality && item.quality.pass)
     if (!best) continue
     const partner = best.candidate
-    const requestId = `formal:${clock.businessDate}:${user.id}:${partner.id}`
+    const requestId = matchCycleId
+      ? `formal:${matchCycleId}:${user.id}:${partner.id}`
+      : `formal:${clock.businessDate}:${user.id}:${partner.id}`
     const pairKey = canonicalPairKey(user.id, partner.id)
     const deliveryData = {
       logA: {
@@ -90,7 +99,8 @@ async function executeFormalMatching(ctx = {}) {
         score_version: 'algo_evidence_v3',
         match_date: clock.businessDate,
         match_type: clock.matchType || '正式匹配',
-        pair_key: pairKey
+        pair_key: pairKey,
+        match_cycle_id: matchCycleId || null
       },
       logB: {
         user_id: partner.id,
@@ -101,7 +111,8 @@ async function executeFormalMatching(ctx = {}) {
         score_version: 'algo_evidence_v3',
         match_date: clock.businessDate,
         match_type: clock.matchType || '正式匹配',
-        pair_key: pairKey
+        pair_key: pairKey,
+        match_cycle_id: matchCycleId || null
       },
       audit: {
         request_id: requestId,
@@ -110,6 +121,7 @@ async function executeFormalMatching(ctx = {}) {
         match_user_id: partner.id,
         status: 'matched',
         action: 'formal_batch',
+        match_cycle_id: matchCycleId || null,
         ...(reranked && reranked.degraded === true
           ? { degraded: true, degraded_reason: String(reranked.reason || 'fallback_deterministic') }
           : {})
@@ -119,6 +131,7 @@ async function executeFormalMatching(ctx = {}) {
       userId: user.id,
       partnerId: partner.id,
       requestId,
+      matchCycleId,
       deliveryData,
       userDoc: user,
       partnerDoc: partner,
@@ -130,15 +143,17 @@ async function executeFormalMatching(ctx = {}) {
       await deps.ensureReportTask(delivery.logA, 'auto').catch(() => null)
     }
     matchedCount += 1
-    claimed.add(Number(user.id))
-    claimed.add(Number(partner.id))
+    cycleClaimed.add(Number(user.id))
+    cycleClaimed.add(Number(partner.id))
+    historicalPairKeys.add(pairKey)
     const idx = remaining.findIndex((row) => Number(row.id) === Number(partner.id))
     if (idx >= 0) remaining.splice(idx, 1)
   }
   return {
     matched_count: matchedCount,
     users_considered: users.length,
-    candidates_evaluated: evaluated
+    candidates_evaluated: evaluated,
+    match_cycle_id: matchCycleId || null
   }
 }
 

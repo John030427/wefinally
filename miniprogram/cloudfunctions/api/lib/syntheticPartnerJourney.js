@@ -272,6 +272,7 @@ function fixtureSceneBadge(source = {}) {
   if (journey === 'coordinate') return '测试 · AI协调'
   if (journey === 'no_response') return '测试 · 不回应'
   if (journey === 'accept_no_prefs') return '测试 · 接受未填偏好'
+  if (String(source.fixture_mode || '').toLowerCase() === 'manual_step') return '测试 · 手动推进'
   return '测试数据'
 }
 

@@ -314,10 +314,15 @@ async function retryFixtureResponseJob(job, error, timestamp = now()) {
 async function acquireFormalMatchBatch(data) {
   const businessDate = String(data && data.business_date || '')
   const batchKey = String(data && data.batch_key || '')
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(businessDate) || batchKey !== `formal:${businessDate}`) {
+  const matchCycleId = String(data && data.match_cycle_id || '')
+  const { PRODUCTION_CYCLE_RE, formalBatchDocumentId } = require('./matchCycleService')
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(businessDate)) {
     throw new Error('正式匹配批次编号无效')
   }
-  const documentId = `match_batch_formal_${businessDate}`
+  if (!matchCycleId || !PRODUCTION_CYCLE_RE.test(matchCycleId) || batchKey !== `formal:${matchCycleId}`) {
+    throw new Error('正式匹配批次编号无效')
+  }
+  const documentId = formalBatchDocumentId(matchCycleId)
   return withCollection('match_batch_run', () => db.runTransaction(async (transaction) => {
     const ref = transaction.collection(collections.match_batch_run).doc(documentId)
     const current = await documentOrNull(() => ref.get())

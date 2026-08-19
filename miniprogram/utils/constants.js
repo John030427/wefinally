@@ -31,6 +31,8 @@ const API_PATHS = {
   MATCH_REPORT_TASK_STATUS: '/api/match/report-tasks/status',
   MATCH_REPORT_TASK_RETRY: '/api/match/report-tasks/retry',
   MATCH_LATEST: '/api/match/latest',
+  MATCH_TEST_RUNS: '/api/match/test-runs',
+  MATCH_TEST_RUN_EXECUTE: '/api/match/test-runs',
   VIP_INFO: '/api/vip/info',
   VIP_PURCHASE: '/api/vip/purchase',
   ORDER_STATUS: '/api/order/status',

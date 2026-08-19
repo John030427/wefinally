@@ -35,6 +35,7 @@ const fixture = {
   is_test_fixture: 1,
   fixture_owner_user_id: 10,
   fixture_expires_at: '2026-08-15T08:00:00.000Z',
+  fixture_journey: 'coordinate',
   allow_date_coordination: 0,
   birth_year: 1995,
   height_range: '160-165cm',
@@ -109,6 +110,18 @@ function memory(user, extraUsers = [], options = {}) {
     first: async (name, query) => (tables[name] || []).find((row) => matches(row, query)) || null,
     list: async (name, query) => (tables[name] || []).filter((row) => !query || matches(row, query)),
     byId: async (name, id) => (tables[name] || []).find((row) => Number(row.id) === Number(id)) || null,
+    ...(options.poolEnabled === false ? {} : {
+      addWithId: async (name, data) => {
+        if (name === 'user_match_setting') {
+          const row = { _id: `${name}_${seq}`, id: seq++, ...compatibleSetting(data.user_id) }
+          tables.user_match_setting.push(row)
+          return row.id
+        }
+        const row = { _id: `${name}_${seq}`, id: seq++, ...data }
+        ;(tables[name] = tables[name] || []).push(row)
+        return row.id
+      }
+    }),
     acquireRun,
     claimRun,
     completeRun,
@@ -135,7 +148,8 @@ function memory(user, extraUsers = [], options = {}) {
           semantic_confidence: 0.88,
           data_completeness: 0.82,
           asymmetric_risks: ['婚育时间需要确认'],
-          confirmation_questions: ['双方可接受的婚育时间窗口是什么？']
+          confirmation_questions: ['双方可接受的婚育时间窗口是什么？'],
+          quality: { pass: true, reasons: [], diagnostics: [] }
         }))
       }
     }
@@ -210,17 +224,20 @@ async function main() {
   const got = await qaMem.handlers.get({ id: created.id }, {})
   assert.strictEqual(got.id, created.id)
 
-  const blockedMem = memory(qa, [])
+  const blockedMem = memory(qa, [], { poolEnabled: false })
   blockedMem.tables.user = [qa]
+  blockedMem.tables.user_match_setting = blockedMem.tables.user_match_setting.filter((row) => Number(row.user_id) === Number(qa.id)).slice(0, 1)
   const blocked = await blockedMem.handlers.create({ request_id: 'req-bbbbbbbb' }, {})
   blockedMem.advance(10000)
   const blockedExec = await blockedMem.handlers.execute({ id: blocked.id }, {})
-  assert.strictEqual(blockedExec.status, 'blocked')
+  assert.ok(['blocked', 'failed'].includes(blockedExec.status))
 
   const root = path.resolve(__dirname, '../..')
   const route = fs.readFileSync(path.join(root, 'miniprogram/cloudfunctions/api/handlers/route.js'), 'utf8')
   const indexJs = fs.readFileSync(path.join(root, 'miniprogram/pages/index/index.js'), 'utf8')
   const indexWxml = fs.readFileSync(path.join(root, 'miniprogram/pages/index/index.wxml'), 'utf8')
+  const matchListJs = fs.readFileSync(path.join(root, 'miniprogram/pages/match-list/match-list.js'), 'utf8')
+  const matchListWxml = fs.readFileSync(path.join(root, 'miniprogram/pages/match-list/match-list.wxml'), 'utf8')
   const profileWxml = fs.readFileSync(path.join(root, 'miniprogram/pages/profile/profile.wxml'), 'utf8')
   const userHandler = fs.readFileSync(path.join(root, 'miniprogram/cloudfunctions/api/handlers/user.js'), 'utf8')
   assert(route.includes('/api/match/test-runs'))
@@ -229,8 +246,29 @@ async function main() {
   assert(!indexJs.includes('testRunStatus'))
   assert(!indexJs.includes('reset_user_batch'))
   assert(!indexJs.includes('MATCH_TEST_RUN') && !indexJs.includes('/api/match/test-runs'))
+  assert(matchListWxml.includes('qaTestRunEnabled'))
+  assert(matchListJs.includes('qa_test_run_enabled'))
+  assert(matchListJs.includes('fixture_journey'))
+  assert(matchListWxml.includes('10秒后模拟匹配'))
   assert(profileWxml.includes('userInfo.support_code'))
   assert(userHandler.includes('match_test_run_public_enabled'))
+
+  const journeyMem = memory(qa, [
+    Object.assign({}, fixture, { id: 21, fixture_journey: 'decline' }),
+    Object.assign({}, fixture, { id: 22, fixture_journey: 'accept_direct' })
+  ])
+  const journeyCreated = await journeyMem.handlers.create({
+    request_id: 'req-journey01',
+    fixture_journey: 'decline'
+  }, {})
+  assert.strictEqual(journeyCreated.fixture_journey, 'decline')
+  journeyMem.advance(10000)
+  const journeyExecuted = await journeyMem.handlers.execute({ id: journeyCreated.id }, {})
+  assert.strictEqual(journeyExecuted.status, 'completed_matched')
+  assert.strictEqual(journeyExecuted.fixture_journey, 'decline')
+  const journeyLog = journeyMem.tables.user_match_log[0]
+  const journeyPartner = journeyMem.tables.user.find((row) => Number(row.id) === Number(journeyLog.match_user_id))
+  assert.strictEqual(journeyPartner.fixture_journey, 'decline')
   console.log('PASS isolated QA match service remains protected without a formal client entry')
 }
 

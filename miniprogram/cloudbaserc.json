@@ -16,6 +16,20 @@
       "runtime": "Nodejs20.19",
       "handler": "index.main",
       "installDependency": true
+    },
+    {
+      "name": "match-worker",
+      "timeout": 60,
+      "runtime": "Nodejs20.19",
+      "handler": "index.main",
+      "installDependency": true,
+      "triggers": [
+        {
+          "name": "formal-match-utc-offset",
+          "type": "timer",
+          "config": "0 0 16 ? * TUE,THU *"
+        }
+      ]
     }
   ]
 }

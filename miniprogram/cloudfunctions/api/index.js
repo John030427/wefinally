@@ -72,6 +72,13 @@ exports.main = async (event = {}) => {
         }
       case 'runFormalMatchBatch':
         assertInternalWorkerSecret(payload.worker_secret)
+        if (payload.dry_run === true || payload.dryRun === true) {
+          const { dryRunProductionCycle } = require('./lib/matchCycleService')
+          return {
+            success: true,
+            data: dryRunProductionCycle(payload.simulated_now ? new Date(payload.simulated_now) : new Date())
+          }
+        }
         return {
           success: true,
           data: await runFormalMatchBatch({

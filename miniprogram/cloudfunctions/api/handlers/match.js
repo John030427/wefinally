@@ -13,6 +13,8 @@ const {
 } = require('../lib/aiMatchProfile')
 const { presentAiMatchProfile } = require('../lib/aiMatchProfilePresentation')
 const { canonicalPairKey, deliverPair, createCloudClaimStore, CLAIM_STATUS } = require('../lib/matchClaim')
+const { shanghaiBusinessClock } = require('../lib/businessClock')
+const { userHasProductionClaimInCycle, indexClaimsForMatching } = require('../lib/matchCycleService')
 const { semanticRerank, intentMatchGate } = require('../lib/semanticMatchService')
 const reportTask = require('./reportTask')
 const { isMatchOnlyFixture, canUseFixtureForMatch, canEnterFormalCandidatePool } = require('../lib/testFixturePolicy')
@@ -591,19 +593,22 @@ async function start(data, wxContext) {
     err.clarification_questions = intentGate.clarification_questions
     throw err
   }
-  const userClaim = await first('match_claim', { user_id: Number(user.id), status: CLAIM_STATUS })
-  if (userClaim) {
+  const clock = shanghaiBusinessClock(now())
+  const allClaims = await list('match_claim', { status: CLAIM_STATUS }, 500)
+  if (clock.isMatchDay && clock.matchCycleId && userHasProductionClaimInCycle(user.id, allClaims, clock.matchCycleId)) {
     return {
       matched: 0,
       users: 0,
       evaluated_candidates: 0,
-      message: '你已成功匹配，不能再次发起匹配'
+      message: '本轮已成功匹配，请等待下一匹配窗口'
     }
   }
   const existingMatches = await list('user_match_log', { user_id: user.id }, 100)
   const seenPartnerIds = {}
+  const { historicalPairKeys } = indexClaimsForMatching(allClaims, clock.matchCycleId || '')
   existingMatches.forEach((row) => {
     seenPartnerIds[Number(row.match_user_id)] = true
+    if (row.pair_key) historicalPairKeys.add(String(row.pair_key))
   })
   const candidates = (await list('user', { status: 1 }, 100))
     .filter((item) => memberStatus(item) === MEMBER_STATUS.APPROVED)
@@ -617,13 +622,24 @@ async function start(data, wxContext) {
   settingRows.forEach((setting) => {
     settingsByUserId[String(setting.user_id)] = setting
   })
-  const claims = await list('match_claim', { status: CLAIM_STATUS }, 500)
+  const claims = allClaims
   const claimBlockedIds = []
-  claims.forEach((claim) => {
-    claimBlockedIds.push(Number(claim.user_id), Number(claim.match_user_id))
-  })
+  if (clock.isMatchDay && clock.matchCycleId) {
+    claims.forEach((claim) => {
+      if (String(claim.match_cycle_id || '') === clock.matchCycleId && !Number(claim.qa_cycle || 0)) {
+        claimBlockedIds.push(Number(claim.user_id), Number(claim.match_user_id))
+      }
+    })
+  }
   const blockedIds = new Set(Object.keys(seenPartnerIds).map(Number).concat(claimBlockedIds))
   const ranked = rankCandidates(user, candidates, settingsByUserId, { blockedIds })
+    .filter((item) => {
+      try {
+        return !historicalPairKeys.has(canonicalPairKey(user.id, item.candidate.id))
+      } catch (err) {
+        return true
+      }
+    })
   const reranked = await semanticRerank(ranked, user, settingsByUserId)
   if (!reranked || reranked.applied !== true) {
     return {
@@ -799,6 +815,7 @@ module.exports = {
     first,
     list,
     byId,
+    addWithId,
     acquireRun: require('../lib/db').acquireMatchTestRun,
     claimRun: require('../lib/db').claimMatchTestRun,
     completeRun: require('../lib/db').completeMatchTestRun,

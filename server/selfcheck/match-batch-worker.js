@@ -3,6 +3,7 @@ const fs = require('fs')
 const path = require('path')
 
 const { shanghaiBusinessClock, formalBatchKey } = require('../../miniprogram/cloudfunctions/api/lib/businessClock')
+const { formalBatchDocumentId } = require('../../miniprogram/cloudfunctions/api/lib/matchCycleService')
 const { runFormalMatchBatch, redactBatchError } = require('../../miniprogram/cloudfunctions/api/lib/matchingRunService')
 const { assertInternalWorkerSecret } = require('../../miniprogram/cloudfunctions/api/lib/internalWorkerAuth')
 
@@ -12,7 +13,9 @@ assert.strictEqual(fridayClock.businessDate, '2026-08-14')
 assert.strictEqual(fridayClock.weekday, 5)
 assert.strictEqual(fridayClock.isMatchDay, true)
 assert.strictEqual(fridayClock.matchType, '周五')
-assert.strictEqual(formalBatchKey(fridayClock.businessDate), 'formal:2026-08-14')
+assert.strictEqual(fridayClock.matchCycleId, '2026-08-14-FRI')
+assert.strictEqual(fridayClock.batchKey, 'formal:2026-08-14-FRI')
+assert.strictEqual(formalBatchKey(fridayClock.businessDate, 'FRI'), 'formal:2026-08-14-FRI')
 
 const wednesdayUtc = new Date('2026-08-11T16:00:00.000Z')
 const wednesdayClock = shanghaiBusinessClock(wednesdayUtc)
@@ -42,7 +45,7 @@ function memoryDeps(matcher) {
     acquireBatch: async (data) => {
       const existing = tables.match_batch_run.find((row) => row.batch_key === data.batch_key)
       if (existing) return { acquired: false, batch: existing }
-      const row = { _id: `match_batch_formal_${data.business_date}`, id: seq++, ...data }
+      const row = { _id: formalBatchDocumentId(data.match_cycle_id), id: seq++, ...data }
       tables.match_batch_run.push(row)
       return { acquired: true, batch: row }
     },
@@ -62,7 +65,8 @@ async function main() {
   const matchedDeps = memoryDeps(async () => ({ matched_count: 2, users_considered: 8, candidates_evaluated: 7 }))
   const matched = await runFormalMatchBatch({ now: fridayUtc, requestId: 'req-1', triggerSource: 'timer' }, matchedDeps)
   assert.strictEqual(matched.status, 'completed_matched')
-  assert.strictEqual(matched.batch_key, 'formal:2026-08-14')
+  assert.strictEqual(matched.batch_key, 'formal:2026-08-14-FRI')
+  assert.strictEqual(matched.match_cycle_id, '2026-08-14-FRI')
   assert.strictEqual(matched.matched_count, 2)
   const replay = await runFormalMatchBatch({ now: fridayUtc, requestId: 'req-2', triggerSource: 'timer' }, matchedDeps)
   assert.strictEqual(replay.id, matched.id)

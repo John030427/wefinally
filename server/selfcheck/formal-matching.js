@@ -59,7 +59,7 @@ async function main() {
   let deliveryInput = null
   let reportLog = null
   const result = await executeFormalMatching({
-    clock: { businessDate: '2026-08-14', matchType: '周五' },
+    clock: { businessDate: '2026-08-14', matchType: '周五', matchCycleId: '2026-08-14-FRI' },
     deps: {
       list: async (name) => {
         if (name === 'user') return users
@@ -95,7 +95,7 @@ async function main() {
   let unavailableAudit = null
   let unavailableLog = null
   const unavailable = await executeFormalMatching({
-    clock: { businessDate: '2026-08-14', matchType: '周五' },
+    clock: { businessDate: '2026-08-14', matchType: '周五', matchCycleId: '2026-08-14-FRI' },
     deps: {
       list: async (name) => {
         if (name === 'user') return users
@@ -122,7 +122,7 @@ async function main() {
   let fixtureOnlySemanticCalls = 0
   let fixtureOnlyDeliveryCalls = 0
   const fixtureOnly = await executeFormalMatching({
-    clock: { businessDate: '2026-08-14', matchType: '周五' },
+    clock: { businessDate: '2026-08-14', matchType: '周五', matchCycleId: '2026-08-14-FRI' },
     deps: {
       list: async (name) => {
         if (name === 'user') return [user(1, 1, 1992, '175-180cm'), syntheticConflict]

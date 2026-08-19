@@ -1,4 +1,4 @@
-const { shanghaiBusinessClock } = require('./businessClock')
+const { resolveProductionMatchCycle, dryRunProductionCycle, formalBatchDocumentId } = require('./matchCycleService')
 
 const TRANSIENT = /timeout|ECONNRESET|unavailable|429|503|ETIMEDOUT/i
 const TERMINAL = new Set(['completed_matched', 'completed_no_match', 'blocked'])
@@ -15,6 +15,7 @@ function redactBatchError(error) {
 function batchRecord(input, clock, extra = {}) {
   return Object.assign({
     batch_key: clock.batchKey,
+    match_cycle_id: clock.matchCycleId || '',
     mode: 'formal',
     business_date: clock.businessDate,
     match_type: clock.matchType,
@@ -45,6 +46,7 @@ async function persistResult(deps, batch, result) {
     matched_count: matchedCount,
     users_considered: Number(result && result.users_considered || 0),
     candidates_evaluated: Number(result && result.candidates_evaluated || 0),
+    match_cycle_id: result && result.match_cycle_id || batch.match_cycle_id || '',
     completed_at: deps.now(),
     reason_code: matchedCount > 0 ? 'matched' : 'completed_no_match'
   })
@@ -52,13 +54,18 @@ async function persistResult(deps, batch, result) {
 
 async function runFormalMatchBatch(input = {}, deps) {
   if (!deps || typeof deps.acquireBatch !== 'function') throw new Error('匹配批次依赖未配置')
-  const clock = shanghaiBusinessClock(input.now || (deps.now && deps.now()) || new Date())
+  const now = input.now || (deps.now && deps.now()) || new Date()
+  if (input.dryRun === true || input.dry_run === true) {
+    return dryRunProductionCycle(input.simulatedNow || now)
+  }
+  const clock = resolveProductionMatchCycle(now)
   if (!clock.isMatchDay) {
     return {
       status: 'blocked',
       reason_code: 'not_match_day',
       business_date: clock.businessDate,
-      batch_key: clock.batchKey
+      batch_key: clock.batchKey,
+      match_cycle_id: clock.matchCycleId
     }
   }
 
@@ -100,4 +107,9 @@ async function runFormalMatchBatch(input = {}, deps) {
   }
 }
 
-module.exports = { runFormalMatchBatch, redactBatchError }
+module.exports = {
+  runFormalMatchBatch,
+  redactBatchError,
+  batchRecord,
+  formalBatchDocumentId
+}
