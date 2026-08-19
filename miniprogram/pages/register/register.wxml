@@ -23,7 +23,7 @@
   </block>
 
   <block wx:else>
-    <view class="page-title">{{editMode ? '补充个人资料' : '完善个人资料'}}</view>
+    <view class="page-title">{{editMode ? '个人资料' : '完善个人资料'}}</view>
     <view class="page-subtitle">请选择真实资料，职业不在列表时可填写其他</view>
 
     <view class="card">

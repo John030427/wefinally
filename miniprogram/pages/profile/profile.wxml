@@ -35,6 +35,7 @@
           </view>
           <view class="user-meta">{{userInfo.display.city}} · {{userInfo.display.education}}</view>
           <view class="user-meta">{{userInfo.display.circleName}} · {{userInfo.display.babyPlan}}</view>
+          <view class="user-edit-link" bindtap="editBaseProfile">编辑 ›</view>
           <view class="user-support-code">用户ID {{userInfo.support_code || '正在分配'}}</view>
         </view>
       </view>

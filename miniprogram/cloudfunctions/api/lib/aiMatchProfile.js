@@ -27,7 +27,11 @@ const MEANINGFUL_SOURCE_KEYS = [
   'secondary_circle_ids',
   'psych_profile_json',
   'marry_status',
-  'like_marry_status'
+  'like_marry_status',
+  'height_range',
+  'income_range',
+  'house_car',
+  'appearance_description'
 ]
 
 function stableStringify(value) {

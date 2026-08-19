@@ -13,6 +13,9 @@ const { resolveQaTestRunEnabled } = require('../lib/qaAccessPolicy')
 const { flagEnabled } = require('../lib/flags')
 const { resolveRegion } = require('../lib/regionNormalize')
 const {
+  shouldInvalidateAiMatchProfile
+} = require('../lib/aiMatchProfile')
+const {
   normalizeIdentityInput,
   legacyTagsFromUser,
   summarizeIdentities
@@ -252,6 +255,28 @@ async function updateProfile(data, wxContext) {
   }
 
   const updated = await updateByDoc('user', user, patch)
+
+  try {
+    const setting = await first('user_match_setting', { user_id: user.id })
+    if (setting && setting.ai_match_profile_json) {
+      const aiProfile = typeof setting.ai_match_profile_json === 'string'
+        ? JSON.parse(setting.ai_match_profile_json)
+        : setting.ai_match_profile_json
+      const source = Object.assign({}, user, updated, patch, {
+        primary_circle_id: patch.circle_id != null ? patch.circle_id : user.circle_id,
+        secondary_circle_ids: data.secondary_circle_ids
+      })
+      if (shouldInvalidateAiMatchProfile(aiProfile, source)) {
+        await updateByDoc('user_match_setting', setting, {
+          ai_match_profile_stale: 1,
+          last_profile_change_at: now()
+        })
+      }
+    }
+  } catch (error) {
+    console.warn('ai profile stale mark skipped:', error.message || error)
+  }
+
   return profilePayload(updated)
 }
 

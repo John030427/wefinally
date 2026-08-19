@@ -13,6 +13,7 @@ Page({
     partnerStatus: { state: 'loading', allowed_actions: [] },
     readiness: null,
     menuList: [
+      { icon: '👤', title: '个人资料', url: '/pages/register/register?edit=1' },
       { icon: '⚙️', title: '择偶配置', url: '/pages/match-setting/match-setting' },
       { icon: '🧠', title: 'AI 对你的理解', url: '/pages/match-setting/match-setting?focus=ai-profile' },
       { icon: '📝', title: '外貌描述', url: '/pages/appearance/appearance' },

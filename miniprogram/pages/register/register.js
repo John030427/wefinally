@@ -85,6 +85,9 @@ Page({
       return
     }
     this.setData({ editMode: Boolean(options && options.edit === '1') })
+    if (this.data.editMode) {
+      wx.setNavigationBarTitle({ title: '个人资料' })
+    }
     this.initBirthYears()
     this.initHeights()
     this.parsePromoteCode(options)
@@ -189,6 +192,8 @@ Page({
       cityIndex: cityList.findIndex((item) => item.city_name === (region.city_name || profile.city)),
       education: profile.education || '',
       educationIndex: EDUCATION_OPTIONS.indexOf(profile.education),
+      income: profile.income_range || '',
+      incomeIndex: INCOME_OPTIONS.indexOf(profile.income_range),
       marriage: profile.marry_status || '',
       marriageIndex: MARRIAGE_OPTIONS.indexOf(profile.marry_status),
       babyPlan: profile.baby_plan || '',
@@ -537,6 +542,7 @@ Page({
           city_code: form.cityCode,
           city_name: form.city,
           education: form.education,
+          income_range: form.income || '',
           baby_plan: form.babyPlan,
           house_car: form.houseCar || '',
           height_range: form.height,
