@@ -111,8 +111,8 @@ Pool seeded on first QA execute via `ensureQaFixturePool()`.
 | Item | Value |
 |------|-------|
 | Start HEAD | `3f030177b67c33b7ca68b4cc9f8637b524affb60` |
-| Commits | (see push output) |
-| Push branch | `feature/ai-profile-bilateral-coordination` |
+| Final commit | `0183f5c` — fix(match): scope claims to Wed/Fri match cycles |
+| Remote HEAD | `0183f5c` on `feature/ai-profile-bilateral-coordination` |
 
 ## 14 Manual WeChat Verification
 
