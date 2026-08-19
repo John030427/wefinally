@@ -4,6 +4,24 @@
 
 ---
 
+## 2026-08-20 — Local Multi-User AI E2E Lab
+
+### 类型
+本地多用户 E2E 实验室 + 资料编辑/AI 指纹修复 + 回归自检
+
+### 完成
+- 新增 `server/e2e/wefinally/`：memoryDb、serviceFactory、18 personas、14 scenarios、artifact reporter
+- npm：`e2e:wefinally`、`e2e:wefinally:live`、`selfcheck:e2e-release-guard`
+- 产品：profile 页「个人资料」入口；register 编辑 income；`updateProfile` 标记 AI profile stale；扩展 `MEANINGFUL_SOURCE_KEYS`
+- 回归：`agent.createSession` 允许 initiator 在 `collecting_initiator` 开协调员会话（UI 策略不变）
+- 文档：`.cursor/skills/wefinally-e2e/SKILL.md`、`WORK_REPORT_LOCAL_MULTI_USER_AI_E2E_LAB.md`
+
+### 验证
+- `e2e:wefinally` 14/14 PASS；`selfcheck:agent` + baseline selfchecks PASS
+- Live hy3 smoke：无 CloudBase 凭据时 BLOCKED（不崩溃）
+
+---
+
 ## 2026-08-19 — Date Invitation Prelaunch Final
 
 ### 类型
