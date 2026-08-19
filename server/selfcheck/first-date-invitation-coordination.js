@@ -1,4 +1,6 @@
 const assert = require('assert')
+const fs = require('fs')
+const path = require('path')
 const { STATUS, nextStatus, computeOverlap } = require('../../miniprogram/cloudfunctions/api/lib/dateCoordinationPolicy')
 const {
   canOpenCoordinatorChat,
@@ -23,7 +25,10 @@ const {
   isPrimaryProposalComplete,
   resolvePrimaryInvitationProposal,
   primaryFitsPreference,
-  syncPrimaryPaymentFromPreference
+  syncPrimaryPaymentFromPreference,
+  persistExpiredInvitationRecord,
+  invitationExpiredError,
+  resolvePrimaryAfterPreferenceChange
 } = require('../../miniprogram/cloudfunctions/api/lib/invitationCoordination')
 const { createDateCoordinationHandlers, processCoordinationDeadlines } = require('../../miniprogram/cloudfunctions/api/handlers/dateCoordination')
 const { createDateApplicationPatchHandlers } = require('../../miniprogram/cloudfunctions/api/handlers/dateApplicationPatch')
@@ -56,6 +61,19 @@ function app(overrides = {}) {
     transport_constraints: '',
     other_requirements: '',
     share_message: 'A私有留言不要给B'
+  }, overrides)
+}
+
+function primaryOf(overrides = {}) {
+  return Object.assign({
+    date: FRI,
+    period: 'evening',
+    area: '南山',
+    activity: '咖啡',
+    budget: '100-200',
+    duration: '1-2h',
+    payment_mode: 'aa',
+    payer_user_id: 0
   }, overrides)
 }
 
@@ -1318,6 +1336,378 @@ async function main() {
       pair.deps.rows.date_coordination[0].business_state = 'expired'
     })
     assert.strictEqual(expiredStatus, STATUS.EXPIRED)
+  }
+
+  // TEST 61 EXPIRED_COMMIT_NOT_ROLLBACK_ACCEPT
+  {
+    const dbSource = fs.readFileSync(path.join(__dirname, '../../miniprogram/cloudfunctions/api/lib/db.js'), 'utf8')
+    assert(dbSource.includes('persistExpiredInvitationRecord'))
+    assert(!dbSource.includes('INVITATION_EXPIRED'), 'production transaction must commit EXPIRED then throw outside')
+
+    let stored = { id: 9, status: 'inviting_partner', business_state: 'waiting_partner' }
+    async function fakeCloudBaseTransaction(work) {
+      const snapshot = Object.assign({}, stored)
+      const working = Object.assign({}, stored)
+      try {
+        const result = await work({
+          updateByDoc: async (name, doc, data) => Object.assign(working, data)
+        })
+        stored = Object.assign({}, working)
+        return result
+      } catch (err) {
+        stored = snapshot
+        throw err
+      }
+    }
+    await assert.rejects(
+      () => fakeCloudBaseTransaction(async (adapter) => {
+        await adapter.updateByDoc('date_coordination', stored, { status: 'expired', business_state: 'expired' })
+        throw invitationExpiredError()
+      }),
+      (error) => error.code === 'INVITATION_EXPIRED'
+    )
+    assert.strictEqual(stored.status, 'inviting_partner', 'throw after EXPIRED write must rollback in CloudBase')
+
+    stored = { id: 9, status: 'inviting_partner', business_state: 'waiting_partner' }
+    const committed61 = await fakeCloudBaseTransaction(async (adapter) => persistExpiredInvitationRecord(
+      workingRow(adapter),
+      (data) => adapter.updateByDoc('date_coordination', stored, data)
+    ))
+    function workingRow() {
+      return stored
+    }
+    assert.strictEqual(committed61.expired, true)
+    assert.strictEqual(stored.status, 'expired')
+    assert.strictEqual(stored.business_state, 'expired')
+
+    const t61 = await invitedPair()
+    t61.deps.rows.date_coordination[0].invitation_deadline_at = new Date('2026-07-10T08:00:00.000Z')
+    await assert.rejects(
+      () => t61.handlers.respondInvitation({
+        coordination_id: t61.invited.id,
+        decision: 'accept',
+        invitation_version: 1
+      }, { user_id: 2 }),
+      (error) => error.code === 'INVITATION_EXPIRED'
+    )
+    assert.strictEqual(t61.deps.rows.date_coordination[0].status, STATUS.EXPIRED)
+    assert.strictEqual(t61.deps.rows.date_coordination[0].business_state, 'expired')
+    assert.notStrictEqual(t61.deps.rows.date_coordination[0].status, STATUS.ARRANGED)
+    assert.notStrictEqual(t61.deps.rows.date_coordination[0].status, STATUS.INVITING_PARTNER)
+  }
+
+  // TEST 62 EXPIRED_COMMIT_NOT_ROLLBACK_COORDINATE
+  {
+    const t62 = await invitedPair()
+    t62.deps.rows.date_coordination[0].invitation_deadline_at = new Date('2026-07-10T08:00:00.000Z')
+    await assert.rejects(
+      () => t62.handlers.respondInvitation({
+        coordination_id: t62.invited.id,
+        decision: 'coordinate',
+        invitation_version: 1
+      }, { user_id: 2 }),
+      (error) => error.code === 'INVITATION_EXPIRED'
+    )
+    assert.strictEqual(t62.deps.rows.date_coordination[0].status, STATUS.EXPIRED)
+    assert.strictEqual(t62.deps.rows.date_coordination[0].business_state, 'expired')
+    assert.notStrictEqual(t62.deps.rows.date_coordination[0].status, STATUS.COLLECTING_PREFERENCES)
+  }
+
+  // TEST 63 EXPIRED_COMMIT_NOT_ROLLBACK_DECLINE
+  {
+    const t63 = await invitedPair()
+    t63.deps.rows.date_coordination[0].invitation_deadline_at = new Date('2026-07-10T08:00:00.000Z')
+    await assert.rejects(
+      () => t63.handlers.respondInvitation({
+        coordination_id: t63.invited.id,
+        decision: 'decline',
+        invitation_version: 1
+      }, { user_id: 2 }),
+      (error) => error.code === 'INVITATION_EXPIRED'
+    )
+    assert.strictEqual(t63.deps.rows.date_coordination[0].status, STATUS.EXPIRED)
+    assert.strictEqual(t63.deps.rows.date_coordination[0].business_state, 'expired')
+    assert.notStrictEqual(t63.deps.rows.date_coordination[0].status, STATUS.INVITATION_DECLINED)
+  }
+
+  // TEST 64 EXPIRED_COMMIT_NOT_ROLLBACK_PATCH
+  {
+    const t64 = await invitedPair()
+    t64.deps.rows.date_coordination[0].invitation_deadline_at = new Date('2026-07-10T08:00:00.000Z')
+    const patches64 = patchHandlersFor(t64)
+    const preview64 = await patches64.createPreviewForUser({
+      coordination_id: t64.invited.id,
+      changes: { areas: ['南山', '罗湖'] }
+    }, t64.deps.rows.user[0])
+    await assert.rejects(
+      () => patches64.confirmForUser({ coordination_id: t64.invited.id, patch_id: preview64.id }, t64.deps.rows.user[0]),
+      (error) => error.code === 'INVITATION_EXPIRED'
+    )
+    assert.strictEqual(t64.deps.rows.date_coordination[0].status, STATUS.EXPIRED)
+    assert.strictEqual(t64.deps.rows.date_coordination[0].business_state, 'expired')
+    assert.strictEqual(Number(t64.deps.rows.date_coordination[0].invitation_version), 1)
+    assert.strictEqual(preview64.status === 'applied', false)
+  }
+
+  // TEST 65 EXPIRED_RETRY_IDEMPOTENT
+  {
+    const t65 = await invitedPair()
+    t65.deps.rows.date_coordination[0].invitation_deadline_at = new Date('2026-07-10T08:00:00.000Z')
+    await assert.rejects(
+      () => t65.handlers.respondInvitation({
+        coordination_id: t65.invited.id,
+        decision: 'accept',
+        invitation_version: 1
+      }, { user_id: 2 }),
+      (error) => error.code === 'INVITATION_EXPIRED'
+    )
+    assert.strictEqual(t65.deps.rows.date_coordination[0].status, STATUS.EXPIRED)
+    await assert.rejects(
+      () => t65.handlers.respondInvitation({
+        coordination_id: t65.invited.id,
+        decision: 'accept',
+        invitation_version: 1
+      }, { user_id: 2 }),
+      (error) => error.code === 'INVITATION_EXPIRED' && error.code !== 'INVITATION_ALREADY_RESPONDED'
+    )
+    await assert.rejects(
+      () => t65.handlers.respondInvitation({
+        coordination_id: t65.invited.id,
+        decision: 'coordinate',
+        invitation_version: 1
+      }, { user_id: 2 }),
+      (error) => error.code === 'INVITATION_EXPIRED'
+    )
+    await assert.rejects(
+      () => t65.handlers.respondInvitation({
+        coordination_id: t65.invited.id,
+        decision: 'decline',
+        invitation_version: 1
+      }, { user_id: 2 }),
+      (error) => error.code === 'INVITATION_EXPIRED'
+    )
+    const patches65 = patchHandlersFor(t65)
+    await assert.rejects(
+      () => patches65.createPreviewForUser({
+        coordination_id: t65.invited.id,
+        changes: { areas: ['福田'] }
+      }, t65.deps.rows.user[0]),
+      (error) => error.code === 'INVITATION_EXPIRED'
+    )
+    assert.strictEqual(t65.deps.rows.date_coordination[0].status, STATUS.EXPIRED)
+    assert.notStrictEqual(t65.deps.rows.date_coordination[0].status, STATUS.INVITING_PARTNER)
+  }
+
+  // TEST 66 PRIMARY_AUTO_SYNC_UNIQUE_AREA
+  {
+    const t66 = await invitedPair({
+      app: { areas: ['南山', '福田'] },
+      primary: primaryOf({ area: '南山' })
+    })
+    const patches66 = patchHandlersFor(t66)
+    const preview66 = await patches66.createPreviewForUser({
+      coordination_id: t66.invited.id,
+      changes: { areas: ['福田'] }
+    }, t66.deps.rows.user[0])
+    assert.strictEqual(preview66.preview.primary_resolution_required, false)
+    assert.strictEqual(preview66.preview.invitation_primary_proposal.area, '福田')
+    assert.strictEqual(preview66.status, 'pending_confirmation')
+    await patches66.confirmForUser({ coordination_id: t66.invited.id, patch_id: preview66.id }, t66.deps.rows.user[0])
+    assert.strictEqual(t66.deps.rows.date_coordination[0].invitation_primary_proposal.area, '福田')
+  }
+
+  // TEST 67 PRIMARY_AUTO_SYNC_UNIQUE_TIME
+  {
+    const t67 = await invitedPair({
+      app: {
+        availability: [
+          { date: FRI, periods: ['evening'] },
+          { date: SAT, periods: ['afternoon'] }
+        ]
+      },
+      primary: primaryOf({ date: FRI, period: 'evening' })
+    })
+    const patches67 = patchHandlersFor(t67)
+    const preview67 = await patches67.createPreviewForUser({
+      coordination_id: t67.invited.id,
+      changes: { availability: [{ date: SAT, periods: ['afternoon'] }] }
+    }, t67.deps.rows.user[0])
+    assert.strictEqual(preview67.preview.primary_resolution_required, false)
+    assert.strictEqual(preview67.preview.invitation_primary_proposal.date, SAT)
+    assert.strictEqual(preview67.preview.invitation_primary_proposal.period, 'afternoon')
+    await patches67.confirmForUser({ coordination_id: t67.invited.id, patch_id: preview67.id }, t67.deps.rows.user[0])
+    assert.strictEqual(t67.deps.rows.date_coordination[0].invitation_primary_proposal.date, SAT)
+    assert.strictEqual(t67.deps.rows.date_coordination[0].invitation_primary_proposal.period, 'afternoon')
+  }
+
+  // TEST 68 PRIMARY_AUTO_SYNC_UNIQUE_ACTIVITY
+  {
+    const t68 = await invitedPair({
+      app: { activities: ['咖啡', '散步'] },
+      primary: primaryOf({ activity: '咖啡' })
+    })
+    const patches68 = patchHandlersFor(t68)
+    const preview68 = await patches68.createPreviewForUser({
+      coordination_id: t68.invited.id,
+      changes: { activities: ['散步'] }
+    }, t68.deps.rows.user[0])
+    assert.strictEqual(preview68.preview.primary_resolution_required, false)
+    assert.strictEqual(preview68.preview.invitation_primary_proposal.activity, '散步')
+    await patches68.confirmForUser({ coordination_id: t68.invited.id, patch_id: preview68.id }, t68.deps.rows.user[0])
+    assert.strictEqual(t68.deps.rows.date_coordination[0].invitation_primary_proposal.activity, '散步')
+  }
+
+  // TEST 69 PRIMARY_MULTI_OPTION_REQUIRES_SELECTION
+  {
+    const t69 = await invitedPair({
+      app: { areas: ['南山', '福田'] },
+      primary: primaryOf({ area: '南山' })
+    })
+    const patches69 = patchHandlersFor(t69)
+    const preview69 = await patches69.createPreviewForUser({
+      coordination_id: t69.invited.id,
+      changes: { areas: ['福田', '罗湖'] }
+    }, t69.deps.rows.user[0])
+    assert.strictEqual(preview69.preview.primary_resolution_required, true)
+    assert.strictEqual(preview69.status, 'pending_primary_selection')
+    const areaField = (preview69.preview.primary_resolution.fields || []).find((item) => item.field === 'area')
+    assert.ok(areaField)
+    assert.deepStrictEqual(areaField.options, ['福田', '罗湖'])
+    assert.strictEqual(preview69.preview.invitation_primary_proposal, null)
+    assert.notStrictEqual((areaField.options || [])[0], preview69.preview.invitation_primary_proposal && preview69.preview.invitation_primary_proposal.area)
+  }
+
+  // TEST 70 PRIMARY_SELECTION_VALID
+  {
+    const t70 = await invitedPair({
+      app: { areas: ['南山', '福田'] },
+      primary: primaryOf({ area: '南山' })
+    })
+    const patches70 = patchHandlersFor(t70)
+    const preview70 = await patches70.createPreviewForUser({
+      coordination_id: t70.invited.id,
+      changes: { areas: ['福田', '罗湖'] },
+      primary_selection: { area: '福田' }
+    }, t70.deps.rows.user[0])
+    assert.strictEqual(preview70.preview.primary_resolution_required, false)
+    assert.strictEqual(preview70.status, 'pending_confirmation')
+    assert.strictEqual(preview70.preview.invitation_primary_proposal.area, '福田')
+  }
+
+  // TEST 71 PRIMARY_SELECTION_INVALID
+  {
+    const t71 = await invitedPair({
+      app: { areas: ['南山', '福田'] },
+      primary: primaryOf({ area: '南山' })
+    })
+    const patches71 = patchHandlersFor(t71)
+    await assert.rejects(
+      () => patches71.createPreviewForUser({
+        coordination_id: t71.invited.id,
+        changes: { areas: ['福田', '罗湖'] },
+        primary_selection: { area: '广州' }
+      }, t71.deps.rows.user[0]),
+      (error) => error.code === 'INVALID_PRIMARY_SELECTION'
+    )
+  }
+
+  // TEST 72 PATCH_NOT_APPLIED_BEFORE_PRIMARY_RESOLUTION
+  {
+    const t72 = await invitedPair({
+      app: { areas: ['南山', '福田'] },
+      primary: primaryOf({ area: '南山' })
+    })
+    const beforePrimary = Object.assign({}, t72.deps.rows.date_coordination[0].invitation_primary_proposal)
+    const appCount = t72.deps.rows.date_coordination_application.length
+    const patches72 = patchHandlersFor(t72)
+    const preview72 = await patches72.createPreviewForUser({
+      coordination_id: t72.invited.id,
+      changes: { areas: ['福田', '罗湖'] }
+    }, t72.deps.rows.user[0])
+    await assert.rejects(
+      () => patches72.confirmForUser({ coordination_id: t72.invited.id, patch_id: preview72.id }, t72.deps.rows.user[0]),
+      (error) => error.code === 'PRIMARY_RESOLUTION_REQUIRED'
+    )
+    assert.strictEqual(Number(t72.deps.rows.date_coordination[0].invitation_version), 1)
+    assert.strictEqual(t72.deps.rows.date_coordination_application.length, appCount)
+    assert.strictEqual(t72.deps.rows.date_coordination[0].invitation_primary_proposal.area, beforePrimary.area)
+    assert.strictEqual(preview72.status, 'pending_primary_selection')
+  }
+
+  // TEST 73 PRIMARY_PAYMENT_STILL_SYNC
+  {
+    const t73 = await invitedPair({ app: { payment_preference: 'aa' } })
+    const patches73 = patchHandlersFor(t73)
+    const preview73 = await patches73.createPreviewForUser({
+      coordination_id: t73.invited.id,
+      changes: { payment_preference: 'self_pays' }
+    }, t73.deps.rows.user[0])
+    assert.strictEqual(preview73.preview.primary_resolution_required, false)
+    assert.strictEqual(preview73.preview.invitation_primary_proposal.payment_mode, 'single_payer')
+    assert.strictEqual(Number(preview73.preview.invitation_primary_proposal.payer_user_id), 1)
+    await patches73.confirmForUser({ coordination_id: t73.invited.id, patch_id: preview73.id }, t73.deps.rows.user[0])
+    const primary73 = t73.deps.rows.date_coordination[0].invitation_primary_proposal
+    assert.strictEqual(primary73.payment_mode, 'single_payer')
+    assert.strictEqual(Number(primary73.payer_user_id), 1)
+  }
+
+  // TEST 74 PRIMARY_BUDGET_DURATION_SYNC
+  {
+    const t74 = await invitedPair()
+    const patches74 = patchHandlersFor(t74)
+    const preview74 = await patches74.createPreviewForUser({
+      coordination_id: t74.invited.id,
+      changes: { budget: '50-100', duration: 'about-1h' }
+    }, t74.deps.rows.user[0])
+    assert.strictEqual(preview74.preview.primary_resolution_required, false)
+    assert.strictEqual(preview74.preview.invitation_primary_proposal.budget, '50-100')
+    assert.strictEqual(preview74.preview.invitation_primary_proposal.duration, 'about-1h')
+    await patches74.confirmForUser({ coordination_id: t74.invited.id, patch_id: preview74.id }, t74.deps.rows.user[0])
+    assert.strictEqual(t74.deps.rows.date_coordination[0].invitation_primary_proposal.budget, '50-100')
+    assert.strictEqual(t74.deps.rows.date_coordination[0].invitation_primary_proposal.duration, 'about-1h')
+  }
+
+  // TEST 75 FULL_PRIMARY_PATCH_FLOW
+  {
+    const t75 = await invitedPair({
+      app: {
+        availability: [{ date: SAT, periods: ['evening'] }],
+        areas: ['南山'],
+        activities: ['咖啡'],
+        payment_preference: 'aa'
+      }
+    })
+    assert.strictEqual(t75.deps.rows.date_coordination[0].invitation_primary_proposal.area, '南山')
+    const patches75 = patchHandlersFor(t75)
+    const preview75 = await patches75.createPreviewForUser({
+      coordination_id: t75.invited.id,
+      changes: { areas: ['福田'], payment_preference: 'self_pays' }
+    }, t75.deps.rows.user[0])
+    assert.strictEqual(preview75.preview.primary_resolution_required, false)
+    assert.ok(preview75.preview.changed_fields.includes('areas'))
+    assert.ok(preview75.preview.changed_fields.includes('payment_preference'))
+    assert.strictEqual(preview75.preview.invitation_primary_proposal.area, '福田')
+    assert.strictEqual(preview75.preview.invitation_primary_proposal.payment_mode, 'single_payer')
+    assert.strictEqual(Number(preview75.preview.invitation_primary_proposal.payer_user_id), 1)
+    assert.strictEqual(preview75.preview.primary_payment_after_text, '本次由发起方请客')
+    await patches75.confirmForUser({ coordination_id: t75.invited.id, patch_id: preview75.id }, t75.deps.rows.user[0])
+    assert.strictEqual(Number(t75.deps.rows.date_coordination[0].invitation_version), 2)
+    assert.strictEqual(t75.deps.rows.date_coordination[0].invitation_primary_proposal.area, '福田')
+    assert.strictEqual(t75.deps.rows.date_coordination[0].invitation_primary_proposal.payment_mode, 'single_payer')
+    assert.strictEqual(Number(t75.deps.rows.date_coordination[0].invitation_primary_proposal.payer_user_id), 1)
+    const arranged75 = await t75.handlers.respondInvitation({
+      coordination_id: t75.invited.id,
+      decision: 'accept',
+      invitation_version: 2
+    }, { user_id: 2 })
+    assert.strictEqual(arranged75.status, STATUS.ARRANGED)
+    const final75 = t75.deps.rows.date_coordination_proposal.find((row) => Number(row.id) === Number(t75.deps.rows.date_coordination[0].final_proposal_id))
+    assert.ok(final75)
+    assert.strictEqual(final75.area, '福田')
+    assert.strictEqual(final75.date, SAT)
+    assert.strictEqual(final75.activity, '咖啡')
+    assert.strictEqual(final75.payment_mode, 'single_payer')
+    assert.strictEqual(Number(final75.payer_user_id), 1)
   }
 
   console.log('first-date-invitation-coordination: PASS')
