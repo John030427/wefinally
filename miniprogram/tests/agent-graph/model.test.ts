@@ -5,28 +5,25 @@ import {
   createDecisionModel
 } from '../../cloudfunctions/agent-graph/src/model.js'
 
-test('sends only sanitized bounded input and parses structured decision JSON', async () => {
-  let requestBody = ''
-  const fetchImpl: typeof fetch = async (_input, init) => {
-    requestBody = String(init?.body || '')
-    return new Response(JSON.stringify({
-      choices: [{
-        message: {
-          content: JSON.stringify({
-            intent: 'platform_question',
-            reply_draft: '我来帮你核对平台状态。',
-            risk_level: 'safe',
-            route: 'faq',
-            tool_request: null,
-            suggested_actions: []
-          })
-        }
-      }]
-    }), { status: 200, headers: { 'content-type': 'application/json' } })
-  }
+const sampleDecision = {
+  intent: 'platform_question',
+  reply_draft: '我来帮你核对平台状态。',
+  risk_level: 'safe',
+  route: 'faq',
+  tool_request: null,
+  suggested_actions: []
+}
+
+test('sends only sanitized bounded input and parses structured decision JSON via CloudBase hy3', async () => {
+  let requestPayload = ''
   const model = createDecisionModel({
-    apiKey: 'sk-test-only-not-a-real-secret',
-    fetchImpl
+    provider: 'cloudbase',
+    model: 'hy3',
+    group: 'cloudbase',
+    generateTextImpl: async (input) => {
+      requestPayload = JSON.stringify(input.messages)
+      return { text: JSON.stringify(sampleDecision) }
+    }
   })
 
   const decision = await model.decide({
@@ -38,22 +35,15 @@ test('sends only sanitized bounded input and parses structured decision JSON', a
 
   assert.equal(decision.route, 'faq')
   assert.equal(decision.intent, 'platform_question')
-  assert.doesNotMatch(requestBody, /13800138000|oAbCdEf/)
-  const parsedBody = JSON.parse(requestBody) as {
-    response_format?: { type?: string }
-    model?: string
-    messages?: Array<{ content?: string }>
-  }
-  assert.equal(parsedBody.model, 'deepseek-chat')
-  assert.equal(parsedBody.response_format?.type, 'json_object')
-  assert.ok((parsedBody.messages?.[1]?.content || '').length <= 3000)
+  assert.doesNotMatch(requestPayload, /13800138000|oAbCdEf/)
+  assert.ok(requestPayload.length <= 3000)
 })
 
 test('maps malformed provider content to a stable boundary error', async () => {
-  const fetchImpl: typeof fetch = async () => new Response(JSON.stringify({
-    choices: [{ message: { content: 'not-json' } }]
-  }), { status: 200 })
-  const model = createDecisionModel({ apiKey: 'sk-test-only-not-a-real-secret', fetchImpl })
+  const model = createDecisionModel({
+    provider: 'cloudbase',
+    generateTextImpl: async () => ({ text: 'not-json' })
+  })
 
   await assert.rejects(
     () => model.decide({
@@ -66,8 +56,8 @@ test('maps malformed provider content to a stable boundary error', async () => {
   )
 })
 
-test('rejects a missing API key without starting a provider request', async () => {
-  const model = createDecisionModel({ apiKey: '' })
+test('rejects legacy deepseek mode without API key without starting a provider request', async () => {
+  const model = createDecisionModel({ provider: 'deepseek', apiKey: '' })
   await assert.rejects(
     () => model.decide({
       mode: 'customer_service',
@@ -77,4 +67,29 @@ test('rejects a missing API key without starting a provider request', async () =
     }),
     (error: unknown) => error instanceof ModelBoundaryError && error.code === 'provider_disabled'
   )
+})
+
+test('legacy deepseek fetch path still works when explicitly configured', async () => {
+  let requestBody = ''
+  const fetchImpl: typeof fetch = async (_input, init) => {
+    requestBody = String(init?.body || '')
+    return new Response(JSON.stringify({
+      choices: [{ message: { content: JSON.stringify(sampleDecision) } }]
+    }), { status: 200, headers: { 'content-type': 'application/json' } })
+  }
+  const model = createDecisionModel({
+    provider: 'deepseek',
+    apiKey: 'sk-test-only-not-a-real-secret',
+    fetchImpl
+  })
+  const decision = await model.decide({
+    mode: 'customer_service',
+    phase: 'frontline',
+    userText: '帮助',
+    safeSummary: ''
+  })
+  assert.equal(decision.route, 'faq')
+  const parsedBody = JSON.parse(requestBody) as { model?: string; response_format?: { type?: string } }
+  assert.equal(parsedBody.model, 'deepseek-chat')
+  assert.equal(parsedBody.response_format?.type, 'json_object')
 })

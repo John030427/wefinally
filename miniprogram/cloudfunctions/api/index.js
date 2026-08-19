@@ -15,6 +15,7 @@ const { isHttpEvent } = require('./lib/httpEvent')
 const { runFormalMatchBatch } = require('./lib/matchingRunService')
 const { executeFormalMatching } = require('./lib/formalMatching')
 const { assertInternalWorkerSecret } = require('./lib/internalWorkerAuth')
+const cloudbaseAi = require('./lib/cloudbaseAi')
 const db = require('./lib/db')
 
 const ENV_ID = 'cloud1-d4gy8l52g08bba326'
@@ -63,6 +64,12 @@ exports.main = async (event = {}) => {
         ])
         return { success: true, data: { reports, notifications, coordinationDeadlines, coordinationTasks, fixtureResponses } }
       }
+      case 'aiSmoke':
+        assertInternalWorkerSecret(payload.worker_secret)
+        return {
+          success: true,
+          data: await cloudbaseAi.smokeTest({ prompt: String(payload.prompt || '只回复：HY3_OK') })
+        }
       case 'runFormalMatchBatch':
         assertInternalWorkerSecret(payload.worker_secret)
         return {

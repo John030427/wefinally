@@ -38,13 +38,15 @@ function buildCoordinationDisplay(coordination) {
     cancelled: '已结束',
     closed: '已结束'
   }
-  const showCoordinatorCta = vm.show_coordinator_cta !== undefined
-    ? Boolean(vm.show_coordinator_cta)
-    : (coordination && coordination.can_open_coordinator_chat !== undefined
-      ? Boolean(coordination.can_open_coordinator_chat)
-      : (status === 'inviting_partner'
-        ? role === 'initiator' && hasOwnApplication
-        : status !== 'collecting_initiator'))
+  const showCoordinatorCta = status === 'collecting_initiator'
+    ? false
+    : (vm.show_coordinator_cta !== undefined
+      ? Boolean(vm.show_coordinator_cta)
+      : (coordination && coordination.can_open_coordinator_chat !== undefined
+        ? Boolean(coordination.can_open_coordinator_chat)
+        : (status === 'inviting_partner'
+          ? role === 'initiator' && hasOwnApplication
+          : status !== 'collecting_initiator')))
   const waitingPartnerHero = '约会邀请已发送。当前正在等待对方回应。你仍然可以和 AI 协调员补充或修改自己的安排。'
   const coordinatingHero = coordination.invitee_intent === 'coordinate' && role === 'initiator' && !(coordination.participant_progress || []).find((item) => item.side === 'partner' && item.application_submitted)
     ? '对方已接受约会邀请，目前正在补充自己的安排。'
@@ -65,6 +67,7 @@ function buildCoordinationDisplay(coordination) {
     receivedInvitation: status === 'inviting_partner' && role === 'invitee',
     shouldPoll: status === 'computing_overlap' && ['queued', 'processing'].includes(processingStatus),
     showCoordinatorCta,
+    showPreSubmitCoordinatorCard: status === 'collecting_initiator' && role === 'initiator',
     showAcceptInvitation: Boolean(vm.show_accept_invitation || (
       status === 'inviting_partner'
       && role === 'invitee'
@@ -145,6 +148,7 @@ Page({
     coordination: null,
     coordinationDisplay: buildCoordinationDisplay({}),
     showCoordinatorCta: false,
+    showPreSubmitCoordinatorCard: false,
     showAdvanceSynthetic: false,
     showAcceptInvitation: false,
     showCoordinateInstead: false,
@@ -328,6 +332,7 @@ Page({
       coordination,
       coordinationDisplay,
       showCoordinatorCta: Boolean(id) && Boolean(coordinationDisplay.showCoordinatorCta),
+      showPreSubmitCoordinatorCard: Boolean(id) && Boolean(coordinationDisplay.showPreSubmitCoordinatorCard),
       showAdvanceSynthetic: Boolean(coordinationDisplay.showAdvanceSynthetic),
       showAcceptInvitation: Boolean(coordinationDisplay.showAcceptInvitation),
       showCoordinateInstead: Boolean(coordinationDisplay.showCoordinateInstead),

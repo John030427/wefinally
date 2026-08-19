@@ -92,6 +92,13 @@ async function config() {
     demo: await demoFlags(),
     api_schema_version: 2,
     date_coordination_contract_version: 6,
+    ai_provider_contract_version: 1,
+    ai_runtime: {
+      provider: 'cloudbase',
+      model: 'hy3',
+      cloudbase_ai_provider: true,
+      hy3_enabled: true
+    },
     capabilities: {
       notifications: true,
       date_coordinator_pre_accept_chat: true,

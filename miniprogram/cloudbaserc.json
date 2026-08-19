@@ -1,0 +1,21 @@
+{
+  "$schema": "https://static.cloudbase.net/cli/cloudbaserc.schema.json",
+  "envId": "cloud1-d4gy8l52g08bba326",
+  "functionRoot": "cloudfunctions",
+  "functions": [
+    {
+      "name": "api",
+      "timeout": 60,
+      "runtime": "Nodejs20.19",
+      "handler": "index.main",
+      "installDependency": true
+    },
+    {
+      "name": "agent-graph",
+      "timeout": 120,
+      "runtime": "Nodejs20.19",
+      "handler": "index.main",
+      "installDependency": true
+    }
+  ]
+}

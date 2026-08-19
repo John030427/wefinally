@@ -83,7 +83,7 @@ function canOpenCoordinatorChat(coordination, user, options = {}) {
   if (status === STATUS.INVITING_PARTNER) {
     return isInitiator(coordination, user) && Boolean(options.hasOwnApplication)
   }
-  if (status === STATUS.COLLECTING_INITIATOR) return isInitiator(coordination, user)
+  if (status === STATUS.COLLECTING_INITIATOR) return false
   if (status === STATUS.COLLECTING_PREFERENCES) return true
   if (isActiveCoordination(status)) return true
   // Terminal states: history may be opened read-only for result explanation.

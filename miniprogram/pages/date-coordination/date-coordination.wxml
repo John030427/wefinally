@@ -96,9 +96,16 @@
       </view>
     </view>
 
+    <view class="coordinator-hero card pre-submit-card" wx:if="{{showPreSubmitCoordinatorCard}}">
+      <view class="section-title">AI约会协调</view>
+      <view class="public-note">提交约会邀请后，你可以随时和 AI 协调员补充或修改安排。</view>
+      <view class="ai-disclosure">AI生成内容，仅供参考</view>
+    </view>
+
     <view class="coordinator-hero card" wx:if="{{showCoordinatorCta}}">
       <view class="section-title">{{coordination.status === 'inviting_partner' ? '和 AI 约会协调员沟通' : 'AI约会协调'}}</view>
       <view class="public-note">{{coordinatorHeroText}}</view>
+      <view class="ai-disclosure">AI生成内容，仅供参考</view>
       <button class="primary-btn full-btn" bindtap="goCoordinator">和 AI 约会协调员沟通</button>
       <view class="muted coordinator-hint">已经一致的条件不会再重复询问。修改前会先展示预览。</view>
       <button class="outline-btn compact-btn" bindtap="onEnableSubscribe">开启协调提醒</button>
