@@ -169,7 +169,9 @@ function createAgentHandlers(overrides = {}) {
       if (coordination.status === 'inviting_partner' && isInvitee(coordination, user)) {
         throw new Error(inviteeCoordinatorBlockedError())
       }
-      if (!canOpenCoordinatorChat(coordination, user, { hasOwnApplication: Boolean(ownApp) })) {
+      const canOpen = canOpenCoordinatorChat(coordination, user, { hasOwnApplication: Boolean(ownApp) })
+        || (coordination.status === 'collecting_initiator' && isInitiator(coordination, user))
+      if (!canOpen) {
         throw new Error(terminalWriteError(coordination.status))
       }
     }
