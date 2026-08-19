@@ -70,19 +70,21 @@
     </view>
 
     <view class="fact-card card" wx:if="{{invitationCard && (coordination.status === 'inviting_partner' || coordination.status === 'collecting_initiator' || !sharedCoordination.ready)}}">
-      <view class="section-title">{{coordinationDisplay.receivedInvitation ? '对方建议' : '你的建议'}}</view>
+      <view class="section-title">{{coordinationDisplay.receivedInvitation ? '第一次约会邀请' : '你的建议'}}</view>
       <view class="fact-row"><text class="fact-label">时间</text><text class="fact-value">{{invitationCard.time_text}}</text></view>
       <view class="fact-row"><text class="fact-label">区域</text><text class="fact-value">{{invitationCard.area_text}}</text></view>
       <view class="fact-row"><text class="fact-label">活动</text><text class="fact-value">{{invitationCard.activity_text}}</text></view>
       <view class="fact-row"><text class="fact-label">预算</text><text class="fact-value">{{invitationCard.budget_text}}</text></view>
+      <view class="fact-row"><text class="fact-label">费用方式</text><text class="fact-value">{{invitationCard.payment_text}}</text></view>
       <view class="fact-row"><text class="fact-label">时长</text><text class="fact-value">{{invitationCard.duration_text}}</text></view>
+      <view class="muted" wx:if="{{invitationCard.range_hint}}">{{invitationCard.range_hint}}</view>
     </view>
 
-    <view class="invite-actions card" wx:if="{{showAcceptInvitation}}">
+    <view class="invite-actions card" wx:if="{{showAcceptInvitation || showCoordinateInstead || showDecline}}">
       <view class="section-title">你可以这样回应</view>
-      <button class="primary-btn full-btn" bindtap="respondInvitation" data-decision="accept" loading="{{responding}}">接受这个安排</button>
-      <button class="outline-btn full-btn" bindtap="respondInvitation" data-decision="coordinate" loading="{{responding}}">和 AI 协调其他安排</button>
-      <button class="text-btn full-btn" bindtap="respondInvitation" data-decision="decline" loading="{{responding}}">这次暂不方便</button>
+      <button class="primary-btn full-btn" wx:if="{{showAcceptInvitation}}" bindtap="respondInvitation" data-decision="accept" loading="{{responding}}">接受这个安排</button>
+      <button class="outline-btn full-btn" wx:if="{{showCoordinateInstead}}" bindtap="respondInvitation" data-decision="coordinate" loading="{{responding}}">和 AI 协调其他安排</button>
+      <button class="text-btn full-btn" wx:if="{{showDecline}}" bindtap="respondInvitation" data-decision="decline" loading="{{responding}}">这次暂不方便</button>
     </view>
 
     <view class="fact-card card" wx:if="{{sharedCoordination.ready}}">
@@ -148,6 +150,24 @@
         <view class="form-label required">⏳ 可接受时长</view>
         <view class="choice-list"><view class="choice-tag {{form.duration === item.value ? 'selected' : ''}}" wx:for="{{durationOptions}}" wx:key="value" bindtap="selectOption" data-key="duration" data-value="{{item.value}}" hover-class="choice-tag-pressed">{{item.label}}</view></view>
       </view>
+      <block wx:if="{{coordination.status === 'collecting_initiator' && primaryOptions.needsExplicit}}">
+        <view class="form-item">
+          <view class="form-label required">⭐ 本次建议安排</view>
+          <view class="field-help">可接受范围可以有多个；请再明确这次优先建议哪一个，对方会先看到这份建议。</view>
+          <view class="form-label">本次建议时间</view>
+          <view class="choice-list">
+            <view class="choice-tag {{primaryProposal.date === item.date && primaryProposal.period === item.period ? 'selected' : ''}}" wx:for="{{primaryOptions.slots}}" wx:key="key" bindtap="selectPrimarySlot" data-date="{{item.date}}" data-period="{{item.period}}" hover-class="choice-tag-pressed">{{item.date}} {{item.period}}</view>
+          </view>
+          <view class="form-label" wx:if="{{primaryOptions.areas.length > 1}}">本次建议区域</view>
+          <view class="choice-list" wx:if="{{primaryOptions.areas.length > 1}}">
+            <view class="choice-tag {{primaryProposal.area === item ? 'selected' : ''}}" wx:for="{{primaryOptions.areas}}" wx:key="*this" bindtap="selectPrimaryArea" data-value="{{item}}" hover-class="choice-tag-pressed">{{item}}</view>
+          </view>
+          <view class="form-label" wx:if="{{primaryOptions.activities.length > 1}}">本次建议活动</view>
+          <view class="choice-list" wx:if="{{primaryOptions.activities.length > 1}}">
+            <view class="choice-tag {{primaryProposal.activity === item ? 'selected' : ''}}" wx:for="{{primaryOptions.activities}}" wx:key="*this" bindtap="selectPrimaryActivity" data-value="{{item}}" hover-class="choice-tag-pressed">{{item}}</view>
+          </view>
+        </view>
+      </block>
       <view class="form-item">
         <view class="form-label">🚌 出行限制</view>
         <input class="input field-input" placeholder="例如：不方便走远、需要靠近地铁" value="{{form.transport_constraints}}" data-key="transport_constraints" bindinput="onInput" />
@@ -164,11 +184,12 @@
 
     <view class="proposal-card card" wx:if="{{proposal && (coordination.status === 'waiting_confirmations' || coordination.status === 'arranged')}}">
       <view class="section-title">{{coordination.status === 'arranged' ? '最终安排' : 'AI 协调方案'}}</view>
-      <view class="fact-row"><text class="fact-label">时间</text><text class="fact-value">{{proposal.time_text || proposal.date}} {{proposal.period || ''}}</text></view>
+      <view class="fact-row"><text class="fact-label">时间</text><text class="fact-value">{{proposal.time_text || proposal.date}}</text></view>
       <view class="fact-row"><text class="fact-label">区域</text><text class="fact-value">{{proposal.area_text || proposal.area}}</text></view>
       <view class="fact-row"><text class="fact-label">活动</text><text class="fact-value">{{proposal.activity_text || proposal.activity}}</text></view>
-      <view class="fact-row"><text class="fact-label">时长</text><text class="fact-value">{{proposal.duration_text || proposal.duration || '待确认'}}</text></view>
       <view class="fact-row"><text class="fact-label">预算</text><text class="fact-value">{{proposal.budget_text || proposal.budget || '待确认'}}</text></view>
+      <view class="fact-row"><text class="fact-label">费用方式</text><text class="fact-value">{{proposal.payment_text || '待确认'}}</text></view>
+      <view class="fact-row"><text class="fact-label">时长</text><text class="fact-value">{{proposal.duration_text || proposal.duration || '待确认'}}</text></view>
       <view class="public-note" wx:if="{{coordination.status !== 'arranged'}}">方案来自系统计算结果，不是聊天文本。双方确认后才会生效。</view>
       <block wx:if="{{coordination.status === 'waiting_confirmations'}}">
         <button class="primary-btn full-btn" bindtap="confirmProposal" loading="{{submitting}}" disabled="{{submitting || coordination.confirmed_by_me}}">{{coordination.confirmed_by_me ? '你已确认，正在等待对方' : '确认这个方案'}}</button>

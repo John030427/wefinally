@@ -574,6 +574,139 @@ async function failCoordinationProcessing(claim, errorCode, timestamp = now()) {
   })
 }
 
+/**
+ * CAS direct-accept of a primary invitation proposal.
+ * Succeeds only when status=inviting_partner AND invitation_version matches.
+ */
+async function commitDirectInvitationAccept(input = {}, timestamp = now()) {
+  const {
+    coordination,
+    inviteeUserId,
+    invitationVersion,
+    proposalData,
+    nextStatusValue,
+    invitationRespondedAt
+  } = input
+  if (!coordination || !coordination._id) throw new Error('日期协调不存在')
+  const submittedVersion = Number(invitationVersion)
+  if (!Number.isFinite(submittedVersion) || submittedVersion <= 0) {
+    const err = new Error('请提交邀请版本后再确认')
+    err.code = 'INVALID_INVITATION_VERSION'
+    throw err
+  }
+  if (!proposalData || !proposalData.proposal_key) throw new Error('当前建议安排不完整，请刷新后重试')
+
+  return transaction(async (adapter) => {
+    const current = await adapter.byDocId('date_coordination', coordination._id)
+    if (!current) throw new Error('日期协调不存在')
+
+    const currentInvitationVersion = Number(current.invitation_version || 0)
+    const coordVersion = Number(current.coordination_version || 1)
+    const proposalKey = String(proposalData.proposal_key)
+    const proposalDocId = `date-proposal-direct-${current.id}-v${submittedVersion}`
+    const confirmationDocId = (participantId) => `date-confirmation-${current.id}-${participantId}-v${coordVersion}`
+
+    // Idempotent replay: already arranged on this exact direct proposal
+    if (current.status === 'arranged' && Number(current.accepted_base_invitation_version) === submittedVersion) {
+      const existingProposal = await adapter.byDocId('date_coordination_proposal', proposalDocId)
+        || (current.final_proposal_id ? await adapter.byId('date_coordination_proposal', current.final_proposal_id) : null)
+      if (existingProposal && String(existingProposal.proposal_key) === proposalKey
+        && Number(current.final_proposal_id) === Number(existingProposal.id)) {
+        return {
+          coordination: current,
+          proposal: existingProposal,
+          arranged: true,
+          idempotent: true,
+          stale: false
+        }
+      }
+    }
+
+    if (current.status !== 'inviting_partner') {
+      throw new Error('当前状态不能接受约会邀请')
+    }
+    if (Number(current.user_b_id) !== Number(inviteeUserId)) {
+      throw new Error('仅受邀参与者可以处理邀请')
+    }
+    if (current.invitation_responded_at) {
+      throw new Error('当前邀请已经回应过')
+    }
+    if (currentInvitationVersion !== submittedVersion) {
+      const err = new Error('对方刚刚更新了约会安排，请查看最新方案后再确认')
+      err.code = 'STALE_INVITATION_VERSION'
+      err.refresh_invitation = true
+      throw err
+    }
+
+    let proposal = await adapter.byDocId('date_coordination_proposal', proposalDocId)
+    if (!proposal) {
+      const proposalId = await adapter.nextCounter('date_coordination_proposal')
+      proposal = await adapter.setByDocId('date_coordination_proposal', proposalDocId, Object.assign({}, proposalData, {
+        id: proposalId,
+        coordination_id: Number(current.id),
+        coordination_version: coordVersion,
+        invitation_version: submittedVersion,
+        proposal_key: proposalKey,
+        status: 'active',
+        source: 'direct_accept',
+        create_time: timestamp
+      }))
+    } else if (String(proposal.proposal_key) !== proposalKey) {
+      throw new Error('当前建议安排已变更，请刷新后重试')
+    }
+
+    await adapter.setByDocId('date_coordination_confirmation', confirmationDocId(Number(current.user_a_id)), {
+      coordination_id: Number(current.id),
+      user_id: Number(current.user_a_id),
+      proposal_id: Number(proposal.id),
+      coordination_version: coordVersion,
+      decision: 'confirm',
+      status: 'active',
+      source: 'initiator_invitation',
+      create_time: timestamp
+    })
+    await adapter.setByDocId('date_coordination_confirmation', confirmationDocId(Number(inviteeUserId)), {
+      coordination_id: Number(current.id),
+      user_id: Number(inviteeUserId),
+      proposal_id: Number(proposal.id),
+      coordination_version: coordVersion,
+      decision: 'confirm',
+      status: 'active',
+      source: 'direct_accept',
+      create_time: timestamp
+    })
+
+    // Final CAS reload: status + invitation_version must still match
+    const refreshed = await adapter.byDocId('date_coordination', coordination._id)
+    if (!refreshed
+      || refreshed.status !== 'inviting_partner'
+      || Number(refreshed.invitation_version) !== submittedVersion
+      || refreshed.invitation_responded_at) {
+      const err = new Error('对方刚刚更新了约会安排，请查看最新方案后再确认')
+      err.code = 'STALE_INVITATION_VERSION'
+      err.refresh_invitation = true
+      throw err
+    }
+
+    const updated = await adapter.updateByDoc('date_coordination', refreshed, {
+      status: nextStatusValue || 'arranged',
+      business_state: 'completed',
+      invitation_responded_at: invitationRespondedAt || timestamp,
+      invitee_intent: 'accept',
+      accepted_base_invitation_version: submittedVersion,
+      final_proposal_id: Number(proposal.id)
+    })
+
+    return {
+      coordination: updated,
+      proposal,
+      arranged: true,
+      idempotent: false,
+      stale: false
+    }
+  })
+}
+
 async function commitCoordinationConfirmation(coordination, proposal, input = {}, timestamp = now()) {
   if (!coordination || !coordination._id || !proposal || !proposal._id) throw new Error('方案已失效，请刷新后重试')
   const userId = Number(input.user_id || 0)
@@ -667,6 +800,7 @@ module.exports = {
   completeCoordinationProcessing,
   failCoordinationProcessing,
   commitCoordinationConfirmation,
+  commitDirectInvitationAccept,
   authError,
   withCollection
 }

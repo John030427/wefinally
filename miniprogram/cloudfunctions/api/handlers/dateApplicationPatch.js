@@ -10,6 +10,10 @@ const {
 const {
   publicInvitationProposal,
   invitationProposalOf,
+  invitationPrimaryOf,
+  resolvePrimaryInvitationProposal,
+  derivePrimaryFromSingletonPrefs,
+  primaryFitsPreference,
   evidenceFromChanges,
   mergeInvitationWithOverrides,
   allExplicitEvidence
@@ -382,16 +386,19 @@ function createDateApplicationPatchHandlers(overrides = {}) {
     const hasBothApplications = nextApplications.has(Number(coordination.user_a_id))
       && nextApplications.has(Number(coordination.user_b_id))
     const stillInviting = coordination.status === STATUS.INVITING_PARTNER
+    const nextRecoordCount = stillInviting
+      ? Number(coordination.recoordination_count || 0)
+      : Number(coordination.recoordination_count || 0) + 1
     const nextCoordination = Object.assign({}, coordination, {
       coordination_version: newVersion,
-      recoordination_count: Number(coordination.recoordination_count || 0) + 1
+      recoordination_count: nextRecoordCount
     })
     const queued = hasBothApplications && !stillInviting
       ? enqueueProcessing(nextCoordination, { version: newVersion, now: dep('now')() })
       : nextCoordination
     const update = {
       coordination_version: newVersion,
-      recoordination_count: nextCoordination.recoordination_count,
+      recoordination_count: nextRecoordCount,
       status: stillInviting
         ? STATUS.INVITING_PARTNER
         : (hasBothApplications ? queued.status : STATUS.COLLECTING_PREFERENCES),
@@ -415,6 +422,36 @@ function createDateApplicationPatchHandlers(overrides = {}) {
       update.invitation_proposal = publicInvitationProposal(nextApplication)
       update.invitation_version = initiatorPreferenceVersion
       update.initiator_agreed_invitation_version = initiatorPreferenceVersion
+      const primaryInput = (patch.changes && (patch.changes.invitation_primary_proposal || patch.changes.primary_proposal))
+        || (patch.preview && patch.preview.invitation_primary_proposal)
+        || {}
+      try {
+        update.invitation_primary_proposal = resolvePrimaryInvitationProposal(
+          Object.keys(primaryInput).length ? { invitation_primary_proposal: primaryInput } : {},
+          nextApplication,
+          { user_a_id: coordination.user_a_id, user_b_id: coordination.user_b_id }
+        )
+      } catch (err) {
+        // Keep previous primary if still valid under new prefs; otherwise require explicit primary.
+        // Legacy inviting rows may lack invitation_primary_proposal — derive from prior singleton prefs.
+        let previous = invitationPrimaryOf(coordination, null, {
+          user_a_id: coordination.user_a_id,
+          user_b_id: coordination.user_b_id
+        })
+        if (!previous || !previous.date) {
+          const priorApp = latestForUser(rows, Number(user.id), oldVersion)
+          previous = derivePrimaryFromSingletonPrefs(
+            priorApp && priorApp.application,
+            coordination.user_a_id,
+            coordination.user_b_id
+          )
+        }
+        if (previous && primaryFitsPreference(previous, nextApplication)) {
+          update.invitation_primary_proposal = previous
+        } else {
+          throw err
+        }
+      }
     }
     const updatedCoordination = await dep('updateByDoc')('date_coordination', coordination, update)
     const appliedPatch = await dep('updateByDoc')('date_application_patch', patch, {

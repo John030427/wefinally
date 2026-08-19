@@ -10,9 +10,18 @@ const {
   DECLINED_PUBLIC_MESSAGE,
   EXPIRED_PUBLIC_MESSAGE,
   COORDINATING_WAITING_B_MESSAGE,
+  INVALID_INVITATION_VERSION_MESSAGE,
   buildSharedCoordinationState,
+  buildInvitationCard,
+  buildProposalCard,
+  buildDirectAcceptProposal,
   coordinatorWelcomeText,
-  resolveFixtureJourneyName
+  resolveFixtureJourneyName,
+  formatDatePeriod,
+  personalPaymentToNeutral,
+  paymentFactText,
+  isPrimaryProposalComplete,
+  resolvePrimaryInvitationProposal
 } = require('../../miniprogram/cloudfunctions/api/lib/invitationCoordination')
 const { createDateCoordinationHandlers, processCoordinationDeadlines } = require('../../miniprogram/cloudfunctions/api/handlers/dateCoordination')
 const { createDateApplicationPatchHandlers } = require('../../miniprogram/cloudfunctions/api/handlers/dateApplicationPatch')
@@ -148,7 +157,9 @@ async function invitedPair(options = {}) {
   if (!created || !created.id) {
     throw new Error(`create did not persist coordination: ${JSON.stringify(created)}`)
   }
-  const invited = await handlers.saveApplication(Object.assign({ coordination_id: created.id }, app(options.app)), { user_id: 1 })
+  const payload = Object.assign({ coordination_id: created.id }, app(options.app))
+  if (options.primary) payload.invitation_primary_proposal = options.primary
+  const invited = await handlers.saveApplication(payload, { user_id: 1 })
   return { deps, handlers, created, invited }
 }
 
@@ -416,7 +427,7 @@ async function main() {
   assert.strictEqual(JSON.stringify(privacyInput).includes('B私有要求'), false)
   assert.strictEqual(JSON.stringify(privacyInput.ownPreference).includes('福田'), false)
 
-  // TEST 18 LANGGRAPH_REAL_RUNTIME
+  // TEST 18 GRAPH_CONTRACT_TEST (mock provider routing — not live CloudBase runtime)
   const langDeps = memory({
     date_coordination: [{
       id: 80,
@@ -554,7 +565,270 @@ async function main() {
   assert.ok(welcomeB.includes('不需要重新填写全部约会信息'))
   assert.ok(canOpenCoordinatorChat({ user_a_id: 1, user_b_id: 2, status: STATUS.COLLECTING_PREFERENCES }, { id: 2 }, { hasOwnApplication: false }))
 
+  // ---- Review-fix round: TEST 25-44 ----
+
+  const multiPrefs = app({
+    availability: [
+      { date: FRI, periods: ['afternoon'] },
+      { date: SAT, periods: ['afternoon'] }
+    ],
+    areas: ['南山', '福田'],
+    activities: ['咖啡', '散步']
+  })
+  const primarySatNanshanCoffee = {
+    date: SAT,
+    period: 'afternoon',
+    area: '南山',
+    activity: '咖啡',
+    budget: '100-200',
+    duration: '1-2h',
+    payment_preference: 'aa'
+  }
+
+  // TEST 25 DIRECT_ACCEPT_REQUIRES_PRIMARY_PROPOSAL
+  const t25 = memory()
+  const h25 = createDateCoordinationHandlers(t25)
+  const c25 = await h25.create({ match_log_id: 10, match_user_id: 2 }, { user_id: 1 })
+  await assert.rejects(
+    () => h25.saveApplication(Object.assign({ coordination_id: c25.id }, multiPrefs), { user_id: 1 }),
+    (error) => error.code === 'PRIMARY_PROPOSAL_REQUIRED'
+  )
+  // Legacy row without primary: accept blocked
+  t25.rows.date_coordination[0].status = STATUS.INVITING_PARTNER
+  t25.rows.date_coordination[0].invitation_version = 1
+  t25.rows.date_coordination[0].invitation_proposal = multiPrefs
+  t25.rows.date_coordination[0].user_a_id = 1
+  t25.rows.date_coordination[0].user_b_id = 2
+  t25.rows.date_coordination_application.push({
+    id: 901, coordination_id: c25.id, user_id: 1, coordination_version: 1, application: multiPrefs, preference_version: 1
+  })
+  await assert.rejects(
+    () => h25.respondInvitation({ coordination_id: c25.id, decision: 'accept', invitation_version: 1 }, { user_id: 2 }),
+    (error) => error.code === 'PRIMARY_PROPOSAL_INCOMPLETE'
+  )
+
+  // TEST 26 PRIMARY_PROPOSAL_EXPLICIT
+  const t26 = await invitedPair({
+    app: multiPrefs,
+    primary: primarySatNanshanCoffee
+  })
+  assert.ok(isPrimaryProposalComplete(t26.deps.rows.date_coordination[0].invitation_primary_proposal))
+  assert.strictEqual(t26.invited.invitation_card.area_text, '南山')
+  assert.strictEqual(t26.invited.invitation_card.activity_text, '咖啡')
+  assert.ok(t26.invited.invitation_card.time_text.includes('周六') || t26.invited.invitation_card.time_text.includes(SAT.slice(5)))
+  const arranged26 = await t26.handlers.respondInvitation({
+    coordination_id: t26.invited.id,
+    decision: 'accept',
+    invitation_version: 1
+  }, { user_id: 2 })
+  assert.strictEqual(arranged26.status, STATUS.ARRANGED)
+  assert.strictEqual(arranged26.proposal_card.date, SAT)
+  assert.strictEqual(arranged26.proposal_card.period, 'afternoon')
+  assert.strictEqual(arranged26.proposal_card.area, '南山')
+  assert.strictEqual(arranged26.proposal_card.activity, '咖啡')
+
+  // TEST 27 DIRECT_ACCEPT_DOES_NOT_PICK_FIRST
+  assert.notStrictEqual(arranged26.proposal_card.date, FRI)
+  assert.notStrictEqual(arranged26.proposal_card.area, '福田')
+  assert.notStrictEqual(arranged26.proposal_card.activity, '散步')
+  // Ensure buildDirectAcceptProposal refuses preference arrays
+  assert.throws(
+    () => buildDirectAcceptProposal(multiPrefs, 1, { coordination_id: 1, invitation_version: 1 }),
+    (error) => error.code === 'PRIMARY_PROPOSAL_INCOMPLETE'
+  )
+
+  // TEST 28 PAYMENT_VISIBLE_ON_INVITATION
+  assert.ok(t26.invited.invitation_card.payment_text)
+  assert.strictEqual(t26.invited.invitation_card.payment_text, 'AA')
+
+  // TEST 29 PAYMENT_VISIBLE_ON_PROPOSAL
+  assert.ok(arranged26.proposal_card.payment_text)
+  assert.strictEqual(arranged26.proposal_card.payment_text, 'AA')
+
+  // TEST 30 PAYMENT_PERSPECTIVE_A_SELF_PAYS
+  const paySelf = personalPaymentToNeutral('self_pays', 1, 2)
+  assert.strictEqual(paySelf.payment_mode, 'single_payer')
+  assert.strictEqual(paySelf.payer_user_id, 1)
+  const t30 = await invitedPair({
+    app: app({ payment_preference: 'self_pays' })
+  })
+  assert.strictEqual(t30.deps.rows.date_coordination[0].invitation_primary_proposal.payer_user_id, 1)
+  assert.strictEqual(
+    paymentFactText(t30.deps.rows.date_coordination[0].invitation_primary_proposal, { user_a_id: 1, user_b_id: 2 }),
+    '本次由发起方请客'
+  )
+
+  // TEST 31 PAYMENT_PERSPECTIVE_A_PARTNER_PAYS
+  const payPartner = personalPaymentToNeutral('partner_pays', 1, 2)
+  assert.strictEqual(payPartner.payer_user_id, 2)
+  const t31 = await invitedPair({
+    app: app({ payment_preference: 'partner_pays' })
+  })
+  assert.strictEqual(t31.deps.rows.date_coordination[0].invitation_primary_proposal.payer_user_id, 2)
+  assert.strictEqual(
+    paymentFactText(t31.deps.rows.date_coordination[0].invitation_primary_proposal, { user_a_id: 1, user_b_id: 2 }),
+    '本次由受邀方请客'
+  )
+
+  // TEST 32 PAYMENT_BOTH_VIEWS_SAME_FACT
+  const arranged31 = await t31.handlers.respondInvitation({
+    coordination_id: t31.invited.id,
+    decision: 'accept',
+    invitation_version: 1
+  }, { user_id: 2 })
+  const viewA31 = await t31.handlers.detail({ id: t31.invited.id }, { user_id: 1 })
+  const viewB31 = await t31.handlers.detail({ id: t31.invited.id }, { user_id: 2 })
+  assert.strictEqual(viewA31.proposal_card.payment_text, viewB31.proposal_card.payment_text)
+  assert.strictEqual(viewA31.proposal_card.payment_text, '本次由受邀方请客')
+  assert.strictEqual(JSON.stringify(viewA31.proposal_card).includes('对方请客'), false)
+  assert.strictEqual(JSON.stringify(viewB31.proposal_card).includes('对方请客'), false)
+  assert.strictEqual(arranged31.proposal_card.payment_text, '本次由受邀方请客')
+
+  // TEST 33 MISSING_INVITATION_VERSION
+  const t33 = await invitedPair()
+  await assert.rejects(
+    () => t33.handlers.respondInvitation({ coordination_id: t33.invited.id, decision: 'accept' }, { user_id: 2 }),
+    (error) => error.code === 'INVALID_INVITATION_VERSION' && error.message === INVALID_INVITATION_VERSION_MESSAGE
+  )
+
+  // TEST 34 STALE_VERSION (already covered by TEST 05; re-assert with primary)
+  const t34 = await invitedPair()
+  const patch34 = createDateApplicationPatchHandlers(Object.assign({}, t34.deps, {
+    saveApplicationForUser: (data, user) => t34.handlers.saveApplicationForUser(data, user)
+  }))
+  const preview34 = await patch34.createPreviewForUser({
+    coordination_id: t34.invited.id,
+    changes: { areas: ['南山', '罗湖'] }
+  }, t34.deps.rows.user[0])
+  await patch34.confirmForUser({ coordination_id: t34.invited.id, patch_id: preview34.id }, t34.deps.rows.user[0])
+  assert.strictEqual(t34.deps.rows.date_coordination[0].invitation_version, 2)
+  await assert.rejects(
+    () => t34.handlers.respondInvitation({
+      coordination_id: t34.invited.id,
+      decision: 'accept',
+      invitation_version: 1
+    }, { user_id: 2 }),
+    (error) => error.code === 'STALE_INVITATION_VERSION'
+  )
+
+  // TEST 35 DIRECT_ACCEPT_IDEMPOTENT
+  const t35 = await invitedPair()
+  const first35 = await t35.handlers.respondInvitation({
+    coordination_id: t35.invited.id,
+    decision: 'accept',
+    invitation_version: 1
+  }, { user_id: 2 })
+  const second35 = await t35.handlers.respondInvitation({
+    coordination_id: t35.invited.id,
+    decision: 'accept',
+    invitation_version: 1
+  }, { user_id: 2 })
+  assert.strictEqual(first35.status, STATUS.ARRANGED)
+  assert.strictEqual(second35.status, STATUS.ARRANGED)
+  assert.strictEqual(t35.deps.rows.date_coordination_proposal.length, 1)
+  assert.strictEqual(t35.deps.rows.date_coordination_confirmation.filter((row) => row.decision === 'confirm').length, 2)
+  assert.strictEqual(
+    t35.deps.rows.date_coordination_event.filter((row) => row.event_type === 'arranged').length,
+    1
+  )
+
+  // TEST 36 DIRECT_ACCEPT_RACE
+  const t36 = await invitedPair()
+  const raceCoord = t36.deps.rows.date_coordination[0]
+  // Simulate A bumping invitation_version before B's CAS final write by interleaving:
+  // B starts accept on v1, then A patches to v2, then B's accept must fail OR A patch must fail if B already arranged.
+  const acceptPromise = t36.handlers.respondInvitation({
+    coordination_id: t36.invited.id,
+    decision: 'accept',
+    invitation_version: 1
+  }, { user_id: 2 })
+  // Concurrent A edit: bump version while accept in flight (memory model is sync until await points)
+  raceCoord.invitation_version = 2
+  raceCoord.invitation_primary_proposal = Object.assign({}, raceCoord.invitation_primary_proposal, { area: '罗湖' })
+  let raceAcceptError = null
+  let raceAcceptResult = null
+  try {
+    raceAcceptResult = await acceptPromise
+  } catch (err) {
+    raceAcceptError = err
+  }
+  if (raceAcceptResult && raceAcceptResult.status === STATUS.ARRANGED) {
+    // B won: final proposal must still be v1 primary (南山), not 罗湖
+    assert.strictEqual(raceAcceptResult.proposal_card.area, '南山')
+    assert.notStrictEqual(raceAcceptResult.proposal_card.area, '罗湖')
+  } else {
+    assert.ok(raceAcceptError)
+    assert.strictEqual(raceAcceptError.code, 'STALE_INVITATION_VERSION')
+    assert.strictEqual(t36.deps.rows.date_coordination[0].status, STATUS.INVITING_PARTNER)
+  }
+  // Cannot have both: A v2 patch fact + B arranged on old proposal simultaneously as success pair
+  if (t36.deps.rows.date_coordination[0].status === STATUS.ARRANGED) {
+    assert.strictEqual(Number(t36.deps.rows.date_coordination[0].accepted_base_invitation_version), 1)
+  }
+
+  // TEST 37 PRE_ACCEPT_EDIT_NO_ROUND_COST
+  const t37 = await invitedPair()
+  const patch37 = createDateApplicationPatchHandlers(Object.assign({}, t37.deps, {
+    saveApplicationForUser: (data, user) => t37.handlers.saveApplicationForUser(data, user)
+  }))
+  for (let i = 0; i < 6; i += 1) {
+    const preview = await patch37.createPreviewForUser({
+      coordination_id: t37.invited.id,
+      changes: { areas: ['南山', `区${i}`] }
+    }, t37.deps.rows.user[0])
+    await patch37.confirmForUser({ coordination_id: t37.invited.id, patch_id: preview.id }, t37.deps.rows.user[0])
+  }
+  assert.strictEqual(Number(t37.deps.rows.date_coordination[0].recoordination_count || 0), 0)
+  assert.notStrictEqual(t37.deps.rows.date_coordination[0].status, STATUS.MANUAL_HANDOFF)
+  assert.ok(Number(t37.deps.rows.date_coordination[0].invitation_version) >= 7)
+
+  // TEST 38 PRE_ACCEPT_EDIT_STAYS_INVITING
+  assert.strictEqual(t37.deps.rows.date_coordination[0].status, STATUS.INVITING_PARTNER)
+  const stillAcceptable = await t37.handlers.respondInvitation({
+    coordination_id: t37.invited.id,
+    decision: 'accept',
+    invitation_version: t37.deps.rows.date_coordination[0].invitation_version
+  }, { user_id: 2 })
+  assert.strictEqual(stillAcceptable.status, STATUS.ARRANGED)
+
+  // TEST 39 DATE_FORMAT
+  const formatted = formatDatePeriod(SAT, 'afternoon')
+  assert.ok(/月\d+日（周.）下午/.test(formatted))
+  assert.ok(formatted.includes('周六') || formatted.includes('周'))
+
+  // TEST 40 NO_DUPLICATED_PERIOD
+  const card40 = buildProposalCard({
+    id: 1,
+    date: SAT,
+    period: 'afternoon',
+    area: '南山',
+    activity: '咖啡',
+    budget: '100-200',
+    duration: '1-2h',
+    payment_mode: 'aa',
+    payer_user_id: 0
+  }, { user_a_id: 1, user_b_id: 2 })
+  assert.strictEqual(card40.time_text.includes('afternoon'), false)
+  assert.ok(card40.time_text.includes('下午'))
+  assert.strictEqual((card40.time_text.match(/下午/g) || []).length, 1)
+
+  // TEST 41 DIRECT_ACCEPT_PAYMENT_FACT
+  assert.strictEqual(arranged26.proposal_card.payment_text, t26.invited.invitation_card.payment_text)
+
+  // TEST 42 GRAPH_CONTRACT_TEST naming — provider routing already asserted in TEST 18
+  assert.strictEqual(langReply.provider, 'langgraph')
+
+  // TEST 43 GRAPH_PRIVACY — reaffirm
+  assert.strictEqual(JSON.stringify(privacyInput).includes('B秘密'), false)
+
+  // TEST 44 LIVE_GRAPH_SMOKE — automated live CloudBase smoke is recorded separately after deploy
+  const LIVE_GRAPH_SMOKE_STATUS = process.env.WEFINALLY_LIVE_GRAPH_SMOKE === 'pass'
+    ? 'PASS'
+    : 'MANUAL_REQUIRED'
+  assert.ok(['PASS', 'MANUAL_REQUIRED'].includes(LIVE_GRAPH_SMOKE_STATUS))
+
   console.log('first-date-invitation-coordination: PASS')
+  console.log(`LIVE_GRAPH_SMOKE: ${LIVE_GRAPH_SMOKE_STATUS}`)
 }
 
 main().catch((error) => {

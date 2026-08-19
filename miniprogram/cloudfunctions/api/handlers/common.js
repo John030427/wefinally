@@ -91,14 +91,17 @@ async function config() {
     safety: safetyConfig(),
     demo: await demoFlags(),
     api_schema_version: 2,
-    date_coordination_contract_version: 3,
+    date_coordination_contract_version: 4,
     capabilities: {
       notifications: true,
       date_coordinator_pre_accept_chat: true,
       bilateral_coordination: true,
       first_date_invitation: true,
       invitation_direct_accept: true,
-      invitation_coordinate: true
+      invitation_coordinate: true,
+      invitation_primary_proposal: true,
+      direct_accept_cas: true,
+      neutral_payment_proposal: true
     }
   }
 }

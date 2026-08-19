@@ -1,9 +1,13 @@
 /**
  * First-date invitation product model.
  * Facts live here (cards, versions, evidence). LLM only explains them.
+ *
+ * Preference = flexible multi-value range.
+ * Primary Invitation Proposal = single explicit suggested arrangement.
+ * Shared proposals use neutral payment (never self_pays / partner_pays).
  */
 
-const { STATUS, computeOverlap, PERIODS } = require('./dateCoordinationPolicy')
+const { STATUS, PERIODS } = require('./dateCoordinationPolicy')
 
 const STALE_INVITATION_MESSAGE = '对方刚刚更新了约会安排，请查看最新方案后再确认。'
 const WAITING_PARTNER_MESSAGE = '当前正在等待对方回应。'
@@ -11,6 +15,9 @@ const DECLINED_PUBLIC_MESSAGE = '对方暂未接受本次约会邀请。'
 const EXPIRED_PUBLIC_MESSAGE = '本次约会邀请暂未得到回应，协调已结束。'
 const COORDINATING_WAITING_B_MESSAGE = '对方已接受约会邀请，目前正在补充自己的安排。'
 const INITIATOR_INVITE_SENT_MESSAGE = '约会邀请已发送。当前正在等待对方回应。'
+const INVALID_INVITATION_VERSION_MESSAGE = '请提交邀请版本后再确认'
+const PRIMARY_PROPOSAL_REQUIRED_MESSAGE = '请明确本次建议安排后再发送邀请'
+const PRIMARY_PROPOSAL_INCOMPLETE_MESSAGE = '当前建议安排不完整，请先和 AI 协调其他安排，或等待发起方更新方案'
 
 const PERIOD_LABELS = Object.freeze({
   morning: '上午',
@@ -31,12 +38,11 @@ const DURATION_LABELS = Object.freeze({
   '2-3h': '2–3小时',
   flexible: '灵活'
 })
-const PAYMENT_LABELS = Object.freeze({
+const PERSONAL_PAYMENT_LABELS = Object.freeze({
   aa: 'AA',
-  partner_pays: '对方请客',
-  self_pays: '我请客',
-  flexible: '灵活',
-  one_pays: '一方请客'
+  partner_pays: '希望对方请客',
+  self_pays: '我愿意请客',
+  flexible: '灵活'
 })
 const WEEKDAYS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
 const EVIDENCE_FIELDS = Object.freeze([
@@ -63,6 +69,24 @@ function staleInvitationError() {
   return error
 }
 
+function missingInvitationVersionError() {
+  const error = new Error(INVALID_INVITATION_VERSION_MESSAGE)
+  error.code = 'INVALID_INVITATION_VERSION'
+  return error
+}
+
+function primaryProposalRequiredError(message) {
+  const error = new Error(message || PRIMARY_PROPOSAL_REQUIRED_MESSAGE)
+  error.code = 'PRIMARY_PROPOSAL_REQUIRED'
+  return error
+}
+
+function primaryProposalIncompleteError() {
+  const error = new Error(PRIMARY_PROPOSAL_INCOMPLETE_MESSAGE)
+  error.code = 'PRIMARY_PROPOSAL_INCOMPLETE'
+  return error
+}
+
 function publicInvitationProposal(application = {}) {
   return {
     availability: Array.isArray(application.availability) ? application.availability : [],
@@ -80,33 +104,269 @@ function weekdayLabel(dateStr) {
   return WEEKDAYS[date.getUTCDay()]
 }
 
-function formatAvailability(availability) {
+/** Shared card formatter: 8月22日（周六）下午 */
+function formatDatePeriod(dateStr, period) {
+  const raw = String(dateStr || '').slice(0, 10)
+  const date = new Date(`${raw}T12:00:00.000Z`)
+  if (!raw || Number.isNaN(date.getTime())) {
+    const periodLabel = PERIOD_LABELS[period] || period || ''
+    return [raw, periodLabel].filter(Boolean).join('') || '待确认'
+  }
+  const month = date.getUTCMonth() + 1
+  const day = date.getUTCDate()
+  const weekday = WEEKDAYS[date.getUTCDay()]
+  const periodLabel = PERIOD_LABELS[period] || period || ''
+  return `${month}月${day}日（${weekday}）${periodLabel}`
+}
+
+function formatAvailabilityRange(availability) {
   return (Array.isArray(availability) ? availability : []).map((item) => {
     const periods = (item.periods || []).map((period) => PERIOD_LABELS[period] || period).join('、')
-    return `${weekdayLabel(item.date)}${periods}`
+    const raw = String(item.date || '').slice(0, 10)
+    const date = new Date(`${raw}T12:00:00.000Z`)
+    if (Number.isNaN(date.getTime())) return `${raw}${periods}`
+    return `${date.getUTCMonth() + 1}月${date.getUTCDate()}日（${WEEKDAYS[date.getUTCDay()]}）${periods}`
   }).filter(Boolean).join('，')
+}
+
+function formatAvailability(availability) {
+  return formatAvailabilityRange(availability)
 }
 
 function formatList(values) {
   return (Array.isArray(values) ? values : []).filter(Boolean).join(' / ')
 }
 
-function buildInvitationCard(proposal = {}, version = 1) {
-  const snapshot = publicInvitationProposal(proposal)
+/**
+ * Personal preference (viewer-relative) → neutral shared payment fact.
+ */
+function personalPaymentToNeutral(preference, selfUserId, partnerUserId) {
+  const value = String(preference || '').trim()
+  if (value === 'aa') return { payment_mode: 'aa', payer_user_id: 0 }
+  if (value === 'flexible') return { payment_mode: 'flexible', payer_user_id: 0 }
+  if (value === 'self_pays') {
+    return { payment_mode: 'single_payer', payer_user_id: Number(selfUserId) || 0 }
+  }
+  if (value === 'partner_pays') {
+    return { payment_mode: 'single_payer', payer_user_id: Number(partnerUserId) || 0 }
+  }
+  return { payment_mode: '', payer_user_id: 0 }
+}
+
+/**
+ * Resolve overlap personal prefs into one neutral shared payment.
+ * Compatible pairs: same / flexible / self↔partner (one pays the self_pays side).
+ */
+function resolveSharedPayment(paymentA, paymentB, userAId, userBId) {
+  const a = String(paymentA || '')
+  const b = String(paymentB || '')
+  if (!a || !b) return { payment_mode: '', payer_user_id: 0 }
+  if (a === 'aa' && (b === 'aa' || b === 'flexible')) return { payment_mode: 'aa', payer_user_id: 0 }
+  if (b === 'aa' && (a === 'aa' || a === 'flexible')) return { payment_mode: 'aa', payer_user_id: 0 }
+  if (a === 'flexible' && b === 'flexible') return { payment_mode: 'flexible', payer_user_id: 0 }
+  if (a === 'flexible') return personalPaymentToNeutral(b, userBId, userAId)
+  if (b === 'flexible') return personalPaymentToNeutral(a, userAId, userBId)
+  if (a === 'self_pays' && b === 'partner_pays') {
+    return { payment_mode: 'single_payer', payer_user_id: Number(userAId) }
+  }
+  if (a === 'partner_pays' && b === 'self_pays') {
+    return { payment_mode: 'single_payer', payer_user_id: Number(userBId) }
+  }
+  if (a === b && (a === 'aa' || a === 'flexible')) return personalPaymentToNeutral(a, userAId, userBId)
+  // Both want to pay / both want partner to pay → no shared agreement
+  return { payment_mode: '', payer_user_id: 0 }
+}
+
+function normalizeNeutralPayment(input = {}, fallback = {}) {
+  const mode = String(input.payment_mode || fallback.payment_mode || '').trim()
+  const payer = Number(input.payer_user_id != null ? input.payer_user_id : (fallback.payer_user_id || 0)) || 0
+  if (mode === 'aa' || mode === 'flexible') return { payment_mode: mode, payer_user_id: 0 }
+  if (mode === 'single_payer' && payer > 0) return { payment_mode: 'single_payer', payer_user_id: payer }
+  if (mode === 'payer_a' || mode === 'payer_b') {
+    return { payment_mode: 'single_payer', payer_user_id: payer }
+  }
+  // Legacy shared one_pays without payer — incomplete until resolved
+  if (String(input.payment_preference || '') === 'aa') return { payment_mode: 'aa', payer_user_id: 0 }
+  if (String(input.payment_preference || '') === 'flexible') return { payment_mode: 'flexible', payer_user_id: 0 }
+  return { payment_mode: mode || '', payer_user_id: payer }
+}
+
+/**
+ * Neutral payment display — same text for A and B (no “对方请客”).
+ */
+function paymentFactText(payment = {}, context = {}) {
+  const normalized = normalizeNeutralPayment(payment)
+  if (normalized.payment_mode === 'aa') return 'AA'
+  if (normalized.payment_mode === 'flexible') return '灵活'
+  if (normalized.payment_mode === 'single_payer' && normalized.payer_user_id > 0) {
+    const payer = Number(normalized.payer_user_id)
+    if (context.user_a_id && payer === Number(context.user_a_id)) return '本次由发起方请客'
+    if (context.user_b_id && payer === Number(context.user_b_id)) return '本次由受邀方请客'
+    return '本次由一方请客'
+  }
+  // Never render personal perspective labels on shared cards
+  const legacy = String(payment.payment_preference || '')
+  if (legacy === 'aa') return 'AA'
+  if (legacy === 'flexible') return '灵活'
+  if (legacy === 'one_pays') return '本次由一方请客'
+  if (legacy === 'partner_pays' || legacy === 'self_pays') return '待确认'
+  return normalized.payment_mode || legacy || '待确认'
+}
+
+function publicPrimaryProposal(input = {}, context = {}) {
+  if (!input || typeof input !== 'object') return null
+  const date = String(input.date || '').slice(0, 10)
+  const period = String(input.period || '').trim()
+  const area = String(input.area || '').trim()
+  const activity = String(input.activity || '').trim()
+  const budget = String(input.budget || '').trim()
+  const duration = String(input.duration || '').trim()
+  let payment = normalizeNeutralPayment(input)
+  if (!payment.payment_mode && input.payment_preference && context.user_a_id) {
+    payment = personalPaymentToNeutral(input.payment_preference, context.user_a_id, context.user_b_id)
+  }
   return {
-    invitation_version: Number(version || proposal.invitation_version || 1),
-    time_text: formatAvailability(snapshot.availability) || '待确认',
-    area_text: formatList(snapshot.areas) || '待确认',
-    activity_text: formatList(snapshot.activities) || '待确认',
-    budget_text: BUDGET_LABELS[snapshot.budget] || snapshot.budget || '待确认',
-    duration_text: DURATION_LABELS[snapshot.duration] || snapshot.duration || '待确认',
-    payment_text: PAYMENT_LABELS[snapshot.payment_preference] || snapshot.payment_preference || '待确认',
-    availability: snapshot.availability,
-    areas: snapshot.areas,
-    activities: snapshot.activities,
-    budget: snapshot.budget,
-    payment_preference: snapshot.payment_preference,
-    duration: snapshot.duration
+    date,
+    period,
+    area,
+    activity,
+    budget,
+    duration,
+    payment_mode: payment.payment_mode,
+    payer_user_id: payment.payer_user_id
+  }
+}
+
+function isPrimaryProposalComplete(proposal) {
+  if (!proposal) return false
+  const paymentOk = proposal.payment_mode === 'aa'
+    || proposal.payment_mode === 'flexible'
+    || (proposal.payment_mode === 'single_payer' && Number(proposal.payer_user_id) > 0)
+  return Boolean(
+    proposal.date
+    && PERIODS.includes(proposal.period)
+    && proposal.area
+    && proposal.activity
+    && proposal.budget
+    && proposal.duration
+    && paymentOk
+  )
+}
+
+function preferenceHasSlot(prefs, date, period) {
+  return (prefs.availability || []).some((item) => item.date === date && (item.periods || []).includes(period))
+}
+
+function primaryFitsPreference(primary, prefs) {
+  if (!isPrimaryProposalComplete(primary) || !prefs) return false
+  if (!preferenceHasSlot(prefs, primary.date, primary.period)) return false
+  if (!(prefs.areas || []).includes(primary.area)) return false
+  if (!(prefs.activities || []).includes(primary.activity)) return false
+  if (String(prefs.budget || '') !== String(primary.budget || '')) return false
+  if (String(prefs.duration || '') !== String(primary.duration || '')) return false
+  return true
+}
+
+function preferenceNeedsExplicitPrimary(prefs = {}) {
+  const availability = Array.isArray(prefs.availability) ? prefs.availability : []
+  const periodCount = availability.reduce((sum, item) => sum + (item.periods || []).length, 0)
+  if (availability.length !== 1 || periodCount !== 1) return true
+  if ((prefs.areas || []).length !== 1) return true
+  if ((prefs.activities || []).length !== 1) return true
+  return false
+}
+
+function derivePrimaryFromSingletonPrefs(prefs, userAId, userBId) {
+  if (preferenceNeedsExplicitPrimary(prefs)) return null
+  const slot = prefs.availability[0]
+  const payment = personalPaymentToNeutral(prefs.payment_preference, userAId, userBId)
+  return publicPrimaryProposal({
+    date: slot.date,
+    period: slot.periods[0],
+    area: prefs.areas[0],
+    activity: prefs.activities[0],
+    budget: prefs.budget,
+    duration: prefs.duration,
+    payment_mode: payment.payment_mode,
+    payer_user_id: payment.payer_user_id
+  }, { user_a_id: userAId, user_b_id: userBId })
+}
+
+function resolvePrimaryInvitationProposal(input = {}, prefs, context = {}) {
+  const explicit = publicPrimaryProposal(
+    input.invitation_primary_proposal || input.primary_proposal || input.primary || null,
+    context
+  )
+  if (explicit && isPrimaryProposalComplete(explicit)) {
+    if (prefs && !primaryFitsPreference(explicit, prefs)) {
+      throw primaryProposalRequiredError('本次建议安排必须落在你的可接受范围内')
+    }
+    return explicit
+  }
+  const derived = derivePrimaryFromSingletonPrefs(prefs, context.user_a_id, context.user_b_id)
+  if (derived && isPrimaryProposalComplete(derived)) return derived
+  throw primaryProposalRequiredError()
+}
+
+function invitationPrimaryOf(coordination = {}, initiatorApp = null, context = {}) {
+  const stored = coordination.invitation_primary_proposal
+  if (stored && typeof stored === 'object') {
+    return publicPrimaryProposal(stored, {
+      user_a_id: context.user_a_id || coordination.user_a_id,
+      user_b_id: context.user_b_id || coordination.user_b_id
+    })
+  }
+  return null
+}
+
+function buildInvitationCard(primaryOrPrefs = {}, version = 1, options = {}) {
+  const primary = options.primary
+    || (primaryOrPrefs && primaryOrPrefs.date && primaryOrPrefs.period
+      ? publicPrimaryProposal(primaryOrPrefs, options)
+      : null)
+  const prefs = options.preference || (
+    primaryOrPrefs && Array.isArray(primaryOrPrefs.availability)
+      ? publicInvitationProposal(primaryOrPrefs)
+      : null
+  )
+  const complete = isPrimaryProposalComplete(primary)
+  const paymentText = complete
+    ? paymentFactText(primary, {
+      user_a_id: options.user_a_id,
+      user_b_id: options.user_b_id
+    })
+    : '待确认'
+  const hasRange = Boolean(prefs) && (
+    (prefs.availability || []).reduce((n, item) => n + (item.periods || []).length, 0) > 1
+    || (prefs.areas || []).length > 1
+    || (prefs.activities || []).length > 1
+  )
+  return {
+    invitation_version: Number(version || 1),
+    primary_complete: complete,
+    time_text: complete ? formatDatePeriod(primary.date, primary.period) : (prefs ? formatAvailabilityRange(prefs.availability) : '待确认'),
+    area_text: complete ? (primary.area || '待确认') : (formatList(prefs && prefs.areas) || '待确认'),
+    activity_text: complete ? (primary.activity || '待确认') : (formatList(prefs && prefs.activities) || '待确认'),
+    budget_text: complete
+      ? (BUDGET_LABELS[primary.budget] || primary.budget || '待确认')
+      : (BUDGET_LABELS[prefs && prefs.budget] || (prefs && prefs.budget) || '待确认'),
+    duration_text: complete
+      ? (DURATION_LABELS[primary.duration] || primary.duration || '待确认')
+      : (DURATION_LABELS[prefs && prefs.duration] || (prefs && prefs.duration) || '待确认'),
+    payment_text: paymentText,
+    payment_mode: complete ? primary.payment_mode : '',
+    payer_user_id: complete ? Number(primary.payer_user_id || 0) : 0,
+    date: complete ? primary.date : '',
+    period: complete ? primary.period : '',
+    area: complete ? primary.area : '',
+    activity: complete ? primary.activity : '',
+    budget: complete ? primary.budget : (prefs && prefs.budget) || '',
+    duration: complete ? primary.duration : (prefs && prefs.duration) || '',
+    range_hint: hasRange ? '对方还有其他可调整范围' : '',
+    preference_range: prefs || null,
+    availability: prefs ? prefs.availability : [],
+    areas: prefs ? prefs.areas : [],
+    activities: prefs ? prefs.activities : []
   }
 }
 
@@ -166,6 +426,7 @@ function dimensionStatus(agreed, pending) {
 }
 
 function buildSharedCoordinationState(applicationA, applicationB, options = {}) {
+  const { computeOverlap } = require('./dateCoordinationPolicy')
   if (!applicationA) {
     return {
       ready: false,
@@ -184,11 +445,18 @@ function buildSharedCoordinationState(applicationA, applicationB, options = {}) 
       dimensions: []
     }
   }
-  const overlap = computeOverlap(applicationA, applicationB, { version: options.version || 1 })
+  const overlap = computeOverlap(applicationA, applicationB, {
+    version: options.version || 1,
+    user_a_id: options.user_a_id,
+    user_b_id: options.user_b_id
+  })
   const missing = new Set(overlap.missing_dimensions || [])
-  const times = (overlap.proposals || []).map((item) => `${weekdayLabel(item.date)}${PERIOD_LABELS[item.period] || item.period}`)
+  const times = (overlap.proposals || []).map((item) => formatDatePeriod(item.date, item.period))
   const uniqueTimes = [...new Set(times)]
   const first = overlap.proposals && overlap.proposals[0]
+  const paymentDisplay = first
+    ? paymentFactText(first, { user_a_id: options.user_a_id, user_b_id: options.user_b_id })
+    : ''
   const dimensions = [
     {
       key: 'time',
@@ -224,7 +492,7 @@ function buildSharedCoordinationState(applicationA, applicationB, options = {}) 
       key: 'payment',
       label: '费用方式',
       status: dimensionStatus(!missing.has('payment'), false),
-      display: missing.has('payment') ? '仍需要确认费用方式' : (PAYMENT_LABELS[first && first.payment_preference] || (first && first.payment_preference) || '已一致')
+      display: missing.has('payment') ? '仍需要确认费用方式' : (paymentDisplay || '已一致')
     }
   ]
   return {
@@ -237,8 +505,9 @@ function buildSharedCoordinationState(applicationA, applicationB, options = {}) 
   }
 }
 
-function buildProposalCard(proposal) {
+function buildProposalCard(proposal, options = {}) {
   if (!proposal) return null
+  const payment = normalizeNeutralPayment(proposal)
   return {
     id: Number(proposal.id || 0),
     proposal_key: proposal.proposal_key || '',
@@ -249,33 +518,48 @@ function buildProposalCard(proposal) {
     area: proposal.area || '',
     activity: proposal.activity || '',
     budget: proposal.budget || '',
-    payment_preference: proposal.payment_preference || '',
     duration: proposal.duration || '',
+    payment_mode: payment.payment_mode,
+    payer_user_id: payment.payer_user_id,
+    // Keep field for older clients; never expose personal perspective labels as truth
+    payment_preference: payment.payment_mode === 'aa' || payment.payment_mode === 'flexible'
+      ? payment.payment_mode
+      : (payment.payment_mode === 'single_payer' ? 'one_pays' : ''),
     time_text: proposal.date
-      ? `${weekdayLabel(proposal.date)}${PERIOD_LABELS[proposal.period] || proposal.period || ''}`
+      ? formatDatePeriod(proposal.date, proposal.period)
       : '待确认',
     area_text: proposal.area || '待确认',
     activity_text: proposal.activity || '待确认',
     budget_text: BUDGET_LABELS[proposal.budget] || proposal.budget || '待确认',
     duration_text: DURATION_LABELS[proposal.duration] || proposal.duration || '待确认',
-    payment_text: PAYMENT_LABELS[proposal.payment_preference] || proposal.payment_preference || '待确认'
+    payment_text: paymentFactText(Object.assign({}, proposal, payment), {
+      user_a_id: options.user_a_id,
+      user_b_id: options.user_b_id
+    })
   }
 }
 
-function buildDirectAcceptProposal(invitationProposal, version) {
-  const snapshot = publicInvitationProposal(invitationProposal)
-  const first = snapshot.availability[0] || { date: '', periods: [PERIODS[0]] }
-  const period = (first.periods && first.periods[0]) || 'afternoon'
+function buildDirectAcceptProposal(primary, version, options = {}) {
+  const proposal = publicPrimaryProposal(primary, options)
+  if (!isPrimaryProposalComplete(proposal)) {
+    throw primaryProposalIncompleteError()
+  }
+  const inviteVersion = Number(options.invitation_version || version || 1)
   return {
-    proposal_key: `invite-v${version}-${first.date}-${period}-${snapshot.areas[0] || 'area'}-${snapshot.activities[0] || 'activity'}`,
+    proposal_key: `direct:${options.coordination_id || 'x'}:v${inviteVersion}`,
     coordination_version: Number(version),
-    date: first.date,
-    period,
-    area: snapshot.areas[0] || '',
-    activity: snapshot.activities[0] || '',
-    budget: snapshot.budget,
-    payment_preference: snapshot.payment_preference,
-    duration: snapshot.duration,
+    invitation_version: inviteVersion,
+    date: proposal.date,
+    period: proposal.period,
+    area: proposal.area,
+    activity: proposal.activity,
+    budget: proposal.budget,
+    duration: proposal.duration,
+    payment_mode: proposal.payment_mode,
+    payer_user_id: proposal.payer_user_id,
+    payment_preference: proposal.payment_mode === 'aa' || proposal.payment_mode === 'flexible'
+      ? proposal.payment_mode
+      : 'one_pays',
     status: 'active',
     source: 'direct_accept'
   }
@@ -354,6 +638,7 @@ function buildCoordinationViewModel(input = {}) {
     STATUS.PROPOSING
   ].includes(status)
   const proposalReady = status === STATUS.WAITING_CONFIRMATIONS
+  const primaryComplete = Boolean(invitationCard && invitationCard.primary_complete)
   let viewState = 'active_coordination'
   if (status === STATUS.COLLECTING_INITIATOR) viewState = 'draft'
   else if (inviting && isInitiator) viewState = 'waiting_partner'
@@ -383,7 +668,7 @@ function buildCoordinationViewModel(input = {}) {
       }
       : null,
     show_coordinator_cta: Boolean(canOpenChat),
-    show_accept_invitation: Boolean(canRespond && inviting && isInvitee),
+    show_accept_invitation: Boolean(canRespond && inviting && isInvitee && primaryComplete),
     show_coordinate_instead: Boolean(canRespond && inviting && isInvitee),
     show_decline: Boolean(canRespond && inviting && isInvitee),
     show_confirm_proposal: Boolean(proposalReady && proposalCard),
@@ -405,15 +690,33 @@ module.exports = {
   EXPIRED_PUBLIC_MESSAGE,
   COORDINATING_WAITING_B_MESSAGE,
   INITIATOR_INVITE_SENT_MESSAGE,
+  INVALID_INVITATION_VERSION_MESSAGE,
+  PRIMARY_PROPOSAL_REQUIRED_MESSAGE,
+  PRIMARY_PROPOSAL_INCOMPLETE_MESSAGE,
   PERIOD_LABELS,
   BUDGET_LABELS,
   DURATION_LABELS,
+  PERSONAL_PAYMENT_LABELS,
   CANONICAL_JOURNEYS,
   staleInvitationError,
+  missingInvitationVersionError,
+  primaryProposalRequiredError,
+  primaryProposalIncompleteError,
   publicInvitationProposal,
+  publicPrimaryProposal,
+  isPrimaryProposalComplete,
+  preferenceNeedsExplicitPrimary,
+  derivePrimaryFromSingletonPrefs,
+  resolvePrimaryInvitationProposal,
+  primaryFitsPreference,
+  personalPaymentToNeutral,
+  resolveSharedPayment,
+  normalizeNeutralPayment,
+  paymentFactText,
   buildInvitationCard,
   invitationVersionOf,
   invitationProposalOf,
+  invitationPrimaryOf,
   allExplicitEvidence,
   evidenceFromChanges,
   mergeInvitationWithOverrides,
@@ -427,5 +730,7 @@ module.exports = {
   resolveFixtureJourneyName,
   buildCoordinationViewModel,
   formatAvailability,
+  formatAvailabilityRange,
+  formatDatePeriod,
   EVIDENCE_FIELDS
 }

@@ -65,7 +65,12 @@ function buildCoordinationDisplay(coordination) {
     receivedInvitation: status === 'inviting_partner' && role === 'invitee',
     shouldPoll: status === 'computing_overlap' && ['queued', 'processing'].includes(processingStatus),
     showCoordinatorCta,
-    showAcceptInvitation: Boolean(vm.show_accept_invitation || (status === 'inviting_partner' && role === 'invitee')),
+    showAcceptInvitation: Boolean(vm.show_accept_invitation || (
+      status === 'inviting_partner'
+      && role === 'invitee'
+      && coordination.invitation_card
+      && coordination.invitation_card.primary_complete
+    )),
     showCoordinateInstead: Boolean(vm.show_coordinate_instead || (status === 'inviting_partner' && role === 'invitee')),
     showDecline: Boolean(vm.show_decline || (status === 'inviting_partner' && role === 'invitee')),
     showApplicationForm: vm.show_application_form !== undefined
@@ -97,6 +102,39 @@ function buildSelection(form) {
     ;(item.periods || []).forEach((value) => { periods[item.date][value] = true })
   })
   return { activities, periods }
+}
+
+function buildPrimaryOptions(form) {
+  const slots = []
+  ;(form.availability || []).forEach((item) => {
+    ;(item.periods || []).forEach((period) => {
+      slots.push({ date: item.date, period, key: `${item.date}|${period}` })
+    })
+  })
+  const areas = form.areas || []
+  const activities = form.activities || []
+  const needsExplicit = slots.length > 1 || areas.length > 1 || activities.length > 1
+  return { slots, areas, activities, needsExplicit }
+}
+
+function syncPrimaryProposal(form, currentPrimary) {
+  const options = buildPrimaryOptions(form)
+  const next = Object.assign({}, currentPrimary || {})
+  if (options.slots.length === 1) {
+    next.date = options.slots[0].date
+    next.period = options.slots[0].period
+  } else if (next.date && next.period) {
+    const still = options.slots.some((slot) => slot.date === next.date && slot.period === next.period)
+    if (!still) {
+      next.date = ''
+      next.period = ''
+    }
+  }
+  if (options.areas.length === 1) next.area = options.areas[0]
+  else if (next.area && !options.areas.includes(next.area)) next.area = ''
+  if (options.activities.length === 1) next.activity = options.activities[0]
+  else if (next.activity && !options.activities.includes(next.activity)) next.activity = ''
+  return { primaryProposal: next, primaryOptions: options }
 }
 
 Page({
@@ -140,6 +178,18 @@ Page({
       transport_constraints: '',
       other_requirements: '',
       share_message: ''
+    },
+    primaryProposal: {
+      date: '',
+      period: '',
+      area: '',
+      activity: ''
+    },
+    primaryOptions: {
+      slots: [],
+      areas: [],
+      activities: [],
+      needsExplicit: false
     },
     selection: {
       activities: {},
@@ -272,6 +322,7 @@ Page({
       availability: application.availability || this.data.form.availability || [],
       activities: application.activities || this.data.form.activities || []
     })
+    const synced = syncPrimaryProposal(form, this.data.primaryProposal)
     this.setData({
       coordinationId: String(id),
       coordination,
@@ -290,6 +341,8 @@ Page({
       coordinatorHeroText: coordinationDisplay.coordinatorHeroText,
       form,
       selection: buildSelection(form),
+      primaryProposal: synced.primaryProposal,
+      primaryOptions: synced.primaryOptions,
       areaText: Array.isArray(form.areas) ? form.areas.join('、') : '',
       proposal,
       pageState: 'success'
@@ -407,19 +460,26 @@ Page({
     if (availability.some((item) => item.date === value)) return
     const nextAvailability = [...availability, { date: value, periods: ['afternoon'] }].slice(0, 5)
     const nextForm = Object.assign({}, this.data.form, { availability: nextAvailability })
+    const synced = syncPrimaryProposal(nextForm, this.data.primaryProposal)
     this.setData({
       selectedDate: value,
       'form.availability': nextAvailability,
-      selection: buildSelection(nextForm)
+      selection: buildSelection(nextForm),
+      primaryProposal: synced.primaryProposal,
+      primaryOptions: synced.primaryOptions
     })
   },
 
   removeAvailability(e) {
     const value = e.currentTarget.dataset.value
     const availability = (this.data.form.availability || []).filter((item) => item.date !== value)
+    const nextForm = Object.assign({}, this.data.form, { availability })
+    const synced = syncPrimaryProposal(nextForm, this.data.primaryProposal)
     this.setData({
       'form.availability': availability,
-      selection: buildSelection(Object.assign({}, this.data.form, { availability }))
+      selection: buildSelection(nextForm),
+      primaryProposal: synced.primaryProposal,
+      primaryOptions: synced.primaryOptions
     })
   },
 
@@ -438,9 +498,13 @@ Page({
         periods: periods.includes(period) ? periods.filter((value) => value !== period) : [...periods, period]
       }
     })
+    const nextForm = Object.assign({}, this.data.form, { availability })
+    const synced = syncPrimaryProposal(nextForm, this.data.primaryProposal)
     this.setData({
       'form.availability': availability,
-      selection: buildSelection(Object.assign({}, this.data.form, { availability }))
+      selection: buildSelection(nextForm),
+      primaryProposal: synced.primaryProposal,
+      primaryOptions: synced.primaryOptions
     })
   },
 
@@ -454,9 +518,13 @@ Page({
       wx.showToast({ title: '活动最多3项', icon: 'none' })
       return
     }
+    const nextForm = Object.assign({}, this.data.form, { activities: next })
+    const synced = syncPrimaryProposal(nextForm, this.data.primaryProposal)
     this.setData({
       'form.activities': next,
-      selection: buildSelection(Object.assign({}, this.data.form, { activities: next }))
+      selection: buildSelection(nextForm),
+      primaryProposal: synced.primaryProposal,
+      primaryOptions: synced.primaryOptions
     })
   },
 
@@ -467,11 +535,35 @@ Page({
   onAreasInput(e) {
     const areaText = e.detail.value
     const areas = areaText.split(/[、,，]/).map((item) => item.trim()).filter(Boolean).slice(0, 6)
-    this.setData({ areaText, 'form.areas': areas })
+    const nextForm = Object.assign({}, this.data.form, { areas })
+    const synced = syncPrimaryProposal(nextForm, this.data.primaryProposal)
+    this.setData({
+      areaText,
+      'form.areas': areas,
+      primaryProposal: synced.primaryProposal,
+      primaryOptions: synced.primaryOptions
+    })
   },
 
   selectOption(e) {
     this.setData({ [`form.${e.currentTarget.dataset.key}`]: e.currentTarget.dataset.value })
+  },
+
+  selectPrimarySlot(e) {
+    const date = e.currentTarget.dataset.date
+    const period = e.currentTarget.dataset.period
+    this.setData({
+      'primaryProposal.date': date,
+      'primaryProposal.period': period
+    })
+  },
+
+  selectPrimaryArea(e) {
+    this.setData({ 'primaryProposal.area': e.currentTarget.dataset.value })
+  },
+
+  selectPrimaryActivity(e) {
+    this.setData({ 'primaryProposal.activity': e.currentTarget.dataset.value })
   },
 
   async respondInvitation(e) {
@@ -513,8 +605,30 @@ Page({
       wx.showToast({ title: '请补充可约时间、区域和活动', icon: 'none' })
       return
     }
-    this.setData({ submitting: true })
     const wasInitiatorDraft = this.data.coordination && this.data.coordination.status === 'collecting_initiator'
+    let invitationPrimaryProposal = null
+    if (wasInitiatorDraft) {
+      const synced = syncPrimaryProposal(this.data.form, this.data.primaryProposal)
+      const primary = synced.primaryProposal
+      if (!primary.date || !primary.period || !primary.area || !primary.activity) {
+        wx.showToast({ title: '请明确选择本次建议安排', icon: 'none' })
+        this.setData({
+          primaryProposal: primary,
+          primaryOptions: synced.primaryOptions
+        })
+        return
+      }
+      invitationPrimaryProposal = {
+        date: primary.date,
+        period: primary.period,
+        area: primary.area,
+        activity: primary.activity,
+        budget: this.data.form.budget,
+        duration: this.data.form.duration,
+        payment_preference: this.data.form.payment_preference
+      }
+    }
+    this.setData({ submitting: true })
     try {
       if (this.fixtureDraft && this.data.coordination && this.data.coordination.test_simulation) {
         const result = await post(`${API_PATHS.DATE_COORDINATIONS}/fixture-applications`, {
@@ -526,7 +640,11 @@ Page({
         wx.showToast({ title: '约会申请已提交', icon: 'success' })
         return
       }
-      const result = await put(`${API_PATHS.DATE_COORDINATIONS}/${this.data.coordinationId}/application`, this.data.form, { showError: false })
+      const payload = Object.assign({}, this.data.form)
+      if (invitationPrimaryProposal) {
+        payload.invitation_primary_proposal = invitationPrimaryProposal
+      }
+      const result = await put(`${API_PATHS.DATE_COORDINATIONS}/${this.data.coordinationId}/application`, payload, { showError: false })
       this.applyCoordination(normalizeCoordination(result))
       wx.showToast({
         title: wasInitiatorDraft ? '已保存偏好，正在邀请对方' : '已提交约会偏好',

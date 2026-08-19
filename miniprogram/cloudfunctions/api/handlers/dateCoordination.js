@@ -27,10 +27,14 @@ const {
   EXPIRED_PUBLIC_MESSAGE,
   COORDINATING_WAITING_B_MESSAGE,
   staleInvitationError,
+  missingInvitationVersionError,
   publicInvitationProposal,
   buildInvitationCard,
   invitationVersionOf,
   invitationProposalOf,
+  invitationPrimaryOf,
+  resolvePrimaryInvitationProposal,
+  isPrimaryProposalComplete,
   allExplicitEvidence,
   buildSharedCoordinationState,
   buildProposalCard,
@@ -97,6 +101,7 @@ function defaultDeps() {
     upsertConfirmation,
     updateConfirmationState,
     commitConfirmation: db.commitCoordinationConfirmation,
+    commitDirectInvitationAccept: db.commitDirectInvitationAccept,
     expireIfCurrent: expireCoordinationIfCurrent,
     publishCoordinationEvent,
     now: db.now,
@@ -175,10 +180,93 @@ async function processCoordinationDeadlines({ deps = defaultDeps(), now = new Da
   return { scanned: rows.length, expired }
 }
 
+/**
+ * In-memory / non-transaction CAS used by unit selfchecks.
+ * Production path must use db.commitDirectInvitationAccept.
+ */
+async function memoryCommitDirectAccept(dep, input = {}) {
+  const { coordination, user, submittedVersion, proposalData, now } = input
+  const current = await dep('byId')('date_coordination', coordination.id)
+  if (!current) throw new Error('日期协调不存在')
+  const proposalKey = String(proposalData.proposal_key)
+  const version = Number(current.coordination_version || 1)
+
+  if (current.status === STATUS.ARRANGED
+    && Number(current.accepted_base_invitation_version) === Number(submittedVersion)
+    && Number(current.final_proposal_id) > 0) {
+    const existingProposal = await dep('byId')('date_coordination_proposal', current.final_proposal_id)
+    if (existingProposal && String(existingProposal.proposal_key) === proposalKey) {
+      return { coordination: current, proposal: existingProposal, arranged: true, idempotent: true }
+    }
+  }
+
+  if (current.status !== STATUS.INVITING_PARTNER) throw new Error('当前状态不能接受约会邀请')
+  if (Number(current.user_b_id) !== Number(user.id)) throw new Error('仅受邀参与者可以处理邀请')
+  if (current.invitation_responded_at) throw new Error('当前邀请已经回应过')
+  if (Number(current.invitation_version) !== Number(submittedVersion)) throw staleInvitationError()
+
+  let proposal = (await dep('list')('date_coordination_proposal', {
+    coordination_id: Number(current.id),
+    proposal_key: proposalKey
+  }, 5))[0]
+  if (!proposal) {
+    proposal = await dep('addWithId')('date_coordination_proposal', Object.assign({
+      coordination_id: Number(current.id)
+    }, proposalData), 'date_coordination_proposal')
+  }
+
+  const aQuery = {
+    coordination_id: Number(current.id),
+    user_id: Number(current.user_a_id),
+    coordination_version: version
+  }
+  const bQuery = {
+    coordination_id: Number(current.id),
+    user_id: Number(user.id),
+    coordination_version: version
+  }
+  const existingA = await dep('first')('date_coordination_confirmation', aQuery)
+  const existingB = await dep('first')('date_coordination_confirmation', bQuery)
+  const aConfirm = Object.assign({}, aQuery, {
+    proposal_id: Number(proposal.id),
+    decision: 'confirm',
+    status: 'active',
+    source: 'initiator_invitation'
+  })
+  const bConfirm = Object.assign({}, bQuery, {
+    proposal_id: Number(proposal.id),
+    decision: 'confirm',
+    status: 'active',
+    source: 'direct_accept'
+  })
+  if (existingA) await dep('updateByDoc')('date_coordination_confirmation', existingA, aConfirm)
+  else await dep('addWithId')('date_coordination_confirmation', aConfirm, 'date_coordination_confirmation')
+  if (existingB) await dep('updateByDoc')('date_coordination_confirmation', existingB, bConfirm)
+  else await dep('addWithId')('date_coordination_confirmation', bConfirm, 'date_coordination_confirmation')
+
+  // CAS: re-read before final write
+  const refreshed = await dep('byId')('date_coordination', current.id)
+  if (!refreshed
+    || refreshed.status !== STATUS.INVITING_PARTNER
+    || Number(refreshed.invitation_version) !== Number(submittedVersion)
+    || refreshed.invitation_responded_at) {
+    throw staleInvitationError()
+  }
+  const updated = await dep('updateByDoc')('date_coordination', refreshed, {
+    status: nextStatus(STATUS.INVITING_PARTNER, 'accept_invitation'),
+    business_state: 'completed',
+    invitation_responded_at: now,
+    invitee_intent: 'accept',
+    accepted_base_invitation_version: submittedVersion,
+    final_proposal_id: Number(proposal.id)
+  })
+  return { coordination: updated, proposal, arranged: true, idempotent: false }
+}
+
 function createDateCoordinationHandlers(overrides = {}) {
   let defaults = null
   function dep(name) {
-    if (overrides[name]) return overrides[name]
+    if (Object.prototype.hasOwnProperty.call(overrides, name)) return overrides[name]
     if (name === 'publishCoordinationEvent' && overrides.first && overrides.addWithId) {
       return (input) => publishCoordinationEvent(input, {
         first: overrides.first,
@@ -199,6 +287,10 @@ function createDateCoordinationHandlers(overrides = {}) {
           sendSubscribeMessage: null
         })
       }
+    }
+    // Unit selfchecks provide first/addWithId but not CloudBase transactions
+    if (name === 'commitDirectInvitationAccept' && overrides.first && overrides.addWithId && !overrides.commitDirectInvitationAccept) {
+      return null
     }
     if (!defaults) defaults = defaultDeps()
     return defaults[name]
@@ -356,80 +448,76 @@ function createDateCoordinationHandlers(overrides = {}) {
     const invitationProposal = invitationProposalOf(coordination, initiatorApp)
 
     if (decision === 'accept') {
-      const submittedVersion = data.invitation_version == null
-        ? currentInvitationVersion
-        : Number(data.invitation_version)
-      if (!Number.isFinite(submittedVersion) || submittedVersion !== currentInvitationVersion) {
+      if (data.invitation_version == null || data.invitation_version === '') {
+        throw missingInvitationVersionError()
+      }
+      const submittedVersion = Number(data.invitation_version)
+      if (!Number.isFinite(submittedVersion) || submittedVersion <= 0) {
+        throw missingInvitationVersionError()
+      }
+      if (submittedVersion !== currentInvitationVersion) {
         throw staleInvitationError()
       }
-      if (!invitationProposal.areas.length || !invitationProposal.availability.length) {
-        throw new Error('当前约会邀请方案不完整，请刷新后重试')
+      const primary = invitationPrimaryOf(coordination, initiatorApp, {
+        user_a_id: coordination.user_a_id,
+        user_b_id: coordination.user_b_id
+      })
+      if (!isPrimaryProposalComplete(primary)) {
+        const err = new Error('当前建议安排不完整，请先和 AI 协调其他安排，或等待发起方更新方案')
+        err.code = 'PRIMARY_PROPOSAL_INCOMPLETE'
+        throw err
       }
-      const proposalData = buildDirectAcceptProposal(invitationProposal, version)
-      const proposal = await dep('addWithId')('date_coordination_proposal', Object.assign({
-        coordination_id: Number(coordination.id)
-      }, proposalData), 'date_coordination_proposal')
-      const aConfirm = {
+      const proposalData = buildDirectAcceptProposal(primary, version, {
         coordination_id: Number(coordination.id),
-        user_id: Number(coordination.user_a_id),
-        proposal_id: Number(proposal.id),
-        coordination_version: version,
-        decision: 'confirm',
-        status: 'active',
-        source: 'initiator_invitation'
-      }
-      const bConfirm = {
-        coordination_id: Number(coordination.id),
-        user_id: Number(user.id),
-        proposal_id: Number(proposal.id),
-        coordination_version: version,
-        decision: 'confirm',
-        status: 'active',
-        source: 'direct_accept'
-      }
-      const existingA = await dep('first')('date_coordination_confirmation', {
-        coordination_id: Number(coordination.id),
-        user_id: Number(coordination.user_a_id),
-        coordination_version: version
+        invitation_version: submittedVersion,
+        user_a_id: coordination.user_a_id,
+        user_b_id: coordination.user_b_id
       })
-      const existingB = await dep('first')('date_coordination_confirmation', {
-        coordination_id: Number(coordination.id),
-        user_id: Number(user.id),
-        coordination_version: version
-      })
-      if (existingA) await dep('updateByDoc')('date_coordination_confirmation', existingA, aConfirm)
-      else await dep('addWithId')('date_coordination_confirmation', aConfirm, 'date_coordination_confirmation')
-      if (existingB) await dep('updateByDoc')('date_coordination_confirmation', existingB, bConfirm)
-      else await dep('addWithId')('date_coordination_confirmation', bConfirm, 'date_coordination_confirmation')
-      const updated = await dep('updateByDoc')('date_coordination', coordination, {
-        status: nextStatus(coordination.status, 'accept_invitation'),
-        business_state: 'completed',
-        invitation_responded_at: now,
-        invitee_intent: 'accept',
-        accepted_base_invitation_version: currentInvitationVersion,
-        final_proposal_id: Number(proposal.id)
-      })
-      await dep('publishCoordinationEvent')({
-        coordination: updated,
-        event: {
-          event_type: 'arranged',
-          actor_user_id: Number(user.id),
-          coordination_version: version,
-          proposal
-        }
-      })
-      try {
-        await dep('writeInboxNotification')({
-          coordination: updated,
-          user_id: Number(updated.user_a_id),
-          event_type: 'arranged',
-          coordination_version: version,
-          title: '双方已确认最终方案',
-          body: '对方接受了你的第一次约会安排，双方已确认最终方案。',
-          stage: 'arranged'
+      const commitFn = dep('commitDirectInvitationAccept')
+      let committed
+      if (typeof commitFn === 'function') {
+        committed = await commitFn({
+          coordination,
+          inviteeUserId: Number(user.id),
+          invitationVersion: submittedVersion,
+          proposalData,
+          nextStatusValue: nextStatus(STATUS.INVITING_PARTNER, 'accept_invitation'),
+          invitationRespondedAt: now
         })
-      } catch (err) {
-        console.warn('inbox direct-accept notification skipped:', err.message || err)
+      } else {
+        // Test harness without real CloudBase transactions
+        committed = await memoryCommitDirectAccept(dep, {
+          coordination,
+          user,
+          submittedVersion,
+          proposalData,
+          now
+        })
+      }
+      const updated = committed.coordination
+      if (!committed.idempotent) {
+        await dep('publishCoordinationEvent')({
+          coordination: updated,
+          event: {
+            event_type: 'arranged',
+            actor_user_id: Number(user.id),
+            coordination_version: version,
+            proposal: committed.proposal
+          }
+        })
+        try {
+          await dep('writeInboxNotification')({
+            coordination: updated,
+            user_id: Number(updated.user_a_id),
+            event_type: 'arranged',
+            coordination_version: version,
+            title: '双方已确认最终方案',
+            body: '对方接受了你的第一次约会安排，双方已确认最终方案。',
+            stage: 'arranged'
+          })
+        } catch (err) {
+          console.warn('inbox direct-accept notification skipped:', err.message || err)
+        }
       }
       return detailFor(updated, user)
     }
@@ -597,6 +685,14 @@ function createDateCoordinationHandlers(overrides = {}) {
       ? data.preference_evidence
       : allExplicitEvidence()
     const application = normalizeApplication(data, now)
+    const primaryContext = {
+      user_a_id: Number(coordination.user_a_id),
+      user_b_id: Number(coordination.user_b_id)
+    }
+    let invitationPrimary = null
+    if (isInitiatorDraft) {
+      invitationPrimary = resolvePrimaryInvitationProposal(data, application, primaryContext)
+    }
     const query = { coordination_id: Number(coordination.id), user_id: Number(user.id), coordination_version: version }
     const existing = await dep('first')('date_coordination_application', query)
     const applicationSource = String(data.application_source || (isInitiatorDraft ? 'initiator_invitation' : 'invitee_full_form'))
@@ -642,6 +738,7 @@ function createDateCoordinationHandlers(overrides = {}) {
         invitation_deadline_at: invitationDeadline,
         application_deadline_at: null,
         invitation_proposal: invitationProposal,
+        invitation_primary_proposal: invitationPrimary,
         invitation_version: nextPreferenceVersion,
         initiator_agreed_invitation_version: nextPreferenceVersion,
         invitee_intent: ''
@@ -749,8 +846,17 @@ function createDateCoordinationHandlers(overrides = {}) {
     const mineConfirmed = confirmedUsers.has(Number(user.id))
     const invitationVersion = invitationVersionOf(coordination, initiatorApp)
     const invitationProposal = invitationProposalOf(coordination, initiatorApp)
-    const invitationCard = initiatorApp || coordination.invitation_proposal
-      ? buildInvitationCard(invitationProposal, invitationVersion)
+    const invitationPrimary = invitationPrimaryOf(coordination, initiatorApp, {
+      user_a_id: coordination.user_a_id,
+      user_b_id: coordination.user_b_id
+    })
+    const invitationCard = initiatorApp || coordination.invitation_proposal || coordination.invitation_primary_proposal
+      ? buildInvitationCard(invitationPrimary || invitationProposal, invitationVersion, {
+        primary: invitationPrimary,
+        preference: invitationProposal,
+        user_a_id: coordination.user_a_id,
+        user_b_id: coordination.user_b_id
+      })
       : null
     const partnerId = role === 'initiator' ? Number(coordination.user_b_id) : Number(coordination.user_a_id)
     const partnerApplicationSubmitted = applicationUsers.has(partnerId)
@@ -759,14 +865,19 @@ function createDateCoordinationHandlers(overrides = {}) {
       inviteeApp && inviteeApp.application,
       {
         version,
-        inviteeIntent: coordination.invitee_intent || ''
+        inviteeIntent: coordination.invitee_intent || '',
+        user_a_id: coordination.user_a_id,
+        user_b_id: coordination.user_b_id
       }
     )
     const activeProposal = proposals.find((item) => item.status === 'active')
       || (coordination.final_proposal_id
         ? proposals.find((item) => Number(item.id) === Number(coordination.final_proposal_id))
         : null)
-    const proposalCard = buildProposalCard(activeProposal)
+    const proposalCard = buildProposalCard(activeProposal, {
+      user_a_id: coordination.user_a_id,
+      user_b_id: coordination.user_b_id
+    })
     const invitationStatusText = coordination.status === STATUS.COLLECTING_INITIATOR
       ? '准备邀请'
       : (coordination.status === STATUS.INVITING_PARTNER
@@ -791,6 +902,7 @@ function createDateCoordinationHandlers(overrides = {}) {
       }[coordination.status] || 'coordinating'),
       coordination_version: version,
       invitation_version: invitationVersion,
+      invitation_primary_proposal: invitationPrimary,
       invitee_intent: coordination.invitee_intent || '',
       accepted_base_invitation_version: Number(coordination.accepted_base_invitation_version || 0),
       recoordination_count: Number(coordination.recoordination_count || 0),

@@ -4,6 +4,32 @@
 
 ---
 
+## 2026-08-19 — Date Coordination Code Review Fix Round
+
+### 类型
+上线前 Code Review 修复 + 测试 + CloudBase 部署 + 文档
+
+### 目的
+在不推翻「第一次约会邀请 + AI 协调」产品方向的前提下，修掉 Direct Accept 偷偷选第一个、支付视角歧义、invitation_version 宽松默认、并发非 CAS、pre-accept 消耗协商轮次、时间格式与 LangGraph mock/live 混淆等问题。
+
+### 完成
+- Preference vs Primary Invitation Proposal；Direct Accept 只接受完整 primary
+- 共享方案中性支付 `payment_mode` / `payer_user_id`；Invitation / Proposal Card 展示费用方式
+- accept 强制 `invitation_version`；`commitDirectInvitationAccept` CAS + idempotent
+- INVITING_PARTNER 下编辑不增加 `recoordination_count`
+- 统一日期格式；TEST 25–44；contract version 4
+- 报告：`project-docs/WORK_REPORT_DATE_COORDINATION_REVIEW_FIX_ROUND.md`
+
+### 验证
+相关 selfcheck PASS；CloudBase `api` 从函数目录 code-only 更新后 config v4 PASS；agent-graph health PASS；Live Graph Smoke MANUAL_REQUIRED
+
+### 未做
+- 微信开发者工具视觉验收
+- 真实 CloudBase NL Patch live smoke
+- 未上传微信体验/正式版；未 merge main；未 force push
+
+---
+
 ## 2026-08-19 — 第一次约会邀请 / AI 双边协调产品化
 
 ### 类型

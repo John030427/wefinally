@@ -68,6 +68,8 @@ assert.deepStrictEqual(overlap.proposals[0], {
   area: '福田区',
   activity: '咖啡',
   budget: '100',
+  payment_mode: 'aa',
+  payer_user_id: 0,
   payment_preference: 'aa',
   duration: '1-2h'
 })

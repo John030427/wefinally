@@ -36,13 +36,12 @@ function proposalNotificationText(proposal = {}) {
     evening: '晚上',
     night: '夜间'
   }[proposal.period] || proposal.period || ''
-  const payment = {
-    aa: 'AA',
-    one_pays: '一方请客',
-    partner_pays: '对方请客',
-    self_pays: '您请客',
-    flexible: '费用方式灵活'
-  }[proposal.payment_preference] || proposal.payment_preference || ''
+  let payment = ''
+  if (proposal.payment_mode === 'aa' || proposal.payment_preference === 'aa') payment = 'AA'
+  else if (proposal.payment_mode === 'flexible' || proposal.payment_preference === 'flexible') payment = '费用方式灵活'
+  else if (proposal.payment_mode === 'single_payer' || proposal.payment_preference === 'one_pays') payment = '本次由一方请客'
+  else payment = ''
+  // Never render self_pays / partner_pays on shared notifications (perspective bug)
   const duration = {
     'about-1h': '约1小时',
     '1-2h': '1-2小时',

@@ -316,6 +316,15 @@ async function main() {
     duration: '1-2h',
     share_message: '我只想把这句话留给对方'
   }
+  const applicationAPrimary = {
+    date: '2026-07-15',
+    period: 'afternoon',
+    area: '福田区',
+    activity: '咖啡',
+    budget: '100-200',
+    duration: '1-2h',
+    payment_preference: 'flexible'
+  }
   const applicationB = {
     availability: [{ date: '2026-07-15', periods: ['afternoon'] }],
     areas: ['福田区'],
@@ -329,7 +338,11 @@ async function main() {
     () => handlers.saveApplication({ coordination_id: first.id, ...applicationB }, { user_id: 2 }),
     /等待发起方填写/
   )
-  const firstApplication = await handlers.saveApplication({ coordination_id: first.id, ...applicationA }, { user_id: 1 })
+  const firstApplication = await handlers.saveApplication({
+    coordination_id: first.id,
+    ...applicationA,
+    invitation_primary_proposal: applicationAPrimary
+  }, { user_id: 1 })
   assert.strictEqual(firstApplication.status, 'inviting_partner')
   assert.strictEqual(firstApplication.business_state, 'waiting_partner')
   assert.strictEqual(firstApplication.can_submit_application, false)
@@ -389,7 +402,7 @@ async function main() {
   assert.strictEqual(detail.my_application.share_message, applicationA.share_message)
   assert.strictEqual(detail.participant_progress.length, 2)
   assert.deepStrictEqual(detail.participant_progress.map((item) => item.side), ['mine', 'partner'])
-  assert.strictEqual(JSON.stringify(detail).includes('user_id'), false)
+  assert.strictEqual(JSON.stringify(detail).includes('"user_id"'), false)
   assert.strictEqual(detail.participant_progress.every((item) => item.application_submitted), true)
   assert.strictEqual(detail.proposals.length, 1)
   assert.strictEqual(Object.prototype.hasOwnProperty.call(detail, 'applications'), false)

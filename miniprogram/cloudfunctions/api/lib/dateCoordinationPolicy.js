@@ -136,16 +136,39 @@ function computeOverlap(applicationA, applicationB, options = {}) {
   const areas = intersect(applicationA.areas, applicationB.areas)
   const activities = intersect(applicationA.activities, applicationB.activities)
   const budget = budgetOverlap(applicationA.budget, applicationB.budget)
-  const payment = compatiblePreference(applicationA.payment_preference, applicationB.payment_preference)
+  const paymentCompat = compatiblePreference(applicationA.payment_preference, applicationB.payment_preference)
+  let sharedPayment = { payment_mode: '', payer_user_id: 0 }
+  try {
+    const { resolveSharedPayment } = require('./invitationCoordination')
+    sharedPayment = resolveSharedPayment(
+      applicationA.payment_preference,
+      applicationB.payment_preference,
+      options.user_a_id,
+      options.user_b_id
+    )
+  } catch (err) {
+    sharedPayment = { payment_mode: '', payer_user_id: 0 }
+  }
+  const paymentOk = Boolean(paymentCompat) && (
+    sharedPayment.payment_mode === 'aa'
+    || sharedPayment.payment_mode === 'flexible'
+    || (sharedPayment.payment_mode === 'single_payer' && Number(sharedPayment.payer_user_id) > 0)
+    || paymentCompat === 'one_pays'
+  )
   const duration = compatiblePreference(applicationA.duration, applicationB.duration)
   const missing = []
   if (!times.length) missing.push('time')
   if (!areas.length) missing.push('area')
   if (!activities.length) missing.push('activity')
   if (!budget) missing.push('budget')
-  if (!payment) missing.push('payment')
+  if (!paymentOk) missing.push('payment')
   if (!duration) missing.push('duration')
   if (missing.length) return { proposals: [], missing_dimensions: missing }
+
+  // one_pays without resolved payer ids stays incomplete for shared cards
+  if (paymentCompat === 'one_pays' && sharedPayment.payment_mode !== 'single_payer') {
+    return { proposals: [], missing_dimensions: ['payment'] }
+  }
 
   const proposals = []
   for (const slot of times) {
@@ -160,7 +183,11 @@ function computeOverlap(applicationA, applicationB, options = {}) {
           area,
           activity,
           budget,
-          payment_preference: payment,
+          payment_mode: sharedPayment.payment_mode,
+          payer_user_id: sharedPayment.payer_user_id,
+          payment_preference: sharedPayment.payment_mode === 'aa' || sharedPayment.payment_mode === 'flexible'
+            ? sharedPayment.payment_mode
+            : 'one_pays',
           duration
         })
         if (proposals.length === 3) return { proposals, missing_dimensions: [] }
