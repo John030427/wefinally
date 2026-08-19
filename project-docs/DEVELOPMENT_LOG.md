@@ -4,6 +4,32 @@
 
 ---
 
+## 2026-08-19 — Date Invitation Atomicity Final Fix
+
+### 类型
+上线前并发一致性收尾 + 测试 + CloudBase api 部署 + 文档
+
+### 目的
+把 INVITING_PARTNER 阶段变成原子状态机：A pre-accept patch 与 B accept/coordinate/decline/expire 争夺同一份 Invitation State，禁止旧异步写把终态撕回 inviting_partner。
+
+### 完成
+- Production：`commitPreAcceptInvitationPatch` / `commitInvitationResponse` / 既有 `commitDirectInvitationAccept` 全部走 `db.runTransaction`
+- Selfcheck：in-memory CAS + `beforeCommitHook` barrier；TEST 45–60 用真实 handlers 并发
+- `primaryFitsPreference` 校验 payment；payment patch 同步 Neutral Primary
+- 所有 invitation transaction 内二次校验 deadline
+- Contract v5：`invitation_atomic_transitions` / `invitation_response_version_cas` / `pre_accept_patch_cas`
+- 报告：`project-docs/WORK_REPORT_DATE_INVITATION_ATOMICITY_FINAL_FIX.md`
+
+### 验证
+相关 selfcheck PASS；CloudBase `api` 从干净 staging 目录 code-only 更新后 config v5 PASS；agent-graph 未改未部署，health PASS；Live Graph Smoke MANUAL_REQUIRED
+
+### 未做
+- 微信开发者工具视觉验收
+- Live LangGraph NL Patch E2E
+- 未上传微信体验/正式版；未 merge main；未 force push
+
+---
+
 ## 2026-08-19 — Date Coordination Code Review Fix Round
 
 ### 类型
