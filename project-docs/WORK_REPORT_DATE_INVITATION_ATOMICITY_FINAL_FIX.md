@@ -211,8 +211,8 @@ Smoke：
 | Start HEAD | `4babf4d2c0c29986e243d3779e919d5e656170a2` |
 | Business Commit | `12e07d5fbf17a6bf33e3770ffcaaf404a210cade` `fix(coordination): make invitation transitions atomic` |
 | Docs Commit | `7d3eb1192166ac33e22800af90984e80cea2cd04` `docs: record invitation atomicity fix round` |
-| Final Remote HEAD | `7d3eb1192166ac33e22800af90984e80cea2cd04` |
-| Push status | 待 push；成功后以 origin HEAD 为准 |
+| Final Remote HEAD | `4db62fb0bf4ea0f53b5b7a544cfae10681852b82` |
+| Push status | Pushed to `origin/feature/ai-profile-bilateral-coordination`（`4babf4d..4db62fb`） |
 
 未纳入用户 dirty files。
 
