@@ -257,7 +257,7 @@ function preferenceHasSlot(prefs, date, period) {
   return (prefs.availability || []).some((item) => item.date === date && (item.periods || []).includes(period))
 }
 
-function primaryFitsPreference(primary, prefs) {
+function primaryFitsPreferenceExceptPayment(primary, prefs) {
   if (!isPrimaryProposalComplete(primary) || !prefs) return false
   if (!preferenceHasSlot(prefs, primary.date, primary.period)) return false
   if (!(prefs.areas || []).includes(primary.area)) return false
@@ -265,6 +265,44 @@ function primaryFitsPreference(primary, prefs) {
   if (String(prefs.budget || '') !== String(primary.budget || '')) return false
   if (String(prefs.duration || '') !== String(primary.duration || '')) return false
   return true
+}
+
+function primaryFitsPreference(primary, prefs, context = {}) {
+  if (!primaryFitsPreferenceExceptPayment(primary, prefs)) return false
+  const expected = personalPaymentToNeutral(
+    prefs.payment_preference,
+    context.user_a_id,
+    context.user_b_id
+  )
+  if (!expected.payment_mode) return false
+  if (String(primary.payment_mode || '') !== String(expected.payment_mode || '')) return false
+  if (expected.payment_mode === 'single_payer'
+    && Number(primary.payer_user_id || 0) !== Number(expected.payer_user_id || 0)) {
+    return false
+  }
+  return true
+}
+
+function syncPrimaryPaymentFromPreference(primary, prefs, userAId, userBId) {
+  if (!primary || !prefs) return null
+  const payment = personalPaymentToNeutral(prefs.payment_preference, userAId, userBId)
+  return publicPrimaryProposal(Object.assign({}, primary, payment), {
+    user_a_id: userAId,
+    user_b_id: userBId
+  })
+}
+
+function invitationAlreadyRespondedError() {
+  const error = new Error('对方刚刚回应了邀请，请查看最新协调状态。')
+  error.code = 'INVITATION_ALREADY_RESPONDED'
+  error.refresh_invitation = true
+  return error
+}
+
+function invitationExpiredError(message) {
+  const error = new Error(message || EXPIRED_PUBLIC_MESSAGE)
+  error.code = 'INVITATION_EXPIRED'
+  return error
 }
 
 function preferenceNeedsExplicitPrimary(prefs = {}) {
@@ -298,7 +336,7 @@ function resolvePrimaryInvitationProposal(input = {}, prefs, context = {}) {
     context
   )
   if (explicit && isPrimaryProposalComplete(explicit)) {
-    if (prefs && !primaryFitsPreference(explicit, prefs)) {
+    if (prefs && !primaryFitsPreference(explicit, prefs, context)) {
       throw primaryProposalRequiredError('本次建议安排必须落在你的可接受范围内')
     }
     return explicit
@@ -709,6 +747,10 @@ module.exports = {
   derivePrimaryFromSingletonPrefs,
   resolvePrimaryInvitationProposal,
   primaryFitsPreference,
+  primaryFitsPreferenceExceptPayment,
+  syncPrimaryPaymentFromPreference,
+  invitationAlreadyRespondedError,
+  invitationExpiredError,
   personalPaymentToNeutral,
   resolveSharedPayment,
   normalizeNeutralPayment,

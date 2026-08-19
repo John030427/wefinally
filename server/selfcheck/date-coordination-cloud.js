@@ -289,7 +289,7 @@ async function main() {
     date_coordination: [{ _id: 'date_coordination_9', id: 9, user_a_id: 1, user_b_id: 2, status: 'inviting_partner' }]
   })
   const declined = await createDateCoordinationHandlers(declinedDeps)
-    .respondInvitation({ coordination_id: 9, decision: 'decline' }, { user_id: 2 })
+    .respondInvitation({ coordination_id: 9, decision: 'decline', invitation_version: 1 }, { user_id: 2 })
   assert.strictEqual(declined.status, 'invitation_declined')
 
   const legacyInvitationDeps = memoryDeps({
@@ -358,7 +358,11 @@ async function main() {
   assert.strictEqual(invitedDetail.my_application, null)
   assert.strictEqual(JSON.stringify(invitedDetail).includes(applicationA.share_message), false)
 
-  const accepted = await handlers.respondInvitation({ coordination_id: first.id, decision: 'coordinate' }, { user_id: 2 })
+  const accepted = await handlers.respondInvitation({
+    coordination_id: first.id,
+    decision: 'coordinate',
+    invitation_version: Number(first.invitation_version || invitedDetail.invitation_version || 1)
+  }, { user_id: 2 })
   assert.strictEqual(accepted.status, 'collecting_preferences')
   assert.strictEqual(accepted.business_state, 'waiting_invitee_preference')
   assert.strictEqual(accepted.can_submit_application, true)

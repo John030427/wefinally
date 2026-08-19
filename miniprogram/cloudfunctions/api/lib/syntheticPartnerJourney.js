@@ -139,7 +139,7 @@ async function advanceSyntheticPartner(input = {}, deps = {}) {
   if (status === 'inviting_partner') {
     if (journey === 'decline') {
       const detail = await deps.respondInvitation(
-        { coordination_id: coordination.id, decision: 'decline' },
+        { coordination_id: coordination.id, decision: 'decline', invitation_version: invitationVersion },
         partnerWx
       )
       return { advanced: true, step: 'decline_invitation', detail, journey }
@@ -157,7 +157,7 @@ async function advanceSyntheticPartner(input = {}, deps = {}) {
     }
     if (journey === 'coordinate' || journey === 'accept_no_prefs') {
       const detail = await deps.respondInvitation(
-        { coordination_id: coordination.id, decision: 'coordinate' },
+        { coordination_id: coordination.id, decision: 'coordinate', invitation_version: invitationVersion },
         partnerWx
       )
       return { advanced: true, step: 'coordinate_invitation', detail, journey }

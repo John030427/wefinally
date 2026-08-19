@@ -572,18 +572,28 @@ Page({
     if (!['accept', 'coordinate', 'decline'].includes(decision)) return
     this.setData({ responding: true })
     try {
-      const payload = { decision }
-      if (decision === 'accept' && this.data.invitationCard) {
-        payload.invitation_version = Number(this.data.invitationCard.invitation_version || this.data.coordination.invitation_version || 1)
+      const payload = {
+        decision,
+        invitation_version: Number(
+          (this.data.invitationCard && this.data.invitationCard.invitation_version)
+          || (this.data.coordination && this.data.coordination.invitation_version)
+          || 1
+        )
       }
       const result = await post(`${API_PATHS.DATE_COORDINATIONS}/${this.data.coordinationId}/invitation-response`, payload, { showError: false })
       this.applyCoordination(normalizeCoordination(result))
       if (decision === 'coordinate') this.goCoordinator()
     } catch (err) {
+      const code = err && (err.code || err.error_code || err.errorCode)
       const message = (err && err.message) || '操作失败，请重试'
-      wx.showToast({ title: message, icon: 'none', duration: 3000 })
-      if (/刚刚更新了约会安排|请查看最新方案/.test(message)) {
+      if (code === 'STALE_INVITATION_VERSION' || /刚刚更新了约会安排|请查看最新方案/.test(message)) {
+        wx.showToast({ title: '对方刚刚更新了约会安排，请查看最新方案后再确认。', icon: 'none', duration: 3000 })
         this.refreshCoordination()
+      } else if (code === 'INVITATION_ALREADY_RESPONDED' || /刚刚回应了邀请|查看最新协调状态/.test(message)) {
+        wx.showToast({ title: '对方刚刚回应了邀请，请查看最新协调状态。', icon: 'none', duration: 3000 })
+        this.refreshCoordination()
+      } else {
+        wx.showToast({ title: message, icon: 'none', duration: 3000 })
       }
     } finally {
       this.setData({ responding: false })

@@ -37,12 +37,20 @@ function normalizePatchPreview(raw, requiresConfirmation) {
     operation: patch.operation || 'modify',
     status: patch.status || 'pending_confirmation',
     requiresConfirmation: requiresConfirmation === true || patch.requires_confirmation === true || patch.status === 'pending_confirmation',
-    changes: preview.changed_fields.map((field) => ({
-      field,
-      label: PATCH_FIELD_LABELS[field] || '约会条件',
-      before: formatPatchValue(preview.before && preview.before[field]),
-      after: formatPatchValue(preview.after && preview.after[field])
-    })),
+    changes: preview.changed_fields.map((field) => {
+      let before = formatPatchValue(preview.before && preview.before[field])
+      let after = formatPatchValue(preview.after && preview.after[field])
+      if (field === 'payment_preference' && preview.primary_payment_changed) {
+        before = preview.primary_payment_before_text || before
+        after = preview.primary_payment_after_text || after
+      }
+      return {
+        field,
+        label: PATCH_FIELD_LABELS[field] || '约会条件',
+        before,
+        after
+      }
+    }),
     affectsExistingProposal: Boolean(preview.affects_existing_proposal),
     willNotifyPartner: Boolean(preview.will_notify_partner)
   }
@@ -365,7 +373,23 @@ Page({
       }
       this.setData({ messages: [...messages, notice], scrollToView: `msg-${notice.id}` })
     } catch (err) {
-      wx.showToast({ title: (err && err.message) || '操作失败，请重试', icon: 'none' })
+      const code = err && (err.code || err.error_code || err.errorCode)
+      const message = (err && err.message) || '操作失败，请重试'
+      if (action === 'confirm' && (
+        code === 'INVITATION_ALREADY_RESPONDED'
+        || code === 'STALE_INVITATION_VERSION'
+        || code === 'STALE_COORDINATION_VERSION'
+        || /刚刚回应了邀请|刚刚更新了约会安排|协调状态刚刚发生变化|请查看最新/.test(message)
+      )) {
+        wx.showToast({ title: '协调状态刚刚发生变化，请查看最新进度。', icon: 'none', duration: 3000 })
+        if (this.data.coordinationId) {
+          wx.navigateTo({
+            url: `/pages/date-coordination/date-coordination?id=${this.data.coordinationId}`
+          })
+        }
+      } else {
+        wx.showToast({ title: message, icon: 'none' })
+      }
     } finally {
       this.setData({ patchSubmitting: false })
     }

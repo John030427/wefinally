@@ -28,6 +28,8 @@ const {
   COORDINATING_WAITING_B_MESSAGE,
   staleInvitationError,
   missingInvitationVersionError,
+  invitationAlreadyRespondedError,
+  invitationExpiredError,
   publicInvitationProposal,
   buildInvitationCard,
   invitationVersionOf,
@@ -102,6 +104,8 @@ function defaultDeps() {
     updateConfirmationState,
     commitConfirmation: db.commitCoordinationConfirmation,
     commitDirectInvitationAccept: db.commitDirectInvitationAccept,
+    commitInvitationResponse: db.commitInvitationResponse,
+    commitPreAcceptInvitationPatch: db.commitPreAcceptInvitationPatch,
     expireIfCurrent: expireCoordinationIfCurrent,
     publishCoordinationEvent,
     now: db.now,
@@ -185,11 +189,12 @@ async function processCoordinationDeadlines({ deps = defaultDeps(), now = new Da
  * Production path must use db.commitDirectInvitationAccept.
  */
 async function memoryCommitDirectAccept(dep, input = {}) {
-  const { coordination, user, submittedVersion, proposalData, now } = input
+  const { coordination, user, submittedVersion, proposalData, now, beforeCommitHook } = input
   const current = await dep('byId')('date_coordination', coordination.id)
   if (!current) throw new Error('日期协调不存在')
   const proposalKey = String(proposalData.proposal_key)
   const version = Number(current.coordination_version || 1)
+  const ts = now || new Date()
 
   if (current.status === STATUS.ARRANGED
     && Number(current.accepted_base_invitation_version) === Number(submittedVersion)
@@ -200,10 +205,16 @@ async function memoryCommitDirectAccept(dep, input = {}) {
     }
   }
 
-  if (current.status !== STATUS.INVITING_PARTNER) throw new Error('当前状态不能接受约会邀请')
+  if (current.status !== STATUS.INVITING_PARTNER) throw invitationAlreadyRespondedError()
   if (Number(current.user_b_id) !== Number(user.id)) throw new Error('仅受邀参与者可以处理邀请')
-  if (current.invitation_responded_at) throw new Error('当前邀请已经回应过')
-  if (Number(current.invitation_version) !== Number(submittedVersion)) throw staleInvitationError()
+  if (current.invitation_responded_at) throw invitationAlreadyRespondedError()
+  if (current.invitation_deadline_at && new Date(current.invitation_deadline_at).getTime() <= new Date(ts).getTime()) {
+    await dep('updateByDoc')('date_coordination', current, { status: STATUS.EXPIRED, business_state: 'expired' })
+    throw invitationExpiredError()
+  }
+  if (invitationVersionOf(current) !== Number(submittedVersion)) throw staleInvitationError()
+
+  if (typeof beforeCommitHook === 'function') await beforeCommitHook('direct_accept')
 
   let proposal = (await dep('list')('date_coordination_proposal', {
     coordination_id: Number(current.id),
@@ -244,23 +255,88 @@ async function memoryCommitDirectAccept(dep, input = {}) {
   if (existingB) await dep('updateByDoc')('date_coordination_confirmation', existingB, bConfirm)
   else await dep('addWithId')('date_coordination_confirmation', bConfirm, 'date_coordination_confirmation')
 
-  // CAS: re-read before final write
   const refreshed = await dep('byId')('date_coordination', current.id)
   if (!refreshed
     || refreshed.status !== STATUS.INVITING_PARTNER
-    || Number(refreshed.invitation_version) !== Number(submittedVersion)
+    || invitationVersionOf(refreshed) !== Number(submittedVersion)
     || refreshed.invitation_responded_at) {
     throw staleInvitationError()
+  }
+  if (refreshed.invitation_deadline_at && new Date(refreshed.invitation_deadline_at).getTime() <= new Date(ts).getTime()) {
+    await dep('updateByDoc')('date_coordination', refreshed, { status: STATUS.EXPIRED, business_state: 'expired' })
+    throw invitationExpiredError()
   }
   const updated = await dep('updateByDoc')('date_coordination', refreshed, {
     status: nextStatus(STATUS.INVITING_PARTNER, 'accept_invitation'),
     business_state: 'completed',
-    invitation_responded_at: now,
+    invitation_responded_at: ts,
     invitee_intent: 'accept',
     accepted_base_invitation_version: submittedVersion,
     final_proposal_id: Number(proposal.id)
   })
   return { coordination: updated, proposal, arranged: true, idempotent: false }
+}
+
+async function memoryCommitInvitationResponse(dep, input = {}) {
+  const {
+    coordination,
+    user,
+    submittedVersion,
+    decision,
+    now,
+    beforeCommitHook,
+    applicationDeadlineAt
+  } = input
+  const current = await dep('byId')('date_coordination', coordination.id)
+  if (!current) throw new Error('日期协调不存在')
+  const ts = now || new Date()
+
+  if (decision === 'coordinate'
+    && current.status === STATUS.COLLECTING_PREFERENCES
+    && String(current.invitee_intent || '') === 'coordinate'
+    && Number(current.accepted_base_invitation_version) === Number(submittedVersion)) {
+    return { coordination: current, decision, idempotent: true }
+  }
+  if (decision === 'decline'
+    && current.status === STATUS.INVITATION_DECLINED
+    && String(current.invitee_intent || '') === 'decline'
+    && Number(current.accepted_base_invitation_version || current.invitation_version) === Number(submittedVersion)) {
+    return { coordination: current, decision, idempotent: true }
+  }
+
+  if (current.status !== STATUS.INVITING_PARTNER) throw invitationAlreadyRespondedError()
+  if (Number(current.user_b_id) !== Number(user.id)) throw new Error('仅受邀参与者可以处理邀请')
+  if (current.invitation_responded_at) throw invitationAlreadyRespondedError()
+  if (current.invitation_deadline_at && new Date(current.invitation_deadline_at).getTime() <= new Date(ts).getTime()) {
+    await dep('updateByDoc')('date_coordination', current, { status: STATUS.EXPIRED, business_state: 'expired' })
+    throw invitationExpiredError()
+  }
+  if (invitationVersionOf(current) !== Number(submittedVersion)) throw staleInvitationError()
+
+  if (typeof beforeCommitHook === 'function') await beforeCommitHook(`invitation_${decision}`)
+
+  const refreshed = await dep('byId')('date_coordination', current.id)
+  if (!refreshed
+    || refreshed.status !== STATUS.INVITING_PARTNER
+    || invitationVersionOf(refreshed) !== Number(submittedVersion)
+    || refreshed.invitation_responded_at) {
+    throw staleInvitationError()
+  }
+  if (refreshed.invitation_deadline_at && new Date(refreshed.invitation_deadline_at).getTime() <= new Date(ts).getTime()) {
+    await dep('updateByDoc')('date_coordination', refreshed, { status: STATUS.EXPIRED, business_state: 'expired' })
+    throw invitationExpiredError()
+  }
+
+  const update = {
+    status: nextStatus(STATUS.INVITING_PARTNER, decision === 'coordinate' ? 'coordinate_invitation' : 'decline_invitation'),
+    business_state: decision === 'coordinate' ? 'waiting_invitee_preference' : 'cancelled',
+    invitation_responded_at: ts,
+    invitee_intent: decision,
+    accepted_base_invitation_version: submittedVersion
+  }
+  if (decision === 'coordinate') update.application_deadline_at = applicationDeadlineAt
+  const updated = await dep('updateByDoc')('date_coordination', refreshed, update)
+  return { coordination: updated, decision, idempotent: false }
 }
 
 function createDateCoordinationHandlers(overrides = {}) {
@@ -289,7 +365,12 @@ function createDateCoordinationHandlers(overrides = {}) {
       }
     }
     // Unit selfchecks provide first/addWithId but not CloudBase transactions
-    if (name === 'commitDirectInvitationAccept' && overrides.first && overrides.addWithId && !overrides.commitDirectInvitationAccept) {
+    if (['commitDirectInvitationAccept', 'commitInvitationResponse', 'commitPreAcceptInvitationPatch'].includes(name)
+      && overrides.first && overrides.addWithId
+      && !Object.prototype.hasOwnProperty.call(overrides, name)) {
+      return null
+    }
+    if (name === 'beforeCommitHook' && overrides.first && overrides.addWithId) {
       return null
     }
     if (!defaults) defaults = defaultDeps()
@@ -430,7 +511,7 @@ function createDateCoordinationHandlers(overrides = {}) {
     if (Number(coordination.user_b_id) !== Number(user.id)) throw new Error('仅受邀参与者可以处理邀请')
     if (deadlinePassed(coordination.invitation_deadline_at, dep('now')())) {
       await dep('updateByDoc')('date_coordination', coordination, { status: STATUS.EXPIRED, business_state: 'expired' })
-      throw new Error(EXPIRED_PUBLIC_MESSAGE)
+      throw invitationExpiredError()
     }
     const decision = String(data.decision || '')
     if (!['accept', 'coordinate', 'decline'].includes(decision)) {
@@ -474,6 +555,7 @@ function createDateCoordinationHandlers(overrides = {}) {
         user_b_id: coordination.user_b_id
       })
       const commitFn = dep('commitDirectInvitationAccept')
+      const beforeCommitHook = dep('beforeCommitHook')
       let committed
       if (typeof commitFn === 'function') {
         committed = await commitFn({
@@ -482,16 +564,17 @@ function createDateCoordinationHandlers(overrides = {}) {
           invitationVersion: submittedVersion,
           proposalData,
           nextStatusValue: nextStatus(STATUS.INVITING_PARTNER, 'accept_invitation'),
-          invitationRespondedAt: now
+          invitationRespondedAt: now,
+          beforeCommitHook: typeof beforeCommitHook === 'function' ? beforeCommitHook : undefined
         })
       } else {
-        // Test harness without real CloudBase transactions
         committed = await memoryCommitDirectAccept(dep, {
           coordination,
           user,
           submittedVersion,
           proposalData,
-          now
+          now,
+          beforeCommitHook: typeof beforeCommitHook === 'function' ? beforeCommitHook : undefined
         })
       }
       const updated = committed.coordination
@@ -522,19 +605,94 @@ function createDateCoordinationHandlers(overrides = {}) {
       return detailFor(updated, user)
     }
 
+    if (data.invitation_version == null || data.invitation_version === '') {
+      throw missingInvitationVersionError()
+    }
+    const submittedVersion = Number(data.invitation_version)
+    if (!Number.isFinite(submittedVersion) || submittedVersion <= 0) {
+      throw missingInvitationVersionError()
+    }
+    if (submittedVersion !== currentInvitationVersion) {
+      throw staleInvitationError()
+    }
+
+    const responseCommit = dep('commitInvitationResponse')
+    const beforeCommitHook = dep('beforeCommitHook')
+    const responseInput = {
+      coordination,
+      inviteeUserId: Number(user.id),
+      invitationVersion: submittedVersion,
+      decision,
+      invitationRespondedAt: now,
+      beforeCommitHook: typeof beforeCommitHook === 'function' ? beforeCommitHook : undefined
+    }
+
     if (decision === 'coordinate') {
-      const updated = await dep('updateByDoc')('date_coordination', coordination, {
-        status: nextStatus(coordination.status, 'coordinate_invitation'),
-        business_state: 'waiting_invitee_preference',
-        invitation_responded_at: now,
-        invitee_intent: 'coordinate',
-        accepted_base_invitation_version: currentInvitationVersion,
-        application_deadline_at: addHours(now, 72)
+      responseInput.nextStatusValue = nextStatus(STATUS.INVITING_PARTNER, 'coordinate_invitation')
+      responseInput.businessState = 'waiting_invitee_preference'
+      responseInput.applicationDeadlineAt = addHours(now, 72)
+      let committed
+      if (typeof responseCommit === 'function') {
+        committed = await responseCommit(responseInput)
+      } else {
+        committed = await memoryCommitInvitationResponse(dep, {
+          coordination,
+          user,
+          submittedVersion,
+          decision: 'coordinate',
+          now,
+          applicationDeadlineAt: responseInput.applicationDeadlineAt,
+          beforeCommitHook: responseInput.beforeCommitHook
+        })
+      }
+      const updated = committed.coordination
+      if (!committed.idempotent) {
+        await dep('publishCoordinationEvent')({
+          coordination: updated,
+          event: {
+            event_type: 'invitation_accepted',
+            actor_user_id: Number(user.id),
+            coordination_version: version
+          }
+        })
+        try {
+          await dep('writeInboxNotification')({
+            coordination: updated,
+            user_id: Number(updated.user_a_id),
+            event_type: 'invitation_accepted',
+            coordination_version: version,
+            title: '对方已接受约会邀请',
+            body: COORDINATING_WAITING_B_MESSAGE,
+            stage: 'invitation_accepted'
+          })
+        } catch (err) {
+          console.warn('inbox coordinate notification skipped:', err.message || err)
+        }
+      }
+      return detailFor(updated, user)
+    }
+
+    responseInput.nextStatusValue = nextStatus(STATUS.INVITING_PARTNER, 'decline_invitation')
+    responseInput.businessState = 'cancelled'
+    let declined
+    if (typeof responseCommit === 'function') {
+      declined = await responseCommit(responseInput)
+    } else {
+      declined = await memoryCommitInvitationResponse(dep, {
+        coordination,
+        user,
+        submittedVersion,
+        decision: 'decline',
+        now,
+        beforeCommitHook: responseInput.beforeCommitHook
       })
+    }
+    const updated = declined.coordination
+    if (!declined.idempotent) {
       await dep('publishCoordinationEvent')({
         coordination: updated,
         event: {
-          event_type: 'invitation_accepted',
+          event_type: 'invitation_declined',
           actor_user_id: Number(user.id),
           coordination_version: version
         }
@@ -543,44 +701,15 @@ function createDateCoordinationHandlers(overrides = {}) {
         await dep('writeInboxNotification')({
           coordination: updated,
           user_id: Number(updated.user_a_id),
-          event_type: 'invitation_accepted',
+          event_type: 'invitation_declined',
           coordination_version: version,
-          title: '对方已接受约会邀请',
-          body: COORDINATING_WAITING_B_MESSAGE,
-          stage: 'invitation_accepted'
+          title: '约会邀请状态更新',
+          body: publicSafeDeclineMessage(),
+          stage: 'invitation_declined'
         })
       } catch (err) {
-        console.warn('inbox coordinate notification skipped:', err.message || err)
+        console.warn('inbox invitation decline notification skipped:', err.message || err)
       }
-      return detailFor(updated, user)
-    }
-
-    const updated = await dep('updateByDoc')('date_coordination', coordination, {
-      status: nextStatus(coordination.status, 'decline_invitation'),
-      business_state: 'cancelled',
-      invitation_responded_at: now,
-      invitee_intent: 'decline'
-    })
-    await dep('publishCoordinationEvent')({
-      coordination: updated,
-      event: {
-        event_type: 'invitation_declined',
-        actor_user_id: Number(user.id),
-        coordination_version: version
-      }
-    })
-    try {
-      await dep('writeInboxNotification')({
-        coordination: updated,
-        user_id: Number(updated.user_a_id),
-        event_type: 'invitation_declined',
-        coordination_version: version,
-        title: '约会邀请状态更新',
-        body: publicSafeDeclineMessage(),
-        stage: 'invitation_declined'
-      })
-    } catch (err) {
-      console.warn('inbox invitation decline notification skipped:', err.message || err)
     }
     return detailFor(updated, user)
   }

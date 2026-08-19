@@ -26,6 +26,12 @@ function now() {
   return new Date()
 }
 
+function invitationVersionFromRow(row = {}) {
+  const invite = Number(row.invitation_version || 0)
+  if (invite > 0) return invite
+  return Number(row.coordination_version || 1)
+}
+
 function fallbackId(name, err) {
   const timeId = Date.now() * 1000 + Math.floor(Math.random() * 1000)
   console.warn(`fallback id for ${name}: ${(err && err.message) || err}`)
@@ -600,7 +606,7 @@ async function commitDirectInvitationAccept(input = {}, timestamp = now()) {
     const current = await adapter.byDocId('date_coordination', coordination._id)
     if (!current) throw new Error('日期协调不存在')
 
-    const currentInvitationVersion = Number(current.invitation_version || 0)
+    const currentInvitationVersion = invitationVersionFromRow(current)
     const coordVersion = Number(current.coordination_version || 1)
     const proposalKey = String(proposalData.proposal_key)
     const proposalDocId = `date-proposal-direct-${current.id}-v${submittedVersion}`
@@ -631,11 +637,25 @@ async function commitDirectInvitationAccept(input = {}, timestamp = now()) {
     if (current.invitation_responded_at) {
       throw new Error('当前邀请已经回应过')
     }
+    if (current.invitation_deadline_at
+      && new Date(current.invitation_deadline_at).getTime() <= new Date(timestamp).getTime()) {
+      await adapter.updateByDoc('date_coordination', current, {
+        status: 'expired',
+        business_state: 'expired'
+      })
+      const err = new Error('本次约会邀请暂未得到回应，协调已结束。')
+      err.code = 'INVITATION_EXPIRED'
+      throw err
+    }
     if (currentInvitationVersion !== submittedVersion) {
       const err = new Error('对方刚刚更新了约会安排，请查看最新方案后再确认')
       err.code = 'STALE_INVITATION_VERSION'
       err.refresh_invitation = true
       throw err
+    }
+
+    if (typeof input.beforeCommitHook === 'function') {
+      await input.beforeCommitHook('direct_accept')
     }
 
     let proposal = await adapter.byDocId('date_coordination_proposal', proposalDocId)
@@ -680,11 +700,21 @@ async function commitDirectInvitationAccept(input = {}, timestamp = now()) {
     const refreshed = await adapter.byDocId('date_coordination', coordination._id)
     if (!refreshed
       || refreshed.status !== 'inviting_partner'
-      || Number(refreshed.invitation_version) !== submittedVersion
+      || invitationVersionFromRow(refreshed) !== submittedVersion
       || refreshed.invitation_responded_at) {
       const err = new Error('对方刚刚更新了约会安排，请查看最新方案后再确认')
       err.code = 'STALE_INVITATION_VERSION'
       err.refresh_invitation = true
+      throw err
+    }
+    if (refreshed.invitation_deadline_at
+      && new Date(refreshed.invitation_deadline_at).getTime() <= new Date(timestamp).getTime()) {
+      await adapter.updateByDoc('date_coordination', refreshed, {
+        status: 'expired',
+        business_state: 'expired'
+      })
+      const err = new Error('本次约会邀请暂未得到回应，协调已结束。')
+      err.code = 'INVITATION_EXPIRED'
       throw err
     }
 
@@ -703,6 +733,279 @@ async function commitDirectInvitationAccept(input = {}, timestamp = now()) {
       arranged: true,
       idempotent: false,
       stale: false
+    }
+  })
+}
+
+/**
+ * CAS coordinate / decline while INVITING_PARTNER.
+ */
+async function commitInvitationResponse(input = {}, timestamp = now()) {
+  const {
+    coordination,
+    inviteeUserId,
+    invitationVersion,
+    decision,
+    nextStatusValue,
+    businessState,
+    applicationDeadlineAt,
+    invitationRespondedAt
+  } = input
+  if (!coordination || !coordination._id) throw new Error('日期协调不存在')
+  const submittedVersion = Number(invitationVersion)
+  if (!Number.isFinite(submittedVersion) || submittedVersion <= 0) {
+    const err = new Error('请提交邀请版本后再确认')
+    err.code = 'INVALID_INVITATION_VERSION'
+    throw err
+  }
+  if (!['coordinate', 'decline'].includes(String(decision || ''))) {
+    throw new Error('请选择和 AI 协调，或这次暂不方便')
+  }
+
+  return transaction(async (adapter) => {
+    const current = await adapter.byDocId('date_coordination', coordination._id)
+    if (!current) throw new Error('日期协调不存在')
+
+    // Idempotent replay
+    if (decision === 'coordinate'
+      && current.status === 'collecting_preferences'
+      && String(current.invitee_intent || '') === 'coordinate'
+      && Number(current.accepted_base_invitation_version) === submittedVersion) {
+      return { coordination: current, decision, idempotent: true }
+    }
+    if (decision === 'decline'
+      && current.status === 'invitation_declined'
+      && String(current.invitee_intent || '') === 'decline'
+      && Number(current.accepted_base_invitation_version || current.invitation_version) === submittedVersion) {
+      return { coordination: current, decision, idempotent: true }
+    }
+
+    if (current.status !== 'inviting_partner') {
+      const err = new Error('对方刚刚回应了邀请，请查看最新协调状态。')
+      err.code = 'INVITATION_ALREADY_RESPONDED'
+      err.refresh_invitation = true
+      throw err
+    }
+    if (Number(current.user_b_id) !== Number(inviteeUserId)) {
+      throw new Error('仅受邀参与者可以处理邀请')
+    }
+    if (current.invitation_responded_at) {
+      const err = new Error('对方刚刚回应了邀请，请查看最新协调状态。')
+      err.code = 'INVITATION_ALREADY_RESPONDED'
+      err.refresh_invitation = true
+      throw err
+    }
+    if (current.invitation_deadline_at
+      && new Date(current.invitation_deadline_at).getTime() <= new Date(timestamp).getTime()) {
+      await adapter.updateByDoc('date_coordination', current, {
+        status: 'expired',
+        business_state: 'expired'
+      })
+      const err = new Error('本次约会邀请暂未得到回应，协调已结束。')
+      err.code = 'INVITATION_EXPIRED'
+      throw err
+    }
+    if (invitationVersionFromRow(current) !== submittedVersion) {
+      const err = new Error('对方刚刚更新了约会安排，请查看最新方案后再确认')
+      err.code = 'STALE_INVITATION_VERSION'
+      err.refresh_invitation = true
+      throw err
+    }
+
+    if (typeof input.beforeCommitHook === 'function') {
+      await input.beforeCommitHook(`invitation_${decision}`)
+    }
+
+    const refreshed = await adapter.byDocId('date_coordination', coordination._id)
+    if (!refreshed
+      || refreshed.status !== 'inviting_partner'
+      || invitationVersionFromRow(refreshed) !== submittedVersion
+      || refreshed.invitation_responded_at) {
+      const err = new Error('对方刚刚更新了约会安排，请查看最新方案后再确认')
+      err.code = 'STALE_INVITATION_VERSION'
+      err.refresh_invitation = true
+      throw err
+    }
+    if (refreshed.invitation_deadline_at
+      && new Date(refreshed.invitation_deadline_at).getTime() <= new Date(timestamp).getTime()) {
+      await adapter.updateByDoc('date_coordination', refreshed, {
+        status: 'expired',
+        business_state: 'expired'
+      })
+      const err = new Error('本次约会邀请暂未得到回应，协调已结束。')
+      err.code = 'INVITATION_EXPIRED'
+      throw err
+    }
+
+    const update = {
+      status: nextStatusValue,
+      business_state: businessState,
+      invitation_responded_at: invitationRespondedAt || timestamp,
+      invitee_intent: decision,
+      accepted_base_invitation_version: submittedVersion
+    }
+    if (decision === 'coordinate') {
+      update.application_deadline_at = applicationDeadlineAt || null
+    }
+    const updated = await adapter.updateByDoc('date_coordination', refreshed, update)
+    return { coordination: updated, decision, idempotent: false }
+  })
+}
+
+/**
+ * CAS pre-accept invitation patch while INVITING_PARTNER.
+ * Prevents A patch from tearing state after B already responded.
+ */
+async function commitPreAcceptInvitationPatch(input = {}, timestamp = now()) {
+  const {
+    coordination,
+    actorUserId,
+    expectedCoordinationVersion,
+    expectedInvitationVersion,
+    nextCoordinationVersion,
+    nextInvitationVersion,
+    nextApplication,
+    nextPreferenceVersion,
+    nextPrimaryProposal,
+    invitationProposal,
+    patchId,
+    patchDocId,
+    preferenceEvidence,
+    acceptedBaseInvitationVersion
+  } = input
+  if (!coordination || !coordination._id) throw new Error('日期协调不存在')
+  const expectedCoord = Number(expectedCoordinationVersion)
+  const expectedInvite = Number(expectedInvitationVersion)
+  const nextCoord = Number(nextCoordinationVersion)
+  const nextInvite = Number(nextInvitationVersion)
+  if (!Number.isFinite(expectedCoord) || !Number.isFinite(nextCoord)) {
+    throw new Error('约会条件已更新，请重新生成修改预览')
+  }
+
+  return transaction(async (adapter) => {
+    const current = await adapter.byDocId('date_coordination', coordination._id)
+    if (!current) throw new Error('日期协调不存在')
+
+    if (current.status !== 'inviting_partner') {
+      const err = new Error('对方刚刚回应了邀请，请查看最新协调状态。')
+      err.code = 'INVITATION_ALREADY_RESPONDED'
+      err.refresh_invitation = true
+      throw err
+    }
+    if (Number(current.user_a_id) !== Number(actorUserId)) {
+      throw new Error('仅发起方可以在等待回应时修改邀请')
+    }
+    if (current.invitation_responded_at) {
+      const err = new Error('对方刚刚回应了邀请，请查看最新协调状态。')
+      err.code = 'INVITATION_ALREADY_RESPONDED'
+      err.refresh_invitation = true
+      throw err
+    }
+    if (current.invitation_deadline_at
+      && new Date(current.invitation_deadline_at).getTime() <= new Date(timestamp).getTime()) {
+      await adapter.updateByDoc('date_coordination', current, {
+        status: 'expired',
+        business_state: 'expired'
+      })
+      const err = new Error('本次约会邀请暂未得到回应，协调已结束。')
+      err.code = 'INVITATION_EXPIRED'
+      throw err
+    }
+    if (Number(current.coordination_version) !== expectedCoord) {
+      const err = new Error('约会条件已更新，请重新生成修改预览')
+      err.code = 'STALE_COORDINATION_VERSION'
+      throw err
+    }
+    if (invitationVersionFromRow(current) !== expectedInvite) {
+      const err = new Error('对方刚刚更新了约会安排，请查看最新方案后再确认')
+      err.code = 'STALE_INVITATION_VERSION'
+      err.refresh_invitation = true
+      throw err
+    }
+
+    if (typeof input.beforeCommitHook === 'function') {
+      await input.beforeCommitHook('pre_accept_patch')
+    }
+
+    const refreshed = await adapter.byDocId('date_coordination', coordination._id)
+    if (!refreshed
+      || refreshed.status !== 'inviting_partner'
+      || refreshed.invitation_responded_at
+      || Number(refreshed.coordination_version) !== expectedCoord
+      || invitationVersionFromRow(refreshed) !== expectedInvite) {
+      const err = new Error(
+        refreshed && refreshed.status !== 'inviting_partner'
+          ? '对方刚刚回应了邀请，请查看最新协调状态。'
+          : '对方刚刚更新了约会安排，请查看最新方案后再确认'
+      )
+      err.code = refreshed && refreshed.status !== 'inviting_partner'
+        ? 'INVITATION_ALREADY_RESPONDED'
+        : 'STALE_INVITATION_VERSION'
+      err.refresh_invitation = true
+      throw err
+    }
+    if (refreshed.invitation_deadline_at
+      && new Date(refreshed.invitation_deadline_at).getTime() <= new Date(timestamp).getTime()) {
+      await adapter.updateByDoc('date_coordination', refreshed, {
+        status: 'expired',
+        business_state: 'expired'
+      })
+      const err = new Error('本次约会邀请暂未得到回应，协调已结束。')
+      err.code = 'INVITATION_EXPIRED'
+      throw err
+    }
+
+    await adapter.addWithId('date_coordination_application', {
+      coordination_id: Number(refreshed.id),
+      user_id: Number(actorUserId),
+      coordination_version: nextCoord,
+      application: nextApplication,
+      submitted_at: timestamp,
+      source: 'agent_confirmed_patch',
+      preference_version: Number(nextPreferenceVersion || nextInvite),
+      preference_evidence: preferenceEvidence || null,
+      accepted_base_invitation_version: Number(acceptedBaseInvitationVersion || 0)
+    }, 'date_coordination_application')
+
+    const updated = await adapter.updateByDoc('date_coordination', refreshed, {
+      coordination_version: nextCoord,
+      invitation_version: nextInvite,
+      initiator_agreed_invitation_version: nextInvite,
+      invitation_proposal: invitationProposal,
+      invitation_primary_proposal: nextPrimaryProposal,
+      status: 'inviting_partner',
+      business_state: 'waiting_partner',
+      recoordination_count: Number(refreshed.recoordination_count || 0),
+      final_proposal_id: 0,
+      last_changed_by_user_id: Number(actorUserId),
+      processing_status: '',
+      processing_version: 0,
+      processing_token: '',
+      processing_attempts: 0,
+      processing_started_at: null,
+      processing_completed_at: null,
+      processing_error_code: '',
+      missing_dimensions: []
+    })
+
+    let appliedPatch = null
+    if (patchDocId || patchId) {
+      const patchRef = patchDocId
+        ? await adapter.byDocId('date_application_patch', patchDocId)
+        : await adapter.byId('date_application_patch', patchId)
+      if (patchRef) {
+        appliedPatch = await adapter.updateByDoc('date_application_patch', patchRef, {
+          status: 'applied',
+          applied_version: nextCoord,
+          applied_at: timestamp
+        })
+      }
+    }
+
+    return {
+      coordination: updated,
+      patch: appliedPatch,
+      idempotent: false
     }
   })
 }
@@ -801,6 +1104,8 @@ module.exports = {
   failCoordinationProcessing,
   commitCoordinationConfirmation,
   commitDirectInvitationAccept,
+  commitInvitationResponse,
+  commitPreAcceptInvitationPatch,
   authError,
   withCollection
 }

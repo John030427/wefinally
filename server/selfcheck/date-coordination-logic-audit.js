@@ -184,7 +184,11 @@ async function main() {
   const sessionA = await agent.createSession({ agent_type: AGENT_TYPES.DATE_COORDINATOR, coordination_id: 80 }, contextA)
   assert.ok(sessionA.id)
 
-  const coordinated = await coordination.respondInvitation({ coordination_id: 80, decision: 'coordinate' }, contextB)
+  const coordinated = await coordination.respondInvitation({
+    coordination_id: 80,
+    decision: 'coordinate',
+    invitation_version: Number(deps.rows.date_coordination[0].invitation_version || 2)
+  }, contextB)
   assert.strictEqual(coordinated.status, STATUS.COLLECTING_PREFERENCES)
   assert.strictEqual(coordinated.invitee_intent, 'coordinate')
 
@@ -218,7 +222,11 @@ async function main() {
   }, rejectDeps.rows.user[0])
   await rejectPatches.confirmForUser({ coordination_id: 81, patch_id: rejectPreview.id }, rejectDeps.rows.user[0])
   assert.strictEqual(rejectDeps.rows.date_coordination[0].status, STATUS.INVITING_PARTNER)
-  const declined = await rejectCoordination.respondInvitation({ coordination_id: 81, decision: 'decline' }, { user_id: 2 })
+  const declined = await rejectCoordination.respondInvitation({
+    coordination_id: 81,
+    decision: 'decline',
+    invitation_version: Number(rejectDeps.rows.date_coordination[0].invitation_version || 2)
+  }, { user_id: 2 })
   assert.strictEqual(declined.status, STATUS.INVITATION_DECLINED)
   const rejectAgent = createAgentHandlers(rejectDeps)
   const declinedSession = await rejectAgent.createSession({ agent_type: AGENT_TYPES.DATE_COORDINATOR, coordination_id: 81 }, { user_id: 1 })
