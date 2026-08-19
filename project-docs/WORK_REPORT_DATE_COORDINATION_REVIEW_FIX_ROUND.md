@@ -163,9 +163,9 @@ Smoke：
 | Item | Value |
 |---|---|
 | Start HEAD | `34ee3ec59de11c54adbbc668de6badb3118e9234` |
-| Final HEAD | `74c1b95d0b1082c1550b742395ebdc3df2c8a552` |
-| Remote HEAD | `74c1b95d0b1082c1550b742395ebdc3df2c8a552` |
-| Commits | `74c1b95` fix(date): make direct invitation acceptance deterministic |
+| Final HEAD | `bee3f9d102eb1b835d7265f69180ec8a54e33a4e` |
+| Remote HEAD | `bee3f9d102eb1b835d7265f69180ec8a54e33a4e` |
+| Commits | `74c1b95` fix(date): make direct invitation acceptance deterministic；`bee3f9d` docs: finalize date coordination review fix report git hashes |
 | Push status | Pushed to `origin/feature/ai-profile-bilateral-coordination` |
 | Merge main | NO |
 | Force push | NO |
