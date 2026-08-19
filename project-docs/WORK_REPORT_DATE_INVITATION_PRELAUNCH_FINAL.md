@@ -167,10 +167,10 @@ Smoke：
 | Item | Value |
 |---|---|
 | Start HEAD | `892435a5aa11b1cc55f4e4322bb7faf52ec4aa27` |
-| Business commit | `f94c67f0` `fix(coordination): persist expired invitation transactions` |
-| Test commit | `6faf87b` `test(date): cover primary resolution and expiration persistence` |
-| Docs commit | `93fa5b1` `docs: finalize date invitation prelaunch fixes` |
-| Final remote HEAD | （push 后回填） |
+| Business commit | `f94c67f4218e5a0dcbeca3758bf162e78cd41ee1` `fix(coordination): persist expired invitation transactions` |
+| Test commit | `6faf87baf19e106f8704163d094aec585bd9c066` `test(date): cover primary resolution and expiration persistence` |
+| Docs commit | `93fa5b1d4d3a9b670145cc29811e4efcfe4f46cb` `docs: finalize date invitation prelaunch fixes` |
+| Final remote HEAD | `e36ad55f1939a3ab4a66070f39b0f9947ca5c281` |
 
 未纳入用户 dirty files。未 merge main。未 force push。未上传微信版本。
 
