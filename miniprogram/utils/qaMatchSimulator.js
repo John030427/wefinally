@@ -1,5 +1,5 @@
-const { get, post } = require('../../utils/request')
-const { API_PATHS, STORAGE_KEYS } = require('../../utils/constants')
+const { get, post } = require('./request')
+const { API_PATHS, STORAGE_KEYS } = require('./constants')
 
 const QA_SCENARIOS = [
   { value: 'coordinate', label: 'AI协调' },
