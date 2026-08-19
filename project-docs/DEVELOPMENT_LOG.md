@@ -4,6 +4,38 @@
 
 ---
 
+## 2026-08-19 — Date Invitation Prelaunch Final
+
+### 类型
+上线前最后一轮后端收尾 + 测试 + CloudBase api 部署 + 文档
+
+### 目的
+1. CloudBase transaction 内写 EXPIRED 再 throw 会 rollback，导致客户端 INVITATION_EXPIRED 但库仍 INVITING_PARTNER
+2. A 在等待 B 时用 AI 改 Preference，旧 Primary 失效后不能无声错位或只报 PRIMARY_PROPOSAL_REQUIRED
+
+### 完成
+- Transaction：deadline 后 `persistExpiredInvitationRecord` 并 **return expired**，handler 在 commit 之后 throw
+- 已 EXPIRED 重试仍返回 INVITATION_EXPIRED，不是 ALREADY_RESPONDED
+- Preference 变更后逐维同步 Primary；唯一值自动推导；多选 `pending_primary_selection` + Chat 选择卡
+- `primary_selection` 后端校验；未完成 resolution 不 apply patch
+- Contract v6：`expired_transaction_commit` / `primary_proposal_resolution`
+- TEST 61–75；TEST 25–60 无回归
+- 报告：`project-docs/WORK_REPORT_DATE_INVITATION_PRELAUNCH_FINAL.md`
+
+### 验证
+专项 selfcheck PASS；CloudBase `api` 干净 staging code-only 更新后 config v6 PASS；agent-graph 未改未部署，health PASS
+
+### 未做
+- Live LangGraph manual smoke
+- 微信视觉验收
+- Subscribe Template ID
+- 体验版上传
+- 未 merge main；未 force push
+
+本轮后停止后端架构迭代。
+
+---
+
 ## 2026-08-19 — Date Invitation Atomicity Final Fix
 
 ### 类型
