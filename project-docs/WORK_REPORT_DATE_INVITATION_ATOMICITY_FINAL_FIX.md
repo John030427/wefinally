@@ -210,9 +210,9 @@ Smoke：
 |---|---|
 | Start HEAD | `4babf4d2c0c29986e243d3779e919d5e656170a2` |
 | Business Commit | `12e07d5fbf17a6bf33e3770ffcaaf404a210cade` `fix(coordination): make invitation transitions atomic` |
-| Docs Commit | （本文件提交后回填） |
-| Final Remote HEAD | （push 后回填） |
-| Push status | 待 push `origin/feature/ai-profile-bilateral-coordination` |
+| Docs Commit | `7d3eb1192166ac33e22800af90984e80cea2cd04` `docs: record invitation atomicity fix round` |
+| Final Remote HEAD | `7d3eb1192166ac33e22800af90984e80cea2cd04` |
+| Push status | 待 push；成功后以 origin HEAD 为准 |
 
 未纳入用户 dirty files。
 
