@@ -292,6 +292,154 @@ function syncPrimaryPaymentFromPreference(primary, prefs, userAId, userBId) {
   })
 }
 
+function isExpiredInvitationRow(row) {
+  return String(row && row.status) === 'expired'
+}
+
+function invitingPartnerDeadlinePassed(row, timestamp) {
+  return String(row && row.status) === 'inviting_partner'
+    && Boolean(row && row.invitation_deadline_at)
+    && new Date(row.invitation_deadline_at).getTime() <= new Date(timestamp).getTime()
+}
+
+async function persistExpiredInvitationRecord(row, updateFn) {
+  if (isExpiredInvitationRow(row)) {
+    return { expired: true, coordination: row, idempotent: true }
+  }
+  const updated = await updateFn({
+    status: 'expired',
+    business_state: 'expired'
+  })
+  return { expired: true, coordination: updated, idempotent: false }
+}
+
+function invalidPrimarySelectionError(message) {
+  const error = new Error(message || '本次建议安排必须落在你当前可接受范围内')
+  error.code = 'INVALID_PRIMARY_SELECTION'
+  return error
+}
+
+function primaryResolutionRequiredError(message) {
+  const error = new Error(message || '请先确认本次建议安排后再修改')
+  error.code = 'PRIMARY_RESOLUTION_REQUIRED'
+  return error
+}
+
+function cleanPrimarySelection(input) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return null
+  const out = {}
+  if (input.date) out.date = String(input.date).slice(0, 10)
+  if (input.period) out.period = String(input.period).trim()
+  if (input.area) out.area = String(input.area).trim()
+  if (input.activity) out.activity = String(input.activity).trim()
+  return Object.keys(out).length ? out : null
+}
+
+function flattenAvailabilitySlots(prefs) {
+  const slots = []
+  for (const item of prefs && prefs.availability || []) {
+    const date = String(item && item.date || '').slice(0, 10)
+    for (const period of item && item.periods || []) {
+      if (date && PERIODS.includes(period)) slots.push({ date, period })
+    }
+  }
+  return slots
+}
+
+function buildPrimaryResolutionPrompt(fields) {
+  const parts = (fields || []).map((item) => {
+    if (item.field === 'area') {
+      const options = (item.options || []).map(String)
+      if (options.length === 2) return `你这次更希望先建议${options[0]}还是${options[1]}？`
+      return `你这次更希望先建议哪个区域：${options.join('、')}？`
+    }
+    if (item.field === 'activity') {
+      const options = (item.options || []).map(String)
+      if (options.length === 2) return `你这次更希望先建议${options[0]}还是${options[1]}？`
+      return `你这次更希望先建议哪个活动：${options.join('、')}？`
+    }
+    if (item.field === 'time') {
+      const labels = (item.options || []).map((opt) => (
+        opt && opt.label || formatDatePeriod(opt && opt.date, opt && opt.period)
+      ))
+      if (labels.length === 2) return `你这次更希望先建议${labels[0]}还是${labels[1]}？`
+      return `你这次更希望先建议哪个时间：${labels.join('、')}？`
+    }
+    return '请确认本次建议安排'
+  }).filter(Boolean)
+  if (!parts.length) return '请确认本次建议安排后再继续。'
+  return `可以，我已经按你的新条件更新了可接受范围。${parts.join('')}`
+}
+
+function resolvePrimaryAfterPreferenceChange(previous, prefs, context = {}, selection = null) {
+  const fields = []
+  const next = previous && typeof previous === 'object' ? Object.assign({}, previous) : {}
+  const slots = flattenAvailabilitySlots(prefs)
+  const areas = Array.isArray(prefs && prefs.areas) ? prefs.areas.slice() : []
+  const activities = Array.isArray(prefs && prefs.activities) ? prefs.activities.slice() : []
+  const sel = cleanPrimarySelection(selection) || {}
+
+  if (sel.date || sel.period) {
+    const date = sel.date || next.date
+    const period = sel.period || next.period
+    if (!preferenceHasSlot(prefs, date, period)) {
+      throw invalidPrimarySelectionError('所选时间不在当前可接受范围内')
+    }
+    next.date = date
+    next.period = period
+  } else if (previous && preferenceHasSlot(prefs, previous.date, previous.period)) {
+    next.date = previous.date
+    next.period = previous.period
+  } else if (slots.length === 1) {
+    next.date = slots[0].date
+    next.period = slots[0].period
+  } else {
+    fields.push({
+      field: 'time',
+      options: slots.map((slot) => ({
+        date: slot.date,
+        period: slot.period,
+        label: formatDatePeriod(slot.date, slot.period)
+      }))
+    })
+  }
+
+  if (sel.area) {
+    if (!areas.includes(sel.area)) throw invalidPrimarySelectionError('所选区域不在当前可接受范围内')
+    next.area = sel.area
+  } else if (previous && areas.includes(previous.area)) {
+    next.area = previous.area
+  } else if (areas.length === 1) {
+    next.area = areas[0]
+  } else {
+    fields.push({ field: 'area', options: areas.slice() })
+  }
+
+  if (sel.activity) {
+    if (!activities.includes(sel.activity)) throw invalidPrimarySelectionError('所选活动不在当前可接受范围内')
+    next.activity = sel.activity
+  } else if (previous && activities.includes(previous.activity)) {
+    next.activity = previous.activity
+  } else if (activities.length === 1) {
+    next.activity = activities[0]
+  } else {
+    fields.push({ field: 'activity', options: activities.slice() })
+  }
+
+  next.budget = String(prefs && prefs.budget || '')
+  next.duration = String(prefs && prefs.duration || '')
+  const required = fields.length > 0
+  const synced = syncPrimaryPaymentFromPreference(next, prefs, context.user_a_id, context.user_b_id)
+  const primary = synced || publicPrimaryProposal(next, context)
+  return {
+    required,
+    fields,
+    primary: required ? null : primary,
+    prompt: required ? buildPrimaryResolutionPrompt(fields) : '',
+    selection: Object.keys(sel).length ? sel : null
+  }
+}
+
 function invitationAlreadyRespondedError() {
   const error = new Error('对方刚刚回应了邀请，请查看最新协调状态。')
   error.code = 'INVITATION_ALREADY_RESPONDED'
@@ -740,15 +888,22 @@ module.exports = {
   missingInvitationVersionError,
   primaryProposalRequiredError,
   primaryProposalIncompleteError,
+  primaryResolutionRequiredError,
+  invalidPrimarySelectionError,
   publicInvitationProposal,
   publicPrimaryProposal,
   isPrimaryProposalComplete,
   preferenceNeedsExplicitPrimary,
   derivePrimaryFromSingletonPrefs,
   resolvePrimaryInvitationProposal,
+  resolvePrimaryAfterPreferenceChange,
+  cleanPrimarySelection,
   primaryFitsPreference,
   primaryFitsPreferenceExceptPayment,
   syncPrimaryPaymentFromPreference,
+  isExpiredInvitationRow,
+  invitingPartnerDeadlinePassed,
+  persistExpiredInvitationRecord,
   invitationAlreadyRespondedError,
   invitationExpiredError,
   personalPaymentToNeutral,

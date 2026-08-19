@@ -4,6 +4,15 @@ const collections = require('./collections')
 const { withCollectionBootstrap } = require('./collectionBootstrapPolicy')
 const { OFFICIAL_SUPPORT_CODE, isTestUser, testSupportCode } = require('../agent/userIdentity')
 const { documentOrNull } = require('./documentReadPolicy')
+const {
+  isExpiredInvitationRow,
+  invitingPartnerDeadlinePassed,
+  persistExpiredInvitationRecord
+} = require('./invitationCoordination')
+
+async function expireInvitationInTransaction(adapter, row) {
+  return persistExpiredInvitationRecord(row, (data) => adapter.updateByDoc('date_coordination', row, data))
+}
 
 const db = cloud.database()
 const _ = db.command
@@ -628,6 +637,9 @@ async function commitDirectInvitationAccept(input = {}, timestamp = now()) {
       }
     }
 
+    if (isExpiredInvitationRow(current) || invitingPartnerDeadlinePassed(current, timestamp)) {
+      return expireInvitationInTransaction(adapter, current)
+    }
     if (current.status !== 'inviting_partner') {
       throw new Error('当前状态不能接受约会邀请')
     }
@@ -636,16 +648,6 @@ async function commitDirectInvitationAccept(input = {}, timestamp = now()) {
     }
     if (current.invitation_responded_at) {
       throw new Error('当前邀请已经回应过')
-    }
-    if (current.invitation_deadline_at
-      && new Date(current.invitation_deadline_at).getTime() <= new Date(timestamp).getTime()) {
-      await adapter.updateByDoc('date_coordination', current, {
-        status: 'expired',
-        business_state: 'expired'
-      })
-      const err = new Error('本次约会邀请暂未得到回应，协调已结束。')
-      err.code = 'INVITATION_EXPIRED'
-      throw err
     }
     if (currentInvitationVersion !== submittedVersion) {
       const err = new Error('对方刚刚更新了约会安排，请查看最新方案后再确认')
@@ -656,6 +658,20 @@ async function commitDirectInvitationAccept(input = {}, timestamp = now()) {
 
     if (typeof input.beforeCommitHook === 'function') {
       await input.beforeCommitHook('direct_accept')
+    }
+
+    const refreshed = await adapter.byDocId('date_coordination', coordination._id)
+    if (isExpiredInvitationRow(refreshed) || invitingPartnerDeadlinePassed(refreshed, timestamp)) {
+      return expireInvitationInTransaction(adapter, refreshed || current)
+    }
+    if (!refreshed
+      || refreshed.status !== 'inviting_partner'
+      || invitationVersionFromRow(refreshed) !== submittedVersion
+      || refreshed.invitation_responded_at) {
+      const err = new Error('对方刚刚更新了约会安排，请查看最新方案后再确认')
+      err.code = 'STALE_INVITATION_VERSION'
+      err.refresh_invitation = true
+      throw err
     }
 
     let proposal = await adapter.byDocId('date_coordination_proposal', proposalDocId)
@@ -695,28 +711,6 @@ async function commitDirectInvitationAccept(input = {}, timestamp = now()) {
       source: 'direct_accept',
       create_time: timestamp
     })
-
-    // Final CAS reload: status + invitation_version must still match
-    const refreshed = await adapter.byDocId('date_coordination', coordination._id)
-    if (!refreshed
-      || refreshed.status !== 'inviting_partner'
-      || invitationVersionFromRow(refreshed) !== submittedVersion
-      || refreshed.invitation_responded_at) {
-      const err = new Error('对方刚刚更新了约会安排，请查看最新方案后再确认')
-      err.code = 'STALE_INVITATION_VERSION'
-      err.refresh_invitation = true
-      throw err
-    }
-    if (refreshed.invitation_deadline_at
-      && new Date(refreshed.invitation_deadline_at).getTime() <= new Date(timestamp).getTime()) {
-      await adapter.updateByDoc('date_coordination', refreshed, {
-        status: 'expired',
-        business_state: 'expired'
-      })
-      const err = new Error('本次约会邀请暂未得到回应，协调已结束。')
-      err.code = 'INVITATION_EXPIRED'
-      throw err
-    }
 
     const updated = await adapter.updateByDoc('date_coordination', refreshed, {
       status: nextStatusValue || 'arranged',
@@ -780,6 +774,9 @@ async function commitInvitationResponse(input = {}, timestamp = now()) {
       return { coordination: current, decision, idempotent: true }
     }
 
+    if (isExpiredInvitationRow(current) || invitingPartnerDeadlinePassed(current, timestamp)) {
+      return expireInvitationInTransaction(adapter, current)
+    }
     if (current.status !== 'inviting_partner') {
       const err = new Error('对方刚刚回应了邀请，请查看最新协调状态。')
       err.code = 'INVITATION_ALREADY_RESPONDED'
@@ -795,16 +792,6 @@ async function commitInvitationResponse(input = {}, timestamp = now()) {
       err.refresh_invitation = true
       throw err
     }
-    if (current.invitation_deadline_at
-      && new Date(current.invitation_deadline_at).getTime() <= new Date(timestamp).getTime()) {
-      await adapter.updateByDoc('date_coordination', current, {
-        status: 'expired',
-        business_state: 'expired'
-      })
-      const err = new Error('本次约会邀请暂未得到回应，协调已结束。')
-      err.code = 'INVITATION_EXPIRED'
-      throw err
-    }
     if (invitationVersionFromRow(current) !== submittedVersion) {
       const err = new Error('对方刚刚更新了约会安排，请查看最新方案后再确认')
       err.code = 'STALE_INVITATION_VERSION'
@@ -817,6 +804,9 @@ async function commitInvitationResponse(input = {}, timestamp = now()) {
     }
 
     const refreshed = await adapter.byDocId('date_coordination', coordination._id)
+    if (isExpiredInvitationRow(refreshed) || invitingPartnerDeadlinePassed(refreshed, timestamp)) {
+      return expireInvitationInTransaction(adapter, refreshed || current)
+    }
     if (!refreshed
       || refreshed.status !== 'inviting_partner'
       || invitationVersionFromRow(refreshed) !== submittedVersion
@@ -824,16 +814,6 @@ async function commitInvitationResponse(input = {}, timestamp = now()) {
       const err = new Error('对方刚刚更新了约会安排，请查看最新方案后再确认')
       err.code = 'STALE_INVITATION_VERSION'
       err.refresh_invitation = true
-      throw err
-    }
-    if (refreshed.invitation_deadline_at
-      && new Date(refreshed.invitation_deadline_at).getTime() <= new Date(timestamp).getTime()) {
-      await adapter.updateByDoc('date_coordination', refreshed, {
-        status: 'expired',
-        business_state: 'expired'
-      })
-      const err = new Error('本次约会邀请暂未得到回应，协调已结束。')
-      err.code = 'INVITATION_EXPIRED'
       throw err
     }
 
@@ -886,6 +866,9 @@ async function commitPreAcceptInvitationPatch(input = {}, timestamp = now()) {
     const current = await adapter.byDocId('date_coordination', coordination._id)
     if (!current) throw new Error('日期协调不存在')
 
+    if (isExpiredInvitationRow(current) || invitingPartnerDeadlinePassed(current, timestamp)) {
+      return expireInvitationInTransaction(adapter, current)
+    }
     if (current.status !== 'inviting_partner') {
       const err = new Error('对方刚刚回应了邀请，请查看最新协调状态。')
       err.code = 'INVITATION_ALREADY_RESPONDED'
@@ -899,16 +882,6 @@ async function commitPreAcceptInvitationPatch(input = {}, timestamp = now()) {
       const err = new Error('对方刚刚回应了邀请，请查看最新协调状态。')
       err.code = 'INVITATION_ALREADY_RESPONDED'
       err.refresh_invitation = true
-      throw err
-    }
-    if (current.invitation_deadline_at
-      && new Date(current.invitation_deadline_at).getTime() <= new Date(timestamp).getTime()) {
-      await adapter.updateByDoc('date_coordination', current, {
-        status: 'expired',
-        business_state: 'expired'
-      })
-      const err = new Error('本次约会邀请暂未得到回应，协调已结束。')
-      err.code = 'INVITATION_EXPIRED'
       throw err
     }
     if (Number(current.coordination_version) !== expectedCoord) {
@@ -928,6 +901,9 @@ async function commitPreAcceptInvitationPatch(input = {}, timestamp = now()) {
     }
 
     const refreshed = await adapter.byDocId('date_coordination', coordination._id)
+    if (isExpiredInvitationRow(refreshed) || invitingPartnerDeadlinePassed(refreshed, timestamp)) {
+      return expireInvitationInTransaction(adapter, refreshed || current)
+    }
     if (!refreshed
       || refreshed.status !== 'inviting_partner'
       || refreshed.invitation_responded_at
@@ -942,16 +918,6 @@ async function commitPreAcceptInvitationPatch(input = {}, timestamp = now()) {
         ? 'INVITATION_ALREADY_RESPONDED'
         : 'STALE_INVITATION_VERSION'
       err.refresh_invitation = true
-      throw err
-    }
-    if (refreshed.invitation_deadline_at
-      && new Date(refreshed.invitation_deadline_at).getTime() <= new Date(timestamp).getTime()) {
-      await adapter.updateByDoc('date_coordination', refreshed, {
-        status: 'expired',
-        business_state: 'expired'
-      })
-      const err = new Error('本次约会邀请暂未得到回应，协调已结束。')
-      err.code = 'INVITATION_EXPIRED'
       throw err
     }
 

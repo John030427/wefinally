@@ -30,6 +30,9 @@ const {
   missingInvitationVersionError,
   invitationAlreadyRespondedError,
   invitationExpiredError,
+  isExpiredInvitationRow,
+  invitingPartnerDeadlinePassed,
+  persistExpiredInvitationRecord,
   publicInvitationProposal,
   buildInvitationCard,
   invitationVersionOf,
@@ -184,6 +187,36 @@ async function processCoordinationDeadlines({ deps = defaultDeps(), now = new Da
   return { scanned: rows.length, expired }
 }
 
+async function notifyInvitationExpiredOnce(dep, coordination) {
+  if (!coordination || typeof dep !== 'function') return
+  try {
+    if (typeof dep('first') === 'function') {
+      const existing = await dep('first')('coordination_notification', {
+        coordination_id: Number(coordination.id),
+        user_id: Number(coordination.user_a_id),
+        event_type: 'invitation_expired'
+      })
+      if (existing) return
+    }
+    if (typeof dep('writeInboxNotification') !== 'function') return
+    await dep('writeInboxNotification')({
+      coordination,
+      user_id: Number(coordination.user_a_id),
+      event_type: 'invitation_expired',
+      coordination_version: Number(coordination.coordination_version || 1),
+      title: '约会邀请已结束',
+      body: EXPIRED_PUBLIC_MESSAGE,
+      stage: 'expired'
+    })
+  } catch (err) {
+    console.warn('inbox invitation expired notification skipped:', err.message || err)
+  }
+}
+
+async function expireInvitationFromCommit(dep, row) {
+  return persistExpiredInvitationRecord(row, (data) => dep('updateByDoc')('date_coordination', row, data))
+}
+
 /**
  * In-memory / non-transaction CAS used by unit selfchecks.
  * Production path must use db.commitDirectInvitationAccept.
@@ -205,16 +238,26 @@ async function memoryCommitDirectAccept(dep, input = {}) {
     }
   }
 
+  if (isExpiredInvitationRow(current) || invitingPartnerDeadlinePassed(current, ts)) {
+    return expireInvitationFromCommit(dep, current)
+  }
   if (current.status !== STATUS.INVITING_PARTNER) throw invitationAlreadyRespondedError()
   if (Number(current.user_b_id) !== Number(user.id)) throw new Error('仅受邀参与者可以处理邀请')
   if (current.invitation_responded_at) throw invitationAlreadyRespondedError()
-  if (current.invitation_deadline_at && new Date(current.invitation_deadline_at).getTime() <= new Date(ts).getTime()) {
-    await dep('updateByDoc')('date_coordination', current, { status: STATUS.EXPIRED, business_state: 'expired' })
-    throw invitationExpiredError()
-  }
   if (invitationVersionOf(current) !== Number(submittedVersion)) throw staleInvitationError()
 
   if (typeof beforeCommitHook === 'function') await beforeCommitHook('direct_accept')
+
+  const afterHook = await dep('byId')('date_coordination', current.id)
+  if (isExpiredInvitationRow(afterHook) || invitingPartnerDeadlinePassed(afterHook, ts)) {
+    return expireInvitationFromCommit(dep, afterHook || current)
+  }
+  if (!afterHook
+    || afterHook.status !== STATUS.INVITING_PARTNER
+    || invitationVersionOf(afterHook) !== Number(submittedVersion)
+    || afterHook.invitation_responded_at) {
+    throw staleInvitationError()
+  }
 
   let proposal = (await dep('list')('date_coordination_proposal', {
     coordination_id: Number(current.id),
@@ -255,18 +298,7 @@ async function memoryCommitDirectAccept(dep, input = {}) {
   if (existingB) await dep('updateByDoc')('date_coordination_confirmation', existingB, bConfirm)
   else await dep('addWithId')('date_coordination_confirmation', bConfirm, 'date_coordination_confirmation')
 
-  const refreshed = await dep('byId')('date_coordination', current.id)
-  if (!refreshed
-    || refreshed.status !== STATUS.INVITING_PARTNER
-    || invitationVersionOf(refreshed) !== Number(submittedVersion)
-    || refreshed.invitation_responded_at) {
-    throw staleInvitationError()
-  }
-  if (refreshed.invitation_deadline_at && new Date(refreshed.invitation_deadline_at).getTime() <= new Date(ts).getTime()) {
-    await dep('updateByDoc')('date_coordination', refreshed, { status: STATUS.EXPIRED, business_state: 'expired' })
-    throw invitationExpiredError()
-  }
-  const updated = await dep('updateByDoc')('date_coordination', refreshed, {
+  const updated = await dep('updateByDoc')('date_coordination', afterHook, {
     status: nextStatus(STATUS.INVITING_PARTNER, 'accept_invitation'),
     business_state: 'completed',
     invitation_responded_at: ts,
@@ -304,27 +336,25 @@ async function memoryCommitInvitationResponse(dep, input = {}) {
     return { coordination: current, decision, idempotent: true }
   }
 
+  if (isExpiredInvitationRow(current) || invitingPartnerDeadlinePassed(current, ts)) {
+    return expireInvitationFromCommit(dep, current)
+  }
   if (current.status !== STATUS.INVITING_PARTNER) throw invitationAlreadyRespondedError()
   if (Number(current.user_b_id) !== Number(user.id)) throw new Error('仅受邀参与者可以处理邀请')
   if (current.invitation_responded_at) throw invitationAlreadyRespondedError()
-  if (current.invitation_deadline_at && new Date(current.invitation_deadline_at).getTime() <= new Date(ts).getTime()) {
-    await dep('updateByDoc')('date_coordination', current, { status: STATUS.EXPIRED, business_state: 'expired' })
-    throw invitationExpiredError()
-  }
   if (invitationVersionOf(current) !== Number(submittedVersion)) throw staleInvitationError()
 
   if (typeof beforeCommitHook === 'function') await beforeCommitHook(`invitation_${decision}`)
 
   const refreshed = await dep('byId')('date_coordination', current.id)
+  if (isExpiredInvitationRow(refreshed) || invitingPartnerDeadlinePassed(refreshed, ts)) {
+    return expireInvitationFromCommit(dep, refreshed || current)
+  }
   if (!refreshed
     || refreshed.status !== STATUS.INVITING_PARTNER
     || invitationVersionOf(refreshed) !== Number(submittedVersion)
     || refreshed.invitation_responded_at) {
     throw staleInvitationError()
-  }
-  if (refreshed.invitation_deadline_at && new Date(refreshed.invitation_deadline_at).getTime() <= new Date(ts).getTime()) {
-    await dep('updateByDoc')('date_coordination', refreshed, { status: STATUS.EXPIRED, business_state: 'expired' })
-    throw invitationExpiredError()
   }
 
   const update = {
@@ -500,6 +530,14 @@ function createDateCoordinationHandlers(overrides = {}) {
     }
   }
 
+  async function throwIfExpiredCommit(committed) {
+    if (committed && committed.expired) {
+      if (!committed.idempotent) await notifyInvitationExpiredOnce(dep, committed.coordination)
+      throw invitationExpiredError()
+    }
+    return committed
+  }
+
   async function respondInvitation(data, wxContext) {
     const user = await dep('currentUser')(wxContext)
     return respondInvitationForUser(data, user)
@@ -509,8 +547,15 @@ function createDateCoordinationHandlers(overrides = {}) {
     const coordination = await dep('byId')('date_coordination', coordinationId(data))
     if (!coordination) throw new Error('日期协调不存在')
     if (Number(coordination.user_b_id) !== Number(user.id)) throw new Error('仅受邀参与者可以处理邀请')
-    if (deadlinePassed(coordination.invitation_deadline_at, dep('now')())) {
-      await dep('updateByDoc')('date_coordination', coordination, { status: STATUS.EXPIRED, business_state: 'expired' })
+    if (isExpiredInvitationRow(coordination)
+      || invitingPartnerDeadlinePassed(coordination, dep('now')())) {
+      if (String(coordination.status) === STATUS.INVITING_PARTNER) {
+        const expired = await persistExpiredInvitationRecord(
+          coordination,
+          (data) => dep('updateByDoc')('date_coordination', coordination, data)
+        )
+        if (!expired.idempotent) await notifyInvitationExpiredOnce(dep, expired.coordination)
+      }
       throw invitationExpiredError()
     }
     const decision = String(data.decision || '')
@@ -577,6 +622,7 @@ function createDateCoordinationHandlers(overrides = {}) {
           beforeCommitHook: typeof beforeCommitHook === 'function' ? beforeCommitHook : undefined
         })
       }
+      await throwIfExpiredCommit(committed)
       const updated = committed.coordination
       if (!committed.idempotent) {
         await dep('publishCoordinationEvent')({
@@ -645,6 +691,7 @@ function createDateCoordinationHandlers(overrides = {}) {
           beforeCommitHook: responseInput.beforeCommitHook
         })
       }
+      await throwIfExpiredCommit(committed)
       const updated = committed.coordination
       if (!committed.idempotent) {
         await dep('publishCoordinationEvent')({
@@ -687,6 +734,7 @@ function createDateCoordinationHandlers(overrides = {}) {
         beforeCommitHook: responseInput.beforeCommitHook
       })
     }
+    await throwIfExpiredCommit(declined)
     const updated = declined.coordination
     if (!declined.idempotent) {
       await dep('publishCoordinationEvent')({

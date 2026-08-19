@@ -589,6 +589,9 @@ Page({
       if (code === 'STALE_INVITATION_VERSION' || /刚刚更新了约会安排|请查看最新方案/.test(message)) {
         wx.showToast({ title: '对方刚刚更新了约会安排，请查看最新方案后再确认。', icon: 'none', duration: 3000 })
         this.refreshCoordination()
+      } else if (code === 'INVITATION_EXPIRED' || /暂未得到回应|邀请已结束/.test(message)) {
+        wx.showToast({ title: '本次约会邀请已结束，请查看最新状态。', icon: 'none', duration: 3000 })
+        this.refreshCoordination()
       } else if (code === 'INVITATION_ALREADY_RESPONDED' || /刚刚回应了邀请|查看最新协调状态/.test(message)) {
         wx.showToast({ title: '对方刚刚回应了邀请，请查看最新协调状态。', icon: 'none', duration: 3000 })
         this.refreshCoordination()

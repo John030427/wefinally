@@ -235,6 +235,27 @@
   color: #b96b80;
 }
 
+.primary-resolution {
+  margin-top: 12rpx;
+}
+
+.primary-choice-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+  margin: 8rpx 0 4rpx;
+}
+
+.primary-choice {
+  padding: 10rpx 22rpx;
+  border: 1rpx solid #f3b6c6;
+  border-radius: 8rpx;
+  background: #fff;
+  color: #bd657d;
+  font-size: 24rpx;
+  line-height: 1.4;
+}
+
 .human-service-btn {
   width: 100%;
   height: 72rpx;

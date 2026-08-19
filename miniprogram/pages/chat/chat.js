@@ -28,15 +28,52 @@ function formatPatchValue(value) {
   return value === undefined || value === null || value === '' ? '未设置' : String(value)
 }
 
+function normalizeResolutionFields(resolution) {
+  const fields = resolution && Array.isArray(resolution.fields) ? resolution.fields : []
+  const labels = { area: '区域', activity: '活动', time: '时间' }
+  return fields.map((field) => {
+    const name = String(field.field || '')
+    const options = (field.options || []).map((opt) => {
+      if (opt && typeof opt === 'object') {
+        const value = String(opt.value || opt.area || opt.activity || '')
+        const date = String(opt.date || '')
+        const period = String(opt.period || '')
+        const label = String(opt.label || value || '')
+        return {
+          key: date ? `${date}_${period}` : value || label,
+          value,
+          label,
+          date,
+          period
+        }
+      }
+      const text = String(opt)
+      return { key: text, value: text, label: text, date: '', period: '' }
+    })
+    return { field: name, label: labels[name] || '安排', options }
+  })
+}
+
 function normalizePatchPreview(raw, requiresConfirmation) {
   const patch = raw && (raw.patch_preview || raw.patchPreview || raw)
   const preview = patch && patch.preview
   if (!patch || !preview || !Array.isArray(preview.changed_fields)) return null
+  const status = patch.status || 'pending_confirmation'
+  const primaryResolutionRequired = Boolean(preview.primary_resolution_required) || status === 'pending_primary_selection'
   return {
     id: String(patch.id || patch.patch_id || ''),
     operation: patch.operation || 'modify',
-    status: patch.status || 'pending_confirmation',
-    requiresConfirmation: requiresConfirmation === true || patch.requires_confirmation === true || patch.status === 'pending_confirmation',
+    status,
+    requiresConfirmation: !primaryResolutionRequired && (
+      requiresConfirmation === true
+      || patch.requires_confirmation === true
+      || status === 'pending_confirmation'
+    ),
+    primaryResolutionRequired,
+    primaryResolutionFields: normalizeResolutionFields(preview.primary_resolution),
+    resolutionPrompt: preview.resolution_prompt || '本次建议安排需要确认',
+    sourceChanges: preview.source_changes || patch.changes || {},
+    primarySelection: preview.primary_selection || patch.primary_selection || {},
     changes: preview.changed_fields.map((field) => {
       let before = formatPatchValue(preview.before && preview.before[field])
       let after = formatPatchValue(preview.after && preview.after[field])
@@ -339,6 +376,80 @@ Page({
     await this.submitPatchAction(e, 'cancel')
   },
 
+  async onSelectPrimaryResolution(e) {
+    if (this.data.patchSubmitting) return
+    const messageId = String(e.currentTarget.dataset.messageId || '')
+    const field = String(e.currentTarget.dataset.field || '')
+    const value = String(e.currentTarget.dataset.value || '')
+    const date = String(e.currentTarget.dataset.date || '')
+    const period = String(e.currentTarget.dataset.period || '')
+    const currentMessage = this.data.messages.find((item) => item.id === messageId)
+    const currentPreview = currentMessage && currentMessage.patchPreview
+    if (!currentPreview || !this.data.coordinationId) {
+      wx.showToast({ title: '缺少约会协调信息', icon: 'none' })
+      return
+    }
+    const nextSelection = Object.assign({}, currentPreview.primarySelection || {})
+    if (field === 'time') {
+      nextSelection.date = date
+      nextSelection.period = period
+    } else if (field === 'area' && value) {
+      nextSelection.area = value
+    } else if (field === 'activity' && value) {
+      nextSelection.activity = value
+    } else {
+      return
+    }
+    this.setData({ patchSubmitting: true })
+    try {
+      const body = await post(`${API_PATHS.DATE_COORDINATIONS}/${this.data.coordinationId}/application-patches`, {
+        changes: currentPreview.sourceChanges,
+        primary_selection: nextSelection
+      }, { showError: false })
+      const nextPreview = normalizePatchPreview(body, body && body.status === 'pending_confirmation')
+      const messages = this.data.messages.map((item) => {
+        if (item.id !== messageId) return item
+        return Object.assign({}, item, { patchPreview: nextPreview || item.patchPreview })
+      })
+      this.setData({ messages })
+    } catch (err) {
+      this.handlePatchError(err)
+    } finally {
+      this.setData({ patchSubmitting: false })
+    }
+  },
+
+  handlePatchError(err) {
+    const code = err && (err.code || err.error_code || err.errorCode)
+    const message = (err && err.message) || '操作失败，请重试'
+    if (code === 'INVITATION_EXPIRED' || /暂未得到回应|邀请已结束/.test(message)) {
+      wx.showToast({ title: '本次约会邀请已结束，请查看最新状态。', icon: 'none', duration: 3000 })
+      if (this.data.coordinationId) {
+        wx.navigateTo({
+          url: `/pages/date-coordination/date-coordination?id=${this.data.coordinationId}`
+        })
+      }
+      return
+    }
+    if (code === 'PRIMARY_RESOLUTION_REQUIRED') {
+      wx.showToast({ title: '请先选择本次建议安排', icon: 'none' })
+      return
+    }
+    if (code === 'INVITATION_ALREADY_RESPONDED'
+      || code === 'STALE_INVITATION_VERSION'
+      || code === 'STALE_COORDINATION_VERSION'
+      || /刚刚回应了邀请|刚刚更新了约会安排|协调状态刚刚发生变化|请查看最新/.test(message)) {
+      wx.showToast({ title: '协调状态刚刚发生变化，请查看最新进度。', icon: 'none', duration: 3000 })
+      if (this.data.coordinationId) {
+        wx.navigateTo({
+          url: `/pages/date-coordination/date-coordination?id=${this.data.coordinationId}`
+        })
+      }
+      return
+    }
+    wx.showToast({ title: message, icon: 'none' })
+  },
+
   async submitPatchAction(e, action) {
     const patchId = String(e.currentTarget.dataset.patchId || '')
     const messageId = String(e.currentTarget.dataset.messageId || '')
@@ -373,23 +484,7 @@ Page({
       }
       this.setData({ messages: [...messages, notice], scrollToView: `msg-${notice.id}` })
     } catch (err) {
-      const code = err && (err.code || err.error_code || err.errorCode)
-      const message = (err && err.message) || '操作失败，请重试'
-      if (action === 'confirm' && (
-        code === 'INVITATION_ALREADY_RESPONDED'
-        || code === 'STALE_INVITATION_VERSION'
-        || code === 'STALE_COORDINATION_VERSION'
-        || /刚刚回应了邀请|刚刚更新了约会安排|协调状态刚刚发生变化|请查看最新/.test(message)
-      )) {
-        wx.showToast({ title: '协调状态刚刚发生变化，请查看最新进度。', icon: 'none', duration: 3000 })
-        if (this.data.coordinationId) {
-          wx.navigateTo({
-            url: `/pages/date-coordination/date-coordination?id=${this.data.coordinationId}`
-          })
-        }
-      } else {
-        wx.showToast({ title: message, icon: 'none' })
-      }
+      this.handlePatchError(err)
     } finally {
       this.setData({ patchSubmitting: false })
     }

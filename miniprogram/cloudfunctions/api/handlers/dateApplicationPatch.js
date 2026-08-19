@@ -13,12 +13,18 @@ const {
   invitationVersionOf,
   invitationPrimaryOf,
   resolvePrimaryInvitationProposal,
+  resolvePrimaryAfterPreferenceChange,
+  cleanPrimarySelection,
   derivePrimaryFromSingletonPrefs,
   primaryFitsPreference,
   primaryFitsPreferenceExceptPayment,
   syncPrimaryPaymentFromPreference,
   invitationAlreadyRespondedError,
   invitationExpiredError,
+  primaryResolutionRequiredError,
+  isExpiredInvitationRow,
+  invitingPartnerDeadlinePassed,
+  persistExpiredInvitationRecord,
   paymentFactText,
   evidenceFromChanges,
   mergeInvitationWithOverrides,
@@ -136,13 +142,12 @@ function createDateApplicationPatchHandlers(overrides = {}) {
     const ts = dep('now')()
     const current = await dep('byId')('date_coordination', coordination.id)
     if (!current) throw new Error('日期协调不存在')
+    if (isExpiredInvitationRow(current) || invitingPartnerDeadlinePassed(current, ts)) {
+      return persistExpiredInvitationRecord(current, (data) => dep('updateByDoc')('date_coordination', current, data))
+    }
     if (current.status !== STATUS.INVITING_PARTNER) throw invitationAlreadyRespondedError()
     if (Number(current.user_a_id) !== Number(actorUserId)) throw new Error('仅发起方可以在等待回应时修改邀请')
     if (current.invitation_responded_at) throw invitationAlreadyRespondedError()
-    if (current.invitation_deadline_at && new Date(current.invitation_deadline_at).getTime() <= ts.getTime()) {
-      await dep('updateByDoc')('date_coordination', current, { status: STATUS.EXPIRED, business_state: 'expired' })
-      throw invitationExpiredError()
-    }
     if (Number(current.coordination_version) !== Number(expectedCoordinationVersion)) {
       const err = new Error('约会条件已更新，请重新生成修改预览')
       err.code = 'STALE_COORDINATION_VERSION'
@@ -157,6 +162,9 @@ function createDateApplicationPatchHandlers(overrides = {}) {
     if (typeof beforeCommitHook === 'function') await beforeCommitHook('pre_accept_patch')
 
     const refreshed = await dep('byId')('date_coordination', current.id)
+    if (isExpiredInvitationRow(refreshed) || invitingPartnerDeadlinePassed(refreshed, ts)) {
+      return persistExpiredInvitationRecord(refreshed || current, (data) => dep('updateByDoc')('date_coordination', refreshed || current, data))
+    }
     if (!refreshed
       || refreshed.status !== STATUS.INVITING_PARTNER
       || refreshed.invitation_responded_at
@@ -170,10 +178,6 @@ function createDateApplicationPatchHandlers(overrides = {}) {
           err.refresh_invitation = true
           return err
         })()
-    }
-    if (refreshed.invitation_deadline_at && new Date(refreshed.invitation_deadline_at).getTime() <= ts.getTime()) {
-      await dep('updateByDoc')('date_coordination', refreshed, { status: STATUS.EXPIRED, business_state: 'expired' })
-      throw invitationExpiredError()
     }
     await dep('addWithId')('date_coordination_application', {
       coordination_id: Number(refreshed.id),
@@ -227,6 +231,7 @@ function createDateApplicationPatchHandlers(overrides = {}) {
   async function createPreviewForUser(data, user, session) {
     const coordination = await dep('byId')('date_coordination', Number(data.coordination_id || 0))
     if (!owns(coordination, user && user.id)) throw new Error('无权修改该约会协调')
+    if (isExpiredInvitationRow(coordination)) throw invitationExpiredError()
     if (WRITE_BLOCKED_STATUSES.includes(coordination.status) || !canModifyApplication(coordination, user, { hasOwnApplication: true })) {
       throw new Error(terminalWriteError(coordination.status))
     }
@@ -267,26 +272,35 @@ function createDateApplicationPatchHandlers(overrides = {}) {
           coordination.user_b_id
         )
       }
-      if (previous && primaryFitsPreferenceExceptPayment(previous, afterApp)
-        && !primaryFitsPreference(previous, afterApp, primaryContext)) {
-        const synced = syncPrimaryPaymentFromPreference(
-          previous,
-          afterApp,
-          coordination.user_a_id,
-          coordination.user_b_id
-        )
-        preview.invitation_primary_proposal = synced
-        preview.primary_payment_changed = true
-        preview.primary_payment_before = previous
-        preview.primary_payment_after = synced
-        preview.primary_payment_before_text = paymentFactText(previous, primaryContext)
-        preview.primary_payment_after_text = paymentFactText(synced, primaryContext)
-        if (!preview.changed_fields) preview.changed_fields = []
-        if (!preview.changed_fields.includes('payment_preference')) {
-          preview.changed_fields.push('payment_preference')
+      const selection = cleanPrimarySelection(data.primary_selection)
+      const resolution = resolvePrimaryAfterPreferenceChange(previous, afterApp, primaryContext, selection)
+      preview.source_changes = changes
+      preview.primary_selection = selection
+      preview.primary_before = previous || null
+      if (resolution.required) {
+        preview.primary_resolution_required = true
+        preview.primary_resolution = { fields: resolution.fields }
+        preview.resolution_prompt = resolution.prompt
+        preview.invitation_primary_proposal = null
+      } else {
+        preview.primary_resolution_required = false
+        preview.invitation_primary_proposal = resolution.primary
+        preview.primary_after = resolution.primary
+        if (previous && resolution.primary) {
+          const payBefore = paymentFactText(previous, primaryContext)
+          const payAfter = paymentFactText(resolution.primary, primaryContext)
+          if (payBefore !== payAfter) {
+            preview.primary_payment_changed = true
+            preview.primary_payment_before = previous
+            preview.primary_payment_after = resolution.primary
+            preview.primary_payment_before_text = payBefore
+            preview.primary_payment_after_text = payAfter
+            if (!preview.changed_fields) preview.changed_fields = []
+            if (!preview.changed_fields.includes('payment_preference')) {
+              preview.changed_fields.push('payment_preference')
+            }
+          }
         }
-      } else if (previous && primaryFitsPreference(previous, afterApp, primaryContext)) {
-        preview.invitation_primary_proposal = previous
       }
     }
     const now = dep('now')()
@@ -297,9 +311,10 @@ function createDateApplicationPatchHandlers(overrides = {}) {
       source_message_id: Number(data.source_message_id || 0),
       base_version: version,
       operation: 'modify',
-      status: 'pending_confirmation',
+      status: preview.primary_resolution_required ? 'pending_primary_selection' : 'pending_confirmation',
       changes,
       preview,
+      primary_selection: preview.primary_selection || null,
       expires_at: addHours(now, 2)
     }, 'date_application_patch')
     return publicPatch(created)
@@ -404,6 +419,7 @@ function createDateApplicationPatchHandlers(overrides = {}) {
     if (Number(patch.user_id) !== Number(user && user.id)) throw new Error('无权确认该修改预览')
     const coordination = await dep('byId')('date_coordination', Number(patch.coordination_id))
     if (!owns(coordination, user.id)) throw new Error('无权确认该修改预览')
+    if (isExpiredInvitationRow(coordination)) throw invitationExpiredError()
     if (!canModifyApplication(coordination, user, { hasOwnApplication: true })) {
       throw new Error(terminalWriteError(coordination.status))
     }
@@ -411,6 +427,9 @@ function createDateApplicationPatchHandlers(overrides = {}) {
       return { patch: publicPatch(patch), coordination_version: Number(patch.applied_version || coordination.coordination_version) }
     }
     if (patch.status === 'applying') throw new Error('修改预览正在处理中，请稍后刷新')
+    if (patch.status === 'pending_primary_selection' || (patch.preview && patch.preview.primary_resolution_required)) {
+      throw primaryResolutionRequiredError(patch.preview && patch.preview.resolution_prompt)
+    }
     if (patch.status !== 'pending_confirmation') throw new Error('修改预览已经失效')
     if (new Date(patch.expires_at).getTime() < dep('now')().getTime()) {
       await dep('updateByDoc')('date_application_patch', patch, { status: 'expired' })
@@ -519,39 +538,22 @@ function createDateApplicationPatchHandlers(overrides = {}) {
         user_b_id: coordination.user_b_id
       }
       const invitationProposal = publicInvitationProposal(nextApplication)
-      let nextPrimary = null
-      const primaryInput = (patch.changes && (patch.changes.invitation_primary_proposal || patch.changes.primary_proposal))
-        || (patch.preview && patch.preview.invitation_primary_proposal)
-        || {}
-      try {
-        nextPrimary = resolvePrimaryInvitationProposal(
-          Object.keys(primaryInput).length ? { invitation_primary_proposal: primaryInput } : {},
-          nextApplication,
-          primaryContext
+      const previous = invitationPrimaryOf(coordination, null, primaryContext)
+        || derivePrimaryFromSingletonPrefs(
+          source && source.application,
+          coordination.user_a_id,
+          coordination.user_b_id
         )
-      } catch (err) {
-        let previous = invitationPrimaryOf(coordination, null, primaryContext)
-        if (!previous || !previous.date) {
-          const priorApp = latestForUser(rows, Number(user.id), oldVersion)
-          previous = derivePrimaryFromSingletonPrefs(
-            priorApp && priorApp.application,
-            coordination.user_a_id,
-            coordination.user_b_id
-          )
-        }
-        if (previous && primaryFitsPreferenceExceptPayment(previous, nextApplication)) {
-          nextPrimary = syncPrimaryPaymentFromPreference(
-            previous,
-            nextApplication,
-            coordination.user_a_id,
-            coordination.user_b_id
-          )
-        } else if (previous && primaryFitsPreference(previous, nextApplication, primaryContext)) {
-          nextPrimary = previous
-        } else {
-          throw err
-        }
+      const resolution = resolvePrimaryAfterPreferenceChange(
+        previous,
+        nextApplication,
+        primaryContext,
+        patch.primary_selection || (patch.preview && patch.preview.primary_selection)
+      )
+      if (resolution.required || !resolution.primary) {
+        throw primaryResolutionRequiredError(resolution.prompt)
       }
+      const nextPrimary = resolution.primary
       const commitFn = dep('commitPreAcceptInvitationPatch')
       const beforeCommitHook = dep('beforeCommitHook')
       const commitInput = {
@@ -578,6 +580,31 @@ function createDateApplicationPatchHandlers(overrides = {}) {
           committed = await commitFn(commitInput)
         } else {
           committed = await memoryCommitPreAcceptInvitationPatch(commitInput)
+        }
+        if (committed && committed.expired) {
+          if (!committed.idempotent) {
+            try {
+              const existing = await dep('first')('coordination_notification', {
+                coordination_id: Number(committed.coordination.id),
+                user_id: Number(committed.coordination.user_a_id),
+                event_type: 'invitation_expired'
+              })
+              if (!existing) {
+                await dep('writeInboxNotification')({
+                  coordination: committed.coordination,
+                  user_id: Number(committed.coordination.user_a_id),
+                  event_type: 'invitation_expired',
+                  coordination_version: Number(committed.coordination.coordination_version || 1),
+                  title: '约会邀请已结束',
+                  body: invitationExpiredError().message,
+                  stage: 'expired'
+                })
+              }
+            } catch (notifyErr) {
+              console.warn('inbox invitation expired notification skipped:', notifyErr.message || notifyErr)
+            }
+          }
+          throw invitationExpiredError()
         }
       } catch (err) {
         await dep('updateByDoc')('date_application_patch', patch, { status: 'pending_confirmation' })
@@ -674,7 +701,9 @@ function createDateApplicationPatchHandlers(overrides = {}) {
   async function cancelForUser(data, user) {
     const patch = await dep('byId')('date_application_patch', Number(data.patch_id || data.patchId || 0))
     if (!patch || Number(patch.user_id) !== Number(user && user.id)) throw new Error('无权取消该修改预览')
-    if (patch.status === 'pending_confirmation') await dep('updateByDoc')('date_application_patch', patch, { status: 'cancelled' })
+    if (patch.status === 'pending_confirmation' || patch.status === 'pending_primary_selection') {
+      await dep('updateByDoc')('date_application_patch', patch, { status: 'cancelled' })
+    }
     return publicPatch(patch)
   }
 

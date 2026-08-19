@@ -54,9 +54,32 @@
           <view wx:else class="patch-notice">📌 不影响现有方案，会保留当前匹配进度。</view>
           <view wx:if="{{item.patchPreview.willNotifyPartner}}" class="patch-notice">💌 确认后将通知对方。</view>
           <view wx:else class="patch-notice">💌 这次修改不会主动通知对方。</view>
+          <view wx:if="{{item.patchPreview.primaryResolutionRequired && item.patchPreview.status === 'pending_primary_selection'}}" class="primary-resolution">
+            <view class="patch-notice">{{item.patchPreview.resolutionPrompt}}</view>
+            <view wx:for="{{item.patchPreview.primaryResolutionFields}}" wx:for-item="resField" wx:key="field">
+              <view class="patch-field">本次建议{{resField.label}}需要确认</view>
+              <view class="primary-choice-row">
+                <view
+                  class="primary-choice"
+                  wx:for="{{resField.options}}"
+                  wx:for-item="opt"
+                  wx:key="key"
+                  data-message-id="{{item.id}}"
+                  data-field="{{resField.field}}"
+                  data-value="{{opt.value}}"
+                  data-date="{{opt.date}}"
+                  data-period="{{opt.period}}"
+                  bindtap="onSelectPrimaryResolution"
+                >{{opt.label}}</view>
+              </view>
+            </view>
+          </view>
           <view wx:if="{{item.patchPreview.requiresConfirmation && item.patchPreview.status === 'pending_confirmation'}}" class="patch-actions">
             <button class="patch-confirm" data-patch-id="{{item.patchPreview.id}}" data-message-id="{{item.id}}" bindtap="onConfirmPatch" disabled="{{patchSubmitting}}" loading="{{patchSubmitting}}">{{item.patchPreview.operation === 'create' ? '确认发送' : '确认修改'}}</button>
             <button class="patch-cancel" data-patch-id="{{item.patchPreview.id}}" data-message-id="{{item.id}}" bindtap="onCancelPatch" disabled="{{patchSubmitting}}">{{item.patchPreview.operation === 'create' ? '暂不发送' : '暂不修改'}}</button>
+          </view>
+          <view wx:if="{{item.patchPreview.primaryResolutionRequired && item.patchPreview.status === 'pending_primary_selection'}}" class="patch-actions">
+            <button class="patch-cancel" data-patch-id="{{item.patchPreview.id}}" data-message-id="{{item.id}}" bindtap="onCancelPatch" disabled="{{patchSubmitting}}">暂不修改</button>
           </view>
           <view wx:elif="{{item.patchPreview.status === 'applied'}}" class="patch-status">{{item.patchPreview.operation === 'create' ? '已确认发送' : '已确认修改'}}</view>
           <view wx:elif="{{item.patchPreview.status === 'cancelled'}}" class="patch-status">{{item.patchPreview.operation === 'create' ? '已暂不发送' : '已暂不修改'}}</view>

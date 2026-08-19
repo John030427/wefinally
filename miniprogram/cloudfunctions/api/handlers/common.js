@@ -91,7 +91,7 @@ async function config() {
     safety: safetyConfig(),
     demo: await demoFlags(),
     api_schema_version: 2,
-    date_coordination_contract_version: 5,
+    date_coordination_contract_version: 6,
     capabilities: {
       notifications: true,
       date_coordinator_pre_accept_chat: true,
@@ -104,7 +104,9 @@ async function config() {
       neutral_payment_proposal: true,
       invitation_atomic_transitions: true,
       invitation_response_version_cas: true,
-      pre_accept_patch_cas: true
+      pre_accept_patch_cas: true,
+      expired_transaction_commit: true,
+      primary_proposal_resolution: true
     }
   }
 }

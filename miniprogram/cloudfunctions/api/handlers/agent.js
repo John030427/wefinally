@@ -678,13 +678,24 @@ function createAgentHandlers(overrides = {}) {
       const toolRequest = decision.toolRequest || null
       if (decision.intent === 'modify_date_application' && toolRequest && toolRequest.tool === PATCH_TOOL) {
         try {
+          const args = Object.assign({}, toolRequest.arguments || {})
+          const primarySelection = args.primary_selection
+          delete args.primary_selection
+          delete args.invitation_primary_proposal
+          delete args.primary_proposal
+          delete args.payment_mode
+          delete args.payer_user_id
           const patchPreview = await patchHandlers.createPreviewForUser({
             coordination_id: Number(coordination.id),
             session_id: Number(session.id),
             source_message_id: Number(userMessage.id || 0),
-            changes: toolRequest.arguments || {}
+            changes: args,
+            primary_selection: primarySelection
           }, user, session)
-          const reply = decision.replyDraft || '我整理了一份修改预览，请确认后再生效。'
+          const needsPrimary = Boolean(patchPreview && patchPreview.preview && patchPreview.preview.primary_resolution_required)
+          const reply = needsPrimary
+            ? (patchPreview.preview.resolution_prompt || '可以，我已经按你的新条件更新了可接受范围。请选择这次更希望先建议的安排。')
+            : (decision.replyDraft || '我整理了一份修改预览，请确认后再生效。')
           await recordTool(session, user, PATCH_TOOL, 'completed')
           await saveMessage(session, user, 'assistant', reply, { patch_preview: patchPreview })
           return {
@@ -694,9 +705,10 @@ function createAgentHandlers(overrides = {}) {
             provider: decision.provider || 'deepseek',
             tool: PATCH_TOOL,
             patch_preview: patchPreview,
-            requires_confirmation: true,
+            requires_confirmation: !needsPrimary,
+            primary_resolution_required: needsPrimary,
             risk_level: decision.riskLevel || 'safe',
-            suggested_actions: ['confirm_patch', 'cancel_patch']
+            suggested_actions: needsPrimary ? ['select_primary'] : ['confirm_patch', 'cancel_patch']
           }
         } catch (err) {
           await recordTool(session, user, PATCH_TOOL, 'failed', 'invalid_patch')
