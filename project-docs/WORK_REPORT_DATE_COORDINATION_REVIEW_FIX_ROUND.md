@@ -160,7 +160,17 @@ Smoke：
 
 ## 14. Git
 
-见提交后最终回复中的 Final HEAD / Push status。未 merge main，未 force push，未上传微信体验/正式版。
+| Item | Value |
+|---|---|
+| Start HEAD | `34ee3ec59de11c54adbbc668de6badb3118e9234` |
+| Final HEAD | `74c1b95d0b1082c1550b742395ebdc3df2c8a552` |
+| Remote HEAD | `74c1b95d0b1082c1550b742395ebdc3df2c8a552` |
+| Commits | `74c1b95` fix(date): make direct invitation acceptance deterministic |
+| Push status | Pushed to `origin/feature/ai-profile-bilateral-coordination` |
+| Merge main | NO |
+| Force push | NO |
+
+用户 dirty files 仍保留未提交（partner / project.config / .cursor / specs 等）。
 
 ## 15. Manual Verification
 
