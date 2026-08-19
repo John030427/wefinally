@@ -164,7 +164,11 @@ Migration: **NO**
 
 ## 17. Git
 
-(To be filled after commit/push)
+| Item | Value |
+|---|---|
+| Start HEAD | `351364a6b429e13eae03811bec07921622743d68` |
+| Business commit | `140264a` — feat(ai): unify production AI on CloudBase hy3 with compliance |
+| Push | `feature/ai-profile-bilateral-coordination` → origin |
 
 ## 18. Manual WeChat Verification
 
