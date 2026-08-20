@@ -4,6 +4,83 @@
 
 ---
 
+## 2026-08-21 — Overnight Match Evolution v1.3
+
+### 类型
+真实候选排序 / 密封集 / ML 基线 / 校准 / 多轮 DEV 进化
+
+### 完成
+- Fingerprint 重建 iid/pid → ranking median candidates=16（全局）/ DEV≈14
+- Wave 级 TRAIN/CAL/DEV/SEALED；v1.2 frozen-gold 降级为 AUDIT_TEST
+- LR/GBDT 离线沙箱；校准与阈值；Rounds 1–6；SEALED 一次性评测
+- Champion DEV=`LR_MUTUAL`；SEALED `NO_CLEAR_IMPROVEMENT` → `KEEP_CURRENT_PRODUCTION`
+- HY3: BLOCKED_BY_EXTERNAL_MANUAL_ACTION；RAG_UNDERPOWERED
+- 报告：`WORK_REPORT_OVERNIGHT_MATCH_EVOLUTION.md`
+
+### 验证
+- match-eval-integrity PASS；guard PASS；e2e 15/15；realworld PASS
+- 未 push / 未部署 / 未上传微信
+
+---
+
+## 2026-08-21 — Match Evaluation Integrity v1.2
+
+### 类型
+评测诚信 / Feature–Gold 隔离 / 负对照 / 真实排序语义
+
+### 完成
+- 根因：v1.1 `predictMutual` 直接读 gold 决策 → A–E 全满分假象
+- `matchViews` / `predictMatch` / `scoreMatch`；预测产物 JSONL+SHA256 后再 join gold
+- `selfcheck:match-eval-integrity`；`INTEGRITY_PASS_FIXTURE_PROXY`
+- 排序：当前 frozen-gold id 候选集 size=1 → P@K/NDCG=`NOT_APPLICABLE`
+- 报告：`WORK_REPORT_MATCH_EVAL_INTEGRITY_V1_2.md` + `datasets/wefinally/reports/match-*-v1.2*`
+
+### 验证
+- match-eval-integrity PASS；guard PASS；e2e 15/15 PASS
+- 未 push / 未部署 / 未上传微信
+
+---
+
+## 2026-08-21 — Experience Learning v1.1
+
+### 类型
+真实数据 / 真实双边结果 / 诚实 provenance / failure mining / hy3 诚实阻断
+
+### 完成
+- V1_REALITY_CHECK：22 条 stress → `synthetic-profile-stress-v1`；CPED demote REVIEW_REQUIRED
+- Figshare 6429443：CC BY 4.0 license gate PASS；本机下载 HTTP 403 → BLOCKED_BY_EXTERNAL_NETWORK（未伪造数据）
+- Speed Dating sandbox：8378 GOLD_OBSERVED；frozen-gold match=1154；wave split
+- StackExchange：AND-tag 修复；691 questions；SILVER_WEAK
+- label_quality + frozen-gold/silver/synthetic-regression；reciprocal metrics A–E
+- Failure mining 修复；RAG_NEGATIVE_TRANSFER 报告；live hy3 仍诚实 BLOCKED
+- 报告：`WORK_REPORT_EXPERIENCE_LEARNING_V1_1.md` + `datasets/wefinally/reports/*-v1.1*`
+
+### 验证
+- guard PASS；e2e 15/15 PASS；realworld PASS
+- 未 push / 未部署 / 未上传微信
+
+---
+
+## 2026-08-20 — Experience Learning Layer v1
+
+### 类型
+离线经验学习层：来源治理、合法接入、PII、案例、RAG、冻结评测、报告
+
+### 完成
+- `datasets/wefinally/source-registry.yaml` + source-audit；Reddit / 世纪佳缘阻断
+- `server/data/wefinally/` CLI 与 `data:wefinally:*` 脚本；CPED / StackExchange / CGSS manual / blocked stubs
+- Profile / Match / Coordination case schema、实体安全 split、BM25 RAG、`FROZEN_TEST_NOT_RETRIEVABLE`
+- 版本化 prompts：`server/ai/prompts/{profile,match,coordination}/`
+- `selfcheck:experience-learning-guard`；`e2e:wefinally:realworld`；Cursor skill
+- 报告：`WORK_REPORT_EXPERIENCE_LEARNING_LAYER_V1.md` + `datasets/wefinally/reports/*`
+
+### 验证
+- `data:wefinally:all` 完成；guard PASS；`e2e:wefinally` 15/15 PASS
+- Live hy3：无凭据时 `BLOCKED_BY_EXTERNAL_MANUAL_ACTION`
+- 未部署生产、未上传微信版、未提交凭据
+
+---
+
 ## 2026-08-20 — Local Multi-User AI E2E Lab
 
 ### 类型

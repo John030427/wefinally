@@ -48,7 +48,20 @@
     "e2e:wefinally": "node e2e/wefinally/index.js run",
     "e2e:wefinally:live": "node e2e/wefinally/index.js run --smoke-ai",
     "e2e:wefinally:scenario": "node e2e/wefinally/index.js run --scenario",
-    "selfcheck:e2e-release-guard": "node selfcheck/e2e-release-guard.js"
+    "e2e:wefinally:realworld": "node e2e/wefinally/index.js run --scenario=realworld-cases",
+    "selfcheck:e2e-release-guard": "node selfcheck/e2e-release-guard.js",
+    "selfcheck:experience-learning-guard": "node selfcheck/experience-learning-guard.js",
+    "selfcheck:match-eval-integrity": "node selfcheck/match-eval-integrity.js",
+    "data:wefinally:overnight-evolution": "node data/wefinally/eval/overnightEvolution.js",
+    "data:wefinally:sources": "node data/wefinally/cli.js sources",
+    "data:wefinally:audit": "node data/wefinally/cli.js audit",
+    "data:wefinally:ingest": "node data/wefinally/cli.js ingest",
+    "data:wefinally:build-cases": "node data/wefinally/cli.js build-cases",
+    "data:wefinally:split": "node data/wefinally/cli.js split",
+    "data:wefinally:evaluate": "node data/wefinally/cli.js evaluate",
+    "data:wefinally:report": "node data/wefinally/cli.js report",
+    "data:wefinally:review": "node data/wefinally/cli.js review",
+    "data:wefinally:all": "node data/wefinally/cli.js all"
   },
   "engines": {
     "node": ">=18.0.0"

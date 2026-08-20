@@ -1,0 +1,156 @@
+{
+  "version": "speed-dating-v1.3",
+  "seed": "wefinally-sd-v1.3-split-seed-42",
+  "created_at": "2026-08-20T17:36:52.149Z",
+  "identity_note": "Wave assignment via sha256(seed:wave) before outcome use",
+  "audit_test_v1_2": "datasets/wefinally/splits/frozen-gold/match.jsonl RETAINED as AUDIT_TEST_V1_2 only",
+  "sealed_test_status": "UNTOUCHED",
+  "wave_assign": {
+    "1": {
+      "partition": "SEALED_TEST",
+      "u": 0.9211226943696669,
+      "n": 200
+    },
+    "2": {
+      "partition": "TRAIN_CORE",
+      "u": 0.20220937212049248,
+      "n": 608
+    },
+    "3": {
+      "partition": "TRAIN_CORE",
+      "u": 0.9177792758955107,
+      "n": 200
+    },
+    "4": {
+      "partition": "CALIBRATION",
+      "u": 0.46317579328622105,
+      "n": 648
+    },
+    "5": {
+      "partition": "DEV",
+      "u": 0.4450310430128665,
+      "n": 190
+    },
+    "6": {
+      "partition": "TRAIN_CORE",
+      "u": 0.12240615443382555,
+      "n": 50
+    },
+    "7": {
+      "partition": "TRAIN_CORE",
+      "u": 0.23300315258861592,
+      "n": 512
+    },
+    "8": {
+      "partition": "TRAIN_CORE",
+      "u": 0.5165287222518885,
+      "n": 200
+    },
+    "9": {
+      "partition": "TRAIN_CORE",
+      "u": 0.10041423027878958,
+      "n": 800
+    },
+    "10": {
+      "partition": "SEALED_TEST",
+      "u": 0.69920352629833,
+      "n": 162
+    },
+    "11": {
+      "partition": "CALIBRATION",
+      "u": 0.8768878946725484,
+      "n": 882
+    },
+    "12": {
+      "partition": "TRAIN_CORE",
+      "u": 0.005847365829592423,
+      "n": 392
+    },
+    "13": {
+      "partition": "TRAIN_CORE",
+      "u": 0.22035455266487658,
+      "n": 180
+    },
+    "14": {
+      "partition": "TRAIN_CORE",
+      "u": 0.3788892720776818,
+      "n": 720
+    },
+    "15": {
+      "partition": "SEALED_TEST",
+      "u": 0.44067762895503026,
+      "n": 684
+    },
+    "16": {
+      "partition": "TRAIN_CORE",
+      "u": 0.05856551510714123,
+      "n": 96
+    },
+    "17": {
+      "partition": "DEV",
+      "u": 0.6718772676940722,
+      "n": 280
+    },
+    "18": {
+      "partition": "TRAIN_CORE",
+      "u": 0.6871170340308727,
+      "n": 72
+    },
+    "19": {
+      "partition": "DEV",
+      "u": 0.5041799367182376,
+      "n": 450
+    },
+    "20": {
+      "partition": "TRAIN_CORE",
+      "u": 0.838767042113181,
+      "n": 84
+    },
+    "21": {
+      "partition": "TRAIN_CORE",
+      "u": 0.007070429391942553,
+      "n": 968
+    }
+  },
+  "counts": {
+    "TRAIN_CORE": 4882,
+    "CALIBRATION": 1530,
+    "DEV": 920,
+    "SEALED_TEST": 1046
+  },
+  "n_waves": 21,
+  "waves_by_partition": {
+    "TRAIN_CORE": [
+      "2",
+      "3",
+      "6",
+      "7",
+      "8",
+      "9",
+      "12",
+      "13",
+      "14",
+      "16",
+      "18",
+      "20",
+      "21"
+    ],
+    "CALIBRATION": [
+      "4",
+      "11"
+    ],
+    "DEV": [
+      "5",
+      "17",
+      "19"
+    ],
+    "SEALED_TEST": [
+      "1",
+      "10",
+      "15"
+    ]
+  },
+  "participant_overlap_train_sealed": 0,
+  "checksum": "866b1f7946cb9afdb76afdf193c50de549c01cf52b572a7ce7e7cb6cedbf0877",
+  "creation_logic": "waves sorted by sha256(seed:wave); greedy fill TRAIN~60% CAL~12% DEV~14% SEALED~remainder by encounter counts; no outcome inspection"
+}
