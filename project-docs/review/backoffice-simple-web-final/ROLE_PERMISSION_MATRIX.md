@@ -1,23 +1,29 @@
 # ROLE_PERMISSION_MATRIX
 
-## Express Admin (`server/src/utils/adminRbac.js`)
+## Two layers
 
-| Role | Allowed | Denied |
+1. **ROUTE_AUTHORIZATION** — `server/src/utils/adminRbac.js`
+2. **RESPONSE_DATA_AUTHORIZATION** — `server/src/utils/roleDataProjection.js`
+
+Both must PASS. See `ROLE_DATA_PROJECTION_AUDIT.md`.
+
+## Express Admin routes
+
+| Role | Allowed routes | Denied |
 |---|---|---|
-| super_admin | 全部路由 | — |
-| customer_service | dashboard, service/workbench, orders(R), chat, handoff, matches(R) | withdrawals, member review, OpenID, system |
+| super_admin | 全部 | — |
+| customer_service | dashboard, service/workbench, orders(R), chat, handoff, matches(R) | withdrawals, member review |
 | auditor | dashboard, member-applications GET/PUT review, users(R), partners(R) | withdrawals, chat/AI private, finance write |
-| finance | dashboard, orders(R), withdrawals GET/PUT | member review, chat/AI, matches private, OpenID |
+| finance | dashboard, orders(R), withdrawals GET/PUT | member review, chat/AI, matches |
 
-OpenID：仅 `super_admin`（`canSeeOpenId`）。
+## Response data (summary)
 
-## Cloud Agent backoffice
-
-| Capability | Roles |
-|---|---|
-| Agent conversations / tickets / reply | super_admin, customer_service |
-| Knowledge publish/offline | super_admin, auditor（内容治理）|
-| Date coordinations list | super_admin, customer_service |
+| Role | OpenID | Full phone | match_settings | raw privacy logs |
+|---|---|---|---|---|
+| super_admin | YES (explicit) | YES (explicit) | YES | YES |
+| customer_service | NO | masked / none | NO on match detail | N/A |
+| finance | NO | MASKED_ONLY | N/A | N/A |
+| auditor | NO | MASKED_ONLY | NO | NO |
 
 ## Frontend ROLE_PAGES
 
@@ -26,5 +32,3 @@ customer_service: dashboard, service, orders, chat, handoff, matches
 auditor: dashboard, members, users, partners
 finance: dashboard, orders, withdrawals
 ```
-
-必须与 backend allowlist 一致；不得 UI 宣称可进、API 全 403。

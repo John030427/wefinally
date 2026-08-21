@@ -12,7 +12,8 @@
 
 | File | Purpose |
 |---|---|
-| FINAL_REVIEW_FIX.md | External Review REVIEW-01…06 关单结论 |
+| FINAL_REVIEW_FIX.md | External Review REVIEW-01…07 关单结论 |
+| ROLE_DATA_PROJECTION_AUDIT.md | ROUTE vs RESPONSE data authorization |
 | ROLE_PERMISSION_MATRIX.md | Admin / Partner RBAC |
 | PRIVACY_FIELD_MATRIX.md | Partner / Admin 字段可见性 |
 | PARTNER_API_DATA_MINIMIZATION.md | Partner API allowlist |

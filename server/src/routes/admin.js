@@ -14,9 +14,6 @@ const {
 const {
   formatUserForAdmin,
   formatPartnerForAdmin,
-  formatOrderForAdmin,
-  formatWithdrawForAdmin,
-  formatChatSession,
   privacyAuthToAgreements,
 } = require('../utils/apiFormat');
 const {
@@ -25,6 +22,15 @@ const {
   canSeeOpenId,
 } = require('../utils/adminRbac');
 const { buildAiOps } = require('../utils/aiOpsHealth');
+const {
+  formatOrderByRole,
+  formatOrderForService,
+  formatHandoffTicket,
+  formatMatchByRole,
+  formatWithdrawByRole,
+  formatUserDetailForAuditor,
+  formatChatSessionForService,
+} = require('../utils/roleDataProjection');
 
 const router = express.Router();
 
@@ -43,50 +49,6 @@ function maskPhone(phone) {
   if (matched) return `${matched[1]}****${matched[2]}`;
   if (!value) return '';
   return `${value.slice(0, 3)}****`;
-}
-
-function handoffStatusText(status) {
-  return {
-    submitted: '已提交',
-    processing: '客服处理中',
-    waiting_partner: '等待对方确认',
-    arranged: '已安排',
-    closed: '已关闭',
-  }[status] || '已提交';
-}
-
-function formatHandoffTicket(row) {
-  return {
-    id: row.id,
-    match_log_id: row.match_log_id,
-    user_id: row.user_id,
-    match_user_id: row.match_user_id,
-    status: row.status,
-    status_text: handoffStatusText(row.status),
-    service_note: row.service_note || '',
-    user_openid: row.user_openid || '',
-    user_city: row.user_city || '',
-    match_user_openid: row.match_user_openid || '',
-    match_user_city: row.match_user_city || '',
-    create_time: row.create_time,
-    update_time: row.update_time,
-  };
-}
-
-function formatOrderForService(row) {
-  const order = formatOrderForAdmin(row);
-  return {
-    id: order.id,
-    order_no: order.order_no,
-    user_id: order.user_id,
-    openid: order.openid || '',
-    amount: order.amount,
-    status: order.status,
-    pay_status: order.status,
-    settled: order.settled,
-    paid_at: order.paid_at,
-    created_at: order.created_at,
-  };
 }
 
 /** GET /api/admin/dashboard */
@@ -257,15 +219,36 @@ router.get('/users/:id', async (req, res, next) => {
   try {
     const [rows] = await pool.query('SELECT * FROM `user` WHERE id = ?', [req.params.id]);
     if (rows.length === 0) return fail(res, '用户不存在', 404, 404);
-    const [settings] = await pool.query(
-      'SELECT * FROM user_match_setting WHERE user_id = ?',
-      [req.params.id]
-    );
     const [authLogs] = await pool.query(
       'SELECT * FROM user_privacy_auth_log WHERE user_id = ? ORDER BY id DESC LIMIT 10',
       [req.params.id]
     );
     const latestAuth = authLogs[0] || null;
+
+    if (req.adminRole === ADMIN_ROLES.AUDITOR) {
+      let partnerName = null;
+      if (rows[0].promote_partner_id) {
+        const [partners] = await pool.query(
+          'SELECT name FROM partner WHERE id = ? LIMIT 1',
+          [rows[0].promote_partner_id]
+        );
+        partnerName = partners[0]?.name || null;
+      }
+      return success(res, formatUserDetailForAuditor(rows[0], {
+        latestAuth,
+        partner_name: partnerName,
+        agreements_status: {
+          user_service: Boolean(latestAuth?.auth_service),
+          privacy: Boolean(latestAuth?.auth_privacy),
+          data_auth: Boolean(latestAuth?.auth_data),
+        },
+      }));
+    }
+
+    const [settings] = await pool.query(
+      'SELECT * FROM user_match_setting WHERE user_id = ?',
+      [req.params.id]
+    );
     return success(res, {
       user: formatUserForAdmin(rows[0], { includeOpenId: canSeeOpenId(req.adminRole) }),
       match_settings: settings[0] || null,
@@ -405,7 +388,7 @@ router.get('/withdrawals', async (req, res, next) => {
        JOIN \`partner\` p ON p.id = w.partner_id
        ORDER BY w.id DESC LIMIT 100`
     );
-    return success(res, rows.map(formatWithdrawForAdmin));
+    return success(res, rows.map((row) => formatWithdrawByRole(row, req.adminRole)));
   } catch (err) {
     next(err);
   }
@@ -462,18 +445,27 @@ router.get('/orders', async (req, res, next) => {
     const offset = (page - 1) * pageSize;
 
     const [count] = await pool.query('SELECT COUNT(*) AS total FROM user_order');
+    const includeOpenId = canSeeOpenId(req.adminRole);
     const [rows] = await pool.query(
-      `SELECT o.*, u.openid, p.name AS partner_name
-       FROM user_order o
-       LEFT JOIN \`user\` u ON u.id = o.user_id
-       LEFT JOIN \`partner\` p ON p.id = o.partner_id
-       ORDER BY o.id DESC LIMIT ? OFFSET ?`,
+      includeOpenId
+        ? `SELECT o.*, u.openid, u.support_code, p.name AS partner_name
+           FROM user_order o
+           LEFT JOIN \`user\` u ON u.id = o.user_id
+           LEFT JOIN \`partner\` p ON p.id = o.partner_id
+           ORDER BY o.id DESC LIMIT ? OFFSET ?`
+        : `SELECT o.*, u.support_code, p.name AS partner_name
+           FROM user_order o
+           LEFT JOIN \`user\` u ON u.id = o.user_id
+           LEFT JOIN \`partner\` p ON p.id = o.partner_id
+           ORDER BY o.id DESC LIMIT ? OFFSET ?`,
       [pageSize, offset]
     );
-    const formatter = req.adminRole === ADMIN_ROLES.CUSTOMER_SERVICE
-      ? formatOrderForService
-      : formatOrderForAdmin;
-    return success(res, paginate(rows.map(formatter), count[0].total, page, pageSize));
+    return success(res, paginate(
+      rows.map((row) => formatOrderByRole(row, req.adminRole)),
+      count[0].total,
+      page,
+      pageSize
+    ));
   } catch (err) {
     next(err);
   }
@@ -703,14 +695,14 @@ router.get('/chat/sessions', async (req, res, next) => {
   try {
     const [rows] = await pool.query(
       `SELECT acl.user_id, MAX(acl.id) AS last_log_id, MAX(acl.create_time) AS last_time,
-              u.openid, u.gender, u.city
+              u.gender, u.city, u.support_code, u.phone
        FROM ai_chat_log acl
        JOIN \`user\` u ON u.id = acl.user_id
        WHERE acl.is_manual_transfer = 1
-       GROUP BY acl.user_id, u.openid, u.gender, u.city
+       GROUP BY acl.user_id, u.gender, u.city, u.support_code, u.phone
        ORDER BY last_time DESC LIMIT 50`
     );
-    return success(res, rows.map(formatChatSession));
+    return success(res, rows.map(formatChatSessionForService));
   } catch (err) {
     next(err);
   }
@@ -737,16 +729,25 @@ router.post('/chat/reply', async (req, res, next) => {
 /** GET /api/admin/handoff/tickets — official match handoff tickets */
 router.get('/handoff/tickets', async (req, res, next) => {
   try {
+    const includeOpenId = canSeeOpenId(req.adminRole);
     const [rows] = await pool.query(
-      `SELECT t.*, u.openid AS user_openid, u.city AS user_city,
-              mu.openid AS match_user_openid, mu.city AS match_user_city
-       FROM match_handoff_ticket t
-       JOIN \`user\` u ON u.id = t.user_id
-       JOIN \`user\` mu ON mu.id = t.match_user_id
-       ORDER BY t.update_time DESC, t.id DESC
-       LIMIT 100`
+      includeOpenId
+        ? `SELECT t.*, u.openid AS user_openid, u.city AS user_city, u.support_code AS user_support_code,
+                  mu.openid AS match_user_openid, mu.city AS match_user_city, mu.support_code AS match_user_support_code
+           FROM match_handoff_ticket t
+           JOIN \`user\` u ON u.id = t.user_id
+           JOIN \`user\` mu ON mu.id = t.match_user_id
+           ORDER BY t.update_time DESC, t.id DESC
+           LIMIT 100`
+        : `SELECT t.*, u.city AS user_city, u.support_code AS user_support_code,
+                  mu.city AS match_user_city, mu.support_code AS match_user_support_code
+           FROM match_handoff_ticket t
+           JOIN \`user\` u ON u.id = t.user_id
+           JOIN \`user\` mu ON mu.id = t.match_user_id
+           ORDER BY t.update_time DESC, t.id DESC
+           LIMIT 100`
     );
-    return success(res, rows.map(formatHandoffTicket));
+    return success(res, rows.map((row) => formatHandoffTicket(row, req.adminRole)));
   } catch (err) {
     next(err);
   }
@@ -764,9 +765,17 @@ router.put('/handoff/tickets/:id', async (req, res, next) => {
       'UPDATE match_handoff_ticket SET status = ?, service_note = ? WHERE id = ?',
       [status, serviceNote, req.params.id]
     );
-    const [rows] = await pool.query('SELECT * FROM match_handoff_ticket WHERE id = ?', [req.params.id]);
+    const [rows] = await pool.query(
+      `SELECT t.*, u.city AS user_city, u.support_code AS user_support_code,
+              mu.city AS match_user_city, mu.support_code AS match_user_support_code
+       FROM match_handoff_ticket t
+       JOIN \`user\` u ON u.id = t.user_id
+       JOIN \`user\` mu ON mu.id = t.match_user_id
+       WHERE t.id = ?`,
+      [req.params.id]
+    );
     if (!rows.length) return fail(res, '工单不存在', 404, 404);
-    return success(res, formatHandoffTicket(rows[0]), '已更新');
+    return success(res, formatHandoffTicket(rows[0], req.adminRole), '已更新');
   } catch (err) {
     next(err);
   }
@@ -777,16 +786,16 @@ router.get('/service/workbench', async (req, res, next) => {
   try {
     const [chatRows] = await pool.query(
       `SELECT acl.user_id, MAX(acl.id) AS last_log_id, MAX(acl.create_time) AS last_time,
-              u.openid, u.gender, u.city
+              u.gender, u.city, u.support_code, u.phone
        FROM ai_chat_log acl
        JOIN \`user\` u ON u.id = acl.user_id
        WHERE acl.is_manual_transfer = 1
-       GROUP BY acl.user_id, u.openid, u.gender, u.city
+       GROUP BY acl.user_id, u.gender, u.city, u.support_code, u.phone
        ORDER BY last_time DESC LIMIT 20`
     );
     const [ticketRows] = await pool.query(
-      `SELECT t.*, u.openid AS user_openid, u.city AS user_city,
-              mu.openid AS match_user_openid, mu.city AS match_user_city
+      `SELECT t.*, u.city AS user_city, u.support_code AS user_support_code,
+              mu.city AS match_user_city, mu.support_code AS match_user_support_code
        FROM match_handoff_ticket t
        JOIN \`user\` u ON u.id = t.user_id
        JOIN \`user\` mu ON mu.id = t.match_user_id
@@ -794,14 +803,14 @@ router.get('/service/workbench', async (req, res, next) => {
        LIMIT 20`
     );
     const [orderRows] = await pool.query(
-      `SELECT o.*, u.openid
+      `SELECT o.*, u.support_code
        FROM user_order o
        LEFT JOIN \`user\` u ON u.id = o.user_id
        ORDER BY o.id DESC LIMIT 20`
     );
     return success(res, {
-      chat_sessions: chatRows.map(formatChatSession),
-      handoff_tickets: ticketRows.map(formatHandoffTicket),
+      chat_sessions: chatRows.map(formatChatSessionForService),
+      handoff_tickets: ticketRows.map((row) => formatHandoffTicket(row, req.adminRole)),
       orders: orderRows.map(formatOrderForService),
     });
   } catch (err) {
@@ -867,17 +876,31 @@ router.get('/matches', async (req, res, next) => {
     const page = Math.max(1, Number(req.query.page) || 1);
     const pageSize = Math.min(100, Number(req.query.pageSize) || 20);
     const offset = (page - 1) * pageSize;
+    const includeOpenId = canSeeOpenId(req.adminRole);
 
     const [count] = await pool.query('SELECT COUNT(*) AS total FROM user_match_log');
     const [rows] = await pool.query(
-      `SELECT ml.*, u.openid AS user_openid, mu.openid AS matched_openid
-       FROM user_match_log ml
-       JOIN \`user\` u ON u.id = ml.user_id
-       JOIN \`user\` mu ON mu.id = ml.match_user_id
-       ORDER BY ml.id DESC LIMIT ? OFFSET ?`,
+      includeOpenId
+        ? `SELECT ml.*, u.openid AS user_openid, u.support_code AS user_support_code,
+                  mu.openid AS matched_openid, mu.support_code AS matched_support_code
+           FROM user_match_log ml
+           JOIN \`user\` u ON u.id = ml.user_id
+           JOIN \`user\` mu ON mu.id = ml.match_user_id
+           ORDER BY ml.id DESC LIMIT ? OFFSET ?`
+        : `SELECT ml.*, u.support_code AS user_support_code, u.city AS user_city,
+                  mu.support_code AS matched_support_code
+           FROM user_match_log ml
+           JOIN \`user\` u ON u.id = ml.user_id
+           JOIN \`user\` mu ON mu.id = ml.match_user_id
+           ORDER BY ml.id DESC LIMIT ? OFFSET ?`,
       [pageSize, offset]
     );
-    return success(res, paginate(rows, count[0].total, page, pageSize));
+    return success(res, paginate(
+      rows.map((row) => formatMatchByRole(row, req.adminRole)),
+      count[0].total,
+      page,
+      pageSize
+    ));
   } catch (err) {
     next(err);
   }
@@ -892,7 +915,7 @@ function parseScoreDetail(value) {
   }
 }
 
-async function loadAdminMatchSide(userId) {
+async function loadAdminMatchSide(userId, role) {
   const [users] = await pool.query(
     `SELECT u.*, oc.circle_name
      FROM \`user\` u
@@ -901,13 +924,20 @@ async function loadAdminMatchSide(userId) {
      LIMIT 1`,
     [userId]
   );
+  const includeOpenId = canSeeOpenId(role);
+  const base = {
+    ...formatUserForAdmin(users[0], { includeOpenId }),
+    circle_name: users[0]?.circle_name || '',
+  };
+  if (role === ADMIN_ROLES.CUSTOMER_SERVICE) {
+    return base;
+  }
   const [settings] = await pool.query(
     'SELECT * FROM user_match_setting WHERE user_id = ? LIMIT 1',
     [userId]
   );
   return {
-    ...formatUserForAdmin(users[0]),
-    circle_name: users[0]?.circle_name || '',
+    ...base,
     match_settings: settings[0] || null,
   };
 }
@@ -915,25 +945,44 @@ async function loadAdminMatchSide(userId) {
 /** GET /api/admin/matches/:id — 匹配诊断详情（双方资料 + 设置 + 分项分） */
 router.get('/matches/:id', async (req, res, next) => {
   try {
+    const includeOpenId = canSeeOpenId(req.adminRole);
     const [rows] = await pool.query(
-      `SELECT ml.*, u.openid AS user_openid, mu.openid AS matched_openid
-       FROM user_match_log ml
-       JOIN \`user\` u ON u.id = ml.user_id
-       JOIN \`user\` mu ON mu.id = ml.match_user_id
-       WHERE ml.id = ?
-       LIMIT 1`,
+      includeOpenId
+        ? `SELECT ml.*, u.openid AS user_openid, u.support_code AS user_support_code,
+                  mu.openid AS matched_openid, mu.support_code AS matched_support_code
+           FROM user_match_log ml
+           JOIN \`user\` u ON u.id = ml.user_id
+           JOIN \`user\` mu ON mu.id = ml.match_user_id
+           WHERE ml.id = ?
+           LIMIT 1`
+        : `SELECT ml.*, u.support_code AS user_support_code, u.city AS user_city,
+                  mu.support_code AS matched_support_code
+           FROM user_match_log ml
+           JOIN \`user\` u ON u.id = ml.user_id
+           JOIN \`user\` mu ON mu.id = ml.match_user_id
+           WHERE ml.id = ?
+           LIMIT 1`,
       [req.params.id]
     );
     if (rows.length === 0) return fail(res, '匹配记录不存在', 404, 404);
 
     const log = rows[0];
+    const projectedLog = formatMatchByRole(log, req.adminRole);
     const [owner, partner] = await Promise.all([
-      loadAdminMatchSide(log.user_id),
-      loadAdminMatchSide(log.match_user_id),
+      loadAdminMatchSide(log.user_id, req.adminRole),
+      loadAdminMatchSide(log.match_user_id, req.adminRole),
     ]);
 
+    if (req.adminRole === ADMIN_ROLES.CUSTOMER_SERVICE) {
+      return success(res, {
+        log: projectedLog,
+        owner,
+        partner,
+      });
+    }
+
     return success(res, {
-      log,
+      log: includeOpenId ? log : projectedLog,
       owner,
       partner,
       score_detail: parseScoreDetail(log.score_detail_json),

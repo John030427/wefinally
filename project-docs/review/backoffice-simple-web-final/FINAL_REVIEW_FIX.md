@@ -55,3 +55,13 @@ Date: 2026-08-21
 - B 私人会话 badge：`仅内部处理 · 不向 A 展示`
 - shared：`双方共享进度`
 - 不改变 backend privacy architecture。
+
+## REVIEW-07 Customer Service / Finance / Auditor response data authorization
+
+**FIXED**
+
+- Customer Service：orders / handoff / workbench / matches DTO 不再返回 openid / user_openid / match_user_openid / unionid。
+- Finance：`formatOrderForFinance` allowlist；withdraw phone 默认 masked。
+- Auditor：`formatUserDetailForAuditor` 不含 openid、match_settings、raw privacy logs。
+- Selfcheck 攻击实际 `JSON.stringify(DTO)`，不再仅靠 `canSeeOpenId`。
+- 文档区分 `ROUTE_AUTHORIZATION` 与 `RESPONSE_DATA_AUTHORIZATION`（见 ROLE_DATA_PROJECTION_AUDIT.md）。

@@ -1,33 +1,26 @@
 # TEST_RESULTS
 
-## Layered outcome
-
 | Layer | Result |
 |---|---|
-| STATIC_AND_UNIT | **PASS** |
-| SECURITY_NEGATIVE | **PASS** |
-| E2E (`npm run e2e:wefinally`) | **PASS** (14/14) |
-| LIVE_MYSQL | **BLOCKED_ENVIRONMENT** |
-
-## Overall
+| STATIC_AND_UNIT | PASS |
+| SECURITY_NEGATIVE | PASS |
+| ROUTE_AUTHORIZATION | PASS |
+| RESPONSE_DATA_AUTHORIZATION | PASS |
+| E2E (`e2e:wefinally`) | PASS 14/14 |
+| LIVE_MYSQL | BLOCKED_ENVIRONMENT |
 
 **tests: PASS_WITH_ENV_BLOCKER**
 
-Do not summarize as vague PARTIAL.
+## New payload attack tests
 
-## Key selfcheck
+- CUSTOMER_SERVICE_ORDER_NO_OPENID
+- CUSTOMER_SERVICE_HANDOFF_NO_OPENID
+- CUSTOMER_SERVICE_WORKBENCH_NO_OPENID
+- CUSTOMER_SERVICE_MATCH_NO_OPENID
+- FINANCE_ORDER_NO_OPENID
+- FINANCE_WITHDRAW_PHONE_MASKED
+- AUDITOR_USER_DETAIL_NO_OPENID
+- AUDITOR_USER_DETAIL_NO_MATCH_SETTINGS
+- AUDITOR_USER_DETAIL_NO_RAW_PRIVACY_LOGS
 
-```
-node server/selfcheck/backoffice-simple-web-final.js
-```
-
-Includes partner allowlist attack, RBAC negatives, AI ops unknown semantics, coordination operator view, admin/partner UI contracts.
-
-## Regressions kept
-
-- partner full phone visible = NO
-- partner OpenID visible = NO
-- partner private AI accessible = NO
-- partner cross-scope = BLOCKED
-- dangerous confirmation = PASS
-- e2e:wefinally = PASS
+`CUSTOMER_SERVICE_OPENID_DENIED` only after real DTO checks pass.

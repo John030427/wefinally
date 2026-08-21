@@ -56,25 +56,15 @@ function formatPartnerForAdmin(row) {
 
 function formatOrderForAdmin(row) {
   if (!row) return row
-  return {
-    ...row,
-    amount: Number(row.price ?? row.amount ?? 0),
-    status: row.pay_status ?? row.status,
-    settled: row.settle_status === 1 || row.settled === true,
-    paid_at: row.pay_time || row.paid_at || null,
-    created_at: row.create_time || row.created_at,
-    partner_commission: Number(row.partner_commission ?? 0),
-  }
+  const { formatOrderForAdmin: project } = require('./roleDataProjection')
+  return project(row, { includeOpenId: false })
 }
 
 function formatWithdrawForAdmin(row) {
   if (!row) return row
-  return {
-    ...row,
-    partner_username: row.partner_name || maskPhone(row.partner_phone) || row.partner_username,
-    remark: row.remark || '',
-    created_at: row.create_time || row.created_at,
-  }
+  const { formatWithdrawByRole } = require('./roleDataProjection')
+  const { ADMIN_ROLES } = require('../config/constants')
+  return formatWithdrawByRole(row, ADMIN_ROLES.SUPER_ADMIN)
 }
 
 function formatPartnerUser(row) {

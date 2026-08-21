@@ -1,23 +1,18 @@
-# FILES_CHANGED (final review fix)
+# FILES_CHANGED
 
-## Cloud / Partner privacy
+## Response data projection (this round)
 
-- `miniprogram/cloudfunctions/api/handlers/backoffice.js`
-- `miniprogram/cloudfunctions/api/lib/privacyMask.js`
-- `miniprogram/cloudfunctions/api/lib/coordinationOperatorView.js`
-- `miniprogram/cloudfunctions/api/agent/backofficeService.js`
-
-## Express Admin
-
+- `server/src/utils/roleDataProjection.js` (new)
 - `server/src/routes/admin.js`
-- `server/src/utils/adminRbac.js`
-- `server/src/utils/aiOpsHealth.js`
-- `server/src/utils/coordinationOperatorView.js`
-- `server/src/utils/privacyMask.js`
-- `server/src/utils/statusCopy.js`
-- `server/public/admin/index.html`
-
-## Tests / review
-
+- `server/src/utils/apiFormat.js`
 - `server/selfcheck/backoffice-simple-web-final.js`
-- `project-docs/review/backoffice-simple-web-final/*`
+
+## Review docs
+
+- `project-docs/review/backoffice-simple-web-final/ROLE_DATA_PROJECTION_AUDIT.md` (new)
+- FINAL_REVIEW_FIX.md / ROLE_PERMISSION_MATRIX.md / PRIVACY_FIELD_MATRIX.md
+- SECURITY_AUDIT.md / TEST_RESULTS.md / RUN_MANIFEST.json / FILES_CHANGED.md
+
+## Prior round (kept)
+
+- Partner allowlist / RBAC / AI ops / coordination UX files unchanged in intent

@@ -171,7 +171,7 @@ assert.strictEqual(hasRouteAccess(fakeReq(ADMIN_ROLES.FINANCE, 'PUT', '/withdraw
 assert.strictEqual(hasRouteAccess(fakeReq(ADMIN_ROLES.FINANCE, 'GET', '/withdrawals')), true)
 assert.strictEqual(hasRouteAccess(fakeReq(ADMIN_ROLES.FINANCE, 'PUT', '/member-applications/1/review')), false, 'FINANCE_MEMBER_REVIEW_DENIED')
 assert.strictEqual(hasRouteAccess(fakeReq(ADMIN_ROLES.FINANCE, 'GET', '/chat/sessions')), false, 'FINANCE_AGENT_CONVERSATION_DENIED')
-assert.strictEqual(canSeeOpenId(ADMIN_ROLES.CUSTOMER_SERVICE), false, 'CUSTOMER_SERVICE_OPENID_DENIED')
+assert.strictEqual(canSeeOpenId(ADMIN_ROLES.CUSTOMER_SERVICE), false)
 assert.strictEqual(canSeeOpenId(ADMIN_ROLES.AUDITOR), false)
 assert.strictEqual(canSeeOpenId(ADMIN_ROLES.FINANCE), false)
 assert.strictEqual(hasRouteAccess(fakeReq(ADMIN_ROLES.SUPER_ADMIN, 'GET', '/users')), true, 'SUPER_ADMIN_EXPECTED_ACCESS')
@@ -180,6 +180,132 @@ assert.ok(AUDITOR_RULES.length > 0 && FINANCE_RULES.length > 0)
 assert.ok(adminRbacSrc.includes('AUDITOR_RULES') && adminRbacSrc.includes('FINANCE_RULES'))
 assert.ok(agentBackoffice.includes("requireRole(actor, ['super_admin', 'customer_service'])"))
 assert.ok(!/listConversations[\s\S]{0,80}auditor/.test(agentBackoffice))
+
+const {
+  formatOrderForService,
+  formatOrderForFinance,
+  formatHandoffTicketForService,
+  formatMatchForService,
+  formatWithdrawForFinance,
+  formatUserDetailForAuditor,
+  formatChatSessionForService,
+  formatOrderByRole,
+  formatHandoffTicket,
+  formatMatchByRole
+} = require('../src/utils/roleDataProjection')
+
+const maliciousIdentity = {
+  id: 9,
+  order_no: 'ORD-1',
+  user_id: 2,
+  match_log_id: 7,
+  match_user_id: 3,
+  partner_id: 4,
+  partner_name: '合伙人',
+  partner_phone: '13800138000',
+  phone: '13800138000',
+  amount: 188,
+  price: 188,
+  pay_status: 1,
+  settle_status: 0,
+  partner_commission: 94,
+  status: 'submitted',
+  service_note: '跟进',
+  openid: 'SECRET_OPENID',
+  user_openid: 'SECRET_USER_OPENID',
+  match_user_openid: 'SECRET_MATCH_OPENID',
+  matched_openid: 'SECRET_MATCH_OPENID',
+  unionid: 'SECRET_UNIONID',
+  city: '深圳',
+  user_city: '深圳',
+  match_user_city: '广州',
+  create_time: '2026-08-21',
+  update_time: '2026-08-21',
+  pay_time: '2026-08-21',
+  gender: 1,
+  last_log_id: 1,
+  last_time: '2026-08-21'
+}
+
+function assertNoSecrets(payload, label) {
+  const text = JSON.stringify(payload)
+  for (const token of [
+    'SECRET_OPENID',
+    'SECRET_USER_OPENID',
+    'SECRET_MATCH_OPENID',
+    'SECRET_UNIONID',
+    '13800138000'
+  ]) {
+    assert.ok(!text.includes(token), `${label} must not include ${token}`)
+  }
+  assert.ok(!/\bopenid\b/i.test(text) || !/"openid"\s*:/.test(text), `${label} must not expose openid key with secret`)
+}
+
+const csOrder = formatOrderForService(maliciousIdentity)
+assertNoSecrets(csOrder, 'CUSTOMER_SERVICE_ORDER_NO_OPENID')
+assert.strictEqual(csOrder.openid, undefined)
+
+const csHandoff = formatHandoffTicketForService(maliciousIdentity)
+assertNoSecrets(csHandoff, 'CUSTOMER_SERVICE_HANDOFF_NO_OPENID')
+assert.strictEqual(csHandoff.user_openid, undefined)
+assert.strictEqual(csHandoff.match_user_openid, undefined)
+
+const csMatch = formatMatchForService(maliciousIdentity)
+assertNoSecrets(csMatch, 'CUSTOMER_SERVICE_MATCH_NO_OPENID')
+assert.strictEqual(csMatch.user_openid, undefined)
+assert.strictEqual(csMatch.matched_openid, undefined)
+
+const csWorkbench = {
+  chat_sessions: [formatChatSessionForService(maliciousIdentity)],
+  handoff_tickets: [formatHandoffTicket(maliciousIdentity, ADMIN_ROLES.CUSTOMER_SERVICE)],
+  orders: [formatOrderByRole(maliciousIdentity, ADMIN_ROLES.CUSTOMER_SERVICE)]
+}
+assertNoSecrets(csWorkbench, 'CUSTOMER_SERVICE_WORKBENCH_NO_OPENID')
+
+const financeOrder = formatOrderForFinance(maliciousIdentity)
+assertNoSecrets(financeOrder, 'FINANCE_ORDER_NO_OPENID')
+assert.strictEqual(financeOrder.openid, undefined)
+
+const financeWithdraw = formatWithdrawForFinance(maliciousIdentity)
+assertNoSecrets(financeWithdraw, 'FINANCE_WITHDRAW_PHONE_MASKED')
+assert.strictEqual(financeWithdraw.partner_phone_masked, '138****8000')
+assert.strictEqual(financeWithdraw.partner_phone, undefined)
+assert.ok(!JSON.stringify(financeWithdraw).includes('13800138000'))
+
+const auditorDetail = formatUserDetailForAuditor({
+  id: 2,
+  openid: 'SECRET_OPENID',
+  unionid: 'SECRET_UNIONID',
+  phone: '13800138000',
+  city: '深圳',
+  gender: 1,
+  birth_year: 1995,
+  member_status: 'pending_review',
+  status: 0,
+  promote_partner_id: 8
+}, {
+  latestAuth: { auth_service: 1, auth_privacy: 1, auth_data: 0, device_info: 'SECRET_DEVICE' },
+  partner_name: '合伙人甲',
+  match_settings: { prefer_age_min: 20 },
+  privacy_auth_logs: [{ id: 1, raw: 'SECRET_LOG' }]
+})
+assertNoSecrets(auditorDetail, 'AUDITOR_USER_DETAIL_NO_OPENID')
+assert.strictEqual(auditorDetail.match_settings, undefined, 'AUDITOR_USER_DETAIL_NO_MATCH_SETTINGS')
+assert.strictEqual(auditorDetail.privacy_auth_logs, undefined, 'AUDITOR_USER_DETAIL_NO_RAW_PRIVACY_LOGS')
+assert.ok(auditorDetail.agreements_status)
+assert.ok(!JSON.stringify(auditorDetail).includes('SECRET_DEVICE'))
+assert.ok(!JSON.stringify(auditorDetail).includes('prefer_age_min'))
+
+const adminRoutes = fs.readFileSync(path.join(root, 'server/src/routes/admin.js'), 'utf8')
+assert.ok(adminRoutes.includes('formatOrderByRole'))
+assert.ok(adminRoutes.includes('formatMatchByRole'))
+assert.ok(adminRoutes.includes('formatUserDetailForAuditor'))
+assert.ok(adminRoutes.includes('formatChatSessionForService'))
+assert.ok(!/orders: orderRows\.map\(formatOrderForService\)[\s\S]{0,40}openid/.test(adminRoutes))
+
+// CUSTOMER_SERVICE_OPENID_DENIED only after real DTO payload checks pass
+assert.strictEqual(canSeeOpenId(ADMIN_ROLES.CUSTOMER_SERVICE), false)
+assertNoSecrets(formatMatchByRole(maliciousIdentity, ADMIN_ROLES.CUSTOMER_SERVICE), 'CUSTOMER_SERVICE_OPENID_DENIED')
 
 // ROLE_PAGES alignment
 assert.ok(adminHtml.includes("auditor: ['dashboard', 'members', 'users', 'partners']"))
@@ -231,6 +357,9 @@ assert.strictEqual(coordView.side_b.confirmed, false)
 assert.ok(coordView.display_status.includes('B') || coordView.display_status.includes('等待'))
 assert.ok(coordView.stale_notice.includes('方案已经更新'))
 
+results.RESPONSE_DATA_AUTHORIZATION = 'PASS'
+results.ROUTE_AUTHORIZATION = 'PASS'
+
 console.log('PASS backoffice-simple-web-final')
 console.log('PASS PARTNER_PHONE_MASKED')
 console.log('PASS PARTNER_NO_OPENID')
@@ -251,8 +380,19 @@ console.log('PASS AUDITOR_AGENT_CONVERSATION_DENIED')
 console.log('PASS FINANCE_WITHDRAW_ALLOWED')
 console.log('PASS FINANCE_MEMBER_REVIEW_DENIED')
 console.log('PASS FINANCE_AGENT_CONVERSATION_DENIED')
+console.log('PASS CUSTOMER_SERVICE_ORDER_NO_OPENID')
+console.log('PASS CUSTOMER_SERVICE_HANDOFF_NO_OPENID')
+console.log('PASS CUSTOMER_SERVICE_WORKBENCH_NO_OPENID')
+console.log('PASS CUSTOMER_SERVICE_MATCH_NO_OPENID')
+console.log('PASS FINANCE_ORDER_NO_OPENID')
+console.log('PASS FINANCE_WITHDRAW_PHONE_MASKED')
+console.log('PASS AUDITOR_USER_DETAIL_NO_OPENID')
+console.log('PASS AUDITOR_USER_DETAIL_NO_MATCH_SETTINGS')
+console.log('PASS AUDITOR_USER_DETAIL_NO_RAW_PRIVACY_LOGS')
 console.log('PASS CUSTOMER_SERVICE_OPENID_DENIED')
 console.log('PASS SUPER_ADMIN_EXPECTED_ACCESS')
+console.log('PASS ROUTE_AUTHORIZATION')
+console.log('PASS RESPONSE_DATA_AUTHORIZATION')
 console.log('PASS AI_OPS_QUERY_FAILURE_IS_UNKNOWN')
 console.log('PASS AI_OPS_NO_RUN_DATA_NOT_FAKE_NORMAL')
 console.log('PASS AI_OPS_ACTUAL_PROVIDER_MODEL_IF_AVAILABLE')
