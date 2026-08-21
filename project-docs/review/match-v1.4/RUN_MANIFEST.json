@@ -2,7 +2,7 @@
   "run_id": "match-reciprocal-v1.4",
   "base_commit": "073f0973d4216af1f3fb882478613865438742d6",
   "branch": "experiment/match-reciprocal-v1.4",
-  "final_commit": "463b34d3118f2cee45f9093226eef7c1c081fd8f",
+  "final_commit": "d47eee6eb86af33d43f03401a2398bf3669882cc",
   "source_status": "speed-dating REVIEW_REQUIRED sandbox rag=false",
   "dataset_counts": {
     "raw": 8378,
@@ -179,5 +179,6 @@
   "review_fix": "v1.4-review-fix",
   "calibration_provenance_status": "FIXED",
   "sealed_physical_isolation": "FIXED",
-  "sha_consistency_note": "Previous final_commit f34501c was first code commit; HEAD 66cbe21 was docs follow-up that failed to refresh final_commit. review-fix commit will set final_commit=HEAD."
+  "sha_consistency_note": "final_commit equals git tip at commit time; review_fix_code_commit is the substantive fix. Git cannot embed a commit hash inside the same commit tree without rewrite.",
+  "review_fix_code_commit": "463b34d3118f2cee45f9093226eef7c1c081fd8f"
 }
