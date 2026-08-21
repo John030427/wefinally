@@ -27,10 +27,10 @@
    No.
 
 9. **What exactly marks COMPLETE?**  
-   Full API response received → content extracted → patchPreview normalized/validated when present → minimum loader duration elapsed → `status: completed`.
+   Full API response received → **non-empty assistant content OR valid normalized `patchPreview` (at least one)** → minimum loader duration elapsed → `status: completed`. Empty/malformed success payloads are rejected (no generic fake reply).
 
 10. **For coordination, does completion wait for patch normalization?**  
-    Yes — raw patch that fails `normalizePatchPreview` becomes error; patch UI only when `status=completed` and valid `patchPreview`.
+    Yes — raw patch that fails `normalizePatchPreview` becomes error; **valid patch-only responses may complete**; patch UI only when `status=completed` and valid `patchPreview`.
 
 11. **Is fake percentage progress used?**  
     No.
@@ -57,7 +57,7 @@
     Yes — `patchSubmitting` path unchanged; contract selfcheck still covers patch confirm/cancel/primary resolution.
 
 19. **Did platform-service fallback preserve one loader?**  
-    Yes — primary then legacy inside `fetchCompleteAssistantReply`; no intermediate error bubble.
+    Yes — primary throw **or** empty/malformed primary → legacy in the same generating turn; both empty → error bubble. No generic fake success.
 
 20. **Are AI generation and patch submission different states?**  
     Yes — `sending` / message `status` vs `patchSubmitting`.

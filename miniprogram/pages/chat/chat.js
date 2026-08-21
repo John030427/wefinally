@@ -11,7 +11,9 @@ const {
   errorAssistantMessage,
   updateMessageById,
   nextRotatedWaitingText,
-  elapsedAtLeast
+  elapsedAtLeast,
+  evaluateAssistantReply,
+  resolveCompleteAssistantReply
 } = require('../../utils/aiChatWaiting')
 
 const PATCH_FIELD_LABELS = {
@@ -97,14 +99,6 @@ function normalizePatchPreview(raw, requiresConfirmation) {
     affectsExistingProposal: Boolean(preview.affects_existing_proposal),
     willNotifyPartner: Boolean(preview.will_notify_partner)
   }
-}
-
-function extractReplyContent(reply) {
-  if (reply == null) return ''
-  if (typeof reply === 'string') return reply
-  return String(
-    reply.reply || reply.content || reply.ai_content || reply.answer || reply.message || ''
-  ).trim()
 }
 
 function assistantMessage(item, index) {
@@ -412,38 +406,42 @@ Page({
   },
 
   /**
-   * Complete-response gate: wait for full API result, then normalize/validate
-   * usable assistant content (and valid patchPreview when present) before reveal.
-   * Platform service: primary + legacy fallback share one continuous loader.
+   * Complete-response gate: full API result must yield non-empty content
+   * OR a valid normalized patchPreview. No generic fake success copy.
+   * Platform service: throw OR empty/malformed primary → legacy (same loader).
    */
   async fetchCompleteAssistantReply(text) {
-    let reply
+    let primaryReply
     let primaryError = null
     try {
-      reply = await this.sendAgentMessage(text)
+      primaryReply = await this.sendAgentMessage(text)
     } catch (err) {
       primaryError = err
-      if (this.data.agentType !== AGENT_TYPES.PLATFORM_SERVICE) throw err
-      reply = await this.sendLegacyMessage(text)
-    }
-    const content = extractReplyContent(reply)
-      || (typeof reply === 'string' ? reply : '')
-      || '感谢你的咨询，我会在信息范围内尽力协助。'
-    const patchPreview = normalizePatchPreview(reply, reply && reply.requires_confirmation)
-    const handoff = reply && reply.handoff && reply.handoff.available ? reply.handoff : null
-
-    // Coordination: if backend returned a patch object that failed normalization,
-    // do not treat as completed success with half-valid UI — surface error instead.
-    const rawPatch = reply && (reply.patch_preview || reply.patchPreview)
-    if (rawPatch && !patchPreview) {
-      throw new Error('调整建议尚未就绪，请稍后重试')
     }
 
-    if (!String(content || '').trim() && !patchPreview) {
-      throw primaryError || new Error('回复生成失败')
+    const isPlatform = this.data.agentType === AGENT_TYPES.PLATFORM_SERVICE
+    const primaryEval = primaryError
+      ? { ok: false }
+      : evaluateAssistantReply(primaryReply, normalizePatchPreview)
+
+    let legacyReply
+    let legacyError = null
+    if (isPlatform && !primaryEval.ok) {
+      try {
+        legacyReply = await this.sendLegacyMessage(text)
+      } catch (err) {
+        legacyError = err
+      }
     }
 
-    return { content, patchPreview, handoff, reply }
+    return resolveCompleteAssistantReply({
+      agentType: this.data.agentType,
+      primaryReply,
+      primaryError,
+      legacyReply,
+      legacyError,
+      normalizePatchPreview
+    })
   },
 
   async runAssistantTurn({ text, pendingMessageId, requestId, appendUser }) {

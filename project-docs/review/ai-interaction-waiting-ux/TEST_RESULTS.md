@@ -5,27 +5,22 @@
 | `node server/selfcheck/ai-chat-waiting-ux.js` | PASS |
 | `node server/selfcheck/agent-ui.js` | PASS |
 | `node server/selfcheck/miniprogram-source-syntax.js` | PASS |
-| `npm --prefix server run selfcheck:safety` | PASS |
-| `npm --prefix server run selfcheck:agent-core` | PASS |
 | `node server/selfcheck/date-application-patch.js` | PASS |
-| `node server/selfcheck/product-experience-pages.js` | PASS |
 | `npm --prefix server run e2e:wefinally` | PASS (14/14) |
 
-## Manual CHAT cases (code-path verified; WeChat UI manual)
+## Completion gate cases (selfcheck)
 
-| ID | Status |
+| Case | Result |
 |---|---|
-| CHAT-01 love_advisor success path | PASS (logic) |
-| CHAT-02 platform_service primary | PASS (logic) |
-| CHAT-03 platform fallback continuous loader | PASS (logic) |
-| CHAT-04 date_coordinator | PASS (logic) |
-| CHAT-05 patch only after completed | PASS (wxml gate) |
-| CHAT-06 error bubble | PASS (logic) |
-| CHAT-07 retry no user dup | PASS (logic) |
-| CHAT-08 min loader 400ms | PASS (helper) |
-| CHAT-09 slow no premature timeout | PASS (logic) |
-| CHAT-10 double send | PASS (sending guard) |
-| CHAT-11 unload timer/setData | PASS (logic) |
-| CHAT-12 history completed | PASS (normalizeMessages) |
+| EMPTY_REPLY_NO_PATCH_REJECTED | PASS |
+| MALFORMED_REPLY_NO_PATCH_REJECTED | PASS |
+| VALID_TEXT_ACCEPTED | PASS |
+| VALID_PATCH_ONLY_ACCEPTED | PASS |
+| PLATFORM_EMPTY_PRIMARY_VALID_LEGACY_ACCEPTED | PASS |
+| PLATFORM_EMPTY_PRIMARY_EMPTY_LEGACY_REJECTED | PASS |
 
-VISUAL_SCREENSHOT=MANUAL_REQUIRED
+## Notes
+
+- Removed generic fallback: `感谢你的咨询，我会在信息范围内尽力协助。`
+- Complete iff non-empty content OR valid normalized patchPreview
+- VISUAL_SCREENSHOT=MANUAL_REQUIRED

@@ -67,7 +67,7 @@ function completeAssistantMessage(pending, { content, patchPreview, handoff, tim
   }
   return Object.assign({}, pending, {
     status: 'completed',
-    content: text || '已收到您的咨询',
+    content: text,
     waitingText: '',
     patchPreview: patchPreview || null,
     handoff: handoff || null,
@@ -112,6 +112,111 @@ function elapsedAtLeast(startedAt, minMs, now) {
   return Math.max(0, minMs - (t - startedAt))
 }
 
+function extractReplyContent(reply) {
+  if (reply == null) return ''
+  if (typeof reply === 'string') return String(reply).trim()
+  if (typeof reply !== 'object') return String(reply || '').trim()
+  return String(
+    reply.reply || reply.content || reply.ai_content || reply.answer || reply.message || ''
+  ).trim()
+}
+
+/**
+ * Complete-response gate for one raw API payload.
+ * Accepts only: non-empty assistant text OR valid normalized patchPreview.
+ * Never invents generic success copy.
+ */
+function evaluateAssistantReply(reply, normalizePatchPreview) {
+  if (reply === undefined) {
+    return { ok: false, reason: 'EMPTY_REPLY', errorMessage: '回复生成失败' }
+  }
+  const content = extractReplyContent(reply)
+  const patchPreview = typeof normalizePatchPreview === 'function'
+    ? normalizePatchPreview(reply, reply && reply.requires_confirmation)
+    : null
+  const rawPatch = reply && typeof reply === 'object'
+    ? (reply.patch_preview || reply.patchPreview)
+    : null
+  if (rawPatch && !patchPreview) {
+    return {
+      ok: false,
+      reason: 'MALFORMED_PATCH',
+      errorMessage: '调整建议尚未就绪，请稍后重试',
+      content: '',
+      patchPreview: null,
+      handoff: null,
+      reply
+    }
+  }
+  if (!content && !patchPreview) {
+    return {
+      ok: false,
+      reason: 'EMPTY_REPLY',
+      errorMessage: '回复生成失败',
+      content: '',
+      patchPreview: null,
+      handoff: null,
+      reply
+    }
+  }
+  const handoff = reply && typeof reply === 'object' && reply.handoff && reply.handoff.available
+    ? reply.handoff
+    : null
+  return {
+    ok: true,
+    reason: content ? 'VALID_TEXT' : 'VALID_PATCH_ONLY',
+    content,
+    patchPreview: patchPreview || null,
+    handoff,
+    reply
+  }
+}
+
+/**
+ * Resolve primary (+ optional platform legacy) into a completed payload or throw.
+ * Empty/malformed primary on platform_service triggers legacy without intermediate UI.
+ */
+function resolveCompleteAssistantReply({
+  agentType,
+  primaryReply,
+  primaryError,
+  legacyReply,
+  legacyError,
+  normalizePatchPreview
+}) {
+  const isPlatform = agentType === AGENT_TYPES.PLATFORM_SERVICE
+
+  if (!primaryError) {
+    const primaryEval = evaluateAssistantReply(primaryReply, normalizePatchPreview)
+    if (primaryEval.ok) return primaryEval
+    if (!isPlatform) {
+      const err = new Error(primaryEval.errorMessage || '回复生成失败')
+      err.gateReason = primaryEval.reason
+      throw err
+    }
+  } else if (!isPlatform) {
+    throw primaryError
+  }
+
+  if (legacyError) {
+    throw primaryError || legacyError
+  }
+  if (legacyReply === undefined && isPlatform && primaryError) {
+    throw primaryError
+  }
+
+  const legacyEval = evaluateAssistantReply(
+    legacyReply === undefined ? null : legacyReply,
+    normalizePatchPreview
+  )
+  if (!legacyEval.ok) {
+    const err = new Error(legacyEval.errorMessage || '回复生成失败')
+    err.gateReason = legacyEval.reason
+    throw err
+  }
+  return legacyEval
+}
+
 module.exports = {
   AGENT_TYPES,
   WAITING_COPY,
@@ -124,5 +229,8 @@ module.exports = {
   errorAssistantMessage,
   updateMessageById,
   nextRotatedWaitingText,
-  elapsedAtLeast
+  elapsedAtLeast,
+  extractReplyContent,
+  evaluateAssistantReply,
+  resolveCompleteAssistantReply
 }

@@ -3,17 +3,30 @@
 Loader remains until:
 
 1. Backend/agent response returns completely (no streaming)
-2. Reply content extracted
-3. If `patch_preview` / `patchPreview` present → `normalizePatchPreview` succeeds
-4. Minimum display time elapsed
+2. Gate accepts **at least one** of:
+   - non-empty assistant text
+   - valid normalized `patchPreview`
+3. If raw `patch_preview` / `patchPreview` is present → `normalizePatchPreview` must succeed (else error)
+4. Minimum display time elapsed (~400ms)
 
-Then same bubble → `status=completed` with content and optional valid `patchPreview`.
+Then same bubble → `status=completed`.
 
-Patch actions (`确认修改` / `暂不修改` / primary resolution) render only when:
+**Rejected (error + retry):**
+
+- empty / whitespace-only success payload with no valid patch
+- malformed patch object that fails normalization
+- platform primary empty **and** legacy empty
+- love_advisor empty response (no fake generic copy)
+
+**Accepted:**
+
+- valid text only
+- valid patch only (coordinator)
+- platform empty/malformed primary + valid legacy text (continuous loader)
+
+Patch actions render only when:
 
 - `item.status === 'completed'`
 - `item.patchPreview` is truthy / valid
-
-If raw patch exists but normalization fails → error bubble (no half UI).
 
 Business confirm path uses separate `patchSubmitting` — not the generating spinner.

@@ -16,7 +16,9 @@ const {
   updateMessageById,
   nextRotatedWaitingText,
   elapsedAtLeast,
-  waitingCopyFor
+  waitingCopyFor,
+  evaluateAssistantReply,
+  resolveCompleteAssistantReply
 } = waiting
 
 assert.strictEqual(MIN_LOADER_MS >= 350 && MIN_LOADER_MS <= 500, true)
@@ -78,20 +80,133 @@ assert.strictEqual(elapsedAtLeast(Date.now() - 500, 400, Date.now()), 0)
 const emptyComplete = completeAssistantMessage(pending, { content: '', patchPreview: null })
 assert.strictEqual(emptyComplete.status, 'error')
 
+const patchOnlyComplete = completeAssistantMessage(pending, {
+  content: '',
+  patchPreview: { id: 'p2', changes: [{ field: 'availability' }] }
+})
+assert.strictEqual(patchOnlyComplete.status, 'completed')
+assert.strictEqual(patchOnlyComplete.content, '')
+
+// --- Completion gate (not only helper) ---
+function testNormalizePatchPreview(raw) {
+  const patch = raw && (raw.patch_preview || raw.patchPreview || raw)
+  const preview = patch && patch.preview
+  if (!patch || !preview || !Array.isArray(preview.changed_fields) || !preview.changed_fields.length) {
+    return null
+  }
+  return {
+    id: String(patch.id || patch.patch_id || 'patch'),
+    status: patch.status || 'pending_confirmation',
+    changes: preview.changed_fields.map((field) => ({ field }))
+  }
+}
+
+// EMPTY_REPLY_NO_PATCH_REJECTED
+{
+  const ev = evaluateAssistantReply({ reply: '' }, testNormalizePatchPreview)
+  assert.strictEqual(ev.ok, false)
+  assert.strictEqual(ev.reason, 'EMPTY_REPLY')
+  assert.throws(() => resolveCompleteAssistantReply({
+    agentType: AGENT_TYPES.LOVE_ADVISOR,
+    primaryReply: { reply: '   ' },
+    primaryError: null,
+    normalizePatchPreview: testNormalizePatchPreview
+  }), /回复生成失败/)
+}
+
+// MALFORMED_REPLY_NO_PATCH_REJECTED
+{
+  const ev = evaluateAssistantReply({
+    patch_preview: { id: 'bad', preview: { changed_fields: 'not-array' } }
+  }, testNormalizePatchPreview)
+  assert.strictEqual(ev.ok, false)
+  assert.strictEqual(ev.reason, 'MALFORMED_PATCH')
+  assert.throws(() => resolveCompleteAssistantReply({
+    agentType: AGENT_TYPES.DATE_COORDINATOR,
+    primaryReply: { patchPreview: { id: 'x' } },
+    primaryError: null,
+    normalizePatchPreview: testNormalizePatchPreview
+  }), /调整建议尚未就绪/)
+}
+
+// VALID_TEXT_ACCEPTED
+{
+  const ev = evaluateAssistantReply({ reply: '这是完整回复' }, testNormalizePatchPreview)
+  assert.strictEqual(ev.ok, true)
+  assert.strictEqual(ev.reason, 'VALID_TEXT')
+  assert.strictEqual(ev.content, '这是完整回复')
+  const resolved = resolveCompleteAssistantReply({
+    agentType: AGENT_TYPES.LOVE_ADVISOR,
+    primaryReply: { content: '恋爱建议正文' },
+    primaryError: null,
+    normalizePatchPreview: testNormalizePatchPreview
+  })
+  assert.strictEqual(resolved.ok, true)
+  assert.strictEqual(resolved.content, '恋爱建议正文')
+}
+
+// VALID_PATCH_ONLY_ACCEPTED
+{
+  const payload = {
+    patch_preview: {
+      id: 'p9',
+      status: 'pending_confirmation',
+      preview: { changed_fields: ['availability'], before: {}, after: {} }
+    }
+  }
+  const ev = evaluateAssistantReply(payload, testNormalizePatchPreview)
+  assert.strictEqual(ev.ok, true)
+  assert.strictEqual(ev.reason, 'VALID_PATCH_ONLY')
+  assert.ok(ev.patchPreview)
+  assert.strictEqual(ev.content, '')
+}
+
+// PLATFORM_EMPTY_PRIMARY_VALID_LEGACY_ACCEPTED
+{
+  const resolved = resolveCompleteAssistantReply({
+    agentType: AGENT_TYPES.PLATFORM_SERVICE,
+    primaryReply: { reply: '' },
+    primaryError: null,
+    legacyReply: { answer: '会员规则说明' },
+    legacyError: null,
+    normalizePatchPreview: testNormalizePatchPreview
+  })
+  assert.strictEqual(resolved.ok, true)
+  assert.strictEqual(resolved.content, '会员规则说明')
+}
+
+// PLATFORM_EMPTY_PRIMARY_EMPTY_LEGACY_REJECTED
+{
+  assert.throws(() => resolveCompleteAssistantReply({
+    agentType: AGENT_TYPES.PLATFORM_SERVICE,
+    primaryReply: {},
+    primaryError: null,
+    legacyReply: { message: '' },
+    legacyError: null,
+    normalizePatchPreview: testNormalizePatchPreview
+  }), /回复生成失败/)
+}
+
 const chatJs = fs.readFileSync(path.join(root, 'miniprogram/pages/chat/chat.js'), 'utf8')
 const chatWxml = fs.readFileSync(path.join(root, 'miniprogram/pages/chat/chat.wxml'), 'utf8')
 const chatWxss = fs.readFileSync(path.join(root, 'miniprogram/pages/chat/chat.wxss'), 'utf8')
+const waitingJs = fs.readFileSync(path.join(root, 'miniprogram/utils/aiChatWaiting.js'), 'utf8')
 
 assert.ok(chatJs.includes('aiChatWaiting'))
 assert.ok(chatJs.includes('runAssistantTurn'))
 assert.ok(chatJs.includes('retryAiMessage'))
 assert.ok(chatJs.includes('fetchCompleteAssistantReply'))
+assert.ok(chatJs.includes('evaluateAssistantReply'))
+assert.ok(chatJs.includes('resolveCompleteAssistantReply'))
 assert.ok(chatJs.includes('replaceMessageById'))
 assert.ok(chatJs.includes('clearWaitingTimers'))
 assert.ok(chatJs.includes('_pageActive'))
 assert.ok(chatJs.includes('MIN_LOADER_MS'))
 assert.ok(chatJs.includes('sendLegacyMessage'))
 assert.ok(chatJs.includes("status: 'completed'"))
+assert.ok(!chatJs.includes('感谢你的咨询，我会在信息范围内尽力协助。'), 'must not use generic fake success fallback')
+assert.ok(waitingJs.includes('evaluateAssistantReply'))
+assert.ok(waitingJs.includes('resolveCompleteAssistantReply'))
 assert.ok(!/loading=\{\{sending\}\}/.test(chatWxml), 'send button must not use competing spinner')
 assert.ok(chatWxml.includes('msg-bubble-generating'))
 assert.ok(chatWxml.includes('AI生成中'))
@@ -101,3 +216,9 @@ assert.ok(chatWxss.includes('gen-spin'))
 assert.ok(chatWxss.includes('msg-bubble-reveal'))
 
 console.log('PASS ai-chat-waiting-ux')
+console.log('PASS completion-gate EMPTY_REPLY_NO_PATCH_REJECTED')
+console.log('PASS completion-gate MALFORMED_REPLY_NO_PATCH_REJECTED')
+console.log('PASS completion-gate VALID_TEXT_ACCEPTED')
+console.log('PASS completion-gate VALID_PATCH_ONLY_ACCEPTED')
+console.log('PASS completion-gate PLATFORM_EMPTY_PRIMARY_VALID_LEGACY_ACCEPTED')
+console.log('PASS completion-gate PLATFORM_EMPTY_PRIMARY_EMPTY_LEGACY_REJECTED')
