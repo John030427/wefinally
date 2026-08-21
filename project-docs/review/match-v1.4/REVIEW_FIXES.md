@@ -31,4 +31,8 @@ Native path: `nativeIdMigration.js` / `NATIVE_ID_DATASET_PREFERRED` (no ungated 
 
 ## REVIEW-05
 
-Explanation: first v1.4 commit was `f34501c`; a follow-up docs commit `66cbe21` updated RUN_MANIFEST to still point at `f34501c` (stale). Local and remote HEAD were both `66cbe21` after push, but manifest field lagged. This review-fix aligns all three.
+## REVIEW-05
+
+**Original bug:** Agent tip was `66cbe21` while `RUN_MANIFEST.final_commit` still said `f34501c` (docs follow-up forgot to refresh the field). Local and `origin/experiment/match-reciprocal-v1.4` were already equal at `66cbe21`.
+
+**Resolution:** `final_commit` and `review_fix_code_commit` pinned to substantive review-fix `463b34d3118f2cee45f9093226eef7c1c081fd8f`. Tip always `git rev-parse HEAD` / remote HEAD (currently includes subsequent docs-only commits). No force-push. A git tree cannot contain its own commit SHA.
