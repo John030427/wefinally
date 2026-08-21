@@ -1,12 +1,18 @@
 const { get, post } = require('../../utils/request')
 const { API_PATHS } = require('../../utils/constants')
 const { formatDate } = require('../../utils/util')
-
-const AGENT_TYPES = {
-  PLATFORM_SERVICE: 'platform_service',
-  LOVE_ADVISOR: 'love_advisor',
-  DATE_COORDINATOR: 'date_coordinator'
-}
+const {
+  AGENT_TYPES,
+  MIN_LOADER_MS,
+  ROTATE_MS,
+  SLOW_HINT_MS,
+  createPendingAssistantMessage,
+  completeAssistantMessage,
+  errorAssistantMessage,
+  updateMessageById,
+  nextRotatedWaitingText,
+  elapsedAtLeast
+} = require('../../utils/aiChatWaiting')
 
 const PATCH_FIELD_LABELS = {
   availability: '可约时间',
@@ -93,15 +99,28 @@ function normalizePatchPreview(raw, requiresConfirmation) {
   }
 }
 
+function extractReplyContent(reply) {
+  if (reply == null) return ''
+  if (typeof reply === 'string') return reply
+  return String(
+    reply.reply || reply.content || reply.ai_content || reply.answer || reply.message || ''
+  ).trim()
+}
+
 function assistantMessage(item, index) {
   const patchPreview = normalizePatchPreview(item && item.patch_preview, item && item.requires_confirmation)
+  const content = item.ai_content || item.reply || item.content || '已收到您的咨询'
   return {
     id: `b_${item.id || index}`,
-    content: item.ai_content || item.reply || item.content || '已收到您的咨询',
+    content,
     isBot: true,
+    status: 'completed',
+    waitingText: '',
     timeText: formatDate(item.create_time || item.createdAt || item.time, 'HH:mm'),
     patchPreview,
-    handoff: item && item.handoff && item.handoff.available ? item.handoff : null
+    handoff: item && item.handoff && item.handoff.available ? item.handoff : null,
+    reveal: false,
+    errorText: ''
   }
 }
 
@@ -115,6 +134,7 @@ function normalizeMessages(raw) {
         id: `u_${item.id || index}`,
         content: item.user_content || item.question || item.content || '',
         isBot: false,
+        status: 'completed',
         timeText
       })
     }
@@ -131,6 +151,14 @@ function decodePrompt(value) {
     return decodeURIComponent(text)
   } catch (err) {
     return text
+  }
+}
+
+function makeIds(prefix) {
+  const stamp = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+  return {
+    requestId: `req_${stamp}`,
+    pendingMessageId: `${prefix}_${stamp}`
   }
 }
 
@@ -156,7 +184,13 @@ Page({
     supportCodeError: ''
   },
 
+  _pageActive: true,
+  _waitingTimer: null,
+  _slowHintTimer: null,
+  _activeRequestId: '',
+
   onLoad(options) {
+    this._pageActive = true
     const requestedType = String(options.agentType || '')
     const agentType = Object.values(AGENT_TYPES).includes(requestedType) ? requestedType : AGENT_TYPES.PLATFORM_SERVICE
     const coordinationId = String(options.coordinationId || '')
@@ -181,6 +215,62 @@ Page({
     }
     this.loadSupportCode()
     this.loadHistory()
+  },
+
+  onUnload() {
+    this._pageActive = false
+    this.clearWaitingTimers()
+  },
+
+  onHide() {
+    // Keep timers while page is in stack; clear only on unload.
+  },
+
+  clearWaitingTimers() {
+    if (this._waitingTimer) {
+      clearInterval(this._waitingTimer)
+      this._waitingTimer = null
+    }
+    if (this._slowHintTimer) {
+      clearTimeout(this._slowHintTimer)
+      this._slowHintTimer = null
+    }
+  },
+
+  safeSetData(payload) {
+    if (!this._pageActive) return
+    this.setData(payload)
+  },
+
+  replaceMessageById(id, updater) {
+    const result = updateMessageById(this.data.messages, id, updater)
+    if (!result.found) return null
+    this.safeSetData({ messages: result.messages })
+    return result.message
+  },
+
+  startWaitingCopyRotation(pendingMessageId) {
+    this.clearWaitingTimers()
+    this._waitingTimer = setInterval(() => {
+      if (!this._pageActive) {
+        this.clearWaitingTimers()
+        return
+      }
+      const current = this.data.messages.find((m) => m.id === pendingMessageId)
+      if (!current || current.status !== 'generating') {
+        this.clearWaitingTimers()
+        return
+      }
+      const next = nextRotatedWaitingText(current)
+      this.replaceMessageById(pendingMessageId, next)
+    }, ROTATE_MS)
+
+    this._slowHintTimer = setTimeout(() => {
+      if (!this._pageActive) return
+      const current = this.data.messages.find((m) => m.id === pendingMessageId)
+      if (!current || current.status !== 'generating') return
+      this.replaceMessageById(pendingMessageId, { waitingText: '还在处理中，请稍候…' })
+    }, SLOW_HINT_MS)
   },
 
   async loadSupportCode() {
@@ -275,7 +365,13 @@ Page({
       }
     }
     if (!messages.length) {
-      messages = [{ id: 'welcome', content: this.welcomeMessage(), isBot: true, timeText: formatDate(new Date(), 'HH:mm') }]
+      messages = [{
+        id: 'welcome',
+        content: this.welcomeMessage(),
+        isBot: true,
+        status: 'completed',
+        timeText: formatDate(new Date(), 'HH:mm')
+      }]
     }
     this.setData({
       pageState: 'success',
@@ -315,38 +411,167 @@ Page({
     return post(API_PATHS.CHAT_SEND, Object.assign({ message: text, content: text }, this.data.handoffContext || {}), { showError: false })
   },
 
+  /**
+   * Complete-response gate: wait for full API result, then normalize/validate
+   * usable assistant content (and valid patchPreview when present) before reveal.
+   * Platform service: primary + legacy fallback share one continuous loader.
+   */
+  async fetchCompleteAssistantReply(text) {
+    let reply
+    let primaryError = null
+    try {
+      reply = await this.sendAgentMessage(text)
+    } catch (err) {
+      primaryError = err
+      if (this.data.agentType !== AGENT_TYPES.PLATFORM_SERVICE) throw err
+      reply = await this.sendLegacyMessage(text)
+    }
+    const content = extractReplyContent(reply)
+      || (typeof reply === 'string' ? reply : '')
+      || '感谢你的咨询，我会在信息范围内尽力协助。'
+    const patchPreview = normalizePatchPreview(reply, reply && reply.requires_confirmation)
+    const handoff = reply && reply.handoff && reply.handoff.available ? reply.handoff : null
+
+    // Coordination: if backend returned a patch object that failed normalization,
+    // do not treat as completed success with half-valid UI — surface error instead.
+    const rawPatch = reply && (reply.patch_preview || reply.patchPreview)
+    if (rawPatch && !patchPreview) {
+      throw new Error('调整建议尚未就绪，请稍后重试')
+    }
+
+    if (!String(content || '').trim() && !patchPreview) {
+      throw primaryError || new Error('回复生成失败')
+    }
+
+    return { content, patchPreview, handoff, reply }
+  },
+
+  async runAssistantTurn({ text, pendingMessageId, requestId, appendUser }) {
+    if (!this._pageActive) return
+    const startedAt = Date.now()
+    this._activeRequestId = requestId
+
+    const pending = createPendingAssistantMessage({
+      pendingMessageId,
+      requestId,
+      agentType: this.data.agentType,
+      originalUserText: text,
+      timeText: formatDate(new Date(), 'HH:mm')
+    })
+
+    const nextMessages = appendUser
+      ? [...this.data.messages, {
+        id: `u_${requestId}`,
+        content: text,
+        isBot: false,
+        status: 'completed',
+        timeText: formatDate(new Date(), 'HH:mm')
+      }, pending]
+      : (() => {
+        const updated = updateMessageById(this.data.messages, pendingMessageId, () => pending)
+        return updated.found ? updated.messages : [...this.data.messages, pending]
+      })()
+
+    this.safeSetData({
+      messages: nextMessages,
+      inputText: appendUser ? '' : this.data.inputText,
+      sending: true,
+      scrollToView: `msg-${pendingMessageId}`
+    })
+    this.startWaitingCopyRotation(pendingMessageId)
+
+    try {
+      const result = await this.fetchCompleteAssistantReply(text)
+      if (!this._pageActive || this._activeRequestId !== requestId) return
+
+      const waitMs = elapsedAtLeast(startedAt, MIN_LOADER_MS)
+      if (waitMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, waitMs))
+      }
+      if (!this._pageActive || this._activeRequestId !== requestId) return
+
+      this.clearWaitingTimers()
+      const completed = completeAssistantMessage(
+        this.data.messages.find((m) => m.id === pendingMessageId) || pending,
+        {
+          content: result.content,
+          patchPreview: result.patchPreview,
+          handoff: result.handoff,
+          timeText: formatDate(new Date(), 'HH:mm')
+        }
+      )
+      // Identity-safe replace — never use "last message"
+      if (completed.status === 'error') {
+        this.replaceMessageById(pendingMessageId, () => completed)
+        wx.showToast({ title: completed.errorText || '回复生成失败', icon: 'none', duration: 3000 })
+      } else {
+        this.replaceMessageById(pendingMessageId, () => completed)
+        this.safeSetData({ scrollToView: `msg-${pendingMessageId}` })
+      }
+    } catch (err) {
+      if (!this._pageActive || this._activeRequestId !== requestId) return
+      this.clearWaitingTimers()
+      const waitMs = elapsedAtLeast(startedAt, MIN_LOADER_MS)
+      if (waitMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, waitMs))
+      }
+      if (!this._pageActive || this._activeRequestId !== requestId) return
+      const failed = errorAssistantMessage(
+        this.data.messages.find((m) => m.id === pendingMessageId) || pending,
+        (err && err.message) || '回复生成失败'
+      )
+      this.replaceMessageById(pendingMessageId, () => failed)
+      this.safeSetData({ scrollToView: `msg-${pendingMessageId}` })
+      wx.showToast({ title: failed.errorText, icon: 'none', duration: 3000 })
+    } finally {
+      if (this._activeRequestId === requestId) {
+        this.clearWaitingTimers()
+        this.safeSetData({ sending: false })
+      }
+    }
+  },
+
   async onSend() {
     const text = (this.data.inputText || '').trim()
-    if (!text || this.data.sending) return
+    if (!text || this.data.sending || this.data.coordinatorReadOnly) return
     const app = getApp()
     if (!await app.checkNetwork()) {
       wx.showToast({ title: '网络不可用', icon: 'none' })
       return
     }
 
-    const userMsg = { id: `u_${Date.now()}`, content: text, isBot: false, timeText: formatDate(new Date(), 'HH:mm') }
-    this.setData({ messages: [...this.data.messages, userMsg], inputText: '', sending: true, scrollToView: `msg-${userMsg.id}` })
-    try {
-      let reply
-      try {
-        reply = await this.sendAgentMessage(text)
-      } catch (err) {
-        if (this.data.agentType !== AGENT_TYPES.PLATFORM_SERVICE) throw err
-        reply = await this.sendLegacyMessage(text)
-      }
-      const content = (reply && (reply.reply || reply.content || reply.ai_content || reply.answer || reply.message)) ||
-        (typeof reply === 'string' ? reply : '感谢你的咨询，我会在信息范围内尽力协助。')
-      const botMsg = Object.assign(assistantMessage(reply || {}, Date.now()), {
-        id: `b_${Date.now()}`,
-        content,
-        timeText: formatDate(new Date(), 'HH:mm')
-      })
-      this.setData({ messages: [...this.data.messages, botMsg], scrollToView: `msg-${botMsg.id}` })
-    } catch (err) {
-      wx.showToast({ title: (err && err.message) || '发送失败，请重试', icon: 'none', duration: 3000 })
-    } finally {
-      this.setData({ sending: false })
+    const { requestId, pendingMessageId } = makeIds('b_pending')
+    await this.runAssistantTurn({
+      text,
+      pendingMessageId,
+      requestId,
+      appendUser: true
+    })
+  },
+
+  async retryAiMessage(e) {
+    if (this.data.sending || this.data.coordinatorReadOnly) return
+    const messageId = String(e.currentTarget.dataset.messageId || '')
+    const current = this.data.messages.find((m) => m.id === messageId)
+    if (!current || current.status !== 'error') return
+    const text = String(current.originalUserText || '').trim()
+    if (!text) {
+      wx.showToast({ title: '无法重新生成', icon: 'none' })
+      return
     }
+    const app = getApp()
+    if (!await app.checkNetwork()) {
+      wx.showToast({ title: '网络不可用', icon: 'none' })
+      return
+    }
+
+    const requestId = `req_retry_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+    await this.runAssistantTurn({
+      text,
+      pendingMessageId: messageId,
+      requestId,
+      appendUser: false
+    })
   },
 
   openHumanService(e) {
@@ -480,6 +705,7 @@ Page({
           ? (isCreate ? '约会申请已发送给对方，正在等待回应。' : '修改已确认，我已更新约会条件并通知对方。')
           : (isCreate ? '好的，这份申请已暂不发送。' : '好的，已暂不修改，原来的约会条件会继续保留。'),
         isBot: true,
+        status: 'completed',
         timeText: formatDate(new Date(), 'HH:mm')
       }
       this.setData({ messages: [...messages, notice], scrollToView: `msg-${notice.id}` })
