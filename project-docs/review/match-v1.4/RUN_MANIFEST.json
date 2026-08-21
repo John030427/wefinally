@@ -2,7 +2,7 @@
   "run_id": "match-reciprocal-v1.4",
   "base_commit": "073f0973d4216af1f3fb882478613865438742d6",
   "branch": "experiment/match-reciprocal-v1.4",
-  "final_commit": "d47eee6eb86af33d43f03401a2398bf3669882cc",
+  "final_commit": "d285d4ad22272b0a14533d4c1c79c058eed65802",
   "source_status": "speed-dating REVIEW_REQUIRED sandbox rag=false",
   "dataset_counts": {
     "raw": 8378,
@@ -180,5 +180,9 @@
   "calibration_provenance_status": "FIXED",
   "sealed_physical_isolation": "FIXED",
   "sha_consistency_note": "final_commit equals git tip at commit time; review_fix_code_commit is the substantive fix. Git cannot embed a commit hash inside the same commit tree without rewrite.",
-  "review_fix_code_commit": "463b34d3118f2cee45f9093226eef7c1c081fd8f"
+  "review_fix_code_commit": "463b34d3118f2cee45f9093226eef7c1c081fd8f",
+  "sha_consistency": {
+    "note": "final_commit is set to the tip SHA of the parent commit that wrote this field; after this commit lands, tip advances by one docs commit. Consumers should use git rev-parse HEAD as tip; final_commit documents last published tip before this docs bump OR use review_fix_code_commit for the fix.",
+    "prior_mismatch_explained": "Agent reported 66cbe21 while RUN_MANIFEST still had f34501c (docs commit forgot to refresh field). Local and origin both at 66cbe21 at that time."
+  }
 }
