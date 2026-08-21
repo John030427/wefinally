@@ -3,7 +3,7 @@
   "base_branch": "experiment/match-final-staging-v1.8",
   "base_commit": "bda697189f86f1ccc54b91430b50526fc6cb607a",
   "branch": "feature/ai-interaction-waiting-ux",
-  "final_commit": "PENDING",
+  "final_commit": "a4ad154baf5925b9c03ddfbc0d1adfcda6478495",
   "surfaces_found": 7,
   "surfaces_changed": ["miniprogram/pages/chat", "miniprogram/utils/aiChatWaiting.js"],
   "shared_component_used": false,
