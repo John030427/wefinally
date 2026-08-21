@@ -1,14 +1,26 @@
-# Metric Audit v1.4
+# Metric Audit v1.4 (+ review-fix)
 
-## Finding
-Previous `AUPRC` was **PR trapezoid area** with a spurious (0,1) start and **order-dependent ties**.
-Constant predictors therefore did not yield AUROC=0.5 / AP=prevalence.
+## Original finding
 
-## Fix
-- `AUROC`: Mann–Whitney mid-rank (tie-aware) → constant ⇒ 0.5
-- `AVERAGE_PRECISION`: sklearn-style AP; constant ⇒ prevalence
-- `PR_AUC_TRAPEZOID`: separate name
-- `AUPRC` alias now means **AVERAGE_PRECISION**
+Previous `AUPRC` was PR trapezoid with spurious (0,1) start and order-dependent ties. Constants ≠ AUROC 0.5 / AP=prevalence.
+
+## Review-fix (REVIEW-01)
+
+First fix still accumulated AP **row-by-row within mixed ties** (index order). That is **not** sklearn `average_precision_score`.
+
+**Now:** distinct descending score thresholds; within a group only `(n_pos, n_neg)` used.
+
+```
+AP = Σ_t (R_t − R_{t−1}) · P_t
+```
+
+`PR_AUC_TRAPEZOID` uses the same distinct groups (tie-invariant).
+
+## Tests
+
+- CONSTANT_* / PERFECT_* / INVERSE_* / RANDOM_*
+- MIXED_TIE_AP_PERMUTATION_INVARIANT
+- MIXED_TIE_AP_SKLEARN_MATCH
+- MIXED_TIE_TRAP_PERMUTATION_INVARIANT
 
 Module: `server/data/wefinally/eval/binaryRankingMetrics.js`
-Selfcheck: `selfcheck:match-eval-metrics-v14`

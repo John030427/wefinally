@@ -1,24 +1,20 @@
-# Files Changed (v1.4)
+# Files Changed (v1.4 + review-fix)
 
-## Evaluation code
-- `server/data/wefinally/eval/binaryRankingMetrics.js` (new)
-- `server/data/wefinally/eval/scoreMatch.js` (AUROC/AP fix)
-- `server/data/wefinally/eval/matchReciprocalV14.js` (new)
+## Evaluation
+- `server/data/wefinally/eval/binaryRankingMetrics.js` — distinct-threshold AP/PR
+- `server/data/wefinally/eval/scoreMatch.js` — uses fixed metrics
+- `server/data/wefinally/eval/matchReciprocalV14.js` — calibration provenance; loadPart sealedAccess
+- `server/data/wefinally/eval/overnightEvolution.js` — sealed evaluator-only load
 
-## Models / ML
-- uses existing `server/data/wefinally/ml/tabularBaselines.js` (no production coupling)
+## Builders / importers
+- `server/data/wefinally/builders/splitSpeedDatingV13.js` — no sealed encounters.jsonl
+- `server/data/wefinally/builders/sealedAccess.js` — fail-closed sealed loaders
+- `server/data/wefinally/importers/nativeIdMigration.js` — NATIVE_ID_DATASET_PREFERRED path
 
 ## Tests
-- `server/selfcheck/match-eval-metrics-v14.js` (new)
-- `server/package.json` scripts: `selfcheck:match-eval-metrics-v14`, `data:wefinally:match-v14`
+- `server/selfcheck/match-eval-metrics-v14.js`
+- `server/selfcheck/match-eval-review-fix-v14.js`
+- `server/package.json` scripts
 
 ## Review bundle
-- `project-docs/review/match-v1.4/*`
-
-## Docs
-- this bundle only for v1.4 narrative
-
-## Not committed
-- raw Speed Dating CSV
-- large prediction JSONL dumps
-- unrelated user dirty files
+- `project-docs/review/match-v1.4/*` including REVIEW_FIXES.md

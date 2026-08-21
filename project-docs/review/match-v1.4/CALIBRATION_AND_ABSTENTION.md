@@ -2,6 +2,22 @@
 
 compatibility_score ≠ mutual_interest_probability.
 
+## Calibration provenance (FIXED review-02)
+```json
+{
+  "base_model": "RECIP_LOGIT_META",
+  "calibrated_model_name": "RECIP_LOGIT_META_PLATT",
+  "base_score_artifact_sha256": "520097a8c47254d4",
+  "calibrator": {
+    "a": 0.4088859901539098,
+    "b": -1.1770690098502483,
+    "type": "platt"
+  },
+  "calibration_split": "CALIBRATION",
+  "provenance_ok": true
+}
+```
+
 ## Abstention (RECIP_MIN top-1)
 ```json
 {
@@ -30,14 +46,5 @@ compatibility_score ≠ mutual_interest_probability.
     "precision_when_recommend": 0.17647058823529413,
     "always_top1_hit": 0.3150684931506849
   }
-}
-```
-
-## Platt calibrator
-```json
-{
-  "a": 0.7177069210250336,
-  "b": -1.1136213697039605,
-  "type": "platt"
 }
 ```

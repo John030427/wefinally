@@ -10,8 +10,10 @@ const path = require('path')
 const crypto = require('crypto')
 const { PATHS, ensureDir, REPO_ROOT } = require('../paths')
 const { readJsonl } = require('../builders/cases')
+const { loadPart } = require('../builders/sealedAccess')
 const { rebuildPairsFromRows, persistV13Artifacts, subjectFingerprint, partnerFingerprint } = require('../importers/speedDatingV13')
 const { splitSpeedDatingV13 } = require('../builders/splitSpeedDatingV13')
+const { auditNativeIdCandidate } = require('../importers/nativeIdMigration')
 const { buildFeatureView, buildGoldView, makeCanary } = require('./matchViews')
 const { scoreModel } = require('./scoreMatch')
 const { predictOne, mulberry32 } = require('./predictMatch')
@@ -67,10 +69,6 @@ function splitCsvLine(line) {
 function writeReview(name, body) {
   ensureDir(REVIEW)
   fs.writeFileSync(path.join(REVIEW, name), body)
-}
-
-function loadPart(name) {
-  return readJsonl(path.join(PATHS.splits, 'speed-dating-v1.3', name, 'encounters.jsonl'))
 }
 
 function summarize(scored) {
@@ -169,53 +167,101 @@ function harmonic(a, b) {
 }
 
 function auditIdentity(rows, rebuilt) {
-  const fps = new Map()
-  let collisions = 0
+  const subjMap = new Map()
+  const partMap = new Map()
   for (const r of rows) {
-    const fp = subjectFingerprint(r)
-    if (!fps.has(fp)) fps.set(fp, [])
-    fps.get(fp).push(r)
+    const sf = subjectFingerprint(r)
+    const pf = partnerFingerprint(r)
+    if (!subjMap.has(sf)) subjMap.set(sf, [])
+    if (!partMap.has(pf)) partMap.set(pf, [])
+    subjMap.get(sf).push({
+      wave: r.wave,
+      age: r.age,
+      gender: r.gender,
+      idx: subjMap.get(sf).length
+    })
+    partMap.get(pf).push({ wave: r.wave, age_o: r.age_o })
   }
-  for (const list of fps.values()) {
-    // same fingerprint in same wave is one person; cross-check age/gender consistency already in fp
-    if (list.length > 50) collisions++ // heuristic: too many rows may still be one person (ok)
+
+  const ambiguousSubjects = []
+  for (const [fp, list] of subjMap) {
+    const waves = new Set(list.map((x) => String(x.wave)))
+    // Same fingerprint across different waves can be OK (same person) or collision;
+    // within one wave, multiplicity = encounters for that person (expected).
+    const byWave = new Map()
+    for (const x of list) {
+      const w = String(x.wave)
+      byWave.set(w, (byWave.get(w) || 0) + 1)
+    }
+    // Incompatible: same fingerprint but conflicting age/gender within same wave (should not happen if fp includes them)
+    const ages = new Set(list.map((x) => String(x.age)))
+    const genders = new Set(list.map((x) => String(x.gender)))
+    if (ages.size > 1 || genders.size > 1) {
+      ambiguousSubjects.push({ fp: fp.slice(0, 80), ages: [...ages], genders: [...genders], n: list.length })
+    }
   }
+
+  const multiplicity = [...subjMap.values()].map((l) => l.length).sort((a, b) => a - b)
+  const pct = (p) => multiplicity[Math.min(multiplicity.length - 1, Math.floor((multiplicity.length - 1) * p))] || 0
+
+  // Partner fp appearing with many distinct subject fps in same wave → weak partner identity
+  const partnerAmbiguity = []
+  const partByWave = new Map()
+  for (const r of rows) {
+    const key = `${r.wave}|${partnerFingerprint(r)}`
+    if (!partByWave.has(key)) partByWave.set(key, new Set())
+    partByWave.get(key).add(subjectFingerprint(r))
+  }
+  for (const [k, subjs] of partByWave) {
+    if (subjs.size > 1) {
+      // expected: one partner meets many subjects — not a collision
+    }
+  }
+
+  // Collision candidate: identical subject fingerprint used in same wave with impossible dual profiles
+  const collisionCandidates = ambiguousSubjects.length
+
   const byWavePart = new Map()
   for (const e of rebuilt.encounterRows) {
     const k = `${e.wave}|${e.iid}`
     byWavePart.set(k, (byWavePart.get(k) || 0) + 1)
   }
-  const perPart = [...byWavePart.values()]
-  perPart.sort((a, b) => a - b)
+  const perPart = [...byWavePart.values()].sort((a, b) => a - b)
+
   return {
     identity_mode: rebuilt.identityMode,
+    status: 'IDENTITY_RECONSTRUCTION_UNCERTAIN',
     raw_rows: rows.length,
-    unique_subject_fingerprints: fps.size,
+    unique_subject_fingerprints: subjMap.size,
+    unique_partner_fingerprints: partMap.size,
     directed_encounters: rebuilt.encounterRows.length,
     canonical_pairs: rebuilt.pairs.length,
     quarantined: rebuilt.quarantined.length,
     query_stats: rebuilt.stats,
-    rows_per_participant_wave: {
-      min: perPart[0],
-      median: perPart[Math.floor(perPart.length / 2)],
-      max: perPart[perPart.length - 1]
+    fingerprint_multiplicity: {
+      min: multiplicity[0] || 0,
+      p50: pct(0.5),
+      p90: pct(0.9),
+      max: multiplicity[multiplicity.length - 1] || 0
     },
+    rows_per_participant_wave: {
+      min: perPart[0] || 0,
+      median: perPart[Math.floor(perPart.length / 2)] || 0,
+      max: perPart[perPart.length - 1] || 0
+    },
+    ambiguous_subject_fingerprints: ambiguousSubjects.slice(0, 20),
+    ambiguous_subject_count: ambiguousSubjects.length,
+    collision_candidates: collisionCandidates,
     fingerprint_fields_subject: [
       'wave',
       'gender',
       'age',
-      'attractive_important',
-      'sincere_important',
-      'intellicence_important',
-      'funny_important',
-      'ambtition_important',
-      'shared_interests_important',
-      'sports…yoga hobbies'
+      '*_important prefs',
+      'hobby self-ratings'
     ],
     fingerprint_fields_partner: ['wave', 'age_o', 'pref_o_*'],
-    forbidden_in_fingerprint: ['decision', 'decision_o', 'match', 'like', '*_partner', '*_o attractiveness ratings'],
-    status: rebuilt.stats.median > 1 ? 'PASS_WITH_UNCERTAINTY' : 'FAIL',
-    note: 'IDENTITY_RECONSTRUCTED_FROM_PREMATCH_FINGERPRINT — OpenML CSV lacks native iid/pid'
+    forbidden_in_fingerprint: ['decision', 'decision_o', 'match', 'like', '*_partner', '*_o ratings'],
+    note: 'Fingerprint is participant-invariant PRE_MATCH only; not native iid/pid. Prefer NATIVE_ID_DATASET when available.'
   }
 }
 
@@ -262,6 +308,7 @@ function main() {
   const dev = loadPart('DEV')
 
   const identityAudit = auditIdentity(rows, rebuilt)
+  const nativeIdAudit = auditNativeIdCandidate()
 
   // Train directional models
   const models = trainDirectionalModels(train, buildFeatureView)
@@ -330,6 +377,19 @@ function main() {
     ]
   ]
 
+  const scoreFns = {
+    RECIP_MIN: (r) => Math.min(r.p_ab_lr, r.p_ba_lr),
+    RECIP_PRODUCT: (r) => r.p_ab_lr * r.p_ba_lr,
+    RECIP_GEOMEAN: (r) => Math.sqrt(Math.max(0, r.p_ab_lr * r.p_ba_lr)),
+    RECIP_HARMONIC: (r) => harmonic(r.p_ab_lr, r.p_ba_lr),
+    RECIP_ASYMMETRY_PENALTY: (r) =>
+      Math.min(r.p_ab_lr, r.p_ba_lr) * (1 - Math.abs(r.p_ab_lr - r.p_ba_lr)),
+    RECIP_LOGIT_META: (r) => predictLogistic(metaLr, metaX(r)),
+    RECIP_GBDT_META: (r) => predictGBDT(metaGbdt, metaX(r)),
+    LR_DIR_PRODUCT: (r) => r.p_ab_lr * r.p_ba_lr,
+    GBDT_DIR_PRODUCT: (r) => r.p_ab_gbdt * r.p_ba_gbdt
+  }
+
   console.log('Running', configs.length, 'DEV configs')
   for (const [name, fn] of configs) {
     const preds = fn()
@@ -337,24 +397,38 @@ function main() {
     console.log(name, 'AP', experiments[name].AVERAGE_PRECISION, 'MCC', experiments[name].MCC, 'P@1', experiments[name].P_at_1)
   }
 
-  // Calibration on best reciprocal candidate by AP among recip*
+  // Calibration provenance: fit Platt on the SAME raw scoreFn as bestRecip
   const recipNames = Object.keys(experiments).filter((k) => k.startsWith('RECIP_'))
   let bestRecip = recipNames[0]
   for (const k of recipNames) {
     if ((experiments[k].AVERAGE_PRECISION || 0) > (experiments[bestRecip].AVERAGE_PRECISION || 0)) bestRecip = k
   }
-
-  // Platt on CAL for best recip product scores
-  const calScores = dirCal.map((r) => r.p_ab_lr * r.p_ba_lr)
+  const baseScoreFn = scoreFns[bestRecip]
+  if (typeof baseScoreFn !== 'function') {
+    throw new Error(`CALIBRATOR_BASE_MODEL_MATCHES_NAME: missing scoreFn for ${bestRecip}`)
+  }
+  const calScores = dirCal.map((r) => baseScoreFn(r))
   const calLabs = dirCal.map((r) => r.mutual)
   const platt = fitPlatt(calScores, calLabs)
-  const calibrated = recipPred(
-    dirDev,
-    `${bestRecip}_PLATT`,
-    (r) => applyPlatt(platt, r.p_ab_lr * r.p_ba_lr),
-    0.35
-  )
-  experiments[`${bestRecip}_PLATT`] = evalPreds(dev, calibrated, `${bestRecip}_PLATT`)
+  const calibratedName = `${bestRecip}_PLATT`
+  const calibrated = recipPred(dirDev, calibratedName, (r) => applyPlatt(platt, baseScoreFn(r)), 0.35)
+  const calArtifact = {
+    base_model: bestRecip,
+    calibrated_model_name: calibratedName,
+    base_score_artifact_sha256: crypto
+      .createHash('sha256')
+      .update(calScores.map((s) => s.toFixed(6)).join(','))
+      .digest('hex')
+      .slice(0, 16),
+    calibrator: platt,
+    calibration_split: 'CALIBRATION',
+    provenance_ok: calibratedName.startsWith(bestRecip + '_')
+  }
+  if (!calArtifact.provenance_ok) {
+    throw new Error('CALIBRATOR_BASE_MODEL_MATCHES_NAME failed')
+  }
+  experiments[calibratedName] = evalPreds(dev, calibrated, calibratedName)
+  experiments[calibratedName].calibration_provenance = calArtifact
 
   // Abstention sim on RECIP_MIN
   const minPreds = recipPred(dirDev, 'tmp', (r) => Math.min(r.p_ab_lr, r.p_ba_lr))
@@ -445,17 +519,8 @@ function main() {
   const freshSealed = 'NO_FRESH_SEALED_AVAILABLE'
   // Prior sealed consumed; all waves already assigned in v1.3
 
-  // Failure analysis for best recip
-  const bestPreds = recipPred(dirDev, bestRecip, (r) => {
-    if (bestRecip === 'RECIP_MIN') return Math.min(r.p_ab_lr, r.p_ba_lr)
-    if (bestRecip === 'RECIP_GEOMEAN') return Math.sqrt(Math.max(0, r.p_ab_lr * r.p_ba_lr))
-    if (bestRecip === 'RECIP_HARMONIC') return harmonic(r.p_ab_lr, r.p_ba_lr)
-    if (bestRecip === 'RECIP_ASYMMETRY_PENALTY')
-      return Math.min(r.p_ab_lr, r.p_ba_lr) * (1 - Math.abs(r.p_ab_lr - r.p_ba_lr))
-    if (bestRecip === 'RECIP_LOGIT_META') return predictLogistic(metaLr, metaX(r))
-    if (bestRecip === 'RECIP_GBDT_META') return predictGBDT(metaGbdt, metaX(r))
-    return r.p_ab_lr * r.p_ba_lr
-  })
+  // Failure analysis for best recip — use same scoreFns map
+  const bestPreds = recipPred(dirDev, bestRecip, scoreFns[bestRecip] || scoreFns.RECIP_PRODUCT)
   const failures = []
   for (let i = 0; i < dev.length; i++) {
     const pred = bestPreds[i].predict_mutual
@@ -565,14 +630,14 @@ function main() {
       '',
       'compatibility_score ≠ mutual_interest_probability.',
       '',
+      '## Calibration provenance (FIXED review-02)',
+      '```json',
+      JSON.stringify(calArtifact, null, 2),
+      '```',
+      '',
       '## Abstention (RECIP_MIN top-1)',
       '```json',
       JSON.stringify(abstention, null, 2),
-      '```',
-      '',
-      '## Platt calibrator',
-      '```json',
-      JSON.stringify(platt, null, 2),
       '```',
       ''
     ].join('\n')

@@ -12,6 +12,7 @@ const path = require('path')
 const crypto = require('crypto')
 const { PATHS, ensureDir, REPO_ROOT } = require('../paths')
 const { readJsonl } = require('../builders/cases')
+const { loadPart: loadSdPart, loadSealedForEvaluatorOnly } = require('../builders/sealedAccess')
 const { rebuildPairsFromRows, persistV13Artifacts } = require('../importers/speedDatingV13')
 const { splitSpeedDatingV13 } = require('../builders/splitSpeedDatingV13')
 const { buildFeatureView, buildGoldView, makeCanary } = require('./matchViews')
@@ -85,8 +86,10 @@ function updateState(patch) {
 }
 
 function loadPartition(name) {
-  const p = path.join(PATHS.splits, 'speed-dating-v1.3', name, 'encounters.jsonl')
-  return readJsonl(p)
+  if (name === 'SEALED_TEST') {
+    return loadSealedForEvaluatorOnly({ explicit: true })
+  }
+  return loadSdPart(name)
 }
 
 function evalPartition(cases, modelPredictions, modelName) {

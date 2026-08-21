@@ -3,8 +3,10 @@
 ```json
 {
   "identity_mode": "IDENTITY_RECONSTRUCTED_FROM_PREMATCH_FINGERPRINT",
+  "status": "IDENTITY_RECONSTRUCTION_UNCERTAIN",
   "raw_rows": 8378,
   "unique_subject_fingerprints": 549,
+  "unique_partner_fingerprints": 550,
   "directed_encounters": 8378,
   "canonical_pairs": 8306,
   "quarantined": 32,
@@ -21,22 +23,26 @@
     "with_ge5": 549,
     "with_ge10": 462
   },
+  "fingerprint_multiplicity": {
+    "min": 5,
+    "p50": 16,
+    "p90": 21,
+    "max": 22
+  },
   "rows_per_participant_wave": {
     "min": 5,
     "median": 16,
     "max": 22
   },
+  "ambiguous_subject_fingerprints": [],
+  "ambiguous_subject_count": 0,
+  "collision_candidates": 0,
   "fingerprint_fields_subject": [
     "wave",
     "gender",
     "age",
-    "attractive_important",
-    "sincere_important",
-    "intellicence_important",
-    "funny_important",
-    "ambtition_important",
-    "shared_interests_important",
-    "sports…yoga hobbies"
+    "*_important prefs",
+    "hobby self-ratings"
   ],
   "fingerprint_fields_partner": [
     "wave",
@@ -49,10 +55,9 @@
     "match",
     "like",
     "*_partner",
-    "*_o attractiveness ratings"
+    "*_o ratings"
   ],
-  "status": "PASS_WITH_UNCERTAINTY",
-  "note": "IDENTITY_RECONSTRUCTED_FROM_PREMATCH_FINGERPRINT — OpenML CSV lacks native iid/pid"
+  "note": "Fingerprint is participant-invariant PRE_MATCH only; not native iid/pid. Prefer NATIVE_ID_DATASET when available."
 }
 ```
 

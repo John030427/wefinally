@@ -155,9 +155,9 @@
     "GBDT_DIR_PRODUCT": {
       "n": 920,
       "AUROC": 0.5336,
-      "AVERAGE_PRECISION": 0.2016,
-      "PR_AUC_TRAPEZOID": 0.1984,
-      "AUPRC": 0.2016,
+      "AVERAGE_PRECISION": 0.2017,
+      "PR_AUC_TRAPEZOID": 0.2033,
+      "AUPRC": 0.2017,
       "MCC": 0.014,
       "Precision": 0.25,
       "Recall": 0.0114,
@@ -415,9 +415,9 @@
     "RECIP_GBDT_META": {
       "n": 920,
       "AUROC": 0.5014,
-      "AVERAGE_PRECISION": 0.2212,
-      "PR_AUC_TRAPEZOID": 0.2167,
-      "AUPRC": 0.2212,
+      "AVERAGE_PRECISION": 0.1989,
+      "PR_AUC_TRAPEZOID": 0.2809,
+      "AUPRC": 0.1989,
       "MCC": 0,
       "Precision": 0.1913,
       "Recall": 1,
@@ -451,23 +451,23 @@
     },
     "RECIP_LOGIT_META_PLATT": {
       "n": 920,
-      "AUROC": 0.5136,
-      "AVERAGE_PRECISION": 0.2075,
-      "PR_AUC_TRAPEZOID": 0.205,
-      "AUPRC": 0.2075,
+      "AUROC": 0.5512,
+      "AVERAGE_PRECISION": 0.2259,
+      "PR_AUC_TRAPEZOID": 0.2224,
+      "AUPRC": 0.2259,
       "MCC": 0,
       "Precision": 0,
       "Recall": 0,
       "F1": 0,
       "one_sided_FP": 0,
-      "P_at_1": 0.3562,
-      "P_at_3": 0.2466,
-      "NDCG_at_3": 0.3206,
-      "NDCG_at_5": 0.3745,
-      "MRR": 0.4839,
-      "RNDCG": 0.3384,
-      "Brier": 0.163,
-      "ECE": 0.0918,
+      "P_at_1": 0.2603,
+      "P_at_3": 0.2283,
+      "NDCG_at_3": 0.2871,
+      "NDCG_at_5": 0.3322,
+      "MRR": 0.4295,
+      "RNDCG": 0.2737,
+      "Brier": 0.1615,
+      "ECE": 0.0838,
       "query_stats": {
         "n_queries": 73,
         "min": 10,
@@ -483,6 +483,18 @@
       "failure_types": {
         "FALSE_NEGATIVE_MUTUAL": 176,
         "LOW_SCORE_TRUE_POSITIVE": 176
+      },
+      "calibration_provenance": {
+        "base_model": "RECIP_LOGIT_META",
+        "calibrated_model_name": "RECIP_LOGIT_META_PLATT",
+        "base_score_artifact_sha256": "520097a8c47254d4",
+        "calibrator": {
+          "a": 0.4088859901539098,
+          "b": -1.1770690098502483,
+          "type": "platt"
+        },
+        "calibration_split": "CALIBRATION",
+        "provenance_ok": true
       }
     }
   },

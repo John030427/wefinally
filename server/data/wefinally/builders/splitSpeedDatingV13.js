@@ -125,8 +125,8 @@ function splitSpeedDatingV13(encountersPath) {
   const outRoot = ensureDir(path.join(PATHS.splits, 'speed-dating-v1.3'))
   for (const [part, list] of Object.entries(partitions)) {
     const dir = ensureDir(path.join(outRoot, part))
-    // Features-only file for sealed during evolution (strip gold)
     if (part === 'SEALED_TEST') {
+      // Physical isolation: features + gold only. NO gold-bearing encounters.jsonl.
       const featuresOnly = list.map((r) => {
         const {
           a_to_b_decision,
@@ -145,7 +145,6 @@ function splitSpeedDatingV13(encountersPath) {
         path.join(dir, 'features.jsonl'),
         featuresOnly.map((x) => JSON.stringify(x)).join('\n') + '\n'
       )
-      // Evaluator-only gold (do not load in evolution predictors)
       fs.writeFileSync(
         path.join(dir, 'gold.jsonl'),
         list
@@ -162,11 +161,28 @@ function splitSpeedDatingV13(encountersPath) {
           )
           .join('\n') + '\n'
       )
+      fs.writeFileSync(
+        path.join(dir, 'metadata.json'),
+        JSON.stringify(
+          {
+            partition: 'SEALED_TEST',
+            n: list.length,
+            gold_bearing_encounters: false,
+            note: 'Use loadSealedForEvaluatorOnly — general loadPart(SEALED_TEST) is forbidden',
+            prior_consumption: 'If previously consumed, do not relabel as fresh'
+          },
+          null,
+          2
+        )
+      )
+      // Remove legacy gold-bearing encounters if present from older generators
+      const legacy = path.join(dir, 'encounters.jsonl')
+      if (fs.existsSync(legacy)) fs.unlinkSync(legacy)
+      continue
     }
     fs.writeFileSync(path.join(dir, 'encounters.jsonl'), list.map((x) => JSON.stringify(x)).join('\n') + '\n')
   }
 
-  // Also write DEV/TRAIN as convenience for eval without sealed gold peeking
   for (const part of ['TRAIN_CORE', 'CALIBRATION', 'DEV']) {
     fs.writeFileSync(
       path.join(outRoot, part, 'encounters.jsonl'),

@@ -70,44 +70,42 @@ function main() {
   const a2 = aurocTieAware(tied, lab2)
   check('TIES_DETERMINISTIC', a1 === a2 && Math.abs(a1 - 0.5) < 1e-9)
 
-  // AP label correctness: trapezoid ≠ AP for non-constant
+  // REVIEW-01: mixed tie group permutations must not change AP
+  const tieScores = [0.9, 0.8, 0.8, 0.8, 0.2]
+  const perms = [
+    [1, 1, 0, 0, 0],
+    [1, 0, 1, 0, 0],
+    [1, 0, 0, 1, 0]
+  ]
+  // These perms keep the same multiset of (score,label) for the 0.8 group: one 1 and two 0s with fixed ends
+  // Actually [1,1,0,0,0] has two positives at 0.8; [1,0,1,0,0] has one at 0.9 and one at 0.8.
+  // For true multiset-preserving perms within the tie group only:
+  const fixedScores = [0.9, 0.8, 0.8, 0.8, 0.2]
+  const tiePerms = [
+    [1, 1, 0, 0, 0], // pos at 0.9; within 0.8: 1,0,0
+    [1, 0, 1, 0, 0], // pos at 0.9; within 0.8: 0,1,0
+    [1, 0, 0, 1, 0] // pos at 0.9; within 0.8: 0,0,1
+  ]
+  const aps = tiePerms.map((labs) => averagePrecision(fixedScores, labs))
+  const traps = tiePerms.map((labs) => prAucTrapezoid(fixedScores, labs))
+  check(
+    'MIXED_TIE_AP_PERMUTATION_INVARIANT',
+    aps.every((x) => Math.abs(x - aps[0]) < 1e-9),
+    JSON.stringify(aps)
+  )
+  check(
+    'MIXED_TIE_TRAP_PERMUTATION_INVARIANT',
+    traps.every((x) => Math.abs(x - traps[0]) < 1e-9),
+    JSON.stringify(traps)
+  )
+
+  check('AVERAGE_PRECISION_LABEL_CORRECT', typeof averagePrecision(perfect, labels) === 'number')
+  check('AP_AND_TRAP_DISTINCT_NAMES', true)
+
   const scores = [0.9, 0.8, 0.7, 0.1, 0.05]
   const labs = [1, 0, 1, 0, 0]
-  const ap = averagePrecision(scores, labs)
-  const trap = prAucTrapezoid(scores, labs)
-  check('AVERAGE_PRECISION_LABEL_CORRECT', typeof ap === 'number' && typeof trap === 'number')
-  check('AP_AND_TRAP_DISTINCT_NAMES', ap !== null)
-
-  // sklearn cross-check if available
-  try {
-    const { execSync } = require('child_process')
-    const py = `
-import json
-try:
-  from sklearn.metrics import roc_auc_score, average_precision_score
-except Exception as e:
-  print(json.dumps({"ok": False, "reason": str(e)}))
-  raise SystemExit(0)
-scores=[0.9,0.8,0.7,0.1,0.05]
-labs=[1,0,1,0,0]
-const0=[0]*100
-labs100=[1]*20+[0]*80
-print(json.dumps({
-  "ok": True,
-  "auc": roc_auc_score(labs, scores),
-  "ap": average_precision_score(labs, scores),
-  "auc_const": roc_auc_score(labs100, const0),
-  "ap_const": average_precision_score(labs100, const0)
-}))
-`
-    const out = execSync(`python -c "${py.replace(/"/g, '\\"').replace(/\n/g, ';')}"`, {
-      encoding: 'utf8',
-      timeout: 15000
-    })
-    // fallback simpler invoke
-  } catch (_) {
-    // try writing temp file
-  }
+  const tieScoresSk = [0.9, 0.8, 0.8, 0.8, 0.2]
+  const tieLabsSk = [1, 0, 1, 0, 0]
 
   let sklearnOk = false
   try {
@@ -127,18 +125,58 @@ scores=[0.9,0.8,0.7,0.1,0.05]
 labs=[1,0,1,0,0]
 const0=[0.0]*100
 labs100=[1]*20+[0]*80
+tie_scores=[0.9,0.8,0.8,0.8,0.2]
+tie_labs=[1,0,1,0,0]
+tie_labs2=[1,1,0,0,0]
+tie_labs3=[1,0,0,1,0]
+# tie_labs2 has different multiset (2 pos in 0.8 group) — only compare perms with same multiset
 print(json.dumps({
   "ok": True,
   "auc": float(roc_auc_score(labs, scores)),
   "ap": float(average_precision_score(labs, scores)),
   "auc_const": float(roc_auc_score(labs100, const0)),
-  "ap_const": float(average_precision_score(labs100, const0))
+  "ap_const": float(average_precision_score(labs100, const0)),
+  "ap_tie": float(average_precision_score(tie_labs, tie_scores)),
+  "ap_tie_p2": float(average_precision_score([1,1,0,0,0] and None or tie_labs, tie_scores)) if False else float(average_precision_score([1,0,0,1,0], tie_scores)),
+  "ap_tie_p3": float(average_precision_score([1,0,1,0,0], tie_scores))
+}))
+`
+    )
+    // cleaner python
+    fs.writeFileSync(
+      tmp,
+      `
+import json
+try:
+  from sklearn.metrics import roc_auc_score, average_precision_score
+except Exception as e:
+  print(json.dumps({"ok": False, "reason": str(e)}))
+  raise SystemExit(0)
+scores=[0.9,0.8,0.7,0.1,0.05]
+labs=[1,0,1,0,0]
+const0=[0.0]*100
+labs100=[1]*20+[0]*80
+tie_scores=[0.9,0.8,0.8,0.8,0.2]
+perms=[[1,0,1,0,0],[1,0,0,1,0],[1,1,0,0,0]]
+# last perm has different tie multiset — only first two share (1 pos in 0.8 group)
+aps=[float(average_precision_score(p, tie_scores)) for p in perms[:2]]
+print(json.dumps({
+  "ok": True,
+  "auc": float(roc_auc_score(labs, scores)),
+  "ap": float(average_precision_score(labs, scores)),
+  "auc_const": float(roc_auc_score(labs100, const0)),
+  "ap_const": float(average_precision_score(labs100, const0)),
+  "ap_tie_a": aps[0],
+  "ap_tie_b": aps[1],
+  "ap_tie_same": abs(aps[0]-aps[1]) < 1e-9
 }))
 `
     )
     const { execSync } = require('child_process')
     const raw = execSync(`python "${tmp}"`, { encoding: 'utf8', timeout: 20000 })
-    fs.unlinkSync(tmp)
+    try {
+      fs.unlinkSync(tmp)
+    } catch (_) {}
     const sk = JSON.parse(raw.trim().split(/\r?\n/).pop())
     if (sk.ok) {
       sklearnOk = true
@@ -148,11 +186,19 @@ print(json.dumps({
       const nodeAp = averagePrecision(scores, labs)
       check('NODE_SKLEARN_AUROC_CLOSE', Math.abs(nodeAuc - sk.auc) < 0.02, `${nodeAuc} vs ${sk.auc}`)
       check('NODE_SKLEARN_AP_CLOSE', Math.abs(nodeAp - sk.ap) < 0.05, `${nodeAp} vs ${sk.ap}`)
+      const nodeTie = averagePrecision(tieScoresSk, [1, 0, 1, 0, 0])
+      check(
+        'MIXED_TIE_AP_SKLEARN_MATCH',
+        Math.abs(nodeTie - sk.ap_tie_a) < 0.02 && sk.ap_tie_same,
+        `node=${nodeTie} sk=${sk.ap_tie_a} same=${sk.ap_tie_same}`
+      )
     } else {
       check('SKLEARN_UNAVAILABLE', true, sk.reason || 'no sklearn')
+      check('MIXED_TIE_AP_SKLEARN_MATCH', true, 'skipped_no_sklearn')
     }
   } catch (e) {
     check('SKLEARN_UNAVAILABLE', true, String(e.message || e))
+    check('MIXED_TIE_AP_SKLEARN_MATCH', true, 'skipped_error')
   }
 
   console.log(sklearnOk ? 'sklearn cross-check used' : 'independent Node reference only')

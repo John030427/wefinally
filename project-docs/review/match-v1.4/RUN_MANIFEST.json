@@ -2,7 +2,7 @@
   "run_id": "match-reciprocal-v1.4",
   "base_commit": "073f0973d4216af1f3fb882478613865438742d6",
   "branch": "experiment/match-reciprocal-v1.4",
-  "final_commit": "f34501c75868006cae85130feb68794f4c449d46",
+  "final_commit": "PENDING_THIS_COMMIT",
   "source_status": "speed-dating REVIEW_REQUIRED sandbox rag=false",
   "dataset_counts": {
     "raw": 8378,
@@ -15,7 +15,7 @@
     "SEALED_TEST": 1046
   },
   "integrity_status": "INTEGRITY_PASS_FIXTURE_PROXY",
-  "metric_audit_status": "FIXED",
+  "metric_audit_status": "FIXED_MIXED_TIES",
   "identity_audit_status": "UNCERTAIN",
   "candidate_query_stats": {
     "n_queries": 73,
@@ -166,6 +166,7 @@
   "fresh_sealed_status": "NO_FRESH_SEALED_AVAILABLE",
   "tests": {
     "metrics_v14": "PASS",
+    "review_fix_v14": "PASS",
     "match_eval_integrity": "PASS",
     "experience_learning_guard": "PASS",
     "e2e_wefinally": "PASS_15_15",
@@ -174,5 +175,9 @@
   "blockers": [
     "HY3_CREDS"
   ],
-  "generated_at": "2026-08-21T07:28:19.996Z"
+  "generated_at": "2026-08-21T07:50:02.019Z",
+  "review_fix": "v1.4-review-fix",
+  "calibration_provenance_status": "FIXED",
+  "sealed_physical_isolation": "FIXED",
+  "sha_consistency_note": "Previous final_commit f34501c was first code commit; HEAD 66cbe21 was docs follow-up that failed to refresh final_commit. review-fix commit will set final_commit=HEAD."
 }

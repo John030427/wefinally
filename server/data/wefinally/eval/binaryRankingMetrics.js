@@ -1,9 +1,9 @@
 'use strict'
 
 /**
- * Tie-aware binary ranking metrics (v1.4).
- * AVERAGE_PRECISION (AP) ≠ PR_AUC_TRAPEZOID.
- * Constant-score AUROC = 0.5; constant-score AP = prevalence.
+ * Tie-aware binary ranking metrics (v1.4 review-fix).
+ * AVERAGE_PRECISION uses distinct-score thresholds (sklearn-compatible).
+ * Mixed-tie permutations within a score group must not change AP.
  */
 
 function round(n, d = 4) {
@@ -11,10 +11,6 @@ function round(n, d = 4) {
   return Math.round(n * m) / m
 }
 
-/**
- * Mann–Whitney / mid-rank AUROC with deterministic tie handling.
- * For all-tied scores returns exactly 0.5.
- */
 function aurocTieAware(scores, labels) {
   const n = scores.length
   if (!n) return null
@@ -25,125 +21,95 @@ function aurocTieAware(scores, labels) {
   const N = n - P
   if (!P || !N) return null
 
-  // Assign mid-ranks within tied score groups (rank 1 = highest score)
   const ranks = Array(n).fill(0)
   let pos = 0
   while (pos < n) {
     let end = pos
     while (end + 1 < n && pairs[end + 1].s === pairs[pos].s) end++
-    const avgRank = (pos + end) / 2 + 1 // 1-based mid-rank
+    const avgRank = (pos + end) / 2 + 1
     for (let k = pos; k <= end; k++) ranks[k] = avgRank
     pos = end + 1
   }
 
-  // Higher score → lower rank number. Rank sum of positives:
-  let sumRankPos = 0
-  for (let i = 0; i < n; i++) {
-    if (pairs[i].y) sumRankPos += ranks[i]
-  }
-  // AUROC = (sum of ranks of negatives inverted form):
-  // U = sum_{pos} (n - rank_i) related; standard:
-  // AUC = (sum_i I(y_i=1) * rank_i_from_lowest - P*(P+1)/2) / (P*N)
-  // Convert to ascending-score ranks for Mann-Whitney:
   const ascRank = ranks.map((r) => n + 1 - r)
   let sumAscPos = 0
   for (let i = 0; i < n; i++) {
     if (pairs[i].y) sumAscPos += ascRank[i]
   }
-  const auc = (sumAscPos - (P * (P + 1)) / 2) / (P * N)
-  return round(auc)
+  return round((sumAscPos - (P * (P + 1)) / 2) / (P * N))
 }
 
 /**
- * Average Precision (sklearn-compatible for distinct scores).
- * For constant scores: returns prevalence.
- * Tie groups processed with mid-step (deterministic by index).
+ * Distinct-score groups in descending score order.
+ * Within a group, only (n_pos, n_neg) matter — label order ignored.
  */
-function averagePrecision(scores, labels) {
+function distinctScoreGroups(scores, labels) {
   const n = scores.length
-  if (!n) return null
-  const P = labels.reduce((a, y) => a + (y ? 1 : 0), 0)
-  if (!P) return null
-  const prevalence = P / n
-
-  const pairs = scores.map((s, i) => ({ s, y: labels[i] ? 1 : 0, i }))
-  // Check all equal
-  const s0 = pairs[0].s
-  if (pairs.every((p) => p.s === s0)) return round(prevalence)
-
-  pairs.sort((a, b) => (b.s !== a.s ? b.s - a.s : a.i - b.i))
-
-  let tp = 0
-  let fp = 0
-  let ap = 0
+  const pairs = scores.map((s, i) => ({ s: Number(s), y: labels[i] ? 1 : 0 }))
+  pairs.sort((a, b) => b.s - a.s)
+  const groups = []
   let i = 0
   while (i < n) {
     let j = i
     while (j + 1 < n && pairs[j + 1].s === pairs[i].s) j++
-    // process whole tie group
     let gPos = 0
     let gNeg = 0
     for (let k = i; k <= j; k++) {
       if (pairs[k].y) gPos++
       else gNeg++
     }
-    // sklearn average_precision: for ties, contribute for each positive in group
-    for (let t = 0; t < gPos + gNeg; t++) {
-      // deterministic: emit positives then negatives within tie (or use mid)
-    }
-    // Use mid-point method: after consuming group
-    tp += gPos
-    fp += gNeg
-    if (gPos > 0) {
-      // contribution: for each of gPos positives, precision after adding that positive
-      // approximate with average precision within group after full group (sklearn uses stepwise)
-      for (let p = 1; p <= gPos; p++) {
-        const tpAt = tp - gPos + p
-        const fpAt = fp - gNeg // negatives not yet "ranked above" within group mid
-        // Better: sklearn processes in sorted order; within equal scores order is undefined.
-        // We use deterministic index order already in sort.
-      }
-    }
+    groups.push({ score: pairs[i].s, gPos, gNeg })
     i = j + 1
   }
-
-  // Recompute with deterministic within-tie order (already sorted by index)
-  tp = 0
-  fp = 0
-  ap = 0
-  for (const p of pairs) {
-    if (p.y) {
-      tp += 1
-      ap += tp / (tp + fp)
-    } else {
-      fp += 1
-    }
-  }
-  return round(ap / P)
+  return groups
 }
 
 /**
- * Trapezoidal PR-AUC (NOT Average Precision). Labeled separately.
+ * Average Precision via distinct thresholds (sklearn average_precision_score).
+ * AP = Σ (R_t - R_{t-1}) * P_t over descending distinct score thresholds.
+ * Constant scores ⇒ prevalence.
+ */
+function averagePrecision(scores, labels) {
+  const n = scores.length
+  if (!n) return null
+  const P = labels.reduce((a, y) => a + (y ? 1 : 0), 0)
+  if (!P) return null
+
+  const groups = distinctScoreGroups(scores, labels)
+  let tp = 0
+  let fp = 0
+  let recallPrev = 0
+  let ap = 0
+  for (const g of groups) {
+    tp += g.gPos
+    fp += g.gNeg
+    const prec = tp / (tp + fp)
+    const rec = tp / P
+    ap += (rec - recallPrev) * prec
+    recallPrev = rec
+  }
+  return round(ap)
+}
+
+/**
+ * Trapezoidal PR-AUC on distinct-threshold PR points (tie-invariant).
+ * Constant scores ⇒ prevalence (single meaningful level).
  */
 function prAucTrapezoid(scores, labels) {
   const n = scores.length
   const P = labels.reduce((a, y) => a + (y ? 1 : 0), 0)
   const N = n - P
   if (!P || !N) return null
-  const pairs = scores.map((s, i) => ({ s, y: labels[i] ? 1 : 0, i }))
-  const s0 = pairs[0].s
-  if (pairs.every((p) => p.s === s0)) {
-    // Constant: PR curve is a single point (prevalence) — trapezoid from (0,1) is misleading.
-    // Report prevalence as the only meaningful PR summary for constants.
-    return round(P / n)
-  }
-  pairs.sort((a, b) => (b.s !== a.s ? b.s - a.s : a.i - b.i))
+
+  const groups = distinctScoreGroups(scores, labels)
+  if (groups.length === 1) return round(P / n)
+
   let tp = 0
   let fp = 0
   const pts = [{ x: 0, y: 1 }]
-  for (const p of pairs) {
-    if (p.y) tp++
-    else fp++
+  for (const g of groups) {
+    tp += g.gPos
+    fp += g.gNeg
     pts.push({ x: tp / P, y: tp / (tp + fp) })
   }
   let area = 0
@@ -158,7 +124,6 @@ function computeRankingCurves(scores, labels) {
     AUROC: aurocTieAware(scores, labels),
     AVERAGE_PRECISION: averagePrecision(scores, labels),
     PR_AUC_TRAPEZOID: prAucTrapezoid(scores, labels),
-    // Backward-compatible primary: AP (not trapezoid)
     AUPRC: averagePrecision(scores, labels)
   }
 }
@@ -168,5 +133,6 @@ module.exports = {
   averagePrecision,
   prAucTrapezoid,
   computeRankingCurves,
+  distinctScoreGroups,
   round
 }
