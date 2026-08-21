@@ -1,19 +1,31 @@
 'use strict'
 
 /**
- * Native iid/pid import + true reciprocal pairing (v1.5).
- * Does NOT download unknown mirrors or weaken REVIEW_REQUIRED gates.
+ * Native iid/pid import + true reciprocal pairing (v1.5.1).
+ * Proper CSV parse; duplicate-key safety; separated readiness gates.
  */
 
 const fs = require('fs')
 const path = require('path')
 const crypto = require('crypto')
+const { parse } = require('csv-parse/sync')
 const { PATHS, ensureDir } = require('../paths')
 
 const REQUIRED = ['iid', 'pid', 'wave']
 const DECISION_A = ['decision', 'dec']
 const DECISION_B = ['decision_o', 'dec_o']
 const MATCH_COLS = ['match']
+
+const GOLD_KEYS = new Set([
+  'dec',
+  'dec_o',
+  'decision',
+  'decision_o',
+  'match',
+  'mutual_match',
+  'a_decision',
+  'b_decision'
+])
 
 const NATIVE_PATH = () =>
   path.join(PATHS.raw, 'speed-dating', 'speed-dating-native-iid-pid.csv')
@@ -30,51 +42,42 @@ function detectNativeIdSchema(headers) {
     has_decision: has(DECISION_A),
     has_decision_o: has(DECISION_B),
     has_match: has(MATCH_COLS),
-    usable_native: false,
-    status: 'MISSING_NATIVE_IDS'
+    NATIVE_SCHEMA_AVAILABLE: false,
+    TRUE_RECIPROCAL_AVAILABLE: false
   }
-  report.usable_native =
+  report.NATIVE_SCHEMA_AVAILABLE =
     report.has_iid &&
     report.has_pid &&
     report.has_wave &&
     report.has_decision &&
     report.has_decision_o
-  if (report.usable_native) {
-    report.status = 'NATIVE_IID_PID_AVAILABLE'
+  report.usable_native = report.NATIVE_SCHEMA_AVAILABLE
+  if (report.NATIVE_SCHEMA_AVAILABLE) {
+    report.status = 'NATIVE_SCHEMA_AVAILABLE'
     report.identity_mode = 'NATIVE_IID_PID'
     report.skip_fingerprint = true
-    report.TRUE_RECIPROCAL_AVAILABLE = true
   } else {
     report.status = 'WAITING_NATIVE_ID_DATA'
     report.identity_mode = 'PAIR_IDENTITY_UNCERTAIN'
     report.skip_fingerprint = false
-    report.TRUE_RECIPROCAL_AVAILABLE = false
     report.note =
-      'OpenML/GitHub speed-dating CSV lacks iid/pid. Place Columbia-style file at raw/speed-dating/speed-dating-native-iid-pid.csv without weakening license gates.'
+      'Schema alone does not imply TRUE_RECIPROCAL_AVAILABLE. Need valid rows + reverse pairs + feature/gold separation.'
   }
   return report
 }
 
-function parseHeaderLine(line) {
-  return String(line || '')
-    .split(',')
-    .map((h) => h.replace(/^"|"$/g, '').trim())
-}
-
-function parseCsvRows(text) {
-  const lines = text.split(/\r?\n/).filter((l) => l.trim())
-  if (!lines.length) return { headers: [], rows: [] }
-  const headers = parseHeaderLine(lines[0])
-  const rows = []
-  for (let i = 1; i < lines.length; i++) {
-    const cols = lines[i].split(',')
-    const obj = {}
-    headers.forEach((h, j) => {
-      obj[h] = cols[j] != null ? cols[j].replace(/^"|"$/g, '').trim() : ''
-    })
-    rows.push(obj)
-  }
-  return { headers, rows }
+function parseCsvText(text) {
+  const cleaned = String(text || '').replace(/^\uFEFF/, '')
+  const records = parse(cleaned, {
+    columns: true,
+    skip_empty_lines: true,
+    relax_column_count: false,
+    trim: true,
+    bom: true,
+    cast: false
+  })
+  const headers = records.length ? Object.keys(records[0]) : []
+  return { headers, rows: records }
 }
 
 function col(row, names) {
@@ -86,66 +89,107 @@ function col(row, names) {
   return null
 }
 
+function decisionsEqual(a, b) {
+  return !!a === !!b
+}
+
+function decisionPayloadEqual(d1, d2) {
+  return (
+    decisionsEqual(d1.a_decision, d2.a_decision) &&
+    decisionsEqual(d1.b_decision, d2.b_decision) &&
+    decisionsEqual(d1.mutual_match, d2.mutual_match)
+  )
+}
+
 function auditNativeIdCandidate(csvPath) {
   const resolved = csvPath || NATIVE_PATH()
   const openml = path.join(PATHS.raw, 'speed-dating', 'speed-dating.csv')
   const preferNative = fs.existsSync(resolved)
   const target = preferNative ? resolved : openml
   if (!fs.existsSync(target)) {
-    return { status: 'WAITING_NATIVE_ID_DATA', path: target, TRUE_RECIPROCAL_AVAILABLE: false }
+    return {
+      status: 'WAITING_NATIVE_ID_DATA',
+      path: target,
+      NATIVE_SCHEMA_AVAILABLE: false,
+      TRUE_RECIPROCAL_AVAILABLE: false
+    }
   }
-  const first = fs.readFileSync(target, 'utf8').split(/\r?\n/).filter(Boolean)[0]
-  const headers = parseHeaderLine(first)
+  const buf = fs.readFileSync(target)
+  const text = buf.toString('utf8')
+  let headers
+  try {
+    headers = parseCsvText(text).headers
+  } catch (_) {
+    headers = text.split(/\r?\n/).filter(Boolean)[0].split(',')
+  }
   const report = {
     ...detectNativeIdSchema(headers),
     inspected_path: target,
     preferred_native_path: NATIVE_PATH(),
     using_native_file: preferNative,
-    generated_at: new Date().toISOString()
+    generated_at: new Date().toISOString(),
+    TRUE_RECIPROCAL_AVAILABLE: false
   }
   if (!preferNative) {
     report.status = 'WAITING_NATIVE_ID_DATA'
-    report.TRUE_RECIPROCAL_AVAILABLE = false
+    report.NATIVE_SCHEMA_AVAILABLE = false
     report.identity_mode = 'PAIR_IDENTITY_UNCERTAIN'
   }
   ensureDir(PATHS.reports)
   fs.writeFileSync(
     path.join(PATHS.reports, 'speed-dating-native-id-migration-audit.md'),
-    [
-      '# Speed Dating Native iid/pid Migration Audit',
-      '',
-      '```json',
-      JSON.stringify(report, null, 2),
-      '```',
-      ''
-    ].join('\n')
+    ['# Speed Dating Native iid/pid Migration Audit', '', '```json', JSON.stringify(report, null, 2), '```', ''].join(
+      '\n'
+    )
   )
   return report
 }
 
 /**
- * Import native CSV when present. Throws if schema invalid.
+ * Import native CSV. Separates schema / rows / reverse / reciprocal gates.
  */
-function importNativeSpeedDating(csvPath) {
+function importNativeSpeedDating(csvPath, opts = {}) {
   const p = csvPath || NATIVE_PATH()
   if (!fs.existsSync(p)) {
     return {
       ok: false,
       status: 'WAITING_NATIVE_ID_DATA',
+      NATIVE_SCHEMA_AVAILABLE: false,
+      NATIVE_ROWS_VALID: false,
+      REVERSE_PAIRING_VALID: false,
+      TRUE_RECIPROCAL_FEATURES_AVAILABLE: false,
+      TRUE_RECIPROCAL_MODEL_READY: false,
       TRUE_RECIPROCAL_AVAILABLE: false,
       rows: []
     }
   }
   const text = fs.readFileSync(p, 'utf8')
   const sha256 = crypto.createHash('sha256').update(text).digest('hex')
-  const { headers, rows: raw } = parseCsvRows(text)
+  let headers
+  let raw
+  try {
+    ;({ headers, rows: raw } = parseCsvText(text))
+  } catch (e) {
+    return {
+      ok: false,
+      status: 'CSV_PARSE_FAILED',
+      error: String(e.message || e),
+      TRUE_RECIPROCAL_AVAILABLE: false
+    }
+  }
   const schema = detectNativeIdSchema(headers)
-  if (!schema.usable_native) {
-    return { ok: false, status: 'NATIVE_SCHEMA_INVALID', schema, TRUE_RECIPROCAL_AVAILABLE: false }
+  if (!schema.NATIVE_SCHEMA_AVAILABLE) {
+    return {
+      ok: false,
+      status: 'NATIVE_SCHEMA_INVALID',
+      schema,
+      NATIVE_SCHEMA_AVAILABLE: false,
+      TRUE_RECIPROCAL_AVAILABLE: false
+    }
   }
 
   const quarantine = []
-  const directed = []
+  const directedRaw = []
   for (let i = 0; i < raw.length; i++) {
     const r = raw[i]
     const iid = Number(col(r, ['iid']))
@@ -165,8 +209,9 @@ function importNativeSpeedDating(csvPath) {
     const mutual = dec === 1 && decO === 1
     if (matchRaw != null && matchRaw !== '' && Number(matchRaw) !== (mutual ? 1 : 0)) {
       quarantine.push({ reason: 'match_dec_inconsistent', i, iid, pid, wave })
+      // still keep for reverse validation if decisions are usable
     }
-    directed.push({
+    directedRaw.push({
       wave: String(wave),
       iid: String(iid),
       pid: String(pid),
@@ -180,7 +225,48 @@ function importNativeSpeedDating(csvPath) {
     })
   }
 
-  const byKey = new Map(directed.map((d) => [d.directed_key, d]))
+  // Duplicate directed key handling — never silent overwrite
+  const groups = new Map()
+  for (const d of directedRaw) {
+    if (!groups.has(d.directed_key)) groups.set(d.directed_key, [])
+    groups.get(d.directed_key).push(d)
+  }
+  let exactDuplicates = 0
+  let conflictingDuplicates = 0
+  const directed = []
+  for (const [key, list] of groups) {
+    if (list.length === 1) {
+      directed.push(list[0])
+      continue
+    }
+    const allExact = list.every((x) => decisionPayloadEqual(x, list[0]))
+    if (allExact) {
+      exactDuplicates += list.length - 1
+      directed.push(list[0])
+      quarantine.push({
+        reason: 'EXACT_DUPLICATE',
+        directed_key: key,
+        dropped: list.length - 1
+      })
+    } else {
+      conflictingDuplicates += list.length
+      quarantine.push({
+        reason: 'CONFLICTING_DUPLICATE',
+        directed_key: key,
+        n: list.length
+      })
+      // exclude all conflicting copies from true reciprocal benchmark
+    }
+  }
+
+  const byKey = new Map()
+  for (const d of directed) {
+    if (byKey.has(d.directed_key)) {
+      throw new Error('NO_SILENT_DIRECTED_KEY_OVERWRITE: duplicate slipped into map')
+    }
+    byKey.set(d.directed_key, d)
+  }
+
   let withReverse = 0
   let missingReverse = 0
   let decisionInconsistent = 0
@@ -195,11 +281,14 @@ function importNativeSpeedDating(csvPath) {
       withReverse++
       const okDec =
         d.a_decision === rev.b_decision && d.b_decision === rev.a_decision
-      if (!okDec) {
+      const matchOk = d.mutual_match === rev.mutual_match && d.mutual_match === (d.a_decision && d.b_decision)
+      if (!okDec || !matchOk) {
         decisionInconsistent++
         quarantine.push({
           reason: 'reverse_decision_inconsistent',
-          directed_key: d.directed_key
+          directed_key: d.directed_key,
+          okDec,
+          matchOk
         })
       } else {
         const lo = Math.min(Number(d.iid), Number(d.pid))
@@ -213,10 +302,10 @@ function importNativeSpeedDating(csvPath) {
             wave: d.wave,
             iid_lo: String(lo),
             iid_hi: String(hi),
-            row_ab: d.iid < d.pid ? d : rev,
-            row_ba: d.iid < d.pid ? rev : d,
-            a_decision: d.iid < d.pid ? d.a_decision : rev.a_decision,
-            b_decision: d.iid < d.pid ? d.b_decision : rev.b_decision,
+            row_ab: Number(d.iid) < Number(d.pid) ? d : rev,
+            row_ba: Number(d.iid) < Number(d.pid) ? rev : d,
+            a_decision: Number(d.iid) < Number(d.pid) ? d.a_decision : rev.a_decision,
+            b_decision: Number(d.iid) < Number(d.pid) ? d.b_decision : rev.b_decision,
             mutual_match: d.mutual_match
           })
         }
@@ -233,7 +322,6 @@ function importNativeSpeedDating(csvPath) {
     physicalPairs.get(pk).push(d)
   }
 
-  // Cross-row identity: same iid stable age/gender when present
   const byIid = new Map()
   for (const d of directed) {
     if (!byIid.has(d.iid)) byIid.set(d.iid, [])
@@ -241,25 +329,48 @@ function importNativeSpeedDating(csvPath) {
   }
   const profileInconsistent = []
   for (const [iid, list] of byIid) {
-    const ages = new Set(
-      list.map((d) => col(d.raw, ['age'])).filter((x) => x != null && x !== '')
-    )
-    const genders = new Set(
-      list.map((d) => col(d.raw, ['gender'])).filter((x) => x != null && x !== '')
-    )
+    const ages = new Set(list.map((d) => col(d.raw, ['age'])).filter((x) => x != null && x !== ''))
+    const genders = new Set(list.map((d) => col(d.raw, ['gender'])).filter((x) => x != null && x !== ''))
     if (ages.size > 1 || genders.size > 1) {
       profileInconsistent.push({ iid, ages: [...ages], genders: [...genders], n: list.length })
     }
   }
 
+  const NATIVE_ROWS_VALID = directed.length > 0
+  const REVERSE_PAIRING_VALID = completePairs.length > 0 && decisionInconsistent === 0
+  // profile inconsistencies are reported but do not alone zero REVERSE_PAIRING_VALID;
+  // they block TRUE_RECIPROCAL_AVAILABLE below.
+  const TRUE_RECIPROCAL_FEATURES_AVAILABLE = !!opts.featuresAvailable
+  const TRUE_RECIPROCAL_MODEL_READY = !!opts.modelReady
+  const TRUE_RECIPROCAL_AVAILABLE =
+    schema.NATIVE_SCHEMA_AVAILABLE &&
+    NATIVE_ROWS_VALID &&
+    REVERSE_PAIRING_VALID &&
+    profileInconsistent.length === 0 &&
+    (opts.requireFeatures !== false ? TRUE_RECIPROCAL_FEATURES_AVAILABLE : true)
+
   return {
     ok: true,
-    status: 'NATIVE_IID_PID_AVAILABLE',
+    status: TRUE_RECIPROCAL_AVAILABLE
+      ? 'TRUE_RECIPROCAL_AVAILABLE'
+      : schema.NATIVE_SCHEMA_AVAILABLE
+        ? 'NATIVE_SCHEMA_AVAILABLE_BUT_GATES_INCOMPLETE'
+        : 'WAITING_NATIVE_ID_DATA',
     identity_mode: 'NATIVE_IID_PID',
-    TRUE_RECIPROCAL_AVAILABLE: true,
+    NATIVE_SCHEMA_AVAILABLE: schema.NATIVE_SCHEMA_AVAILABLE,
+    NATIVE_ROWS_VALID,
+    REVERSE_PAIRING_VALID,
+    TRUE_RECIPROCAL_FEATURES_AVAILABLE,
+    TRUE_RECIPROCAL_MODEL_READY,
+    TRUE_RECIPROCAL_AVAILABLE,
     sha256,
     path: p,
     schema,
+    raw_rows: raw.length,
+    valid_directed_rows: directed.length,
+    duplicate_keys: [...groups.entries()].filter(([, l]) => l.length > 1).length,
+    exact_duplicates: exactDuplicates,
+    conflicting_duplicates: conflictingDuplicates,
     directed_rows: directed.length,
     unique_participants: byIid.size,
     rows_with_reverse: withReverse,
@@ -273,7 +384,8 @@ function importNativeSpeedDating(csvPath) {
     quarantine,
     directed,
     completePairs,
-    incomplete
+    incomplete,
+    byKey
   }
 }
 
@@ -281,6 +393,9 @@ module.exports = {
   detectNativeIdSchema,
   auditNativeIdCandidate,
   importNativeSpeedDating,
+  parseCsvText,
+  col,
+  GOLD_KEYS,
   NATIVE_PATH,
   REQUIRED,
   DECISION_A,

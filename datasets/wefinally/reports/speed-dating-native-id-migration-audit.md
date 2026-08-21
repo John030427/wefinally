@@ -51,15 +51,16 @@
   "has_decision": true,
   "has_decision_o": true,
   "has_match": true,
+  "NATIVE_SCHEMA_AVAILABLE": false,
+  "TRUE_RECIPROCAL_AVAILABLE": false,
   "usable_native": false,
   "status": "WAITING_NATIVE_ID_DATA",
   "identity_mode": "PAIR_IDENTITY_UNCERTAIN",
   "skip_fingerprint": false,
-  "TRUE_RECIPROCAL_AVAILABLE": false,
-  "note": "OpenML/GitHub speed-dating CSV lacks iid/pid. Place Columbia-style file at raw/speed-dating/speed-dating-native-iid-pid.csv without weakening license gates.",
+  "note": "Schema alone does not imply TRUE_RECIPROCAL_AVAILABLE. Need valid rows + reverse pairs + feature/gold separation.",
   "inspected_path": "D:\\wefinal\\.worktrees\\wefinally-ai-agent\\datasets\\wefinally\\raw\\speed-dating\\speed-dating.csv",
   "preferred_native_path": "D:\\wefinal\\.worktrees\\wefinally-ai-agent\\datasets\\wefinally\\raw\\speed-dating\\speed-dating-native-iid-pid.csv",
   "using_native_file": false,
-  "generated_at": "2026-08-21T08:15:15.727Z"
+  "generated_at": "2026-08-21T08:24:03.660Z"
 }
 ```
