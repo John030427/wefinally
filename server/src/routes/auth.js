@@ -126,12 +126,13 @@ router.post('/partner-login', async (req, res, next) => {
     }
 
     const token = signToken({ id: partner.id, role: ROLES.PARTNER, phone });
+    const { maskPhone } = require('../utils/privacyMask');
     return success(res, {
       token,
       partner: {
         id: partner.id,
         name: partner.name,
-        phone: partner.phone,
+        phone_masked: maskPhone(partner.phone),
         circle_id: partner.circle_id,
         promote_code: partner.promote_code,
         balance: partner.balance,

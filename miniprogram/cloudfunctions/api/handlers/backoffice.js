@@ -109,9 +109,15 @@ async function loginPartner(body) {
   if (!partner || Number(partner.status) !== 1 || !bcrypt.compareSync(String(body.password || ''), partner.password || '')) {
     throw new Error('账号或密码错误')
   }
+  const { maskPhone } = require('../lib/privacyMask')
   return {
     token: signBackofficeToken({ role: 'partner', id: partner.id }, secret()),
-    partner: { id: partner.id, name: partner.name, phone: partner.phone, promote_code: partner.promote_code }
+    partner: {
+      id: partner.id,
+      name: partner.name,
+      phone_masked: maskPhone(partner.phone),
+      promote_code: partner.promote_code
+    }
   }
 }
 
@@ -382,6 +388,17 @@ async function handleBackofficeHttp(event = {}) {
         throw new Error('无权查看其他合伙人的会员申请')
       }
       const user = await db.byId('user', application.user_id)
+      if (actor.role === 'partner') {
+        const { sanitizePartnerUser, sanitizePartnerApplication } = require('../lib/privacyMask')
+        return ok({
+          application: sanitizePartnerApplication(application),
+          user: sanitizePartnerUser(user),
+          next_action: application.status === 'pending_review'
+            ? '请审核：通过 / 需要补充资料 / 不通过'
+            : '查看后可按当前状态继续处理',
+          privacy_notice: '仅内部处理：请勿向他人泄露用户私人资料'
+        })
+      }
       return ok({ application, user })
     }
 
