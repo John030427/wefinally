@@ -1,0 +1,102 @@
+{
+  "version": 1,
+  "updated": "2026-08-21",
+  "sources": [
+    {
+      "id": "speed-dating-bhargava-dataverse",
+      "name": "Bhargava & Fisman Speed Dating replication (Harvard Dataverse)",
+      "homepage": "https://doi.org/10.7910/DVN/27893",
+      "source_type": "experimental_match_outcome",
+      "access": "public",
+      "license": {
+        "name": "CC0 1.0",
+        "url": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "verified": true,
+        "commercial_use": true,
+        "ai_training": "eval_only_policy",
+        "redistribution": true,
+        "attribution_required": false,
+        "share_alike": false
+      },
+      "provenance": {
+        "original_creator": "Bhargava / Fisman (Columbia speed-dating experiment lineage)",
+        "original_dataset": "ReplicationData_Stata12 (doi:10.7910/DVN/27893)",
+        "mirror": "none — official Harvard Dataverse file id 2509001",
+        "uncertainty": "low on Dataverse CC0; engineering governance only — not formal legal advice"
+      },
+      "privacy": {
+        "contains_real_people": true,
+        "contains_user_generated_content": false,
+        "pii_risk": "medium"
+      },
+      "allowed_use": {
+        "profile_understanding": false,
+        "match_outcome": true,
+        "coordination": false,
+        "evaluation_only": true,
+        "rag": false,
+        "prompt_examples": false,
+        "production_training": false,
+        "use_for_dev": true,
+        "use_for_eval": true,
+        "use_for_training": false
+      },
+      "status": "APPROVED_EVAL_ONLY",
+      "dataset_version": "speed-dating-native-v1",
+      "notes": "Selected FINAL tournament benchmark for v1.7. Native iid/pid/wave; dec_o/match derived from reverse rows. Sparse pre-match features (gender/order/round/date/RA). attr omitted (post-outcome). rag=false; production_training=false."
+    },
+    {
+      "id": "speed-dating",
+      "name": "Speed Dating Experiment mirrors (OpenML / GitHub datasets)",
+      "homepage": "https://github.com/datasets/speed-dating",
+      "source_type": "experimental_match_outcome",
+      "access": "public",
+      "license": {
+        "name": "odc-pddl (claimed by mirror; unverified for underlying data)",
+        "verified": false
+      },
+      "status": "REVIEW_REQUIRED",
+      "notes": "No iid/pid on OpenML CSV. Do not use for FINAL true-reciprocal benchmark."
+    },
+    {
+      "id": "speed-dating-gelman-arm",
+      "name": "Gelman ARM teaching Speed Dating CSV",
+      "homepage": "https://sites.stat.columbia.edu/gelman/arm/examples/speed.dating/",
+      "status": "REVIEW_REQUIRED",
+      "notes": "Public teaching host ≠ reusable license. Not selected."
+    },
+    {
+      "id": "sdamr-speeddating",
+      "name": "CRAN sdamr speeddating subset",
+      "homepage": "https://cran.r-project.org/package=sdamr",
+      "status": "REVIEW_REQUIRED",
+      "notes": "Package GPL-3 ≠ dataset license; Kaggle lineage. VALIDATION_SUBSET candidate only — not ingested."
+    },
+    {
+      "id": "china-online-dating-figshare",
+      "name": "Gender-specific preference in online dating (Figshare)",
+      "homepage": "https://doi.org/10.6084/m9.figshare.6429443",
+      "license": {
+        "name": "CC BY 4.0",
+        "url": "https://creativecommons.org/licenses/by/4.0/",
+        "verified": true
+      },
+      "status": "MANUAL_IMPORT_REQUIRED",
+      "notes": "License clean via Figshare API; file download HTTP 403 from this environment. Strong future upgrade for exposure/click/msg. Not selected for v1.6."
+    },
+    {
+      "id": "mixmosa-anonymized",
+      "name": "Mixmosa anonymized in-person dates",
+      "homepage": "https://github.com/dankras/mixmosa-anonymized-data",
+      "status": "REVIEW_REQUIRED",
+      "notes": "Excellent bilateral schema; GitHub license=null. Hard blocker for FINAL until dataset-specific terms exist."
+    },
+    {
+      "id": "libimseti",
+      "name": "LibimSeTi ratings",
+      "homepage": "http://www.occamslab.com/petricek/data/",
+      "status": "BLOCKED_COMMERCIAL",
+      "notes": "Research-only; non-commercial without separate permission."
+    }
+  ]
+}

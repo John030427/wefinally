@@ -2,6 +2,15 @@
 node_modules/
 server/node_modules/
 
+# External research corpora (never commit raw bilateral data)
+datasets/wefinally/raw/
+datasets/inbox/
+!datasets/wefinally/raw/**/.gitkeep
+!datasets/inbox/**/.gitkeep
+datasets/wefinally/cleaned/
+datasets/wefinally/quarantine/
+artifacts/
+
 # env / secrets
 .env
 server/.env

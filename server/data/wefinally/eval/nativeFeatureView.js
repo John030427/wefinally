@@ -65,10 +65,23 @@ const SENSITIVE_FAIRNESS_ONLY = new Set([
 ])
 
 /** Metadata only — never copied into features for scoring */
-const IDENTITY_METADATA = new Set(['iid', 'pid', 'wave', 'directed_key', 'reverse_key', 'row_index'])
+const IDENTITY_METADATA = new Set([
+  'iid',
+  'pid',
+  'wave',
+  'directed_key',
+  'reverse_key',
+  'row_index',
+  'id',
+  'partner'
+])
 
 const PRE_MATCH_FEATURE_ALLOWED = new Set([
   'gender',
+  'order',
+  'round',
+  'date',
+  'ra', // research-assistant photo attractiveness (Bhargava/Fisman); PRE relative to subject decision
   'age',
   'age_o',
   'd_age',
@@ -230,6 +243,9 @@ function trivialLabelBlindDirectionalScorer(modelInput) {
   const prefS = num(f.pref_sincere) ?? num(f.sincere_important) ?? 50
   const hobby = (num(f.hobby_sports) ?? num(f.sports) ?? 5) + (num(f.hobby_music) ?? num(f.music) ?? 5)
   const selfA = num(f.self_attractive) ?? num(f.attractive) ?? 5
+  const ra = num(f.RA) ?? num(f.ra)
+  const order = num(f.order)
+  const gender = num(f.gender)
   const dAge = Math.abs(age - ageO)
   let s =
     0.35 +
@@ -238,6 +254,10 @@ function trivialLabelBlindDirectionalScorer(modelInput) {
     (hobby / 20) * 0.15 +
     (selfA / 10) * 0.1 -
     Math.min(0.2, dAge * 0.01)
+  // Sparse native Bhargava subset: use RA / order / gender when richer prefs absent
+  if (ra != null) s += (ra / 10) * 0.2 - 0.1
+  if (order != null) s += Math.min(0.05, order * 0.002)
+  if (gender != null) s += gender * 0.01
   return Math.max(0.01, Math.min(0.99, s))
 }
 

@@ -193,7 +193,11 @@ function main() {
   const audit = auditNativeIdCandidate()
   check(
     'WAITING_OR_NATIVE',
-    audit.TRUE_RECIPROCAL_AVAILABLE === true || audit.status === 'WAITING_NATIVE_ID_DATA' || audit.status === 'FALLBACK_FINGERPRINT_REQUIRED' || !audit.usable_native
+    audit.TRUE_RECIPROCAL_AVAILABLE === true ||
+      audit.status === 'WAITING_NATIVE_ID_DATA' ||
+      audit.status === 'FALLBACK_FINGERPRINT_REQUIRED' ||
+      audit.status === 'NATIVE_SCHEMA_AVAILABLE' ||
+      !audit.usable_native
   )
 
   if (failed) {
