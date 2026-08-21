@@ -39,6 +39,17 @@
     .topbar { background: var(--card); padding: .875rem 1.5rem; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
     .topbar h3 { font-size: 1.125rem; }
     .content { flex: 1; padding: 1.5rem; overflow-y: auto; }
+    .ws-hero{background:linear-gradient(135deg,#fff,#fff5f7);border:1px solid #f3d6de;border-radius:14px;padding:1.25rem 1.5rem;margin-bottom:1rem}
+    .ws-hero h2{font-size:1.35rem;margin-bottom:.35rem}
+    .ws-hero p{color:var(--muted);font-size:.9rem}
+    .ws-actions{display:flex;flex-wrap:wrap;gap:.75rem;margin-top:1rem}
+    .ws-card{background:#fff;border:1px solid #efe4e7;border-radius:12px;padding:1.1rem;margin-bottom:1rem}
+    .ws-card h4{margin-bottom:.65rem}
+    .ws-metric{display:flex;gap:1.25rem;flex-wrap:wrap}
+    .ws-metric div{min-width:100px}
+    .ws-metric .k{font-size:.75rem;color:#888}
+    .ws-metric .v{font-size:1.35rem;font-weight:700;color:var(--primary)}
+    .privacy-note{background:#fff8e1;border:1px solid #f2d879;color:#8a6d1a;border-radius:8px;padding:.65rem .85rem;font-size:.8125rem;margin-bottom:1rem}
     .stats-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
     .stat-card { background: var(--card); border-radius: 10px; padding: 1rem; border: 1px solid var(--border); }
     .stat-card .label { font-size: .8125rem; color: var(--muted); margin-bottom: .35rem; }
@@ -113,13 +124,13 @@
         <small>合伙人专属后台</small>
       </div>
       <nav class="nav" id="navMenu">
-        <button class="nav-item active" data-page="dashboard">数据看板</button>
-        <button class="nav-item" data-page="audit">用户审核</button>
-        <button class="nav-item" data-page="users">推广用户</button>
-        <button class="nav-item" data-page="orders">分润订单</button>
-        <button class="nav-item" data-page="promote">推广工具</button>
-        <button class="nav-item" data-page="withdraw">资金提现</button>
-        <button class="nav-item" data-page="profile">账号设置</button>
+        <button class="nav-item active" data-page="dashboard">首页</button>
+        <button class="nav-item" data-page="audit">会员审核</button>
+        <button class="nav-item" data-page="users">我的用户</button>
+        <button class="nav-item" data-page="promote">推广</button>
+        <button class="nav-item" data-page="orders">收入</button>
+        <button class="nav-item" data-page="withdraw">提现</button>
+        <button class="nav-item" data-page="profile">账号</button>
       </nav>
       <div class="sidebar-footer">
         <button class="btn btn-outline btn-sm btn-block" id="logoutBtn" style="color:#fff;border-color:rgba(255,255,255,.3)">退出登录</button>
@@ -146,7 +157,7 @@
   const CLOUD_ONLY_ALLOWED_PAGES = ['dashboard'].concat(CLOUD_ONLY_PAGES);
   const TOKEN_KEY = 'wf_partner_token';
   const CLOUD_TOKEN_KEY = 'wf_cloud_partner_token';
-  const TITLES = { dashboard:'数据看板', audit:'用户审核', users:'推广用户', orders:'分润订单', promote:'推广工具', withdraw:'资金提现', profile:'账号设置' };
+  const TITLES = { dashboard:'首页', audit:'会员审核', users:'我的用户', orders:'收入', promote:'推广', withdraw:'提现', profile:'账号' };
   const USER_STATUS = { 0:'待审核', 1:'正常', 2:'封号', 3:'已结婚' };
   const MEMBER_STATUS = { pending_profile:'待完善', pending_review:'待审核', need_more_info:'补资料', approved:'正式会员', rejected:'已拒绝', disabled:'已停用' };
   const PARTNER_STATUS = { 0:'待授权', 1:'已激活', 2:'已禁用' };
@@ -262,27 +273,33 @@
       return;
     }
     state.partner = data.partner;
-    document.getElementById('partnerInfo').textContent = data.partner.username + ' · ' + data.partner.promote_code;
-    const s = data.stats;
-    document.getElementById('pageContent').innerHTML =
-      '<div class="stats-grid">' +
-      statCard('推广注册用户', s.promoted_users) +
-      statCard('有效 VIP 会员', s.vip_users) +
-      statCard('待审核用户', '<span id="pendingAudit">-</span>') +
-      statCard('付费订单数', s.paid_orders) +
-      statCard('累计分润(元)', s.total_commission.toFixed(2)) +
-      statCard('可提现余额(元)', Number(data.partner.balance).toFixed(2)) +
-      statCard('待处理提现', s.pending_withdrawals) +
-      '</div>' +
-      '<div class="card"><div class="card-header"><h4>账号状态</h4></div><div class="card-body">' +
-      statusLine(data.partner.status) +
-      '<p style="margin-top:.75rem;font-size:.875rem;color:var(--muted)">推广码：<strong>' + esc(data.partner.promote_code) + '</strong></p></div></div>';
+    const name = data.partner.real_name || data.partner.name || data.partner.username || '合伙人';
+    document.getElementById('partnerInfo').textContent = name + ' · ' + (data.partner.promote_code || '');
+    const s = data.stats || {};
+    let pendingCount = 0;
     try {
       const pending = CLOUD_MEMBER_API
         ? await memberApi('/partner/member-applications?status=pending_review')
         : await api('/partner/users?member_status=pending_review&pageSize=1');
-      document.getElementById('pendingAudit').textContent = CLOUD_MEMBER_API ? (pending.list || []).length : pending.total;
+      pendingCount = CLOUD_MEMBER_API ? (pending.list || []).length : Number(pending.total || 0);
     } catch (e) {}
+    const hour = new Date().getHours();
+    const greet = hour < 12 ? '上午好' : hour < 18 ? '下午好' : '晚上好';
+    document.getElementById('pageContent').innerHTML =
+      '<div class="ws-hero"><h2>' + esc(name) + '，' + greet + '</h2>' +
+      '<p>今天需要处理：<strong style="color:var(--primary)">' + pendingCount + '</strong> 个会员待审核</p>' +
+      '<div class="ws-actions"><button class="btn btn-primary" onclick="navigate(\'audit\')">' + (pendingCount ? '开始审核' : '查看审核') + '</button>' +
+      '<button class="btn btn-outline" onclick="navigate(\'promote\')">查看推广码</button>' +
+      '<button class="btn btn-outline" onclick="navigate(\'withdraw\')">申请提现</button></div></div>' +
+      '<div class="ws-card"><h4>我的推广</h4><div class="ws-metric">' +
+      '<div><div class="k">推广用户</div><div class="v">' + Number(s.promoted_users||0) + '</div></div>' +
+      '<div><div class="k">有效会员</div><div class="v">' + Number(s.vip_users||0) + '</div></div>' +
+      '<div><div class="k">付费订单</div><div class="v">' + Number(s.paid_orders||0) + '</div></div></div></div>' +
+      '<div class="ws-card"><h4>我的收入</h4><div class="ws-metric">' +
+      '<div><div class="k">可提现</div><div class="v">¥' + Number(data.partner.balance||0).toFixed(2) + '</div></div>' +
+      '<div><div class="k">累计分润</div><div class="v">¥' + Number(s.total_commission||0).toFixed(2) + '</div></div>' +
+      '<div><div class="k">待处理提现</div><div class="v">' + Number(s.pending_withdrawals||0) + '</div></div></div></div>' +
+      '<div class="privacy-note">隐私提示：您只能查看自己推广的用户；手机号已脱敏；无法查看匹配详情或 AI 私聊内容。</div>';
   }
 
   function renderCloudDashboard(data) {
@@ -342,7 +359,7 @@
     const total = CLOUD_MEMBER_API ? list.length : data.total;
     let rows = '';
     if (!list.length) {
-      rows = '<tr><td colspan="6" class="empty">暂无待审核用户</td></tr>';
+      rows = '<tr><td colspan="6" class="empty">今天没有待审核会员</td></tr>';
     } else {
       list.forEach(function (row) {
         const u = CLOUD_MEMBER_API ? (row.user || {}) : row;
@@ -370,14 +387,17 @@
         actions += '<button class="btn btn-danger" onclick="submitAudit(' + id + ',\'disable\',' + applicationId + ')">停用会员</button>';
       }
       showModal('用户审核 #' + id,
-        '<p>用户：<strong>' + esc(data.user.nickname || data.user.id) + '</strong></p>' +
-        '<p style="margin:.5rem 0;font-size:.875rem;color:var(--muted)">' + esc(data.note) + '</p>' +
-        '<div class="form-group"><label>审核意见</label><textarea id="auditReason" rows="3" placeholder="补资料、拒绝或禁用时必须填写"></textarea></div>',
+        '<p>用户：<strong>' + esc(data.user.nickname || data.user.support_code || data.user.id) + '</strong></p>' +
+        '<p style="margin:.5rem 0;font-size:.875rem;color:var(--muted)">' + esc(data.next_action || data.note || '') + '</p>' +
+        '<div class="privacy-note">仅内部处理：请勿向他人转发用户资料。</div>' +
+        '<div class="form-group"><label>审核意见</label><textarea id="auditReason" rows="3" placeholder="需要补充资料 / 不通过时必须填写原因"></textarea></div>',
         actions);
     } catch (err) { toast(err.message, 'error'); }
   };
 
   window.submitAudit = async function (id, action, applicationId) {
+    if (window.__auditBusy) return;
+    window.__auditBusy = true;
     const reason = document.getElementById('auditReason')?.value || '';
     closeModal();
     try {
@@ -386,10 +406,11 @@
       } else {
         await api('/partner/users/' + id + '/audit', { method: 'PUT', body: { action: action, reason: reason } });
       }
-      toast('审核完成', 'success');
+      toast(action==='approve'?'✓ 审核已通过':action==='need_more_info'?'✓ 已要求用户补充资料':action==='reject'?'✓ 已驳回':'✓ 已完成', 'success');
       if (state.page === 'audit') renderAudit();
       else renderUsers();
     } catch (err) { toast(err.message, 'error'); }
+    finally { window.__auditBusy = false; }
   };
 
   async function renderUsers() {
@@ -397,15 +418,15 @@
     const data = await api('/partner/users?pageSize=50' + (status !== '' ? '&status=' + status : ''));
     let rows = '';
     if (!data.list.length) {
-      rows = '<tr><td colspan="7" class="empty">暂无推广用户</td></tr>';
+      rows = '<tr><td colspan="7" class="empty">暂时还没有推广用户</td></tr>';
     } else {
       data.list.forEach(function (u) {
-        rows += '<tr><td>' + u.id + '</td><td>' + esc(u.nickname || '-') + '</td><td>' + esc(MEMBER_STATUS[u.member_status] || u.member_status) + '</td><td>' + (u.vip_expire_at ? esc(u.vip_expire_at) : '非VIP') + '</td><td>' + esc(u.phone || '-') + '</td><td>' + esc(u.created_at) + '</td><td><button class="btn btn-sm btn-outline" onclick="auditUser(' + u.id + ')">查看</button></td></tr>';
+        rows += '<tr><td>' + esc(u.support_code || ('用户'+u.id)) + '</td><td>' + esc(u.nickname || '-') + '</td><td>' + esc(MEMBER_STATUS[u.member_status] || u.member_status) + '</td><td>' + (u.vip_expire_at ? esc(u.vip_expire_at) : '非VIP') + '</td><td>' + esc(u.phone_masked || '已脱敏') + '</td><td>' + esc(u.created_at) + '</td><td><button class="btn btn-sm btn-outline" onclick="auditUser(' + u.id + ')">查看</button></td></tr>';
       });
     }
     document.getElementById('pageContent').innerHTML =
       '<div class="toolbar"><select id="userStatusFilter" onchange="filterUsers()"><option value="">全部状态</option><option value="pending_profile">待完善</option><option value="pending_review">待审核</option><option value="need_more_info">补资料</option><option value="approved">正式会员</option><option value="rejected">已拒绝</option><option value="disabled">已停用</option></select><button class="btn btn-outline btn-sm" onclick="filterUsers()">筛选</button></div>' +
-      '<div class="card"><div class="card-header"><h4>推广用户列表 (' + data.total + ')</h4></div><div class="card-body"><table><thead><tr><th>ID</th><th>昵称</th><th>状态</th><th>VIP到期</th><th>手机</th><th>注册时间</th><th>管理</th></tr></thead><tbody>' + rows + '</tbody></table></div></div>';
+      '<div class="card"><div class="card-header"><h4>推广用户列表 (' + data.total + ')</h4></div><div class="card-body"><table><thead><tr><th>用户编号</th><th>昵称</th><th>状态</th><th>VIP到期</th><th>手机（脱敏）</th><th>注册时间</th><th>管理</th></tr></thead><tbody>' + rows + '</tbody></table></div></div>';
     if (status) document.getElementById('userStatusFilter').value = status;
   }
   window.filterUsers = function () { renderUsers(); };
@@ -459,6 +480,7 @@
   }
 
   window.submitWithdraw = async function () {
+    if (!window.confirm('确认申请提现？请核对金额后再提交。')) return;
     const amount = document.getElementById('withdrawAmount').value;
     const remark = document.getElementById('withdrawRemark').value;
     const btn = document.getElementById('withdrawBtn');
@@ -475,7 +497,7 @@
   async function renderProfile() {
     const data = await api('/partner/dashboard');
     document.getElementById('pageContent').innerHTML =
-      '<div class="card"><div class="card-header"><h4>账号信息</h4></div><div class="card-body"><p>姓名：<strong>' + esc(data.partner.name || '--') + '</strong></p><p style="margin-top:.5rem">手机：<strong>' + esc(data.partner.phone || '--') + '</strong></p><p style="margin-top:.5rem">授权状态：' + statusLine(data.partner.status) + '</p><p style="margin-top:.5rem">推广码：<strong>' + esc(data.partner.promote_code) + '</strong></p></div></div>' +
+      '<div class="card"><div class="card-header"><h4>账号信息</h4></div><div class="card-body"><p>姓名：<strong>' + esc(data.partner.name || '--') + '</strong></p><p style="margin-top:.5rem">手机：<strong>' + esc(data.partner.phone_masked || '已脱敏') + '</strong></p><p style="margin-top:.5rem">授权状态：' + statusLine(data.partner.status) + '</p><p style="margin-top:.5rem">推广码：<strong>' + esc(data.partner.promote_code) + '</strong></p></div></div>' +
       '<div class="card"><div class="card-header"><h4>修改密码</h4></div><div class="card-body"><p style="font-size:.875rem;color:var(--muted);margin-bottom:1rem">密码修改请联系超级管理员处理，或通过重新注册流程（需管理员重新激活）。</p><div class="form-group"><label>当前密码</label><input type="password" id="oldPass" disabled placeholder="暂不支持在线修改" /></div></div></div>';
   }
 
