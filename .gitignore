@@ -34,3 +34,6 @@ miniprogram/miniprogram_npm/
 Thumbs.db
 .idea/
 .vscode/
+
+datasets/wefinally/eval/predictions/
+

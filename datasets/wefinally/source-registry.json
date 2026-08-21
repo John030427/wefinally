@@ -39,7 +39,9 @@
         "production_training": false,
         "use_for_dev": true,
         "use_for_eval": true,
-        "use_for_training": false
+        "use_for_training": false,
+        "offline_benchmark_model_fitting_allowed": true,
+        "production_model_training_allowed": false
       },
       "status": "APPROVED_EVAL_ONLY",
       "dataset_version": "speed-dating-native-v1",
