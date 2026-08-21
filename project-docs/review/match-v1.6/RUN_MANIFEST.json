@@ -3,7 +3,7 @@
   "base_branch": "experiment/match-native-id-v1.5.2",
   "base_commit": "72e82f536df0db86ab7bae30f3069f3b312923ca",
   "branch": "experiment/match-benchmark-resolution-v1.6",
-  "final_commit": null,
+  "final_commit": "fc0ed40a82d583b472955f704f35504ac4e1dfa9",
   "sources_audited": 8,
   "selected_dataset": "speed-dating-native-v1",
   "selection_decision": "SPEED_DATING_NATIVE_APPROVED_FOR_BENCHMARK",
