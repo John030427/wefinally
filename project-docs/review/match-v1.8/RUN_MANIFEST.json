@@ -1,0 +1,22 @@
+{
+  "run_id": "match-final-staging-v1.8",
+  "base_branch": "experiment/match-final-tournament-v1.7",
+  "base_commit": "06597706c85ffac565bb05acde88cd76865c8fe3",
+  "branch": "experiment/match-final-staging-v1.8",
+  "final_commit": null,
+  "ranking_both_sides": "PASS",
+  "track_a_conclusion": "UNCHANGED",
+  "corrected_hy3": "HY3_PRODUCT_REASONING_PASS",
+  "actual_privacy_leaks": 0,
+  "hard_gate_violations": 0,
+  "sensitive_ranking_misuse": 0,
+  "automated_e2e": "PASS",
+  "live_cloudbase": "PASS",
+  "staging_code": "CODE_MISMATCH",
+  "real_wechat_ab": "READY_FOR_MANUAL_AB",
+  "final_architecture": "DETERMINISTIC_CORE + HY3_PROFILE_REASONING_STAGING + HY3_COORDINATION (RAG off; no public-data ML in production)",
+  "offline_engineering": "FREEZE_READY",
+  "production": "KEEP_CURRENT",
+  "rag": "RAG_NOT_JUSTIFIED",
+  "generated_at": "2026-08-21T10:04:37.128Z"
+}
