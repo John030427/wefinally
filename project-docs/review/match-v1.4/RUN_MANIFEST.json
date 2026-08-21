@@ -2,7 +2,7 @@
   "run_id": "match-reciprocal-v1.4",
   "base_commit": "073f0973d4216af1f3fb882478613865438742d6",
   "branch": "experiment/match-reciprocal-v1.4",
-  "final_commit": "d285d4ad22272b0a14533d4c1c79c058eed65802",
+  "final_commit": "463b34d3118f2cee45f9093226eef7c1c081fd8f",
   "source_status": "speed-dating REVIEW_REQUIRED sandbox rag=false",
   "dataset_counts": {
     "raw": 8378,
@@ -182,7 +182,10 @@
   "sha_consistency_note": "final_commit equals git tip at commit time; review_fix_code_commit is the substantive fix. Git cannot embed a commit hash inside the same commit tree without rewrite.",
   "review_fix_code_commit": "463b34d3118f2cee45f9093226eef7c1c081fd8f",
   "sha_consistency": {
-    "note": "final_commit is set to the tip SHA of the parent commit that wrote this field; after this commit lands, tip advances by one docs commit. Consumers should use git rev-parse HEAD as tip; final_commit documents last published tip before this docs bump OR use review_fix_code_commit for the fix.",
-    "prior_mismatch_explained": "Agent reported 66cbe21 while RUN_MANIFEST still had f34501c (docs commit forgot to refresh field). Local and origin both at 66cbe21 at that time."
-  }
+    "local_equals_remote": true,
+    "final_commit_meaning": "substantive review-fix commit (not floating docs tip)",
+    "prior_bug": "RUN_MANIFEST kept f34501c after docs tip 66cbe21",
+    "resolved_by": "final_commit now pinned to review-fix code commit; tip always git rev-parse HEAD"
+  },
+  "bundle_tip_at_write": "4dafb8c60e9ab85d4bda9d737966de172020011c"
 }
