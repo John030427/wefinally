@@ -5,6 +5,7 @@ const path = require('path')
 const { PATHS, ensureDir } = require('../paths')
 const { readJsonl } = require('../builders/cases')
 const { computeRankingCurves } = require('./binaryRankingMetrics')
+const { rankingMetricsTieAware } = require('./rankingTieAware')
 
 function round(n) {
   return Math.round(n * 10000) / 10000
@@ -170,7 +171,7 @@ function buildRankingQueries(cases, goldById, predById, opts = {}) {
         score: p && typeof p.score === 'number' ? p.score : p && p.predict_mutual ? 1 : 0
       }
     })
-    candidates.sort((a, b) => b.score - a.score)
+    // Do NOT sort by arbitrary secondary key — ranking metrics are tie-aware (v1.5).
     queries.push({ query_key: qk, n_candidates: candidates.length, candidates })
   }
   return queries
@@ -205,65 +206,8 @@ function dcgAt(rels, k) {
 }
 
 function rankingMetrics(queries) {
-  const stats = queryStats(queries)
-  const usable1 = queries.filter((q) => q.n_candidates >= 2)
-  const usable3 = queries.filter((q) => q.n_candidates >= 3)
-  const usable5 = queries.filter((q) => q.n_candidates >= 5)
-
-  const pAt = (q, k) => {
-    if (q.n_candidates < k) return null
-    const top = q.candidates.slice(0, k)
-    return top.filter((c) => c.relevant).length / k
-  }
-  const ndcgAt = (q, k) => {
-    if (q.n_candidates < k) return null
-    const rels = q.candidates.slice(0, k).map((c) => (c.relevant ? 1 : 0))
-    const ideal = [...q.candidates]
-      .map((c) => (c.relevant ? 1 : 0))
-      .sort((a, b) => b - a)
-      .slice(0, k)
-    const idcg = dcgAt(ideal, k)
-    if (!idcg) return 0
-    return dcgAt(rels, k) / idcg
-  }
-  const mrrOf = (q) => {
-    if (q.n_candidates < 2) return null
-    const idx = q.candidates.findIndex((c) => c.relevant)
-    return idx < 0 ? 0 : 1 / (idx + 1)
-  }
-
-  const mean = (arr) => (arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null)
-  const p1vals = usable1.map((q) => pAt(q, 1)).filter((v) => v != null)
-  const p3vals = usable3.map((q) => pAt(q, 3)).filter((v) => v != null)
-  const n1 = usable1.map((q) => ndcgAt(q, 1)).filter((v) => v != null)
-  const n3 = usable3.map((q) => ndcgAt(q, 3)).filter((v) => v != null)
-  const n5 = usable5.map((q) => ndcgAt(q, 5)).filter((v) => v != null)
-  const mrrs = usable1.map(mrrOf).filter((v) => v != null)
-
-  const degenerate = !stats.with_ge2
-
-  return {
-    query_stats: {
-      ...stats,
-      with_ge10: queries.filter((q) => q.n_candidates >= 10).length
-    },
-    precision_at_1: degenerate || !p1vals.length ? 'NOT_APPLICABLE' : round(mean(p1vals)),
-    precision_at_3: !p3vals.length ? 'NOT_APPLICABLE' : round(mean(p3vals)),
-    ndcg_at_1: degenerate || !n1.length ? 'NOT_APPLICABLE' : round(mean(n1)),
-    ndcg_at_3: !n3.length ? 'NOT_APPLICABLE' : round(mean(n3)),
-    ndcg_at_5: !n5.length ? 'NOT_APPLICABLE' : round(mean(n5)),
-    MRR: degenerate || !mrrs.length ? 'NOT_APPLICABLE' : round(mean(mrrs)),
-    RNDCG: degenerate
-      ? 'NOT_APPLICABLE'
-      : n3.length || n1.length
-        ? round(
-            ((n3.length ? mean(n3) : 0) + (n1.length ? mean(n1) : 0)) / (n3.length && n1.length ? 2 : 1)
-          )
-        : 'NOT_APPLICABLE',
-    ranking_note: degenerate
-      ? 'All ranking queries have candidate-set size < 2; Precision@K/NDCG NOT_APPLICABLE'
-      : null
-  }
+  // v1.5: expected metrics under random within equal-score groups (order-invariant).
+  return rankingMetricsTieAware(queries)
 }
 
 function mineFailures(joined, casesById) {

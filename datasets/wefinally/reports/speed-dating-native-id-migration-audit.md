@@ -1,7 +1,5 @@
 # Speed Dating Native iid/pid Migration Audit
 
-**NATIVE_ID_DATASET_PREFERRED** — fingerprint is uncertain fallback only.
-
 ```json
 {
   "NATIVE_ID_DATASET_PREFERRED": true,
@@ -54,18 +52,14 @@
   "has_decision_o": true,
   "has_match": true,
   "usable_native": false,
-  "status": "FALLBACK_FINGERPRINT_REQUIRED",
-  "identity_mode": "IDENTITY_RECONSTRUCTED_FROM_PREMATCH_FINGERPRINT",
+  "status": "WAITING_NATIVE_ID_DATA",
+  "identity_mode": "PAIR_IDENTITY_UNCERTAIN",
   "skip_fingerprint": false,
-  "note": "OpenML/GitHub datasets/speed-dating CSV lacks iid/pid. Provide Columbia-style file under raw/speed-dating/ with REVIEW_REQUIRED gates intact.",
+  "TRUE_RECIPROCAL_AVAILABLE": false,
+  "note": "OpenML/GitHub speed-dating CSV lacks iid/pid. Place Columbia-style file at raw/speed-dating/speed-dating-native-iid-pid.csv without weakening license gates.",
   "inspected_path": "D:\\wefinal\\.worktrees\\wefinally-ai-agent\\datasets\\wefinally\\raw\\speed-dating\\speed-dating.csv",
-  "generated_at": "2026-08-21T07:50:00.778Z"
+  "preferred_native_path": "D:\\wefinal\\.worktrees\\wefinally-ai-agent\\datasets\\wefinally\\raw\\speed-dating\\speed-dating-native-iid-pid.csv",
+  "using_native_file": false,
+  "generated_at": "2026-08-21T08:15:15.727Z"
 }
 ```
-
-## Import path (when native file available)
-
-1. Place licensed Columbia-style CSV at `datasets/wefinally/raw/speed-dating/speed-dating-native-iid-pid.csv`
-2. Keep `source-registry` status REVIEW_REQUIRED / rag=false
-3. Re-run ingest with native detector → `identity_mode=native_iid_pid`
-4. Do not fetch unknown mirrors automatically

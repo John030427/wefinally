@@ -115,33 +115,29 @@ function heuristicPreds(cases, model) {
 }
 
 function directionalPairScores(cases, lrDir, gbdtDir) {
+  // v1.5: NEVER approximate P(B→A) via swapped vectors.
+  // Without native reverse subject rows, p_ba is unavailable.
   return cases.map((c) => {
     const fv = buildFeatureView(c)
     const x = extractVector(fv)
     const p_ab_lr = predictLogistic(lrDir, x)
     const p_ab_gbdt = predictGBDT(gbdtDir, x)
-    // Reverse: swap directional features approximately via bilateral
-    const p_ba_feat = Number(fv.directional?.b_to_a) || 0.5
-    // Train reverse model scores: use product of dir feat as proxy for reverse when we only have subject-oriented rows
-    // Better: use LR on swapped vector fields
-    const xRev = x.slice()
-    // swap age_a/age_b indices 0,1 and dir 5,6
-    ;[xRev[0], xRev[1]] = [xRev[1], xRev[0]]
-    ;[xRev[5], xRev[6]] = [xRev[6], xRev[5]]
-    const p_ba_lr = predictLogistic(lrDir, xRev)
-    const p_ba_gbdt = predictGBDT(gbdtDir, xRev)
     return {
       case_id: c.case_id,
       p_ab_lr,
-      p_ba_lr,
+      p_ba_lr: null,
       p_ab_gbdt,
-      p_ba_gbdt,
-      p_ba_feat,
-      gap_lr: Math.abs(p_ab_lr - p_ba_lr),
+      p_ba_gbdt: null,
+      p_ba_feat: null,
+      gap_lr: null,
       mutual: !!(c.bilateral_outcome && c.bilateral_outcome.mutual_match),
       a_yes: !!c.a_to_b_decision,
       b_yes: !!c.b_to_a_decision,
-      fv
+      fv,
+      SUBJECT_RANKING_WITH_UNCERTAIN_PARTNER_IDENTITY: true,
+      PAIR_IDENTITY_UNCERTAIN: true,
+      TRUE_RECIPROCAL_AVAILABLE: false,
+      note: 'NO_SWAPPED_VECTOR_RECIPROCAL — p_ba requires native reverse subject row'
     }
   })
 }
@@ -231,6 +227,8 @@ function auditIdentity(rows, rebuilt) {
   return {
     identity_mode: rebuilt.identityMode,
     status: 'IDENTITY_RECONSTRUCTION_UNCERTAIN',
+    pair_identity_status: 'PAIR_IDENTITY_UNCERTAIN',
+    TRUE_RECIPROCAL_AVAILABLE: false,
     raw_rows: rows.length,
     unique_subject_fingerprints: subjMap.size,
     unique_partner_fingerprints: partMap.size,
@@ -309,13 +307,53 @@ function main() {
 
   const identityAudit = auditIdentity(rows, rebuilt)
   const nativeIdAudit = auditNativeIdCandidate()
+  const trueReciprocal =
+    rebuilt.TRUE_RECIPROCAL_AVAILABLE === true && nativeIdAudit.TRUE_RECIPROCAL_AVAILABLE === true
 
   // Train directional models
   const models = trainDirectionalModels(train, buildFeatureView)
   const dirDev = directionalPairScores(dev, models.lrDir, models.gbdtDir)
   const dirCal = directionalPairScores(cal, models.lrDir, models.gbdtDir)
 
-  // Meta features for reciprocal meta-models
+  if (!trueReciprocal) {
+    console.log('TRUE_RECIPROCAL_AVAILABLE=false — skipping reciprocal aggregators (v1.5)')
+    const experiments = {
+      Z_RANDOM: evalPreds(dev, heuristicPreds(dev, 'Z_RANDOM'), 'Z_RANDOM'),
+      B: evalPreds(dev, heuristicPreds(dev, 'B'), 'B'),
+      C: evalPreds(dev, heuristicPreds(dev, 'C'), 'C'),
+      LR_DIR_AB_ONLY: evalPreds(
+        dev,
+        recipPred(dirDev, 'LR_DIR_AB_ONLY', (r) => r.p_ab_lr),
+        'LR_DIR_AB_ONLY'
+      )
+    }
+    writeReview(
+      'RECIPROCAL_EXPERIMENTS.md',
+      [
+        '# Reciprocal Experiments (v1.4 runner under v1.5 gate)',
+        '',
+        '**TRUE_RECIPROCAL_AVAILABLE=false**',
+        '',
+        'Fingerprint identity → PAIR_IDENTITY_UNCERTAIN.',
+        'Swapped-vector p_ba removed. Reciprocal aggregators not run.',
+        'Label: SUBJECT_RANKING_WITH_UNCERTAIN_PARTNER_IDENTITY',
+        '',
+        '```json',
+        JSON.stringify({ experiments, nativeIdAudit, identityAudit: { status: identityAudit.status } }, null, 2),
+        '```',
+        ''
+      ].join('\n')
+    )
+    console.log('Champion: BLOCKED_TRUE_RECIPROCAL')
+    return {
+      TRUE_RECIPROCAL_AVAILABLE: false,
+      experiments,
+      identityAudit,
+      nativeIdAudit
+    }
+  }
+
+  // Meta features for reciprocal meta-models (native path only)
   function metaX(r) {
     return [
       r.p_ab_lr,

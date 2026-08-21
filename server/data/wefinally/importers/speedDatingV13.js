@@ -144,7 +144,8 @@ function selfAttrFromRow(r) {
 function rebuildPairsFromRows(rows) {
   const quarantine = []
   const hasIid = rows.some((r) => r.iid !== undefined && r.iid !== '' && r.pid !== undefined && r.pid !== '')
-  const identityMode = hasIid ? 'native_iid_pid' : 'IDENTITY_RECONSTRUCTED_FROM_PREMATCH_FINGERPRINT'
+  const identityMode = hasIid ? 'NATIVE_IID_PID' : 'PAIR_IDENTITY_UNCERTAIN'
+  const TRUE_RECIPROCAL_AVAILABLE = !!hasIid
 
   const directed = []
   for (let idx = 0; idx < rows.length; idx++) {
@@ -319,7 +320,9 @@ function rebuildPairsFromRows(rows) {
         source_license: 'odc-pddl-claimed-unverified',
         derivation_method: identityMode,
         provenance_uncertainty: 'high',
-        identity_mode: identityMode
+        identity_mode: identityMode,
+        pair_label: hasIid ? 'TRUE_CANONICAL_PAIR' : 'PAIR_IDENTITY_UNCERTAIN',
+        TRUE_RECIPROCAL_AVAILABLE
       },
       person_a: {
         id: p.lo,
@@ -374,6 +377,8 @@ function rebuildPairsFromRows(rows) {
 
   return {
     identityMode,
+    TRUE_RECIPROCAL_AVAILABLE,
+    pair_identity_status: hasIid ? 'TRUE_CANONICAL_PAIR' : 'PAIR_IDENTITY_UNCERTAIN',
     pairs,
     encounterRows,
     quarantined: quarantine,
