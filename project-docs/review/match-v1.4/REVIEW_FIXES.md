@@ -6,7 +6,7 @@
 | REVIEW-02 | Platt calibrated PRODUCT but named `${bestRecip}_PLATT` | **FIXED** |
 | REVIEW-03 | SEALED_TEST wrote gold-bearing `encounters.jsonl` | **FIXED** |
 | REVIEW-04 | Identity fingerprint weak collision check (`length>50`) | **FIXED** (audit hardened; status remains UNCERTAIN) |
-| REVIEW-05 | RUN_MANIFEST.final_commit lagged HEAD (`f34501c` vs `66cbe21`) | **FIXED** (this commit sets final_commit = HEAD after push) |
+| REVIEW-05 | RUN_MANIFEST.final_commit lagged HEAD (`f34501c` vs `66cbe21`) | **FIXED** (`final_commit`/`review_fix_code_commit` = `463b34d…`; tip = `git rev-parse HEAD`) |
 
 ## REVIEW-01
 
