@@ -2,7 +2,7 @@
   "run_id": "match-reciprocal-v1.4",
   "base_commit": "073f0973d4216af1f3fb882478613865438742d6",
   "branch": "experiment/match-reciprocal-v1.4",
-  "final_commit": "PENDING_THIS_COMMIT",
+  "final_commit": "463b34d3118f2cee45f9093226eef7c1c081fd8f",
   "source_status": "speed-dating REVIEW_REQUIRED sandbox rag=false",
   "dataset_counts": {
     "raw": 8378,
