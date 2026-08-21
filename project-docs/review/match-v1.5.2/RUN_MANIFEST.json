@@ -3,7 +3,7 @@
   "base_commit": "c08f47852ff7c32ae8f19f029b34fdfd6aab1e70",
   "base_branch": "experiment/match-native-id-v1.5.1",
   "branch": "experiment/match-native-id-v1.5.2",
-  "final_commit": "12a7b85ed00d6f369867414052fcad652181e678",
+  "final_commit": "ad9778ce07398c832ac5ac2665219e9b160e5751",
   "prediction_gold_separation": "PASS",
   "identifier_feature_exclusion": "PASS",
   "duplicate_semantics": "PASS",
