@@ -25,6 +25,7 @@ const COORDINATION_STATUS = {
   computing_overlap: { label: '正在协调', next: '等待系统生成可确认方案' },
   pending_primary_selection: { label: '等待用户选择建议安排', next: '可提醒用户选择时间/地点' },
   pending_confirmation: { label: '等待用户确认修改', next: '可提醒用户确认或暂不修改' },
+  waiting_confirmations: { label: '等待双方确认', next: '无需操作，系统将通知双方' },
   awaiting_a: { label: '等待 A 确认', next: '可提醒 A 确认方案' },
   awaiting_b: { label: '等待 B 确认', next: '可提醒 B 确认方案' },
   arranged: { label: '双方已确认', next: '跟进见面安排' },

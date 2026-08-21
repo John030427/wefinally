@@ -140,8 +140,17 @@
     .service-status.closed { background: #eeeae3; color: #777168; }
     .service-messages { flex: 1; min-height: 300px; overflow-y: auto; padding: 1rem clamp(1rem, 4vw, 3.5rem); background-image: linear-gradient(rgba(47,107,87,.035) 1px, transparent 1px); background-size: 100% 32px; }
     .service-paired-shell { flex: 1; min-height: 360px; display: flex; flex-direction: column; overflow: hidden; }
-    .service-paired-shared { border-bottom: 1px solid var(--svc-line); background: #f3eee5; padding: .55rem .8rem; }
-    .service-paired-shared strong { display: block; margin-bottom: .35rem; font-size: .72rem; color: #625e57; }
+    .service-paired-shared { border-bottom: 1px solid var(--svc-line); background: #e8f2ec; padding: .65rem .8rem; }
+    .service-paired-shared strong { display: block; margin-bottom: .35rem; font-size: .72rem; color: #2f6b57; }
+    .service-privacy-badge { display: inline-flex; align-items: center; margin-left: .4rem; border-radius: 999px; padding: .14rem .45rem; font-size: .62rem; font-weight: 600; white-space: nowrap; }
+    .service-privacy-badge.private { background: #fff1f0; color: #b42318; border: 1px solid #f3b4ae; }
+    .service-privacy-badge.shared { background: #e8f2ec; color: #2f6b57; border: 1px solid #b7d4c6; }
+    .service-confirm-card { border: 1px solid var(--svc-line); border-radius: 10px; background: #fff; padding: .75rem .85rem; margin-bottom: .6rem; }
+    .service-confirm-card .row { display: flex; justify-content: space-between; gap: .5rem; margin: .25rem 0; font-size: .78rem; }
+    .service-confirm-card .ok { color: #2f6b57; font-weight: 600; }
+    .service-confirm-card .wait { color: #9a6700; }
+    .service-confirm-card .warn { color: #b42318; margin-top: .4rem; font-size: .74rem; }
+    .service-tech-details { margin-top: .5rem; font-size: .7rem; color: #817b71; }
     .service-paired-shared .service-message { margin-bottom: .35rem; }
     .service-paired-grid { flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .service-side { min-width: 0; display: flex; flex-direction: column; background: #fffdfa; }
@@ -260,7 +269,7 @@
   const CLOUD_TK = 'wf_cloud_admin_token';
   const RK = 'wf_admin_role';
   const TITLES = { dashboard:'今日待办', service:'客服工作台', users:'用户管理', members:'会员审核', matches:'匹配记录', partners:'合伙人审核与管理', orders:'订单对账', withdrawals:'提现审核', marry:'婚姻报备', cancel:'注销/离异审核', stats:'公示数据配置', knowledge:'AI 知识库', chat:'客服会话', handoff:'奔现工单', privacy:'合规授权日志', whitelist:'单位白名单', export:'数据导出', logs:'系统日志' };
-  const ROLE_PAGES = { customer_service: ['dashboard', 'service', 'orders', 'partners', 'chat', 'handoff'], auditor: ['dashboard', 'partners', 'members'], finance: ['dashboard', 'orders', 'withdrawals'] };
+  const ROLE_PAGES = { customer_service: ['dashboard', 'service', 'orders', 'chat', 'handoff', 'matches'], auditor: ['dashboard', 'members', 'users', 'partners'], finance: ['dashboard', 'orders', 'withdrawals'] };
   const CLOUD_ONLY_PAGES = ['dashboard', 'service', 'users', 'members', 'matches', 'partners', 'orders', 'knowledge'];
   let page = 'dashboard', dashRange = 'today', cacheUsers = [], cacheOrders = [];
   let serviceTickets = [], serviceCoordinations = [], serviceSelectedTicketId = 0, serviceTicketDetail = null;
@@ -710,7 +719,11 @@
     const priLabel = { P0:'紧急', P1:'尽快处理', P2:'普通' };
     const priCls = { P0:'', P1:'warn', P2:'ok' };
     const queue = (dash.priority_queue && dash.priority_queue.length ? dash.priority_queue : todos.filter(t=>Number(t.count)>0));
-    const ai = dash.ai_ops || { status: (dash.ai_failed_today||0)>0?'异常':'正常', provider:'CloudBase', model:'HY3', failed_today: dash.ai_failed_today||0, note:'暂无运行统计' };
+    const ai = dash.ai_ops || { status: 'unknown', status_text: '状态未知', provider: null, model: null, expected_provider: 'CloudBase', expected_model: 'HY3', failed_today: null, note: '暂无运行统计', data_available: false };
+    const aiStatusText = ai.status_text || ({ normal:'正常', degraded:'异常', unknown:'状态未知' }[ai.status] || ai.status || '状态未知');
+    const aiProviderText = ai.provider || '未确认';
+    const aiModelText = ai.model || '未确认';
+    const aiExpected = '配置目标：' + esc(ai.expected_provider || 'CloudBase') + ' / ' + esc(ai.expected_model || 'HY3');
     const cards = todos.map(t =>
       '<div class="todo-card"><div class="t">' + esc(t.title) + '</div><div class="n">' + Number(t.count||0) + '</div>' +
       '<button class="btn btn-primary btn-sm cta" onclick="go(\'' + esc(t.page) + '\')">' + esc(t.cta || '去处理') + '</button></div>'
@@ -724,11 +737,11 @@
       '<div class="card"><div class="card-hd"><strong>优先处理</strong></div><div class="card-bd">' + queueHtml + '</div></div>' +
       '<div class="card"><div class="card-hd"><strong>系统状态 · AI 服务</strong></div><div class="card-bd">' +
       '<div class="ai-ops-grid">' +
-      '<div class="ai-ops-item"><div class="k">AI服务</div><div class="v">' + esc(ai.status) + '</div></div>' +
-      '<div class="ai-ops-item"><div class="k">服务提供方</div><div class="v">' + esc(ai.provider||'CloudBase') + '</div></div>' +
-      '<div class="ai-ops-item"><div class="k">模型</div><div class="v">' + esc(ai.model||'HY3') + '</div></div>' +
-      '<div class="ai-ops-item"><div class="k">今日失败</div><div class="v">' + Number(ai.failed_today||0) + '</div></div>' +
-      '</div><p style="margin-top:.75rem;font-size:.8125rem;color:#888">' + esc(ai.note||'暂无运行统计') + '</p>' +
+      '<div class="ai-ops-item"><div class="k">AI服务</div><div class="v">' + esc(aiStatusText) + '</div></div>' +
+      '<div class="ai-ops-item"><div class="k">最近实际提供方</div><div class="v">' + esc(aiProviderText) + '</div></div>' +
+      '<div class="ai-ops-item"><div class="k">最近实际模型</div><div class="v">' + esc(aiModelText) + '</div></div>' +
+      '<div class="ai-ops-item"><div class="k">今日失败</div><div class="v">' + (ai.failed_today == null ? '—' : Number(ai.failed_today)) + '</div></div>' +
+      '</div><p style="margin-top:.75rem;font-size:.8125rem;color:#666">' + esc(ai.note || (ai.data_available === false ? '暂无运行统计' : '')) + ' · ' + aiExpected + '</p>' +
       '<details class="tech-details"><summary>技术详情</summary><p style="font-size:.75rem;color:#999;margin-top:.5rem">正式用户 ' + (dash.users||'-') + ' · VIP ' + (dash.vip_users||'-') + ' · 合伙人 ' + (dash.partners||'-') + ' · 已付订单 ' + (dash.paid_orders||'-') + '</p></details>' +
       '</div></div>';
   }
@@ -1053,18 +1066,41 @@
     const paired = detail?.paired_conversation;
     if (!paired || !paired.sides) return '';
     function sideHtml(side, label) {
-      if (!side || !side.session) return '<section class="service-side"><div class="service-empty-pane">' + label + ' 侧会话尚未建立</div></section>';
+      const privacyBadge = label === 'A'
+        ? '<span class="service-privacy-badge private">仅内部处理 · 不向 B 展示</span>'
+        : '<span class="service-privacy-badge private">仅内部处理 · 不向 A 展示</span>';
+      if (!side || !side.session) return '<section class="service-side"><div class="service-empty-pane">' + label + ' 侧会话尚未建立 ' + privacyBadge + '</div></section>';
       const session = side.session;
       return '<section class="service-side" data-side="' + label + '">' +
-        '<div class="service-side-head"><div><strong>' + label + ' · ' + renderUserIdentity(session.user, { link:false }) + '</strong><small>' + esc(session.session_ref || '-') + '</small></div>' +
+        '<div class="service-side-head"><div><strong>' + label + ' · ' + renderUserIdentity(session.user, { link:false }) + '</strong>' + privacyBadge + '<small>' + esc(session.session_ref || '-') + '</small></div>' +
         (side.selected ? '<span class="service-side-badge">当前处理</span>' : '<button class="service-btn" onclick="selectPairedConversation(' + Number(session.id) + ')">切换处理</button>') + '</div>' +
         '<div class="service-side-messages" data-service-scroll="true">' + serviceMessagesHtml(side) + '</div></section>';
     }
     const shared = paired.shared_events || [];
     return '<div class="service-paired-shell">' +
-      '<div class="service-paired-shared"><strong>' + esc(paired.coordination?.coordination_ref || '双方协调') + ' · 公共协调进度</strong>' +
+      '<div class="service-paired-shared"><strong>' + esc(paired.coordination?.coordination_ref || '双方协调') + ' · 双方共享进度 <span class="service-privacy-badge shared">双方共享进度</span></strong>' +
       (shared.length ? serviceMessagesHtml({ timeline: shared }) : '<div class="service-event"><span>暂无公共协调事件</span><span>-</span></div>') + '</div>' +
       '<div class="service-paired-grid">' + sideHtml(paired.sides.a, 'A') + sideHtml(paired.sides.b, 'B') + '</div></div>';
+  }
+
+  function coordinationOperatorHtml(coordination) {
+    if (!coordination) return '<div class="service-event"><span>未关联约会协调任务</span><span>-</span></div>';
+    const view = coordination.operator_view || null;
+    if (!view) {
+      return '<dl class="service-context-grid"><dt>协调编号</dt><dd>' + esc(coordination.coordination_ref) + '</dd><dt>参与者</dt><dd>' + esc((coordination.participant_refs || []).join(' / ')) + '</dd><dt>当前状态</dt><dd>' + esc(coordination.status) + '</dd></dl>';
+    }
+    const a = view.side_a || {};
+    const b = view.side_b || {};
+    return '<div class="service-confirm-card">' +
+      '<div class="row"><span>协调编号</span><strong>' + esc(view.coordination_ref) + '</strong></div>' +
+      '<div class="row"><span>当前方案</span><strong>' + esc(view.proposal_version_text) + '</strong></div>' +
+      '<div class="row"><span>A ' + esc(a.user_ref || '') + '</span><span class="' + (a.confirmed ? 'ok' : 'wait') + '">' + (a.confirmed ? '✓ 已确认' : '○ 等待确认') + '</span></div>' +
+      '<div class="row"><span>B ' + esc(b.user_ref || '') + '</span><span class="' + (b.confirmed ? 'ok' : 'wait') + '">' + (b.confirmed ? '✓ 已确认' : '○ 等待确认') + '</span></div>' +
+      '<div class="row"><span>当前状态</span><strong>' + esc(view.display_status) + '</strong></div>' +
+      '<div class="row"><span>下一步</span><span>' + esc(view.next_action) + '</span></div>' +
+      (view.stale_notice ? '<div class="warn">⚠ ' + esc(view.stale_notice) + '</div>' : '') +
+      (view.both_confirmed ? '<div class="ok" style="margin-top:.35rem">✓ 双方已确认</div>' : '') +
+      '</div><details class="service-tech-details"><summary>技术详情</summary><div>status=' + esc(view.status || coordination.status || '') + ' · version=' + Number(view.coordination_version || coordination.coordination_version || 1) + '</div></details>';
   }
 
   function serviceEventsHtml(items, type) {
@@ -1097,9 +1133,7 @@
       '<dt>接管客服</dt><dd>' + esc(ticket.assigned_admin_ref || '尚未领取') + '</dd></dl></section>' +
       '<section class="service-context-section"><h4>AI摘要</h4><div class="service-summary">' + esc(ticket.summary || session.summary || '暂无摘要') + '</div></section>' +
       '<section class="service-context-section"><h4>用户业务汇总</h4><dl class="service-context-grid"><dt>订单</dt><dd>' + (context.orders || []).length + '</dd><dt>匹配</dt><dd>' + (context.matches || []).length + '</dd><dt>AI会话</dt><dd>' + (context.conversations || []).length + '</dd><dt>人工工单</dt><dd>' + (context.tickets || []).length + '</dd><dt>协调</dt><dd>' + (context.coordinations || []).length + '</dd><dt>通知</dt><dd>' + (context.notification_jobs || []).length + '</dd></dl></section>' +
-      '<section class="service-context-section"><h4>约会协调</h4>' + (coordination
-        ? '<dl class="service-context-grid"><dt>协调编号</dt><dd>' + esc(coordination.coordination_ref) + '</dd><dt>参与者</dt><dd>' + esc((coordination.participant_refs || []).join(' / ')) + '</dd><dt>当前状态</dt><dd>' + esc(coordination.status) + '</dd><dt>业务版本</dt><dd>v' + Number(coordination.coordination_version || 1) + '</dd><dt>缺失信息</dt><dd>' + esc((coordination.missing_dimensions || []).join('、') || '-') + '</dd></dl>'
-        : '<div class="service-event"><span>未关联约会协调任务</span><span>-</span></div>') + '</section>' +
+      '<section class="service-context-section"><h4>约会协调</h4>' + coordinationOperatorHtml(coordination) + '</section>' +
       '<section class="service-context-section"><h4>模型运行</h4>' + serviceEventsHtml(detail.runs, 'run') + '</section>' +
       '<section class="service-context-section"><h4>通知任务</h4>' + serviceEventsHtml(detail.notification_jobs, 'job') + '</section>';
   }

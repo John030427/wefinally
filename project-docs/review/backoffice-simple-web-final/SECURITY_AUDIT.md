@@ -1,22 +1,22 @@
-# Security Audit
+# SECURITY_AUDIT
 
-## Findings fixed in this task
-1. Partner list/detail over-exposure of openid/full phone → minimized
-2. Cloud partner application detail full user dump → sanitized for partner role
-3. Partner login returned full phone → masked
-4. Cross-partner application access → denied (existing + retained)
+## Fixed this round
 
-## Existing controls retained
-- Partner JWT + active status gate
-- Admin role allowlists (Express + Cloud)
-- Support-code identity for CS views
+1. Partner application list full-document leak → allowlist projection
+2. Partner ab_test_fixture exposure → removed from partner path
+3. finance/auditor Express 403 vs UI mismatch → precise allowlists
+4. AI ops fake normal on query failure → unknown
+5. Partner private AI / OpenID / full phone regressions kept blocked
+6. Partner cross-scope still denied
 
-## Residual / PARTIAL
-- Express auditor/finance UI vs API alignment improved in ROLE_PAGES but some Express routes remain super_admin-centric
-- Deep service workbench private/shared labeling not fully redesigned
-- Live MySQL CS workbench selfcheck needs local DB (ECONNREFUSED in this environment)
+## Residual / environment
 
-## Negative expectations covered by selfcheck
-- Partner payload must not include openid / full phone
-- Partner scope strings present
-- Lower admin OpenID UI gated
+- Live MySQL customer-service workbench: **BLOCKED_ENVIRONMENT** (ECONNREFUSED 3306) when local DB unavailable
+- Does not mark overall security suite as PASS when only live DB checks fail; report `PASS_WITH_ENV_BLOCKER`
+
+## Negative tests (unit)
+
+AUDITOR_MEMBER_REVIEW_ALLOWED / AUDITOR_WITHDRAW_DENIED / AUDITOR_AGENT_CONVERSATION_DENIED  
+FINANCE_WITHDRAW_ALLOWED / FINANCE_MEMBER_REVIEW_DENIED / FINANCE_AGENT_CONVERSATION_DENIED  
+CUSTOMER_SERVICE_OPENID_DENIED / SUPER_ADMIN_EXPECTED_ACCESS  
+Partner SECRET_* attack on full JSON response

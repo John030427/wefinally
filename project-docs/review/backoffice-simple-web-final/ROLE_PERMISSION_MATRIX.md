@@ -1,13 +1,30 @@
-# Role Permission Matrix (summary)
+# ROLE_PERMISSION_MATRIX
 
-| Capability | super_admin | customer_service | auditor | finance | partner |
-|---|---|---|---|---|---|
-| 今日待办 | Y | Y | Y | Y | N |
-| 客服工作台 | Y | Y | N | N | N |
-| 用户 OpenID | Y (tech) | N | N | N | N |
-| 会员审核 | Y | limited | Y (UI) | N | own scope |
-| 提现审核 | Y | N | N | Y (UI) | own withdraw |
-| 匹配/协调详情 | Y | via service | N | N | N |
-| AI 私聊原文 | Y (ops) | Y (ops) | N | N | N |
-| 推广用户列表 | Y | N | N | N | own only |
-| 手机号明文 | Y (ops) | limited | N | N | masked only |
+## Express Admin (`server/src/utils/adminRbac.js`)
+
+| Role | Allowed | Denied |
+|---|---|---|
+| super_admin | 全部路由 | — |
+| customer_service | dashboard, service/workbench, orders(R), chat, handoff, matches(R) | withdrawals, member review, OpenID, system |
+| auditor | dashboard, member-applications GET/PUT review, users(R), partners(R) | withdrawals, chat/AI private, finance write |
+| finance | dashboard, orders(R), withdrawals GET/PUT | member review, chat/AI, matches private, OpenID |
+
+OpenID：仅 `super_admin`（`canSeeOpenId`）。
+
+## Cloud Agent backoffice
+
+| Capability | Roles |
+|---|---|
+| Agent conversations / tickets / reply | super_admin, customer_service |
+| Knowledge publish/offline | super_admin, auditor（内容治理）|
+| Date coordinations list | super_admin, customer_service |
+
+## Frontend ROLE_PAGES
+
+```
+customer_service: dashboard, service, orders, chat, handoff, matches
+auditor: dashboard, members, users, partners
+finance: dashboard, orders, withdrawals
+```
+
+必须与 backend allowlist 一致；不得 UI 宣称可进、API 全 403。

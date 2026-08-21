@@ -1,45 +1,25 @@
 {
-  "run_id": "backoffice-simple-web-final-2026-08-21",
-  "base_branch": "feature/ai-interaction-waiting-ux",
-  "base_commit": "c9a4311c56110ffe89b837fc132eed4b5e82ac3c",
   "branch": "feature/backoffice-simple-web-final",
-  "final_commit": "cae43e0e6a57652b9f31c50070bca1d632e83832",
-  "admin_changed": true,
-  "partner_changed": true,
-  "register_changed": true,
-  "admin_navigation": [
-    "首页",
-    "客服与异常",
-    "会员",
-    "匹配与约会",
-    "合伙人",
-    "订单资金",
-    "系统"
-  ],
-  "partner_navigation": [
-    "首页",
-    "会员审核",
-    "我的用户",
-    "推广",
-    "收入",
-    "提现",
-    "账号"
-  ],
-  "partner_phone_policy": "masked_only",
-  "partner_openid_exposed": false,
-  "partner_private_ai_exposed": false,
-  "backend_scope_guard": true,
-  "admin_ai_ops": true,
-  "coordination_visibility": "partial_existing_workbench_plus_status_copy",
-  "dangerous_action_confirm": true,
-  "dependencies_added": false,
-  "external_skill_used": false,
-  "tests": {
-    "backoffice-simple-web-final": "PASS",
-    "e2e:wefinally": "PASS_14_14",
-    "customer-service-workbench_live_db": "PARTIAL"
+  "base": "feature/ai-interaction-waiting-ux",
+  "deploy": false,
+  "web_publish": false,
+  "cloudbase_deploy": false,
+  "wechat_upload": false,
+  "selfcheck": "node server/selfcheck/backoffice-simple-web-final.js",
+  "e2e": "npm --prefix server run e2e:wefinally",
+  "layers": {
+    "STATIC_AND_UNIT": "PASS",
+    "SECURITY_NEGATIVE": "PASS",
+    "E2E": "PASS",
+    "LIVE_MYSQL": "BLOCKED_ENVIRONMENT"
   },
-  "deploy_performed": false,
-  "wechat_upload_performed": false,
-  "generated_at": "2026-08-21T14:40:00.000Z"
+  "tests_overall": "PASS_WITH_ENV_BLOCKER",
+  "review_fix": [
+    "REVIEW-01 FIXED",
+    "REVIEW-02 FIXED",
+    "REVIEW-03 FIXED",
+    "REVIEW-04 FIXED",
+    "REVIEW-05 FIXED",
+    "REVIEW-06 FIXED"
+  ]
 }

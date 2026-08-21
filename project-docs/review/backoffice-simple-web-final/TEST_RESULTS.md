@@ -1,19 +1,33 @@
-# Test Results
+# TEST_RESULTS
 
-| Check | Result |
+## Layered outcome
+
+| Layer | Result |
 |---|---|
-| backoffice-simple-web-final | PASS |
-| partner-admin-ui | PASS |
-| partner-dashboard-policy | PASS |
-| partner-dashboard-cloud-ui | PASS |
-| admin-cloud-consolidation-ui | PASS |
-| admin-user-identity | PASS |
-| agent-backoffice | PASS |
-| backoffice-token | PASS |
-| ai-chat-waiting-ux | PASS |
-| miniprogram-source-syntax | PASS |
-| date-application-patch | PASS |
-| e2e:wefinally | PASS 14/14 |
-| customer-service-workbench (live DB) | PARTIAL (ECONNREFUSED 3306) |
+| STATIC_AND_UNIT | **PASS** |
+| SECURITY_NEGATIVE | **PASS** |
+| E2E (`npm run e2e:wefinally`) | **PASS** (14/14) |
+| LIVE_MYSQL | **BLOCKED_ENVIRONMENT** |
 
-SCREENSHOT=MANUAL_REQUIRED
+## Overall
+
+**tests: PASS_WITH_ENV_BLOCKER**
+
+Do not summarize as vague PARTIAL.
+
+## Key selfcheck
+
+```
+node server/selfcheck/backoffice-simple-web-final.js
+```
+
+Includes partner allowlist attack, RBAC negatives, AI ops unknown semantics, coordination operator view, admin/partner UI contracts.
+
+## Regressions kept
+
+- partner full phone visible = NO
+- partner OpenID visible = NO
+- partner private AI accessible = NO
+- partner cross-scope = BLOCKED
+- dangerous confirmation = PASS
+- e2e:wefinally = PASS

@@ -1,16 +1,23 @@
-# Files Changed
+# FILES_CHANGED (final review fix)
 
-- `server/src/utils/privacyMask.js` (new)
-- `server/src/utils/statusCopy.js` (new)
-- `server/src/utils/apiFormat.js`
-- `server/src/routes/partner.js`
-- `server/src/routes/admin.js` (dashboard todos/ai_ops)
-- `server/src/routes/auth.js` (partner phone_masked)
-- `miniprogram/cloudfunctions/api/lib/privacyMask.js` (new)
+## Cloud / Partner privacy
+
 - `miniprogram/cloudfunctions/api/handlers/backoffice.js`
+- `miniprogram/cloudfunctions/api/lib/privacyMask.js`
+- `miniprogram/cloudfunctions/api/lib/coordinationOperatorView.js`
+- `miniprogram/cloudfunctions/api/agent/backofficeService.js`
+
+## Express Admin
+
+- `server/src/routes/admin.js`
+- `server/src/utils/adminRbac.js`
+- `server/src/utils/aiOpsHealth.js`
+- `server/src/utils/coordinationOperatorView.js`
+- `server/src/utils/privacyMask.js`
+- `server/src/utils/statusCopy.js`
 - `server/public/admin/index.html`
-- `server/public/partner/index.html`
-- `server/public/partner/register.html`
-- `server/tools/patch-admin-simple-ux.js` / `patch-partner-simple-ux.js` (patch helpers)
+
+## Tests / review
+
 - `server/selfcheck/backoffice-simple-web-final.js`
 - `project-docs/review/backoffice-simple-web-final/*`

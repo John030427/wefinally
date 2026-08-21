@@ -108,6 +108,26 @@ function sanitizePartnerApplication(application) {
   }
 }
 
+function partnerApplicationNextAction(status) {
+  if (status === 'pending_review') return '请审核：通过 / 需要补充资料 / 不通过'
+  if (status === 'need_more_info') return '等待用户补充资料'
+  if (status === 'approved') return '已通过，可继续跟进推广用户'
+  if (status === 'rejected') return '已驳回'
+  if (status === 'disabled') return '已停用'
+  return '查看后可按当前状态继续处理'
+}
+
+function projectPartnerApplicationItem(application, user, extras) {
+  const base = sanitizePartnerApplication(application) || {}
+  const out = Object.assign({}, base, {
+    user: sanitizePartnerUser(user),
+    next_action: partnerApplicationNextAction(application && application.status),
+    privacy_notice: '仅内部处理：请勿向他人泄露用户私人资料'
+  })
+  if (extras && extras.partner_name) out.partner_name = String(extras.partner_name)
+  return out
+}
+
 function assertNoSensitivePartnerPayload(payload, label) {
   const text = JSON.stringify(payload || {})
   if (/\bopenid\b/i.test(text)) {
@@ -115,6 +135,21 @@ function assertNoSensitivePartnerPayload(payload, label) {
   }
   if (/"phone"\s*:\s*"[^*"]{8,}"/.test(text)) {
     throw new Error(`${label || 'partner payload'} must not include full phone`)
+  }
+  const banned = [
+    'profile_snapshot_json',
+    'raw_ai',
+    'ab_test_fixture',
+    'ab_test_run_id',
+    'SECRET_PRIVATE_PREF',
+    'SECRET_AI',
+    'SECRET_OPENID',
+    'SECRET_TEST'
+  ]
+  for (const token of banned) {
+    if (text.includes(token)) {
+      throw new Error(`${label || 'partner payload'} leaked ${token}`)
+    }
   }
 }
 
@@ -124,5 +159,7 @@ module.exports = {
   sanitizePartnerUser,
   sanitizePartnerSelf,
   sanitizePartnerApplication,
+  partnerApplicationNextAction,
+  projectPartnerApplicationItem,
   assertNoSensitivePartnerPayload
 }

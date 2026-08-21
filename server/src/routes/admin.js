@@ -19,33 +19,17 @@ const {
   formatChatSession,
   privacyAuthToAgreements,
 } = require('../utils/apiFormat');
+const {
+  currentAdminRole,
+  hasRouteAccess,
+  canSeeOpenId,
+} = require('../utils/adminRbac');
+const { buildAiOps } = require('../utils/aiOpsHealth');
 
 const router = express.Router();
 
 router.use(adminAuth);
 router.use(requireAdminAccess);
-
-const CUSTOMER_SERVICE_RULES = [
-  ['GET', /^\/service\/workbench$/],
-  ['GET', /^\/orders$/],
-  ['GET', /^\/chat\/sessions$/],
-  ['POST', /^\/chat\/reply$/],
-  ['GET', /^\/handoff\/tickets$/],
-  ['PUT', /^\/handoff\/tickets\/\d+$/],
-];
-
-function currentAdminRole(req) {
-  return req.auth?.admin_role || req.auth?.adminRole || ADMIN_ROLES.SUPER_ADMIN;
-}
-
-function hasRouteAccess(req) {
-  const role = currentAdminRole(req);
-  if (role === ADMIN_ROLES.SUPER_ADMIN) return true;
-  if (role === ADMIN_ROLES.CUSTOMER_SERVICE) {
-    return CUSTOMER_SERVICE_RULES.some(([method, pattern]) => req.method === method && pattern.test(req.path));
-  }
-  return false;
-}
 
 function requireAdminAccess(req, res, next) {
   req.adminRole = currentAdminRole(req);
@@ -131,7 +115,13 @@ router.get('/dashboard', async (req, res, next) => {
     let pendingMembers = 0
     let openTickets = 0
     let stuckCoordinations = 0
-    let aiFailed = 0
+    let aiFailed = null
+    let aiDataAvailable = false
+    let aiQueryFailed = false
+    let latestProvider = null
+    let latestModel = null
+    let lastRunAt = null
+    let hasAnyRun = false
     try {
       const [[pm]] = await pool.query(
         `SELECT COUNT(*) AS c FROM member_application WHERE status = 'pending_review'`
@@ -159,13 +149,37 @@ router.get('/dashboard', async (req, res, next) => {
          AND create_time >= DATE_SUB(NOW(), INTERVAL 1 DAY)`
       )
       aiFailed = a.c
-    } catch (e) { /* optional */ }
+      aiDataAvailable = true
+      const [latest] = await pool.query(
+        `SELECT provider, model, create_time FROM agent_run ORDER BY id DESC LIMIT 1`
+      )
+      if (latest && latest[0]) {
+        hasAnyRun = true
+        latestProvider = latest[0].provider || null
+        latestModel = latest[0].model || null
+        lastRunAt = latest[0].create_time || null
+      }
+    } catch (e) {
+      aiQueryFailed = true
+      aiDataAvailable = false
+      aiFailed = null
+    }
+
+    const aiOps = buildAiOps({
+      query_failed: aiQueryFailed,
+      data_available: aiDataAvailable,
+      failed_today: aiFailed,
+      provider: latestProvider,
+      model: latestModel,
+      last_run_at: lastRunAt,
+      has_any_run: hasAnyRun
+    })
 
     const todos = [
       { key: 'members', title: '待审核会员', count: pendingMembers, priority: pendingMembers ? 'P1' : 'P2', cta: '立即审核', page: 'members' },
       { key: 'service', title: '待处理客服', count: openTickets, priority: openTickets ? 'P1' : 'P2', cta: '去处理', page: 'service' },
       { key: 'coordination', title: '待处理约会协调', count: stuckCoordinations, priority: stuckCoordinations ? 'P1' : 'P2', cta: '查看协调', page: 'service' },
-      { key: 'ai', title: '异常 AI 会话', count: aiFailed, priority: aiFailed ? 'P1' : 'P2', cta: '查看异常', page: 'service' },
+      { key: 'ai', title: '异常 AI 会话', count: Number(aiOps.failed_today || 0), priority: aiOps.status === 'degraded' ? 'P1' : 'P2', cta: '查看异常', page: 'service' },
       { key: 'withdrawals', title: '待处理提现', count: pendingW.c, priority: pendingW.c ? 'P0' : 'P2', cta: '去审核', page: 'withdrawals' },
       { key: 'partners', title: '待审合伙人', count: pendingP.c, priority: pendingP.c ? 'P2' : 'P2', cta: '去审核', page: 'partners' }
     ]
@@ -182,17 +196,11 @@ router.get('/dashboard', async (req, res, next) => {
       pending_member_applications: pendingMembers,
       open_service_tickets: openTickets,
       stuck_coordinations: stuckCoordinations,
-      ai_failed_today: aiFailed,
+      ai_failed_today: aiOps.failed_today,
       marry_success_count: stat?.marry_success_count || 0,
       todos,
       todo_total: todoTotal,
-      ai_ops: {
-        status: aiFailed > 0 ? '异常' : '正常',
-        provider: 'CloudBase',
-        model: 'HY3',
-        failed_today: aiFailed,
-        note: aiFailed > 0 ? '今日存在失败运行，请在客服工作台查看' : '暂无运行统计明细'
-      },
+      ai_ops: aiOps,
       priority_queue: todos.filter((t) => Number(t.count) > 0).sort((a, b) => {
         const rank = { P0: 0, P1: 1, P2: 2 }
         return (rank[a.priority] || 9) - (rank[b.priority] || 9)
@@ -233,7 +241,12 @@ router.get('/users', async (req, res, next) => {
        ${where} ORDER BY u.id DESC LIMIT ? OFFSET ?`,
       [...params, pageSize, offset]
     );
-    return success(res, paginate(rows.map(formatUserForAdmin), count[0].total, page, pageSize));
+    return success(res, paginate(
+      rows.map((row) => formatUserForAdmin(row, { includeOpenId: canSeeOpenId(req.adminRole) })),
+      count[0].total,
+      page,
+      pageSize
+    ));
   } catch (err) {
     next(err);
   }
@@ -254,7 +267,7 @@ router.get('/users/:id', async (req, res, next) => {
     );
     const latestAuth = authLogs[0] || null;
     return success(res, {
-      user: formatUserForAdmin(rows[0]),
+      user: formatUserForAdmin(rows[0], { includeOpenId: canSeeOpenId(req.adminRole) }),
       match_settings: settings[0] || null,
       privacy_auth_logs: authLogs,
       agreements: privacyAuthToAgreements(latestAuth),

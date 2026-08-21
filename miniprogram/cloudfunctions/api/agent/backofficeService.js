@@ -10,6 +10,7 @@ const KNOWLEDGE_CATEGORIES = Object.freeze([
   'original_articles'
 ])
 const { isTestUser, projectUserIdentity, supportCodeFor } = require('./userIdentity')
+const { buildCoordinationOperatorView } = require('../lib/coordinationOperatorView')
 
 function adminRole(actor) {
   if (!actor || actor.role !== 'admin') throw new Error('无权访问Agent后台')
@@ -189,8 +190,8 @@ function knowledgeDto(row) {
   }
 }
 
-function coordinationDto(row) {
-  return {
+function coordinationDto(row, operatorView) {
+  const base = {
     id: row.id,
     coordination_ref: ref('D', row.id),
     participant_refs: [ref('U', row.user_a_id), ref('U', row.user_b_id)],
@@ -204,6 +205,8 @@ function coordinationDto(row) {
     create_time: row.create_time,
     update_time: row.update_time
   }
+  if (operatorView) base.operator_view = operatorView
+  return base
 }
 
 function createAgentBackofficeService(deps, options = {}) {
@@ -252,7 +255,7 @@ function createAgentBackofficeService(deps, options = {}) {
     ])
     return {
       read_only: true,
-      coordination: coordinationDto(coordination),
+      coordination: await enrichCoordination(coordination),
       sides: {
         a: sideA,
         b: sideB
@@ -268,8 +271,27 @@ function createAgentBackofficeService(deps, options = {}) {
     return filters.include_test === true || String(filters.include_test || '') === '1'
   }
 
+  async function enrichCoordination(row) {
+    if (!row) return null
+    let confirmations = []
+    try {
+      confirmations = await deps.list('date_coordination_confirmation', {
+        coordination_id: Number(row.id)
+      }, 100)
+    } catch (err) {
+      confirmations = []
+    }
+    const operatorView = buildCoordinationOperatorView(row, {
+      confirmations,
+      a_ref: ref('U', row.user_a_id),
+      b_ref: ref('U', row.user_b_id),
+      coordination_ref: ref('D', row.id)
+    })
+    return coordinationDto(row, operatorView)
+  }
+
   async function listTickets(actor, filters = {}) {
-    requireRole(actor, ['super_admin', 'customer_service', 'auditor'])
+    requireRole(actor, ['super_admin', 'customer_service'])
     const query = filters.status ? { status: filters.status } : {}
     const rows = await deps.list('agent_human_ticket', query, 200)
     const users = await userRowsById(rows)
@@ -280,7 +302,7 @@ function createAgentBackofficeService(deps, options = {}) {
   }
 
   async function ticketDetail(actor, ticketId) {
-    requireRole(actor, ['super_admin', 'customer_service', 'auditor'])
+    requireRole(actor, ['super_admin', 'customer_service'])
     const ticket = await deps.byId('agent_human_ticket', Number(ticketId || 0))
     if (!ticket) throw new Error('人工工单不存在')
     const session = await deps.byId('agent_session', ticket.session_id)
@@ -304,7 +326,7 @@ function createAgentBackofficeService(deps, options = {}) {
         .sort((a, b) => Number(a.id || 0) - Number(b.id || 0))
         .map(messageDto),
       timeline: buildTimeline(messages, coordinationEvents, notificationJobs),
-      coordination: coordination ? coordinationDto(coordination) : null,
+      coordination: coordination ? await enrichCoordination(coordination) : null,
       runs: runs
         .sort((a, b) => Number(b.id || 0) - Number(a.id || 0))
         .map(runDto),
@@ -324,7 +346,7 @@ function createAgentBackofficeService(deps, options = {}) {
   }
 
   async function listConversations(actor, filters = {}) {
-    requireRole(actor, ['super_admin', 'customer_service', 'auditor'])
+    requireRole(actor, ['super_admin', 'customer_service'])
     const coordinationId = refId(filters.coordination_ref, 'D')
     const sessionId = refId(filters.session_ref, 'S')
     const userId = refId(filters.user_ref, 'U')
@@ -360,7 +382,7 @@ function createAgentBackofficeService(deps, options = {}) {
   }
 
   async function conversationDetail(actor, sessionId) {
-    const viewerRole = requireRole(actor, ['super_admin', 'customer_service', 'auditor'])
+    const viewerRole = requireRole(actor, ['super_admin', 'customer_service'])
     const session = await deps.byId('agent_session', Number(sessionId || 0))
     if (!session) throw new Error('Agent会话不存在')
     const user = await deps.byId('user', session.user_id)
@@ -392,7 +414,7 @@ function createAgentBackofficeService(deps, options = {}) {
         .sort((a, b) => Number(a.id || 0) - Number(b.id || 0))
         .map(messageDto),
       timeline: buildTimeline(messages, coordinationEvents, notificationJobs),
-      coordination: coordination ? coordinationDto(coordination) : null,
+      coordination: coordination ? await enrichCoordination(coordination) : null,
       runs: runs
         .sort((a, b) => Number(b.id || 0) - Number(a.id || 0))
         .map(runDto),
@@ -541,10 +563,11 @@ function createAgentBackofficeService(deps, options = {}) {
   }
 
   async function listCoordinations(actor, filters = {}) {
-    requireRole(actor, ['super_admin', 'customer_service', 'auditor'])
+    requireRole(actor, ['super_admin', 'customer_service'])
     const query = filters.status ? { status: filters.status } : {}
     const rows = await deps.list('date_coordination', query, 200)
-    return rows.sort((a, b) => Number(b.id || 0) - Number(a.id || 0)).map(coordinationDto)
+    const sorted = rows.sort((a, b) => Number(b.id || 0) - Number(a.id || 0))
+    return Promise.all(sorted.map((row) => enrichCoordination(row)))
   }
 
   return {

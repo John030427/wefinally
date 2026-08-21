@@ -1,14 +1,18 @@
-# Privacy Field Matrix
+# PRIVACY_FIELD_MATRIX
 
-| Field | super_admin | customer_service | auditor | partner | Model |
-|---|---|---|---|---|---|
-| support_code | Y | Y | Y | Y (if present) | limited |
-| phone | Y (ops) | masked/limited | N | masked only | N |
-| openid | Y (tech) | N | N | N | N |
-| exact_address | Y (ops) | limited | N | N | N |
-| raw_ai_conversation | Y (ops) | Y (ops) | N | N | N |
-| coordination_private_a/b | Y | Y (service) | N | N | N |
-| shared_coordination | Y | Y | N | N | limited |
-| AI profile summary | Y | Y | N | N | staging |
-| raw model prompt | N (not casually) | N | N | N | N |
-| match result | Y | limited | N | N | N |
+## Partner → member application (list + detail)
+
+| Field | Partner | Admin |
+|---|---|---|
+| id / user_id / status / revision | YES | YES |
+| review_note / submitted_at / reviewed_at | YES | YES |
+| profile_summary (city/edu/occupation/birth_year) | YES | YES |
+| profile_snapshot_json | **NO** | YES (admin ops) |
+| raw_ai / AI inference | **NO** | YES |
+| openid / phone full | **NO** | Admin CS limited; OpenID super only |
+| phone_masked | YES | YES |
+| reviewed_by_id / reviewed_by_role | **NO** | YES |
+| ab_test_fixture / ab_test_run_id | **NO** | YES |
+| unknown future fields via Object.assign | **NO** (allowlist only) | N/A |
+
+Projection: `projectPartnerApplicationItem` / `sanitizePartnerApplication`.

@@ -13,6 +13,9 @@ const { createReferralToken, createReferralScene } = require('../lib/partnerRefe
 const { createPartnerAdminService } = require('../lib/partnerAdminService')
 const { createControlledDateScenarioService } = require('../agent/controlledDateScenarioService')
 const { httpMethod, httpPath, queryParameters } = require('../lib/httpEvent')
+const {
+  projectPartnerApplicationItem
+} = require('../lib/privacyMask')
 
 const AGENT_BACKOFFICE_PATHS = Object.freeze({
   tickets: '/api/admin/agent/tickets',
@@ -141,6 +144,11 @@ async function applicationList(actor, status) {
   return Promise.all(rows.map(async (application) => {
     const user = await db.byId('user', application.user_id)
     const partner = await db.byId('partner', application.assigned_partner_id)
+    if (actor.role === 'partner') {
+      return projectPartnerApplicationItem(application, user, {
+        partner_name: partner ? partner.name : ''
+      })
+    }
     const fixture = user ? await db.first('user', {
       ab_test_owner_user_id: user.id,
       is_test_fixture: 1,
@@ -389,15 +397,7 @@ async function handleBackofficeHttp(event = {}) {
       }
       const user = await db.byId('user', application.user_id)
       if (actor.role === 'partner') {
-        const { sanitizePartnerUser, sanitizePartnerApplication } = require('../lib/privacyMask')
-        return ok({
-          application: sanitizePartnerApplication(application),
-          user: sanitizePartnerUser(user),
-          next_action: application.status === 'pending_review'
-            ? '请审核：通过 / 需要补充资料 / 不通过'
-            : '查看后可按当前状态继续处理',
-          privacy_notice: '仅内部处理：请勿向他人泄露用户私人资料'
-        })
+        return ok(projectPartnerApplicationItem(application, user, {}))
       }
       return ok({ application, user })
     }
