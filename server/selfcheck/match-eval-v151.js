@@ -84,8 +84,9 @@ function main() {
 
   // Gold-free predictions
   const scoreFn = (fv) => trivialLabelBlindDirectionalScorer(fv)
-  const { status, scored } = trueDirectionalScores(imported.completePairs, scoreFn)
-  check('LABEL_BLIND_SCORE_OK', status === 'OK' && scored.length === imported.completePairs.length)
+  const { status, predictions, scored } = trueDirectionalScores(imported.completePairs, scoreFn)
+  const predList = predictions || scored || []
+  check('LABEL_BLIND_SCORE_OK', status === 'OK' && predList.length === imported.completePairs.length)
 
   let goldLeak = false
   try {
@@ -108,13 +109,13 @@ function main() {
     a_decision: !p.a_decision,
     b_decision: !p.b_decision
   }))
-  const predA = predictNativePairs(pairsA, scoreFn).scored.map((r) => ({
+  const predA = (predictNativePairs(pairsA, scoreFn).predictions || []).map((r) => ({
     canonical_key: r.canonical_key,
     p_ab: r.p_ab,
     p_ba: r.p_ba,
     score: r.score
   }))
-  const predB = predictNativePairs(pairsB, scoreFn).scored.map((r) => ({
+  const predB = (predictNativePairs(pairsB, scoreFn).predictions || []).map((r) => ({
     canonical_key: r.canonical_key,
     p_ab: r.p_ab,
     p_ba: r.p_ba,

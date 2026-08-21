@@ -56,6 +56,7 @@
     "selfcheck:match-eval-review-fix-v14": "node selfcheck/match-eval-review-fix-v14.js",
     "selfcheck:match-eval-v15": "node selfcheck/match-eval-v15.js",
     "selfcheck:match-eval-v151": "node selfcheck/match-eval-v151.js",
+    "selfcheck:match-eval-v152": "node selfcheck/match-eval-v152.js",
     "data:wefinally:match-v15": "node data/wefinally/eval/trueReciprocalV15.js",
     "data:wefinally:match-v14": "node data/wefinally/eval/matchReciprocalV14.js",
     "data:wefinally:overnight-evolution": "node data/wefinally/eval/overnightEvolution.js",

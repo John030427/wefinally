@@ -1,10 +1,8 @@
 'use strict'
 
 /**
- * True reciprocal evaluation (v1.5.1).
- * No gold-derived placeholder scores. Model readiness is an explicit gate.
- *
- *   node server/data/wefinally/eval/trueReciprocalV15.js
+ * True reciprocal evaluation (v1.5.2).
+ * Predictions NEVER carry gold. Evaluator joins by canonical_key only.
  */
 
 const fs = require('fs')
@@ -12,16 +10,16 @@ const path = require('path')
 const { PATHS, ensureDir, REPO_ROOT } = require('../paths')
 const {
   auditNativeIdCandidate,
-  importNativeSpeedDating
+  importNativeSpeedDating,
+  NATIVE_PATH
 } = require('../importers/nativeIdMigration')
 const {
   buildNativeDirectionalFeatureView,
-  trivialLabelBlindDirectionalScorer,
   assertNoGoldInPrediction
 } = require('./nativeFeatureView')
 const { averagePrecision, aurocTieAware } = require('./binaryRankingMetrics')
 
-const REVIEW = path.join(REPO_ROOT, 'project-docs', 'review', 'match-v1.5.1')
+const REVIEW = path.join(REPO_ROOT, 'project-docs', 'review', 'match-v1.5.2')
 
 function write(name, body) {
   ensureDir(REVIEW)
@@ -29,7 +27,6 @@ function write(name, body) {
 }
 
 function assertNoSwappedVectorReciprocal(fnSource) {
-  // Detect executable swapped-vector patterns, not prose that forbids them.
   const bad =
     /\bxRev\b|\[\s*xRev\[|predictLogistic\(\s*lrDir\s*,\s*xRev/.test(fnSource) ||
     /;\s*\[xRev\[0\]/.test(fnSource)
@@ -38,13 +35,19 @@ function assertNoSwappedVectorReciprocal(fnSource) {
 }
 
 /**
- * scoreFn must accept a FeatureView (label-blind), never gold decisions.
+ * Returns { status, predictions, evaluatorGold }.
+ * predictions contain ZERO gold keys (including nested).
  */
 function trueDirectionalScores(completePairs, scoreFn) {
   if (typeof scoreFn !== 'function') {
-    return { status: 'TRUE_RECIPROCAL_MODEL_NOT_READY', scored: [] }
+    return {
+      status: 'TRUE_RECIPROCAL_MODEL_NOT_READY',
+      predictions: [],
+      evaluatorGold: []
+    }
   }
-  const out = []
+  const predictions = []
+  const evaluatorGold = []
   for (const p of completePairs) {
     if (!p.row_ab || !p.row_ba || !p.row_ab.raw || !p.row_ba.raw) {
       throw new Error('TRUE_REVERSE_REQUIRES_NATIVE_SUBJECT_ROW')
@@ -60,42 +63,69 @@ function trueDirectionalScores(completePairs, scoreFn) {
       score: Math.min(p_ab, p_ba)
     }
     assertNoGoldInPrediction(pred)
-    // gold attached only for evaluator join — separate object
-    out.push({
-      ...pred,
-      _eval_only: {
-        mutual: !!p.mutual_match,
-        a_decision: p.a_decision,
-        b_decision: p.b_decision
-      }
+    predictions.push(pred)
+    evaluatorGold.push({
+      canonical_key: p.canonical_key,
+      mutual_match: !!p.mutual_match,
+      a_decision: !!p.a_decision,
+      b_decision: !!p.b_decision
     })
   }
-  return { status: 'OK', scored: out }
+  assertNoGoldInPrediction({ predictions })
+  return { status: 'OK', predictions, evaluatorGold }
 }
 
-function recipAggregators(scored) {
+function recipAggregators(predictions) {
   const harmonic = (a, b) => {
     if (a + b === 0) return 0
     return (2 * a * b) / (a + b)
   }
   return {
-    RECIP_MIN: scored.map((r) => ({ ...r, score: Math.min(r.p_ab, r.p_ba) })),
-    RECIP_PRODUCT: scored.map((r) => ({ ...r, score: r.p_ab * r.p_ba })),
-    RECIP_GEOMEAN: scored.map((r) => ({
-      ...r,
+    RECIP_MIN: predictions.map((r) => ({
+      canonical_key: r.canonical_key,
+      p_ab: r.p_ab,
+      p_ba: r.p_ba,
+      score: Math.min(r.p_ab, r.p_ba)
+    })),
+    RECIP_PRODUCT: predictions.map((r) => ({
+      canonical_key: r.canonical_key,
+      p_ab: r.p_ab,
+      p_ba: r.p_ba,
+      score: r.p_ab * r.p_ba
+    })),
+    RECIP_GEOMEAN: predictions.map((r) => ({
+      canonical_key: r.canonical_key,
+      p_ab: r.p_ab,
+      p_ba: r.p_ba,
       score: Math.sqrt(Math.max(0, r.p_ab * r.p_ba))
     })),
-    RECIP_HARMONIC: scored.map((r) => ({ ...r, score: harmonic(r.p_ab, r.p_ba) })),
-    RECIP_ASYMMETRY_PENALTY: scored.map((r) => ({
-      ...r,
+    RECIP_HARMONIC: predictions.map((r) => ({
+      canonical_key: r.canonical_key,
+      p_ab: r.p_ab,
+      p_ba: r.p_ba,
+      score: harmonic(r.p_ab, r.p_ba)
+    })),
+    RECIP_ASYMMETRY_PENALTY: predictions.map((r) => ({
+      canonical_key: r.canonical_key,
+      p_ab: r.p_ab,
+      p_ba: r.p_ba,
       score: Math.min(r.p_ab, r.p_ba) * (1 - Math.abs(r.p_ab - r.p_ba))
     }))
   }
 }
 
-function evalBinary(scored) {
-  const labels = scored.map((r) => (r._eval_only && r._eval_only.mutual ? 1 : 0))
-  const scores = scored.map((r) => r.score)
+/** Join predictions to gold by canonical_key only — after predictions finalized. */
+function evalBinary(predictions, evaluatorGold) {
+  assertNoGoldInPrediction({ predictions })
+  const goldBy = new Map((evaluatorGold || []).map((g) => [g.canonical_key, g]))
+  const labels = []
+  const scores = []
+  for (const p of predictions) {
+    const g = goldBy.get(p.canonical_key)
+    if (!g) throw new Error(`evaluator gold missing for ${p.canonical_key}`)
+    labels.push(g.mutual_match ? 1 : 0)
+    scores.push(p.score)
+  }
   return {
     AVERAGE_PRECISION: averagePrecision(scores, labels),
     AUROC: aurocTieAware(scores, labels),
@@ -117,9 +147,7 @@ function main() {
   })
 
   const status = {
-    native_file_present: fs.existsSync(
-      require('../importers/nativeIdMigration').NATIVE_PATH()
-    ),
+    native_file_present: fs.existsSync(NATIVE_PATH()),
     NATIVE_SCHEMA_AVAILABLE: !!imported.NATIVE_SCHEMA_AVAILABLE,
     NATIVE_ROWS_VALID: !!imported.NATIVE_ROWS_VALID,
     REVERSE_PAIRING_VALID: !!imported.REVERSE_PAIRING_VALID,
@@ -131,35 +159,20 @@ function main() {
     source_audit: sourceAudit
   }
 
-  let metrics = {
+  const metrics = {
     status: 'TRUE_RECIPROCAL_MODEL_NOT_READY',
     note: 'No product directional model wired; refusing gold-derived placeholders'
   }
-  let directional = {
+  const directional = {
     status: 'TRUE_RECIPROCAL_MODEL_NOT_READY',
-    NO_GOLD_DERIVED_NATIVE_PREDICTION: true,
-    note: 'Await native data + label-blind model. Swapped-vector forbidden.'
-  }
-
-  // External native file: never invent quality metrics without a real scoreFn
-  if (imported.ok && imported.completePairs && imported.completePairs.length) {
-    directional = {
-      status: 'TRUE_RECIPROCAL_MODEL_NOT_READY',
-      n_pairs: imported.completePairs.length,
-      TRUE_REVERSE_REQUIRES_NATIVE_SUBJECT_ROW: true,
-      NO_GOLD_DERIVED_NATIVE_PREDICTION: true
-    }
-    metrics = {
-      status: 'TRUE_RECIPROCAL_MODEL_NOT_READY',
-      TRUE_RECIPROCAL_AVAILABLE: false,
-      note: 'Pairs reconstructed but model not ready — no placeholder AP/AUROC'
-    }
+    NO_GOLD_IN_PREDICTION_ARTIFACT: true,
+    note: 'Await native data + label-blind model. Predictions never embed gold.'
   }
 
   write(
     'NATIVE_IDENTITY_AUDIT.md',
     [
-      '# Native Identity Audit v1.5.1',
+      '# Native Identity Audit v1.5.2',
       '',
       '```json',
       JSON.stringify(
@@ -167,9 +180,7 @@ function main() {
           ...status,
           import_status: imported.status,
           directed_rows: imported.directed_rows || 0,
-          true_canonical_pairs: imported.true_canonical_pairs || 0,
-          exact_duplicates: imported.exact_duplicates,
-          conflicting_duplicates: imported.conflicting_duplicates
+          true_canonical_pairs: imported.true_canonical_pairs || 0
         },
         null,
         2
@@ -178,43 +189,12 @@ function main() {
       ''
     ].join('\n')
   )
-
-  write(
-    'TRUE_PAIR_RECONSTRUCTION.md',
-    [
-      '# True Pair Reconstruction v1.5.1',
-      '',
-      status.waiting
-        ? 'WAITING_NATIVE_ID_DATA — TRUE_CANONICAL_PAIR N/A for product claims.'
-        : JSON.stringify(
-            {
-              directed: imported.directed_rows,
-              true_canonical_pairs: imported.true_canonical_pairs,
-              reverse_pair_rate: imported.reverse_pair_rate
-            },
-            null,
-            2
-          ),
-      ''
-    ].join('\n')
-  )
-
-  write(
-    'DIRECTIONAL_TRUE_REVERSE.md',
-    ['# Directional True Reverse', '', '```json', JSON.stringify(directional, null, 2), '```', ''].join('\n')
-  )
-  write(
-    'RECIPROCAL_TRUE_REVERSE.md',
-    ['# Reciprocal True Reverse', '', '```json', JSON.stringify(metrics, null, 2), '```', ''].join('\n')
-  )
   write('METRICS.json', {
     validation_type: 'PIPELINE_INTEGRITY_ONLY',
-    fresh_sealed: 'NO_FRESH_SEALED_AVAILABLE',
     ...status,
     metrics,
     directional
   })
-
   console.log(JSON.stringify({ ...status, import_status: imported.status }, null, 2))
   return { status, imported, metrics, directional }
 }
@@ -225,7 +205,7 @@ module.exports = {
   trueDirectionalScores,
   recipAggregators,
   predictNativePairs,
-  assertNoSwappedVectorReciprocal,
   evalBinary,
+  assertNoSwappedVectorReciprocal,
   main
 }

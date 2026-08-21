@@ -101,6 +101,26 @@ function decisionPayloadEqual(d1, d2) {
   )
 }
 
+/** Canonical hash of parsed row values (sorted keys, trimmed strings). */
+function normalizeRowHash(raw) {
+  const keys = Object.keys(raw || {}).sort()
+  const norm = {}
+  for (const k of keys) {
+    const v = raw[k]
+    norm[k] = v == null ? '' : String(v).trim()
+  }
+  return crypto.createHash('sha256').update(JSON.stringify(norm)).digest('hex')
+}
+
+function classifyDuplicateGroup(list) {
+  const hashes = list.map((x) => normalizeRowHash(x.raw))
+  const allExact = hashes.every((h) => h === hashes[0])
+  if (allExact) return 'EXACT_DUPLICATE'
+  const outcomesSame = list.every((x) => decisionPayloadEqual(x, list[0]))
+  if (outcomesSame) return 'FEATURE_CONFLICT_DUPLICATE'
+  return 'OUTCOME_CONFLICT_DUPLICATE'
+}
+
 function auditNativeIdCandidate(csvPath) {
   const resolved = csvPath || NATIVE_PATH()
   const openml = path.join(PATHS.raw, 'speed-dating', 'speed-dating.csv')
@@ -190,6 +210,7 @@ function importNativeSpeedDating(csvPath, opts = {}) {
 
   const quarantine = []
   const directedRaw = []
+  let sourceMatchAvailable = schema.has_match
   for (let i = 0; i < raw.length; i++) {
     const r = raw[i]
     const iid = Number(col(r, ['iid']))
@@ -207,9 +228,25 @@ function importNativeSpeedDating(csvPath, opts = {}) {
       continue
     }
     const mutual = dec === 1 && decO === 1
-    if (matchRaw != null && matchRaw !== '' && Number(matchRaw) !== (mutual ? 1 : 0)) {
-      quarantine.push({ reason: 'match_dec_inconsistent', i, iid, pid, wave })
-      // still keep for reverse validation if decisions are usable
+    let source_match = null
+    let source_match_consistent = true
+    if (matchRaw != null && matchRaw !== '') {
+      source_match = Number(matchRaw) === 1
+      source_match_consistent = source_match === mutual
+      if (!source_match_consistent) {
+        quarantine.push({
+          reason: 'match_dec_inconsistent',
+          i,
+          iid,
+          pid,
+          wave,
+          source_match,
+          derived_mutual: mutual
+        })
+        continue // INVALID for Gold benchmark
+      }
+    } else {
+      sourceMatchAvailable = false
     }
     directedRaw.push({
       wave: String(wave),
@@ -218,10 +255,14 @@ function importNativeSpeedDating(csvPath, opts = {}) {
       a_decision: dec === 1,
       b_decision: decO === 1,
       mutual_match: mutual,
+      source_match,
+      source_match_consistent,
+      source_match_available: matchRaw != null && matchRaw !== '',
       directed_key: `${wave}|${iid}|${pid}`,
       reverse_key: `${wave}|${pid}|${iid}`,
       row_index: i,
-      raw: r
+      raw: r,
+      row_hash: normalizeRowHash(r)
     })
   }
 
@@ -232,30 +273,26 @@ function importNativeSpeedDating(csvPath, opts = {}) {
     groups.get(d.directed_key).push(d)
   }
   let exactDuplicates = 0
-  let conflictingDuplicates = 0
+  let featureConflictDuplicates = 0
+  let outcomeConflictDuplicates = 0
   const directed = []
   for (const [key, list] of groups) {
     if (list.length === 1) {
       directed.push(list[0])
       continue
     }
-    const allExact = list.every((x) => decisionPayloadEqual(x, list[0]))
-    if (allExact) {
+    const kind = classifyDuplicateGroup(list)
+    if (kind === 'EXACT_DUPLICATE') {
       exactDuplicates += list.length - 1
       directed.push(list[0])
-      quarantine.push({
-        reason: 'EXACT_DUPLICATE',
-        directed_key: key,
-        dropped: list.length - 1
-      })
+      quarantine.push({ reason: 'EXACT_DUPLICATE', directed_key: key, dropped: list.length - 1 })
+    } else if (kind === 'FEATURE_CONFLICT_DUPLICATE') {
+      featureConflictDuplicates += list.length
+      quarantine.push({ reason: 'FEATURE_CONFLICT_DUPLICATE', directed_key: key, n: list.length })
+      // Do NOT keep first — exclude all
     } else {
-      conflictingDuplicates += list.length
-      quarantine.push({
-        reason: 'CONFLICTING_DUPLICATE',
-        directed_key: key,
-        n: list.length
-      })
-      // exclude all conflicting copies from true reciprocal benchmark
+      outcomeConflictDuplicates += list.length
+      quarantine.push({ reason: 'OUTCOME_CONFLICT_DUPLICATE', directed_key: key, n: list.length })
     }
   }
 
@@ -279,16 +316,25 @@ function importNativeSpeedDating(csvPath, opts = {}) {
     const rev = byKey.get(d.reverse_key)
     if (rev) {
       withReverse++
-      const okDec =
-        d.a_decision === rev.b_decision && d.b_decision === rev.a_decision
-      const matchOk = d.mutual_match === rev.mutual_match && d.mutual_match === (d.a_decision && d.b_decision)
-      if (!okDec || !matchOk) {
+      const okDec = d.a_decision === rev.b_decision && d.b_decision === rev.a_decision
+      const derivedMatchOk =
+        d.mutual_match === rev.mutual_match && d.mutual_match === (d.a_decision && d.b_decision)
+      let sourceMatchOk = true
+      if (d.source_match_available || rev.source_match_available) {
+        sourceMatchOk =
+          d.source_match_consistent &&
+          rev.source_match_consistent &&
+          d.source_match === rev.source_match &&
+          d.source_match === d.mutual_match
+      }
+      if (!okDec || !derivedMatchOk || !sourceMatchOk) {
         decisionInconsistent++
         quarantine.push({
           reason: 'reverse_decision_inconsistent',
           directed_key: d.directed_key,
           okDec,
-          matchOk
+          derivedMatchOk,
+          sourceMatchOk
         })
       } else {
         const lo = Math.min(Number(d.iid), Number(d.pid))
@@ -370,7 +416,10 @@ function importNativeSpeedDating(csvPath, opts = {}) {
     valid_directed_rows: directed.length,
     duplicate_keys: [...groups.entries()].filter(([, l]) => l.length > 1).length,
     exact_duplicates: exactDuplicates,
-    conflicting_duplicates: conflictingDuplicates,
+    feature_conflict_duplicates: featureConflictDuplicates,
+    outcome_conflict_duplicates: outcomeConflictDuplicates,
+    conflicting_duplicates: featureConflictDuplicates + outcomeConflictDuplicates,
+    source_match_available: sourceMatchAvailable,
     directed_rows: directed.length,
     unique_participants: byIid.size,
     rows_with_reverse: withReverse,
@@ -395,6 +444,8 @@ module.exports = {
   importNativeSpeedDating,
   parseCsvText,
   col,
+  normalizeRowHash,
+  classifyDuplicateGroup,
   GOLD_KEYS,
   NATIVE_PATH,
   REQUIRED,
