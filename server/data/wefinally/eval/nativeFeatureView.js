@@ -221,8 +221,9 @@ function buildNativeDirectionalFeatureView(directedRow) {
   })
 }
 
-function trivialLabelBlindDirectionalScorer(featureView) {
-  const f = featureView.features || {}
+function trivialLabelBlindDirectionalScorer(modelInput) {
+  // Accepts ONLY model input: { features } — never full FeatureView with metadata
+  const f = (modelInput && modelInput.features) || {}
   const age = num(f.age) ?? 30
   const ageO = num(f.age_o) ?? age
   const prefA = num(f.pref_attractive) ?? num(f.attractive_important) ?? 50
@@ -238,6 +239,114 @@ function trivialLabelBlindDirectionalScorer(featureView) {
     (selfA / 10) * 0.1 -
     Math.min(0.2, dAge * 0.01)
   return Math.max(0.01, Math.min(0.99, s))
+}
+
+const MODEL_INPUT_FORBIDDEN = new Set([
+  ...FORBIDDEN_PRED_KEYS,
+  ...IDENTITY_METADATA,
+  'metadata',
+  'iid',
+  'pid',
+  'wave',
+  'directed_key',
+  'reverse_key',
+  'row_index',
+  'case_id',
+  'raw',
+  'excluded_fields',
+  'fairness_only_present',
+  'gold_present'
+])
+
+/**
+ * Strict model input: ONLY { features }. No metadata / identity / gold.
+ */
+function buildNativeModelInput(featureView) {
+  const src = featureView && featureView.features ? featureView.features : {}
+  const features = {}
+  for (const [k, v] of Object.entries(src)) {
+    const lk = String(k).toLowerCase()
+    if (MODEL_INPUT_FORBIDDEN.has(k) || MODEL_INPUT_FORBIDDEN.has(lk) || IDENTITY_METADATA.has(lk)) {
+      continue
+    }
+    features[k] = typeof v === 'object' && v !== null ? JSON.parse(JSON.stringify(v)) : v
+  }
+  const modelInput = { features }
+  assertModelInputClean(modelInput)
+  return new Proxy(modelInput, {
+    get(t, prop) {
+      if (typeof prop === 'symbol') return t[prop]
+      const key = String(prop)
+      if (key === 'features') {
+        return new Proxy(t.features, {
+          get(ft, fp) {
+            if (typeof fp === 'symbol') return ft[fp]
+            const fk = String(fp)
+            if (MODEL_INPUT_FORBIDDEN.has(fk) || IDENTITY_METADATA.has(fk)) {
+              throw new Error(`MODEL_INPUT_IDENTITY_FORBIDDEN: features.${fk}`)
+            }
+            return ft[fp]
+          },
+          has(ft, fp) {
+            const fk = String(fp)
+            if (MODEL_INPUT_FORBIDDEN.has(fk) || IDENTITY_METADATA.has(fk)) return false
+            return fp in ft
+          }
+        })
+      }
+      if (MODEL_INPUT_FORBIDDEN.has(key) || key === 'metadata') {
+        throw new Error(`MODEL_INPUT_IDENTITY_FORBIDDEN: ${key}`)
+      }
+      return undefined
+    },
+    has(t, prop) {
+      return String(prop) === 'features'
+    },
+    ownKeys() {
+      return ['features']
+    },
+    getOwnPropertyDescriptor(t, prop) {
+      if (prop === 'features') {
+        return { configurable: true, enumerable: true, writable: false, value: t.features }
+      }
+      return undefined
+    }
+  })
+}
+
+function collectModelInputForbidden(obj, path = '', found = []) {
+  if (obj == null || typeof obj !== 'object') return found
+  if (Array.isArray(obj)) {
+    obj.forEach((v, i) => collectModelInputForbidden(v, `${path}[${i}]`, found))
+    return found
+  }
+  for (const [k, v] of Object.entries(obj)) {
+    const lk = k.toLowerCase()
+    if (k !== 'features' && (MODEL_INPUT_FORBIDDEN.has(k) || MODEL_INPUT_FORBIDDEN.has(lk))) {
+      found.push(path ? `${path}.${k}` : k)
+    }
+    if (k === 'features' && v && typeof v === 'object') {
+      for (const fk of Object.keys(v)) {
+        if (MODEL_INPUT_FORBIDDEN.has(fk) || IDENTITY_METADATA.has(fk.toLowerCase())) {
+          found.push(`features.${fk}`)
+        }
+      }
+    } else if (k !== 'features') {
+      collectModelInputForbidden(v, path ? `${path}.${k}` : k, found)
+    }
+  }
+  return found
+}
+
+function assertModelInputClean(modelInput) {
+  const hits = collectModelInputForbidden(modelInput)
+  if (hits.length) {
+    throw new Error(`MODEL_INPUT_CONTAINS_IDENTITY: ${hits.join(',')}`)
+  }
+  if (!modelInput || typeof modelInput.features !== 'object') {
+    throw new Error('MODEL_INPUT_REQUIRES_FEATURES')
+  }
+  return true
 }
 
 function collectForbiddenKeys(obj, path = '', found = []) {
@@ -266,10 +375,14 @@ function assertNoGoldInPrediction(pred) {
 
 module.exports = {
   buildNativeDirectionalFeatureView,
+  buildNativeModelInput,
   trivialLabelBlindDirectionalScorer,
   assertNoGoldInPrediction,
+  assertModelInputClean,
   collectForbiddenKeys,
+  collectModelInputForbidden,
   FORBIDDEN_PRED_KEYS,
+  MODEL_INPUT_FORBIDDEN,
   GOLD_OR_POST,
   PRE_MATCH_FEATURE_ALLOWED,
   PRE_MATCH_ALLOWED: PRE_MATCH_FEATURE_ALLOWED,

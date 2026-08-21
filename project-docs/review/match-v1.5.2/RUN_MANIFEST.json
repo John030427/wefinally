@@ -18,5 +18,8 @@
     "match_eval_v152": "PASS",
     "match_eval_v151": "PASS",
     "e2e": "PASS"
-  }
+  },
+  "final_review_fix": true,
+  "predictor_receives_identity_metadata": false,
+  "prediction_api_contains_evaluator_gold": false
 }

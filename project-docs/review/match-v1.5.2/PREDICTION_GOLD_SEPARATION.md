@@ -1,11 +1,17 @@
-# Prediction / Gold Separation v1.5.2
+# Prediction / Gold Separation v1.5.2 (+ final fix)
 
-`trueDirectionalScores` returns:
+## Predictor
 
-```json
-{ "predictions": [{ "canonical_key", "p_ab", "p_ba", "score" }], "evaluatorGold": [...] }
-```
+`predictTrueDirectionalPairs(predictionPairInputs, scoreFn)` → `{ status, predictions }` **only**.
 
-`evalBinary(predictions, evaluatorGold)` joins by `canonical_key` only after predictions are finalized.
+Never constructs `evaluatorGold`.
 
-Recursive `assertNoGoldInPrediction` throws `NO_GOLD_IN_PREDICTION_ARTIFACT` on any nested forbidden key.
+## Evaluator
+
+`buildEvaluatorGold(completePairs)` — separate function.
+
+`evalBinary(predictions, evaluatorGold)` joins by `canonical_key`.
+
+## Strip before predict
+
+`buildPredictionPairInput` removes decisions/match from rows before scoring.

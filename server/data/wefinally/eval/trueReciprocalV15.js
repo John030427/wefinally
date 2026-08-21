@@ -1,8 +1,9 @@
 'use strict'
 
 /**
- * True reciprocal evaluation (v1.5.2).
- * Predictions NEVER carry gold. Evaluator joins by canonical_key only.
+ * True reciprocal evaluation (v1.5.2 final review fix).
+ * Predictor receives model input ONLY (no metadata / gold).
+ * Prediction API returns predictions ONLY (no evaluatorGold).
  */
 
 const fs = require('fs')
@@ -15,11 +16,26 @@ const {
 } = require('../importers/nativeIdMigration')
 const {
   buildNativeDirectionalFeatureView,
+  buildNativeModelInput,
   assertNoGoldInPrediction
 } = require('./nativeFeatureView')
 const { averagePrecision, aurocTieAware } = require('./binaryRankingMetrics')
 
 const REVIEW = path.join(REPO_ROOT, 'project-docs', 'review', 'match-v1.5.2')
+
+const GOLD_STRIP_KEYS = new Set([
+  'dec',
+  'dec_o',
+  'decision',
+  'decision_o',
+  'match',
+  'mutual_match',
+  'a_decision',
+  'b_decision',
+  'source_match',
+  'source_match_consistent',
+  'source_match_available'
+])
 
 function write(name, body) {
   ensureDir(REVIEW)
@@ -34,28 +50,68 @@ function assertNoSwappedVectorReciprocal(fnSource) {
   return true
 }
 
+function stripGoldFromRaw(raw) {
+  const out = {}
+  for (const [k, v] of Object.entries(raw || {})) {
+    if (GOLD_STRIP_KEYS.has(k) || GOLD_STRIP_KEYS.has(String(k).toLowerCase())) continue
+    out[k] = v
+  }
+  return out
+}
+
 /**
- * Returns { status, predictions, evaluatorGold }.
- * predictions contain ZERO gold keys (including nested).
+ * Strip gold from a complete pair for predictor path only.
  */
-function trueDirectionalScores(completePairs, scoreFn) {
-  if (typeof scoreFn !== 'function') {
+function buildPredictionPairInput(completePair) {
+  if (!completePair || !completePair.row_ab || !completePair.row_ba) {
+    throw new Error('TRUE_REVERSE_REQUIRES_NATIVE_SUBJECT_ROW')
+  }
+  const safeSide = (row) => {
+    if (!row.raw) throw new Error('TRUE_REVERSE_REQUIRES_NATIVE_SUBJECT_ROW')
     return {
-      status: 'TRUE_RECIPROCAL_MODEL_NOT_READY',
-      predictions: [],
-      evaluatorGold: []
+      wave: row.wave,
+      iid: row.iid,
+      pid: row.pid,
+      directed_key: row.directed_key,
+      reverse_key: row.reverse_key,
+      raw: stripGoldFromRaw(row.raw)
+      // intentionally NO a_decision / b_decision / mutual_match
     }
   }
+  const input = {
+    canonical_key: completePair.canonical_key,
+    row_ab_safe: safeSide(completePair.row_ab),
+    row_ba_safe: safeSide(completePair.row_ba)
+  }
+  assertNoGoldInPrediction(input)
+  return input
+}
+
+function buildEvaluatorGold(completePairs) {
+  return (completePairs || []).map((p) => ({
+    canonical_key: p.canonical_key,
+    mutual_match: !!p.mutual_match,
+    a_decision: !!p.a_decision,
+    b_decision: !!p.b_decision
+  }))
+}
+
+/**
+ * Predictor API — returns predictions ONLY. Never evaluatorGold.
+ * scoreFn receives buildNativeModelInput(...) — no metadata.
+ */
+function predictTrueDirectionalPairs(predictionPairInputs, scoreFn) {
+  if (typeof scoreFn !== 'function') {
+    return { status: 'TRUE_RECIPROCAL_MODEL_NOT_READY', predictions: [] }
+  }
   const predictions = []
-  const evaluatorGold = []
-  for (const p of completePairs) {
-    if (!p.row_ab || !p.row_ba || !p.row_ab.raw || !p.row_ba.raw) {
-      throw new Error('TRUE_REVERSE_REQUIRES_NATIVE_SUBJECT_ROW')
-    }
-    const fvAb = buildNativeDirectionalFeatureView(p.row_ab)
-    const fvBa = buildNativeDirectionalFeatureView(p.row_ba)
-    const p_ab = scoreFn(fvAb)
-    const p_ba = scoreFn(fvBa)
+  for (const p of predictionPairInputs) {
+    const fvAb = buildNativeDirectionalFeatureView(p.row_ab_safe)
+    const fvBa = buildNativeDirectionalFeatureView(p.row_ba_safe)
+    const inAb = buildNativeModelInput(fvAb)
+    const inBa = buildNativeModelInput(fvBa)
+    const p_ab = scoreFn(inAb)
+    const p_ba = scoreFn(inBa)
     const pred = {
       canonical_key: p.canonical_key,
       p_ab,
@@ -64,15 +120,16 @@ function trueDirectionalScores(completePairs, scoreFn) {
     }
     assertNoGoldInPrediction(pred)
     predictions.push(pred)
-    evaluatorGold.push({
-      canonical_key: p.canonical_key,
-      mutual_match: !!p.mutual_match,
-      a_decision: !!p.a_decision,
-      b_decision: !!p.b_decision
-    })
   }
-  assertNoGoldInPrediction({ predictions })
-  return { status: 'OK', predictions, evaluatorGold }
+  const apiReturn = { status: 'OK', predictions }
+  assertNoGoldInPrediction(apiReturn)
+  return apiReturn
+}
+
+/** @deprecated orchestration helper — prefer predictTrueDirectionalPairs + buildEvaluatorGold */
+function trueDirectionalScores(completePairs, scoreFn) {
+  const inputs = (completePairs || []).map(buildPredictionPairInput)
+  return predictTrueDirectionalPairs(inputs, scoreFn)
 }
 
 function recipAggregators(predictions) {
@@ -114,7 +171,6 @@ function recipAggregators(predictions) {
   }
 }
 
-/** Join predictions to gold by canonical_key only — after predictions finalized. */
 function evalBinary(predictions, evaluatorGold) {
   assertNoGoldInPrediction({ predictions })
   const goldBy = new Map((evaluatorGold || []).map((g) => [g.canonical_key, g]))
@@ -134,7 +190,7 @@ function evalBinary(predictions, evaluatorGold) {
 }
 
 function predictNativePairs(completePairs, scoreFn) {
-  return trueDirectionalScores(completePairs, scoreFn)
+  return predictTrueDirectionalPairs((completePairs || []).map(buildPredictionPairInput), scoreFn)
 }
 
 function main() {
@@ -156,17 +212,8 @@ function main() {
     TRUE_RECIPROCAL_AVAILABLE: false,
     identity_mode: imported.ok ? imported.identity_mode : 'PAIR_IDENTITY_UNCERTAIN',
     waiting: imported.status === 'WAITING_NATIVE_ID_DATA' || !imported.ok,
-    source_audit: sourceAudit
-  }
-
-  const metrics = {
-    status: 'TRUE_RECIPROCAL_MODEL_NOT_READY',
-    note: 'No product directional model wired; refusing gold-derived placeholders'
-  }
-  const directional = {
-    status: 'TRUE_RECIPROCAL_MODEL_NOT_READY',
-    NO_GOLD_IN_PREDICTION_ARTIFACT: true,
-    note: 'Await native data + label-blind model. Predictions never embed gold.'
+    source_audit: sourceAudit,
+    FINAL_REVIEW_FIX: true
   }
 
   write(
@@ -191,17 +238,18 @@ function main() {
   )
   write('METRICS.json', {
     validation_type: 'PIPELINE_INTEGRITY_ONLY',
-    ...status,
-    metrics,
-    directional
+    ...status
   })
   console.log(JSON.stringify({ ...status, import_status: imported.status }, null, 2))
-  return { status, imported, metrics, directional }
+  return { status, imported }
 }
 
 if (require.main === module) main()
 
 module.exports = {
+  buildPredictionPairInput,
+  buildEvaluatorGold,
+  predictTrueDirectionalPairs,
   trueDirectionalScores,
   recipAggregators,
   predictNativePairs,

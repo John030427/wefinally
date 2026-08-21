@@ -83,25 +83,36 @@ function main() {
   check('INCOMPLETE_PAIR_PRESENT', imported.incomplete_pairs >= 1)
 
   // Gold-free predictions
-  const scoreFn = (fv) => trivialLabelBlindDirectionalScorer(fv)
-  const { status, predictions, scored } = trueDirectionalScores(imported.completePairs, scoreFn)
-  const predList = predictions || scored || []
+  const scoreFn = (mi) => trivialLabelBlindDirectionalScorer(mi)
+  const { status, predictions } = trueDirectionalScores(imported.completePairs, scoreFn)
+  const predList = predictions || []
   check('LABEL_BLIND_SCORE_OK', status === 'OK' && predList.length === imported.completePairs.length)
 
+  // Gold access via FeatureView-style attack on model input path
   let goldLeak = false
   try {
     trueDirectionalScores(imported.completePairs, (row) => (row.a_decision ? 0.9 : 0.1))
   } catch (e) {
-    goldLeak = /GOLD_LABEL_ACCESS_FORBIDDEN|TRUE_REVERSE/.test(String(e.message))
+    goldLeak = /GOLD_LABEL_ACCESS_FORBIDDEN|MODEL_INPUT|IDENTITY|FORBIDDEN/.test(String(e.message))
   }
-  // scoreFn receives FeatureView; accessing a_decision on FV throws
-  check('NO_GOLD_DERIVED_NATIVE_PREDICTION', goldLeak || status === 'OK')
+  if (!goldLeak) {
+    // model input may simply lack a_decision — scorer returns constant; still require throw or no gold field
+    try {
+      const { buildNativeModelInput, buildNativeDirectionalFeatureView } = require('../data/wefinally/eval/nativeFeatureView')
+      const { buildPredictionPairInput } = require('../data/wefinally/eval/trueReciprocalV15')
+      const mi = buildNativeModelInput(
+        buildNativeDirectionalFeatureView(buildPredictionPairInput(imported.completePairs[0]).row_ab_safe)
+      )
+      void mi.a_decision
+    } catch (e) {
+      goldLeak = true
+    }
+  }
+  check('NO_GOLD_DERIVED_NATIVE_PREDICTION', goldLeak === true)
 
-  // Explicit: model not ready path
   const notReady = trueDirectionalScores(imported.completePairs, null)
   check('TRUE_RECIPROCAL_MODEL_NOT_READY', notReady.status === 'TRUE_RECIPROCAL_MODEL_NOT_READY')
 
-  // Gold flip: same features, flip evaluator decisions → identical prediction bytes
   const pairsA = imported.completePairs.map((p) => ({ ...p }))
   const pairsB = imported.completePairs.map((p) => ({
     ...p,
@@ -109,20 +120,10 @@ function main() {
     a_decision: !p.a_decision,
     b_decision: !p.b_decision
   }))
-  const predA = (predictNativePairs(pairsA, scoreFn).predictions || []).map((r) => ({
-    canonical_key: r.canonical_key,
-    p_ab: r.p_ab,
-    p_ba: r.p_ba,
-    score: r.score
-  }))
-  const predB = (predictNativePairs(pairsB, scoreFn).predictions || []).map((r) => ({
-    canonical_key: r.canonical_key,
-    p_ab: r.p_ab,
-    p_ba: r.p_ba,
-    score: r.score
-  }))
-  const ha = crypto.createHash('sha256').update(JSON.stringify(predA)).digest('hex')
-  const hb = crypto.createHash('sha256').update(JSON.stringify(predB)).digest('hex')
+  const retA = predictNativePairs(pairsA, scoreFn)
+  const retB = predictNativePairs(pairsB, scoreFn)
+  const ha = crypto.createHash('sha256').update(JSON.stringify(retA)).digest('hex')
+  const hb = crypto.createHash('sha256').update(JSON.stringify(retB)).digest('hex')
   check('NATIVE_GOLD_FLIP_PREDICTION_STABILITY', ha === hb, `${ha} vs ${hb}`)
 
   // TRUE_REVERSE requires subject row

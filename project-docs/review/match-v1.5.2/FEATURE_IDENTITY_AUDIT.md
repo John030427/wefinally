@@ -1,7 +1,17 @@
-# Feature Identity Audit v1.5.2
+# Feature Identity Audit v1.5.2 (+ final fix)
 
-`iid`, `pid`, `wave` live only in `featureView.metadata`.
+## Orchestration FeatureView
 
-`featureView.features` contains PRE_MATCH attributes only.
+May hold `metadata: { wave, iid, pid, directed_key }` for pairing / split / audit.
 
-Top-level `fv.iid` / `fv.pid` / `fv.wave` throws `MODEL_FEATURE_IDENTITY_FORBIDDEN`.
+## Model input
+
+`buildNativeModelInput` → `{ features }` only.
+
+Predictor **cannot** read:
+
+- `metadata`
+- `iid` / `pid` / `wave`
+- `directed_key` / `reverse_key` / `row_index`
+
+Throws `MODEL_INPUT_IDENTITY_FORBIDDEN`.
