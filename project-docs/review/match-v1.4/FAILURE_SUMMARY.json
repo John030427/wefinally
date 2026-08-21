@@ -1,0 +1,7 @@
+{
+  "model": "RECIP_LOGIT_META",
+  "counts": {
+    "ONE_SIDED_FALSE_POSITIVE": 493,
+    "FALSE_POSITIVE_MUTUAL": 251
+  }
+}

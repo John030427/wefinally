@@ -4,6 +4,7 @@ const fs = require('fs')
 const path = require('path')
 const { PATHS, ensureDir } = require('../paths')
 const { readJsonl } = require('../builders/cases')
+const { computeRankingCurves } = require('./binaryRankingMetrics')
 
 function round(n) {
   return Math.round(n * 10000) / 10000
@@ -59,42 +60,26 @@ function binaryMetrics(cm, n) {
   }
 }
 
-function trapezoidAuc(points) {
-  // points: [{x,y}] sorted by x ascending
-  let area = 0
-  for (let i = 1; i < points.length; i++) {
-    const dx = points[i].x - points[i - 1].x
-    area += (dx * (points[i].y + points[i - 1].y)) / 2
-  }
-  return area
-}
-
 function rankingCurves(joined) {
-  const scored = joined
-    .filter((r) => typeof r.score === 'number')
-    .slice()
-    .sort((a, b) => b.score - a.score)
+  const scored = joined.filter((r) => typeof r.score === 'number')
   if (!scored.length) {
-    return { AUPRC: null, AUROC: null, note: 'NO_SCORES' }
+    return { AUPRC: null, AUROC: null, AVERAGE_PRECISION: null, PR_AUC_TRAPEZOID: null, note: 'NO_SCORES' }
   }
-  const P = scored.filter((r) => r.mutual_match).length
-  const N = scored.length - P
+  const scores = scored.map((r) => r.score)
+  const labels = scored.map((r) => !!r.mutual_match)
+  const P = labels.filter(Boolean).length
+  const N = labels.length - P
   if (!P || !N) {
-    return { AUPRC: null, AUROC: null, note: 'DEGENERATE_LABELS' }
+    return { AUPRC: null, AUROC: null, AVERAGE_PRECISION: null, PR_AUC_TRAPEZOID: null, note: 'DEGENERATE_LABELS' }
   }
-  let tp = 0
-  let fp = 0
-  const pr = [{ x: 0, y: 1 }]
-  const roc = [{ x: 0, y: 0 }]
-  for (const r of scored) {
-    if (r.mutual_match) tp += 1
-    else fp += 1
-    const precision = tp / (tp + fp)
-    const recall = tp / P
-    pr.push({ x: recall, y: precision })
-    roc.push({ x: fp / N, y: tp / P })
+  const m = computeRankingCurves(scores, labels)
+  return {
+    AUROC: m.AUROC,
+    AVERAGE_PRECISION: m.AVERAGE_PRECISION,
+    PR_AUC_TRAPEZOID: m.PR_AUC_TRAPEZOID,
+    AUPRC: m.AVERAGE_PRECISION, // v1.4: AUPRC alias means AP, not trapezoid
+    note: null
   }
-  return { AUPRC: round(trapezoidAuc(pr)), AUROC: round(trapezoidAuc(roc)), note: null }
 }
 
 function calibration(joined, buckets = 10) {

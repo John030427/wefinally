@@ -52,6 +52,8 @@
     "selfcheck:e2e-release-guard": "node selfcheck/e2e-release-guard.js",
     "selfcheck:experience-learning-guard": "node selfcheck/experience-learning-guard.js",
     "selfcheck:match-eval-integrity": "node selfcheck/match-eval-integrity.js",
+    "selfcheck:match-eval-metrics-v14": "node selfcheck/match-eval-metrics-v14.js",
+    "data:wefinally:match-v14": "node data/wefinally/eval/matchReciprocalV14.js",
     "data:wefinally:overnight-evolution": "node data/wefinally/eval/overnightEvolution.js",
     "data:wefinally:sources": "node data/wefinally/cli.js sources",
     "data:wefinally:audit": "node data/wefinally/cli.js audit",
