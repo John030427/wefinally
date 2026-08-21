@@ -128,6 +128,49 @@ router.get('/dashboard', async (req, res, next) => {
       'SELECT marry_success_count FROM system_stat ORDER BY id ASC LIMIT 1'
     );
 
+    let pendingMembers = 0
+    let openTickets = 0
+    let stuckCoordinations = 0
+    let aiFailed = 0
+    try {
+      const [[pm]] = await pool.query(
+        `SELECT COUNT(*) AS c FROM member_application WHERE status = 'pending_review'`
+      )
+      pendingMembers = pm.c
+    } catch (e) { /* table may differ */ }
+    try {
+      const [[t]] = await pool.query(
+        `SELECT COUNT(*) AS c FROM agent_human_ticket WHERE status IN ('open','pending','active')`
+      )
+      openTickets = t.c
+    } catch (e) { /* optional */ }
+    try {
+      const [[c]] = await pool.query(
+        `SELECT COUNT(*) AS c FROM date_coordination
+         WHERE status IN ('failed','manual_handoff')
+            OR (status IN ('computing_overlap','pending_confirmation','pending_primary_selection')
+                AND update_time < DATE_SUB(NOW(), INTERVAL 1 DAY))`
+      )
+      stuckCoordinations = c.c
+    } catch (e) { /* optional */ }
+    try {
+      const [[a]] = await pool.query(
+        `SELECT COUNT(*) AS c FROM agent_run WHERE status IN ('failed','error')
+         AND create_time >= DATE_SUB(NOW(), INTERVAL 1 DAY)`
+      )
+      aiFailed = a.c
+    } catch (e) { /* optional */ }
+
+    const todos = [
+      { key: 'members', title: '待审核会员', count: pendingMembers, priority: pendingMembers ? 'P1' : 'P2', cta: '立即审核', page: 'members' },
+      { key: 'service', title: '待处理客服', count: openTickets, priority: openTickets ? 'P1' : 'P2', cta: '去处理', page: 'service' },
+      { key: 'coordination', title: '待处理约会协调', count: stuckCoordinations, priority: stuckCoordinations ? 'P1' : 'P2', cta: '查看协调', page: 'service' },
+      { key: 'ai', title: '异常 AI 会话', count: aiFailed, priority: aiFailed ? 'P1' : 'P2', cta: '查看异常', page: 'service' },
+      { key: 'withdrawals', title: '待处理提现', count: pendingW.c, priority: pendingW.c ? 'P0' : 'P2', cta: '去审核', page: 'withdrawals' },
+      { key: 'partners', title: '待审合伙人', count: pendingP.c, priority: pendingP.c ? 'P2' : 'P2', cta: '去审核', page: 'partners' }
+    ]
+    const todoTotal = todos.reduce((s, t) => s + Number(t.count || 0), 0)
+
     return success(res, {
       users: u.c,
       vip_users: vip.c,
@@ -136,7 +179,24 @@ router.get('/dashboard', async (req, res, next) => {
       revenue: Number(o.revenue),
       pending_partner_approve: pendingP.c,
       pending_withdrawals: pendingW.c,
+      pending_member_applications: pendingMembers,
+      open_service_tickets: openTickets,
+      stuck_coordinations: stuckCoordinations,
+      ai_failed_today: aiFailed,
       marry_success_count: stat?.marry_success_count || 0,
+      todos,
+      todo_total: todoTotal,
+      ai_ops: {
+        status: aiFailed > 0 ? '异常' : '正常',
+        provider: 'CloudBase',
+        model: 'HY3',
+        failed_today: aiFailed,
+        note: aiFailed > 0 ? '今日存在失败运行，请在客服工作台查看' : '暂无运行统计明细'
+      },
+      priority_queue: todos.filter((t) => Number(t.count) > 0).sort((a, b) => {
+        const rank = { P0: 0, P1: 1, P2: 2 }
+        return (rank[a.priority] || 9) - (rank[b.priority] || 9)
+      })
     });
   } catch (err) {
     next(err);
