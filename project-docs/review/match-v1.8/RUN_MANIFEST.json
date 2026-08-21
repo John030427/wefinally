@@ -3,7 +3,7 @@
   "base_branch": "experiment/match-final-tournament-v1.7",
   "base_commit": "06597706c85ffac565bb05acde88cd76865c8fe3",
   "branch": "experiment/match-final-staging-v1.8",
-  "final_commit": null,
+  "final_commit": "d931082cb4054ff07def94a368bd2ccb944abfea",
   "ranking_both_sides": "PASS",
   "track_a_conclusion": "UNCHANGED",
   "corrected_hy3": "HY3_PRODUCT_REASONING_PASS",
