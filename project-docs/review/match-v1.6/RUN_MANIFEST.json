@@ -1,0 +1,57 @@
+{
+  "run_id": "match-benchmark-resolution-v1.6",
+  "base_branch": "experiment/match-native-id-v1.5.2",
+  "base_commit": "72e82f536df0db86ab7bae30f3069f3b312923ca",
+  "branch": "experiment/match-benchmark-resolution-v1.6",
+  "final_commit": null,
+  "sources_audited": 8,
+  "selected_dataset": "speed-dating-native-v1",
+  "selection_decision": "SPEED_DATING_NATIVE_APPROVED_FOR_BENCHMARK",
+  "selected_source_status": "APPROVED_EVAL_ONLY",
+  "source_license": "CC0 1.0",
+  "license_confidence": "high",
+  "raw_file_present": true,
+  "raw_file_sha256": "8616BD64ADE62C07D8668229C926761ED7A2F59A3F97B8064BD69EFC3E07F81C",
+  "raw_file_committed": false,
+  "identity_mode": "NATIVE_IID_PID",
+  "directionality": "bidirectional_observed",
+  "reciprocal_available": true,
+  "exposure_available": true,
+  "candidate_query_stats": {
+    "n_queries": 474,
+    "candidate_count": {
+      "min": 9,
+      "p10": 10,
+      "median": 18,
+      "mean": 16.19,
+      "p90": 21,
+      "max": 22
+    },
+    "queries_ge2": 474,
+    "queries_ge3": 474,
+    "queries_ge5": 474,
+    "queries_ge10": 436
+  },
+  "outcome_semantics": "experimental_mutual_yes",
+  "split_status": "GROUPED_BY_WAVE",
+  "fresh_sealed_status": "CREATED_UNOPENED",
+  "rag_allowed": false,
+  "production_training_allowed": false,
+  "integrity_tests": {
+    "match-benchmark-v16": "PASS",
+    "match-eval-v152": "PASS",
+    "match-eval-v151": "PASS",
+    "match-eval-v15": "PASS",
+    "match-eval-metrics-v14": "PASS",
+    "match-eval-review-fix-v14": "BLOCKED",
+    "match-eval-integrity": "NOT_APPLICABLE",
+    "experience-learning-guard": "NOT_APPLICABLE",
+    "e2e:wefinally": "BLOCKED",
+    "e2e:wefinally:realworld": "BLOCKED"
+  },
+  "blockers": [
+    "China Figshare MANUAL_IMPORT_REQUIRED (HTTP 403)",
+    "Sparse pre-match features on selected CC0 subset"
+  ],
+  "generated_at": "2026-08-21T09:37:12.008Z"
+}
