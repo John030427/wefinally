@@ -125,6 +125,8 @@ async function main() {
   assert.strictEqual(Object.prototype.hasOwnProperty.call(queue[0], 'user_b_id'), false)
 
   await assert.rejects(() => service.listTickets({ role: 'partner', id: 9 }, {}), /无权访问/)
+  await assert.rejects(() => service.listTickets({ role: 'admin', id: 9 }, {}), /角色无效/)
+  await assert.rejects(() => service.listTickets({ role: 'admin', admin_role: 'root', id: 9 }, {}), /角色无效/)
 
   const backoffice = fs.readFileSync(path.resolve(__dirname, '../../miniprogram/cloudfunctions/api/handlers/backoffice.js'), 'utf8')
   for (const route of [

@@ -162,7 +162,10 @@ router.post('/admin-login', async (req, res, next) => {
       return fail(res, '账号或密码错误', 401, 401);
     }
 
-    const adminRole = admin.role || ADMIN_ROLES.SUPER_ADMIN;
+    const adminRole = String(admin.role || '').trim();
+    if (!Object.values(ADMIN_ROLES).includes(adminRole)) {
+      return fail(res, '后台账号角色无效，请联系超级管理员', 403, 403);
+    }
     const token = signToken({ id: admin.id, role: ROLES.ADMIN, username, admin_role: adminRole });
     return success(res, {
       token,

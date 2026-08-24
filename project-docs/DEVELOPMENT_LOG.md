@@ -1573,3 +1573,25 @@ Bug修复 / 测试
 ### 备注
 提交 `7bffc93`（分支 `feature/partner-gated-aigc-plan`）。用户既有 dirty 文件未纳入提交；本会话另产出 `project-docs/HANDOFF_2026-08-16.md` 交接文档。
 
+---
+
+## 2026-08-24 — Cloud 后台 RBAC fail-closed 收口
+
+### 类型
+安全加固 / 权限与隐私 / 自检
+
+### 修改目的
+- 移除 Cloud 与 Express 管理员缺失/未知角色自动提升为 `super_admin` 的运行时 fallback。
+- 在真实 Cloud 后台 dispatcher 的所有 `/api/admin/*` 业务分发前执行集中式角色、方法和路径授权。
+- 对 lower-role Cloud 响应统一删除身份标识、原始 AI、私密协调、匹配设置、snapshot、隐私审计和测试元数据，并遮罩手机号。
+
+### 测试
+- [x] 真实 `handleBackofficeHttp` 攻击用例先红后绿，missing/unknown/越权均为 403。
+- [x] customer_service、auditor、finance、super_admin 的实际允许路由通过。
+- [x] 指定发布对抗、后台、会员、安全、Agent Core 和 E2E 回归通过；E2E 14/14。
+- [x] 外部 AI 与 CloudBase AI 调用均为 0。
+- [ ] live MySQL：本机 `127.0.0.1:3306` 未监听，标记 `BLOCKED_ENVIRONMENT`。
+
+### 备注
+未部署、未上传小程序、未写生产数据。完整证据位于 `project-docs/review/cloud-backoffice-rbac-final/`。
+

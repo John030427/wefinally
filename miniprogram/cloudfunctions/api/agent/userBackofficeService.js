@@ -1,5 +1,6 @@
 const { isTestUser, projectUserIdentity, supportCodeFor } = require('./userIdentity')
 const { resolveTestIdentity, isSyntheticFixture } = require('../lib/testIdentityPolicy')
+const { adminRoleFromActor } = require('../lib/cloudBackofficeRbac')
 
 const USER_MUTABLE_FIELDS = new Set(['status', 'is_vip', 'vip_expire_time', 'marry_status'])
 
@@ -10,8 +11,7 @@ function error(message, code) {
 }
 
 function adminRole(actor) {
-  if (!actor || actor.role !== 'admin') throw error('无权访问用户后台', 401)
-  return String(actor.admin_role || 'super_admin')
+  return adminRoleFromActor(actor)
 }
 
 function requireRole(actor, allowed) {
@@ -55,7 +55,7 @@ function createUserBackofficeService(deps) {
   if (!deps) throw new Error('User backoffice dependencies are required')
 
   function sensitive(actor) {
-    return requireRole(actor, ['super_admin', 'customer_service', 'auditor']) === 'super_admin'
+    return adminRole(actor) === 'super_admin'
   }
 
   function userDto(user, actor) {
@@ -171,7 +171,7 @@ function createUserBackofficeService(deps) {
   }
 
   async function dashboard(actor) {
-    requireRole(actor, ['super_admin', 'customer_service', 'auditor'])
+    requireRole(actor, ['super_admin'])
     const [usersRaw, partners, orders, applications, tickets] = await Promise.all([
       allUsers(),
       deps.list('partner', {}, 200),
@@ -194,7 +194,7 @@ function createUserBackofficeService(deps) {
   }
 
   async function listUsers(actor, filters = {}) {
-    requireRole(actor, ['super_admin', 'customer_service', 'auditor'])
+    requireRole(actor, ['super_admin', 'auditor'])
     const keyword = String(filters.keyword || '').trim().toLowerCase()
     const statusSet = filters.status !== undefined && filters.status !== ''
     const rows = officialRows(await allUsers(), filters)
@@ -301,12 +301,12 @@ function createUserBackofficeService(deps) {
   }
 
   async function userDetail(actor, id) {
-    requireRole(actor, ['super_admin', 'customer_service', 'auditor'])
+    requireRole(actor, ['super_admin', 'auditor'])
     return aggregateUser(actor, id, 'view_user_aggregate')
   }
 
   async function userContext(actor, id) {
-    requireRole(actor, ['super_admin', 'customer_service', 'auditor'])
+    requireRole(actor, ['super_admin', 'customer_service'])
     return aggregateUser(actor, id, 'view_user_service_context')
   }
 
@@ -341,7 +341,7 @@ function createUserBackofficeService(deps) {
   }
 
   async function listOrders(actor, filters = {}) {
-    requireRole(actor, ['super_admin', 'customer_service', 'auditor'])
+    requireRole(actor, ['super_admin', 'customer_service', 'finance'])
     const users = await allUsers()
     const usersById = new Map(users.map((row) => [number(row.id), row]))
     const rows = (await deps.list('user_order', {}, 500))
@@ -353,7 +353,7 @@ function createUserBackofficeService(deps) {
   }
 
   async function listMatches(actor, filters = {}) {
-    requireRole(actor, ['super_admin', 'customer_service', 'auditor'])
+    requireRole(actor, ['super_admin', 'customer_service'])
     const users = await allUsers()
     const usersById = new Map(users.map((row) => [number(row.id), row]))
     const includeTest = filters.include_test === true || String(filters.include_test) === '1'
@@ -366,7 +366,7 @@ function createUserBackofficeService(deps) {
   }
 
   async function matchDetail(actor, id) {
-    requireRole(actor, ['super_admin', 'customer_service', 'auditor'])
+    requireRole(actor, ['super_admin', 'customer_service'])
     const row = await deps.byId('user_match_log', number(id))
     if (!row) throw error('匹配记录不存在', 404)
     const [owner, matched, ownerSetting, matchedSetting] = await Promise.all([

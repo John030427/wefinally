@@ -66,9 +66,10 @@ async function main() {
   const service = createUserBackofficeService(deps)
   const customerService = { role: 'admin', admin_role: 'customer_service', id: 2 }
   const auditor = { role: 'admin', admin_role: 'auditor', id: 3 }
+  const finance = { role: 'admin', admin_role: 'finance', id: 4 }
   const superAdmin = { role: 'admin', admin_role: 'super_admin', id: 1 }
 
-  const users = await service.listUsers(customerService, {})
+  const users = await service.listUsers(auditor, {})
   assert.strictEqual(users.total, 2)
   assert.deepStrictEqual(users.list.map((row) => row.support_code), ['WF-000008', 'WF-000007'])
   assert.strictEqual(users.list.some((row) => row.is_test), false)
@@ -79,10 +80,10 @@ async function main() {
   assert.strictEqual(withTests.list[0].support_code, 'TEST-000118')
   assert.strictEqual(withTests.list[0].is_test, true)
 
-  const searched = await service.listUsers(customerService, { keyword: 'WF-000007' })
+  const searched = await service.listUsers(auditor, { keyword: 'WF-000007' })
   assert.deepStrictEqual(searched.list.map((row) => row.support_code), ['WF-000007'])
 
-  const detail = await service.userDetail(customerService, 7)
+  const detail = await service.userDetail(auditor, 7)
   assert.strictEqual(detail.user.support_code, 'WF-000007')
   assert.strictEqual(detail.user.openid, undefined)
   assert.strictEqual(detail.user.phone, undefined)
@@ -130,6 +131,13 @@ async function main() {
   const matchDetail = await service.matchDetail(superAdmin, 30)
   assert.strictEqual(matchDetail.score_detail.total, 88)
   assert.strictEqual(matchDetail.owner.match_settings.self_view_text, '重视沟通')
+  const financeOrders = await service.listOrders(finance, {})
+  assert.strictEqual(financeOrders.list[0].order_no, undefined)
+  await assert.rejects(() => service.listUsers(customerService, {}), /无权/)
+  await assert.rejects(() => service.listOrders(auditor, {}), /无权/)
+  await assert.rejects(() => service.listMatches(auditor, {}), /无权/)
+  await assert.rejects(() => service.listUsers({ role: 'admin', id: 8 }, {}), /角色无效/)
+  await assert.rejects(() => service.listUsers({ role: 'admin', admin_role: 'root', id: 9 }, {}), /角色无效/)
 
   await assert.rejects(() => service.updateUser(customerService, 7, { status: 2 }), /无权/)
   await assert.rejects(() => service.updateUser(auditor, 7, { status: 2 }), /无权/)
@@ -158,7 +166,7 @@ async function main() {
   assert.strictEqual(routedUsers.handled, true)
   assert.strictEqual(routedUsers.data.total, 4)
   const routedDetail = await dispatchUserBackofficeRoute({
-    method: 'GET', path: '/api/admin/users/7', query: {}, body: {}, actor: customerService, service
+    method: 'GET', path: '/api/admin/users/7', query: {}, body: {}, actor: auditor, service
   })
   assert.strictEqual(routedDetail.data.user.support_code, 'WF-000007')
   const routedBackfill = await dispatchUserBackofficeRoute({

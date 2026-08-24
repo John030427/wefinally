@@ -11,10 +11,10 @@ const KNOWLEDGE_CATEGORIES = Object.freeze([
 ])
 const { isTestUser, projectUserIdentity, supportCodeFor } = require('./userIdentity')
 const { buildCoordinationOperatorView } = require('../lib/coordinationOperatorView')
+const { adminRoleFromActor } = require('../lib/cloudBackofficeRbac')
 
 function adminRole(actor) {
-  if (!actor || actor.role !== 'admin') throw new Error('无权访问Agent后台')
-  return String(actor.admin_role || 'super_admin')
+  return adminRoleFromActor(actor)
 }
 
 function requireRole(actor, allowed) {

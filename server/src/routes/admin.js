@@ -1144,9 +1144,10 @@ router.post('/admins', async (req, res, next) => {
   try {
     const { username, password, role } = req.body;
     if (!username || !password) return fail(res, '账号密码不能为空');
-    const adminRole = Object.values(ADMIN_ROLES).includes(role)
-      ? role
-      : ADMIN_ROLES.SUPER_ADMIN;
+    const adminRole = String(role || '').trim();
+    if (!Object.values(ADMIN_ROLES).includes(adminRole)) {
+      return fail(res, '请选择有效的管理员角色');
+    }
 
     const [exists] = await pool.query('SELECT id FROM `admin` WHERE username = ?', [username]);
     if (exists.length > 0) return fail(res, '用户名已存在');

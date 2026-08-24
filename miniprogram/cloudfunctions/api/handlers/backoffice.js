@@ -16,6 +16,11 @@ const { httpMethod, httpPath, queryParameters } = require('../lib/httpEvent')
 const {
   projectPartnerApplicationItem
 } = require('../lib/privacyMask')
+const {
+  requireStoredAdminRole,
+  authorizeCloudAdminRoute,
+  authorizeCloudAdminResponse
+} = require('../lib/cloudBackofficeRbac')
 
 const AGENT_BACKOFFICE_PATHS = Object.freeze({
   tickets: '/api/admin/agent/tickets',
@@ -102,7 +107,7 @@ async function actorFrom(event, requiredRole) {
   const row = await db.byId(collection, actor.id)
   if (!row || Number(row.status) !== 1) throw new Error('后台账号已停用')
   return Object.assign({}, actor, {
-    admin_role: actor.role === 'admin' ? (row.role || 'super_admin') : ''
+    admin_role: actor.role === 'admin' ? requireStoredAdminRole(row.role) : ''
   })
 }
 
@@ -130,9 +135,10 @@ async function loginAdmin(body) {
   if (!admin || Number(admin.status) !== 1 || !bcrypt.compareSync(String(body.password || ''), admin.password || '')) {
     throw new Error('账号或密码错误')
   }
+  const adminRole = requireStoredAdminRole(admin.role)
   return {
     token: signBackofficeToken({ role: 'admin', id: admin.id }, secret()),
-    admin: { id: admin.id, username: admin.username, role: admin.role || 'super_admin' }
+    admin: { id: admin.id, username: admin.username, role: adminRole }
   }
 }
 
@@ -346,47 +352,52 @@ async function handleBackofficeHttp(event = {}) {
     let actor
     if (/\/api\/partner\//.test(path)) actor = await actorFrom(event, 'partner')
     if (/\/api\/admin\//.test(path)) actor = await actorFrom(event, 'admin')
+    const authorizedOk = (data, message) => ok(
+      actor && actor.role === 'admin' ? authorizeCloudAdminResponse(actor, data) : data,
+      message
+    )
 
     if (/\/api\/admin\//.test(path)) {
+      authorizeCloudAdminRoute(actor, method, path)
       const routed = await dispatchUserBackofficeRoute({ method, path, query, body, actor, service: userService() })
-      if (routed.handled) return ok(routed.data, routed.message)
+      if (routed.handled) return authorizedOk(routed.data, routed.message)
     }
 
     if (method === 'GET' && /\/api\/partner\/member-applications$/.test(path)) {
-      return ok({ list: await applicationList(actor, query.status || '') })
+      return authorizedOk({ list: await applicationList(actor, query.status || '') })
     }
-    if (method === 'GET' && /\/api\/partner\/dashboard$/.test(path)) return ok(await partnerDashboard(actor))
-    if (method === 'POST' && /\/api\/partner\/share-event$/.test(path)) return ok(await recordShareEvent(body, actor))
+    if (method === 'GET' && /\/api\/partner\/dashboard$/.test(path)) return authorizedOk(await partnerDashboard(actor))
+    if (method === 'POST' && /\/api\/partner\/share-event$/.test(path)) return authorizedOk(await recordShareEvent(body, actor))
     if (method === 'GET' && /\/api\/admin\/member-applications$/.test(path)) {
-      return ok({ list: await applicationList(actor, query.status || '') })
+      return authorizedOk({ list: await applicationList(actor, query.status || '') })
     }
     if (method === 'GET' && path.endsWith(AGENT_BACKOFFICE_PATHS.tickets)) {
-      return ok({ list: await agentService().listTickets(actor, query) })
+      return authorizedOk({ list: await agentService().listTickets(actor, query) })
     }
     if (method === 'GET' && path.endsWith(AGENT_BACKOFFICE_PATHS.conversations)) {
-      return ok({ list: await agentService().listConversations(actor, query) })
+      return authorizedOk({ list: await agentService().listConversations(actor, query) })
     }
     if (method === 'GET' && path.endsWith(AGENT_BACKOFFICE_PATHS.knowledge)) {
-      return ok({ list: await agentService().listKnowledge(actor, query) })
+      return authorizedOk({ list: await agentService().listKnowledge(actor, query) })
     }
     if (method === 'POST' && path.endsWith(AGENT_BACKOFFICE_PATHS.knowledge)) {
-      return ok(await agentService().saveKnowledge(actor, body), '知识草稿已保存')
+      return authorizedOk(await agentService().saveKnowledge(actor, body), '知识草稿已保存')
     }
     if (method === 'GET' && path.endsWith(AGENT_BACKOFFICE_PATHS.coordinations)) {
-      return ok({ list: await agentService().listCoordinations(actor, query) })
+      return authorizedOk({ list: await agentService().listCoordinations(actor, query) })
     }
     if (method === 'POST' && /\/api\/admin\/controlled-date-scenarios$/.test(path)) {
-      return ok(await controlledDateScenarioService().createRun(actor, body), '受控约会场景已创建')
+      return authorizedOk(await controlledDateScenarioService().createRun(actor, body), '受控约会场景已创建')
     }
     let controlledScenario = path.match(/\/api\/admin\/controlled-date-scenarios\/([^/]+)\/advance$/)
     if (method === 'POST' && controlledScenario) {
-      return ok(await controlledDateScenarioService().advanceRun(actor, decodeURIComponent(controlledScenario[1])), '受控约会场景已推进')
+      return authorizedOk(await controlledDateScenarioService().advanceRun(actor, decodeURIComponent(controlledScenario[1])), '受控约会场景已推进')
     }
     controlledScenario = path.match(/\/api\/admin\/controlled-date-scenarios\/([^/]+)$/)
     if (method === 'GET' && controlledScenario) {
-      return ok(await controlledDateScenarioService().getRun(actor, decodeURIComponent(controlledScenario[1])))
+      return authorizedOk(await controlledDateScenarioService().getRun(actor, decodeURIComponent(controlledScenario[1])))
     }
-    if (method === 'GET' && /\/api\/partner\/invite-assets$/.test(path)) return ok(await inviteAssets(actor))
+    if (method === 'GET' && /\/api\/partner\/invite-assets$/.test(path)) return authorizedOk(await inviteAssets(actor))
 
     let matched = path.match(/\/api\/(partner|admin)\/member-applications\/(\d+)$/)
     if (method === 'GET' && matched) {
@@ -397,9 +408,9 @@ async function handleBackofficeHttp(event = {}) {
       }
       const user = await db.byId('user', application.user_id)
       if (actor.role === 'partner') {
-        return ok(projectPartnerApplicationItem(application, user, {}))
+        return authorizedOk(projectPartnerApplicationItem(application, user, {}))
       }
-      return ok({ application, user })
+      return authorizedOk({ application, user })
     }
 
     matched = path.match(/\/api\/(partner|admin)\/member-applications\/(\d+)\/review$/)
@@ -409,10 +420,10 @@ async function handleBackofficeHttp(event = {}) {
         action: body.action,
         note: body.reason || body.note
       }, actor, db)
-      return ok(result, '审核状态已更新')
+      return authorizedOk(result, '审核状态已更新')
     }
     matched = path.match(/\/api\/admin\/member-applications\/(\d+)\/reassign$/)
-    if (method === 'PUT' && matched) return ok(await reassign(Number(matched[1]), body, actor))
+    if (method === 'PUT' && matched) return authorizedOk(await reassign(Number(matched[1]), body, actor))
 
     matched = path.match(new RegExp('/api/admin/users/(\\d+)/test-vip$'))
     if (method === 'POST' && matched) {
@@ -423,7 +434,7 @@ async function handleBackofficeHttp(event = {}) {
         reason: body.reason,
         requestId: body.request_id
       }, actor)
-      return ok(result, body.action === 'revoke' ? '内测 VIP 已撤销' : '内测 VIP 已授权')
+      return authorizedOk(result, body.action === 'revoke' ? '内测 VIP 已撤销' : '内测 VIP 已授权')
     }
 
     matched = path.match(new RegExp('/api/admin/users/(\\d+)/ab-match-fixture$'))
@@ -437,58 +448,58 @@ async function handleBackofficeHttp(event = {}) {
         fixture_journey: body.fixture_journey || body.journey,
         fixture_mode: body.fixture_mode || body.mode
       }, actor)
-      return ok(result, body.action === 'cleanup' ? 'A/B 测试数据已清理' : 'A/B 测试候选已准备')
+      return authorizedOk(result, body.action === 'cleanup' ? 'A/B 测试数据已清理' : 'A/B 测试候选已准备')
     }
 
     matched = path.match(/\/api\/admin\/agent\/tickets\/(\d+)$/)
     if (method === 'GET' && matched) {
-      return ok(await agentService().ticketDetail(actor, Number(matched[1])))
+      return authorizedOk(await agentService().ticketDetail(actor, Number(matched[1])))
     }
     matched = path.match(/\/api\/admin\/agent\/conversations\/(\d+)$/)
     if (method === 'GET' && matched) {
-      return ok(await agentService().conversationDetail(actor, Number(matched[1])))
+      return authorizedOk(await agentService().conversationDetail(actor, Number(matched[1])))
     }
     matched = path.match(/\/api\/admin\/agent\/conversations\/(\d+)\/reply$/)
     if (method === 'POST' && matched) {
-      return ok(await agentService().replyConversation(actor, Number(matched[1]), body.content), '人工回复已发送')
+      return authorizedOk(await agentService().replyConversation(actor, Number(matched[1]), body.content), '人工回复已发送')
     }
     matched = path.match(/\/api\/admin\/agent\/tickets\/(\d+)\/reply$/)
     if (method === 'POST' && matched) {
-      return ok(await agentService().replyTicket(actor, Number(matched[1]), body.content), '人工回复已发送')
+      return authorizedOk(await agentService().replyTicket(actor, Number(matched[1]), body.content), '人工回复已发送')
     }
     matched = path.match(/\/api\/admin\/agent\/tickets\/(\d+)\/close$/)
     if (method === 'POST' && matched) {
-      return ok(await agentService().closeTicket(actor, Number(matched[1]), body), '人工工单已关闭')
+      return authorizedOk(await agentService().closeTicket(actor, Number(matched[1]), body), '人工工单已关闭')
     }
     matched = path.match(/\/api\/admin\/knowledge-articles\/(\d+)$/)
     if (method === 'PUT' && matched) {
-      return ok(await agentService().saveKnowledge(actor, body, Number(matched[1])), '知识草稿已更新')
+      return authorizedOk(await agentService().saveKnowledge(actor, body, Number(matched[1])), '知识草稿已更新')
     }
     matched = path.match(/\/api\/admin\/knowledge-articles\/(\d+)\/publish$/)
     if (method === 'POST' && matched) {
-      return ok(await agentService().publishKnowledge(actor, Number(matched[1])), '知识文章已发布')
+      return authorizedOk(await agentService().publishKnowledge(actor, Number(matched[1])), '知识文章已发布')
     }
     matched = path.match(/\/api\/admin\/knowledge-articles\/(\d+)\/offline$/)
     if (method === 'POST' && matched) {
-      return ok(await agentService().unpublishKnowledge(actor, Number(matched[1])), '知识文章已下线')
+      return authorizedOk(await agentService().unpublishKnowledge(actor, Number(matched[1])), '知识文章已下线')
     }
 
     if (method === 'GET' && /\/api\/admin\/partner-candidates$/.test(path)) {
-      return ok({ list: await partnerAdminService().listCandidates(actor, query) })
+      return authorizedOk({ list: await partnerAdminService().listCandidates(actor, query) })
     }
     if (method === 'POST' && /\/api\/admin\/partner-candidates\/import$/.test(path)) {
-      return ok(await partnerAdminService().importRoster(actor, body), '合伙人名单已导入')
+      return authorizedOk(await partnerAdminService().importRoster(actor, body), '合伙人名单已导入')
     }
     if (method === 'POST' && /\/api\/admin\/partner-candidates$/.test(path)) {
-      return ok(await partnerAdminService().createRosterCandidate(actor, body), '合伙人名单已添加')
+      return authorizedOk(await partnerAdminService().createRosterCandidate(actor, body), '合伙人名单已添加')
     }
     matched = path.match(/\/api\/admin\/partner-candidates\/(\d+)$/)
     if (method === 'GET' && matched) {
-      return ok(await partnerAdminService().candidateDetail(actor, Number(matched[1])))
+      return authorizedOk(await partnerAdminService().candidateDetail(actor, Number(matched[1])))
     }
     matched = path.match(/\/api\/admin\/partner-candidates\/(\d+)\/(approve|reject)$/)
     if (method === 'POST' && matched) {
-      return ok(await partnerAdminService().reviewCandidate(actor, Number(matched[1]), {
+      return authorizedOk(await partnerAdminService().reviewCandidate(actor, Number(matched[1]), {
         action: matched[2],
         reason: body.reason,
         request_id: body.request_id
@@ -496,7 +507,7 @@ async function handleBackofficeHttp(event = {}) {
     }
     matched = path.match(/\/api\/admin\/partners\/(\d+)\/(suspend|resume|unbind|revoke)$/)
     if (method === 'POST' && matched) {
-      return ok(await partnerAdminService().changePartner(actor, Number(matched[1]), {
+      return authorizedOk(await partnerAdminService().changePartner(actor, Number(matched[1]), {
         action: matched[2],
         reason: body.reason,
         request_id: body.request_id
@@ -504,14 +515,14 @@ async function handleBackofficeHttp(event = {}) {
     }
 
     if (method === 'GET' && /\/api\/admin\/partners$/.test(path)) {
-      return ok({ list: await partnerAdminService().listPartners(actor, query) })
+      return authorizedOk({ list: await partnerAdminService().listPartners(actor, query) })
     }
-    if (method === 'POST' && /\/api\/admin\/partners$/.test(path)) return ok(await createPartner(body))
+    if (method === 'POST' && /\/api\/admin\/partners$/.test(path)) return authorizedOk(await createPartner(body))
     matched = path.match(/\/api\/admin\/partners\/(\d+)$/)
     if (method === 'PUT' && matched) {
       const partner = await db.byId('partner', Number(matched[1]))
       if (!partner) throw new Error('合伙人不存在')
-      return ok(await db.updateByDoc('partner', partner, {
+      return authorizedOk(await db.updateByDoc('partner', partner, {
         status: body.status === undefined ? partner.status : Number(body.status),
         name: body.name === undefined ? partner.name : String(body.name),
         phone: body.phone === undefined ? partner.phone : String(body.phone)
