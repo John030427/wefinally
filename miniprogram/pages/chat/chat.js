@@ -182,6 +182,7 @@ Page({
   _waitingTimer: null,
   _slowHintTimer: null,
   _activeRequestId: '',
+  _turnStarting: false,
 
   onLoad(options) {
     this._pageActive = true
@@ -531,24 +532,29 @@ Page({
 
   async onSend() {
     const text = (this.data.inputText || '').trim()
-    if (!text || this.data.sending || this.data.coordinatorReadOnly) return
-    const app = getApp()
-    if (!await app.checkNetwork()) {
-      wx.showToast({ title: '网络不可用', icon: 'none' })
-      return
-    }
+    if (!text || this.data.sending || this._turnStarting || this.data.coordinatorReadOnly) return
+    this._turnStarting = true
+    try {
+      const app = getApp()
+      if (!await app.checkNetwork()) {
+        wx.showToast({ title: '网络不可用', icon: 'none' })
+        return
+      }
 
-    const { requestId, pendingMessageId } = makeIds('b_pending')
-    await this.runAssistantTurn({
-      text,
-      pendingMessageId,
-      requestId,
-      appendUser: true
-    })
+      const { requestId, pendingMessageId } = makeIds('b_pending')
+      await this.runAssistantTurn({
+        text,
+        pendingMessageId,
+        requestId,
+        appendUser: true
+      })
+    } finally {
+      this._turnStarting = false
+    }
   },
 
   async retryAiMessage(e) {
-    if (this.data.sending || this.data.coordinatorReadOnly) return
+    if (this.data.sending || this._turnStarting || this.data.coordinatorReadOnly) return
     const messageId = String(e.currentTarget.dataset.messageId || '')
     const current = this.data.messages.find((m) => m.id === messageId)
     if (!current || current.status !== 'error') return
@@ -557,19 +563,24 @@ Page({
       wx.showToast({ title: '无法重新生成', icon: 'none' })
       return
     }
-    const app = getApp()
-    if (!await app.checkNetwork()) {
-      wx.showToast({ title: '网络不可用', icon: 'none' })
-      return
-    }
+    this._turnStarting = true
+    try {
+      const app = getApp()
+      if (!await app.checkNetwork()) {
+        wx.showToast({ title: '网络不可用', icon: 'none' })
+        return
+      }
 
-    const requestId = `req_retry_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
-    await this.runAssistantTurn({
-      text,
-      pendingMessageId: messageId,
-      requestId,
-      appendUser: false
-    })
+      const requestId = `req_retry_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+      await this.runAssistantTurn({
+        text,
+        pendingMessageId: messageId,
+        requestId,
+        appendUser: false
+      })
+    } finally {
+      this._turnStarting = false
+    }
   },
 
   openHumanService(e) {

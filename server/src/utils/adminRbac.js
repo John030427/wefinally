@@ -42,7 +42,7 @@ const ROLE_RULES = {
 }
 
 function currentAdminRole(req) {
-  return req.auth?.admin_role || req.auth?.adminRole || ADMIN_ROLES.SUPER_ADMIN
+  return req.auth?.admin_role || req.auth?.adminRole || ''
 }
 
 function hasRouteAccess(req) {

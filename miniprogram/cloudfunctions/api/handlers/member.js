@@ -56,43 +56,47 @@ async function signedReferralAttribution(user, partnerId, dep) {
 }
 
 async function reviewMemberApplication(input, actor, deps) {
-  const application = await deps.byId('member_application', Number(input.applicationId || 0))
-  if (!application) throw new Error('会员申请不存在')
   if (!actor || !['partner', 'admin'].includes(actor.role)) throw new Error('无权审核会员申请')
-  if (actor.role === 'partner' && Number(application.assigned_partner_id) !== Number(actor.id)) {
-    throw new Error('无权审核其他合伙人的会员申请')
-  }
   const note = String(input.note || '').trim().slice(0, 500)
   if (['need_more_info', 'reject', 'disable'].includes(input.action) && !note) {
     throw new Error('请填写审核意见')
   }
-  const nextStatus = nextMemberStatus(application.status, input.action)
-  const user = await deps.byId('user', application.user_id)
-  if (!user) throw new Error('申请用户不存在')
-  const reviewedAt = deps.now()
-  await deps.updateByDoc('member_application', application, {
-    status: nextStatus,
-    review_note: note,
-    reviewed_by_role: actor.role,
-    reviewed_by_id: Number(actor.id),
-    reviewed_at: reviewedAt
-  })
-  const updatedUser = await deps.updateByDoc('user', user, {
-    member_status: nextStatus,
-    member_status_updated_at: reviewedAt
-  })
-  await deps.addWithId('partner_user_audit_log', {
-    application_id: application.id,
-    partner_id: actor.role === 'partner' ? Number(actor.id) : Number(application.assigned_partner_id || 0),
-    user_id: application.user_id,
-    actor_role: actor.role,
-    actor_id: Number(actor.id),
-    action: input.action,
-    from_status: application.status,
-    to_status: nextStatus,
-    reason: note
-  }, 'member_audit')
-  return updatedUser
+  const execute = async (store) => {
+    const application = await store.byId('member_application', Number(input.applicationId || 0))
+    if (!application) throw new Error('会员申请不存在')
+    if (actor.role === 'partner' && Number(application.assigned_partner_id) !== Number(actor.id)) {
+      throw new Error('无权审核其他合伙人的会员申请')
+    }
+    const fromStatus = String(application.status || '')
+    const nextStatus = nextMemberStatus(fromStatus, input.action)
+    const user = await store.byId('user', application.user_id)
+    if (!user) throw new Error('申请用户不存在')
+    const reviewedAt = store.now()
+    await store.updateByDoc('member_application', application, {
+      status: nextStatus,
+      review_note: note,
+      reviewed_by_role: actor.role,
+      reviewed_by_id: Number(actor.id),
+      reviewed_at: reviewedAt
+    })
+    const updatedUser = await store.updateByDoc('user', user, {
+      member_status: nextStatus,
+      member_status_updated_at: reviewedAt
+    })
+    await store.addWithId('partner_user_audit_log', {
+      application_id: application.id,
+      partner_id: actor.role === 'partner' ? Number(actor.id) : Number(application.assigned_partner_id || 0),
+      user_id: application.user_id,
+      actor_role: actor.role,
+      actor_id: Number(actor.id),
+      action: input.action,
+      from_status: fromStatus,
+      to_status: nextStatus,
+      reason: note
+    }, 'member_audit')
+    return updatedUser
+  }
+  return typeof deps.transaction === 'function' ? deps.transaction(execute) : execute(deps)
 }
 
 function createMemberHandlers(overrides = {}) {

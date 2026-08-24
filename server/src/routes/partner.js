@@ -13,6 +13,7 @@ const { nextMemberStatus } = require('../utils/memberPolicy');
 const { createReferralToken } = require('../../../miniprogram/cloudfunctions/api/lib/partnerReferralPolicy');
 const { formatPartnerForAdmin, formatPartnerUser, formatPartnerOrder } = require('../utils/apiFormat');
 const { sanitizePartnerApplication } = require('../utils/privacyMask');
+const { assertPartnerApplicationScope } = require('../utils/partnerScopePolicy');
 
 const router = express.Router();
 
@@ -186,18 +187,28 @@ router.put('/users/:id/audit', async (req, res, next) => {
     const { action, reason } = req.body;
     const [users] = await conn.query(
       `SELECT id, gender, birth_year, status, member_status, is_vip, vip_expire_time,
-              create_time, city, marry_status, support_code, occupation_description, education
-       FROM \`user\` WHERE id = ? AND promote_partner_id = ?`,
-      [userId, req.auth.id]
+              create_time, city, marry_status, support_code, occupation_description, education,
+              promote_partner_id
+       FROM \`user\` WHERE id = ?`,
+      [userId]
     );
-    if (!users.length) return fail(res, '用户不存在或不属于您的邀请', 404, 404);
+    if (!users.length) return fail(res, '用户不存在', 404, 404);
     const [applications] = await conn.query(
-      `SELECT id, user_id, status, revision, review_note, submitted_at, create_time, reviewed_at,
+      `SELECT id, user_id, assigned_partner_id, status, revision, review_note, submitted_at, create_time, reviewed_at,
               city, education, occupation, birth_year
        FROM member_application WHERE user_id = ? ORDER BY revision DESC LIMIT 1`,
       [userId]
     );
     const application = applications[0] || null;
+    if (application) {
+      try {
+        assertPartnerApplicationScope(users[0], application, req.auth.id);
+      } catch (err) {
+        return fail(res, err.message, 403, 403);
+      }
+    } else if (Number(users[0].promote_partner_id) !== Number(req.auth.id)) {
+      return fail(res, '用户不存在或不属于您的邀请', 404, 404);
+    }
     if (action === 'view') {
       return success(res, {
         user: formatPartnerUser(users[0]),
