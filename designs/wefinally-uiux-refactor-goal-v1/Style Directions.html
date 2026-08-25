@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WeFinally · 粉色婚恋风格方向 ×4</title>
+<style>
+  :root {
+    --ink: #3A2E2E;
+    --paper: #FBF8F6;
+    --line: #EFE3E0;
+    --sub: #9A8886;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: -apple-system, "SF Pro Text", "PingFang SC", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+    line-height: 1.7;
+    padding: 48px 40px 80px;
+  }
+  .head { max-width: 1480px; margin: 0 auto 36px; }
+  .head h1 { font-size: 30px; font-weight: 700; letter-spacing: .5px; }
+  .head p { color: var(--sub); font-size: 14px; margin-top: 6px; }
+  .board {
+    max-width: 1480px; margin: 0 auto;
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap: 28px;
+  }
+  .dir { display: flex; flex-direction: column; gap: 18px; }
+  .dir-name { display: flex; align-items: baseline; gap: 10px; padding: 0 4px; }
+  .dir-name b { font-size: 19px; letter-spacing: .5px; }
+  .dir-name span { font-size: 12.5px; color: var(--sub); }
+
+  /* phone frame */
+  .phone {
+    border-radius: 34px; padding: 14px 12px 16px;
+    box-shadow: 0 24px 60px -22px rgba(90,50,60,.28), 0 2px 8px rgba(90,50,60,.06);
+    min-height: 720px; display: flex; flex-direction: column; gap: 12px;
+  }
+  .notch { width: 74px; height: 5px; border-radius: 3px; opacity: .25; margin: 2px auto 4px; }
+
+  /* ============ Style A 轻奢柔粉 ============ */
+  [data-dir="a"] { --p: #E8637F; --p-strong: #D14D6B; --p-soft: #F9DEE4; --bg: #FAF6F4; --card: #FFFFFF; --tx: #3A2E2E; --subc: #8C7B7B; --ai: #7B6CC8; --border: #F0E4E4; --hero-a: #F7E9EC; --hero-b: #FDF7F3; }
+  /* B 甜美元气粉 */
+  [data-dir="b"] { --p: #FF6B8A; --p-strong: #F04E72; --p-soft: #FFE3EA; --bg: #FFF7F8; --card: #FFFFFF; --tx: #472D33; --subc: #A87E88; --ai: #8E6FD8; --border: #FFDCE4; --hero-a: #FFD9E2; --hero-b: #FFEDF1; }
+  /* C 极简效率粉 */
+  [data-dir="c"] { --p: #D96C81; --p-strong: #C05570; --p-soft: #F6E7EA; --bg: #FCFCFC; --card: #FFFFFF; --tx: #333333; --subc: #999999; --ai: #6E64B8; --border: #EBEBEB; --hero-a: #F7F7F7; --hero-b: #FDF4F5; }
+  /* D 杂志感玫瑰粉 */
+  [data-dir="d"] { --p: #C44569; --p-strong: #A93556; --p-soft: #F3DCE2; --bg: #FAF5EF; --card: #FFFEFB; --tx: #35282C; --subc: #97857F; --ai: #6D5AA8; --border: #EADDD3; --hero-a: #EFDBD3; --hero-b: #F8EEE6; }
+
+  .phone { background: var(--bg); }
+  .notch { background: var(--tx); }
+
+  /* hero card sample */
+  .hero {
+    border-radius: 20px; padding: 18px 16px 16px; position: relative; overflow: hidden;
+    background: linear-gradient(135deg, var(--hero-a), var(--hero-b));
+    border: 1px solid var(--border);
+  }
+  .hero .kicker { font-size: 11px; letter-spacing: 1.5px; color: var(--subc); margin-bottom: 4px; }
+  .hero h3 { font-size: 17px; color: var(--tx); font-weight: 700; }
+  [data-dir="d"] .hero h3 { font-family: Georgia, "Songti SC", "Noto Serif SC", serif; font-size: 19px; letter-spacing: 1px; }
+  .hero p { font-size: 12px; color: var(--subc); margin-top: 3px; }
+  .hero .ring {
+    position: absolute; right: -26px; top: -26px; width: 110px; height: 110px; border-radius: 50%;
+    border: 14px solid var(--p-soft); opacity: .75;
+  }
+  .hero .go {
+    margin-top: 12px; display: inline-flex; align-items: center; gap: 6px;
+    background: linear-gradient(135deg, var(--p), var(--p-strong));
+    color: #fff; font-size: 13px; font-weight: 600; border-radius: 999px; padding: 9px 18px;
+    box-shadow: 0 6px 16px -6px color-mix(in srgb, var(--p) 55%, transparent);
+  }
+  [data-dir="c"] .hero .go { background: var(--p); box-shadow: none; }
+
+  /* next match countdown */
+  .next {
+    background: var(--card); border: 1px solid var(--border); border-radius: 18px;
+    padding: 14px 16px; display: flex; align-items: center; justify-content: space-between;
+  }
+  .next .lab { font-size: 11px; color: var(--subc); }
+  .next .val { font-size: 15px; font-weight: 700; color: var(--tx); }
+  [data-dir="d"] .next .val { font-family: Georgia, "Songti SC", serif; }
+  .next .clock {
+    width: 40px; height: 40px; border-radius: 13px; background: var(--p-soft);
+    display: grid; place-items: center; color: var(--p-strong); font-weight: 700; font-size: 13px;
+  }
+
+  /* match card sample */
+  .match {
+    background: var(--card); border: 1px solid var(--border); border-radius: 18px; padding: 14px 16px;
+  }
+  .match .row { display: flex; justify-content: space-between; align-items: center; }
+  .match .who { font-size: 14px; font-weight: 600; color: var(--tx); margin-top: 6px; }
+  .match .meta { font-size: 11.5px; color: var(--subc); }
+  .chip {
+    font-size: 10.5px; padding: 3px 10px; border-radius: 999px;
+    background: var(--p-soft); color: var(--p-strong); font-weight: 600;
+  }
+  .chip.ai { background: color-mix(in srgb, var(--ai) 12%, white); color: var(--ai); }
+
+  /* modal mock */
+  .modal-mock {
+    border-radius: 22px; padding: 26px 18px 18px; text-align: center; position: relative; overflow: hidden;
+    background: linear-gradient(160deg, var(--hero-b), var(--hero-a));
+    border: 1px solid var(--border); margin-top: 4px;
+  }
+  .modal-mock .orb {
+    width: 66px; height: 66px; border-radius: 50%; margin: 2px auto 12px;
+    background:
+      radial-gradient(circle at 32% 30%, color-mix(in srgb, var(--p) 30%, white), var(--p));
+    box-shadow: 0 0 0 10px color-mix(in srgb, var(--p) 12%, transparent),
+                0 0 0 20px color-mix(in srgb, var(--p) 5%, transparent);
+  }
+  [data-dir="c"] .modal-mock .orb { border-radius: 20px; box-shadow: none; background: var(--p); }
+  [data-dir="d"] .modal-mock .orb { border-radius: 50% 50% 50% 4px; }
+  .modal-mock h4 { font-size: 15.5px; color: var(--tx); font-weight: 700; }
+  [data-dir="d"] .modal-mock h4 { font-family: Georgia, "Songti SC", serif; font-size: 17px; letter-spacing: 1px; }
+  .modal-mock p { font-size: 11.5px; color: var(--subc); margin-top: 4px; }
+  .cta {
+    display: block; margin-top: 14px; padding: 11px 0; border-radius: 999px;
+    background: linear-gradient(135deg, var(--p), var(--p-strong)); color: #fff;
+    font-size: 13px; font-weight: 700; text-align: center;
+  }
+  [data-dir="c"] .cta { background: var(--p); }
+  .ghost {
+    display: block; margin-top: 8px; padding: 10px 0; border-radius: 999px;
+    border: 1px solid var(--border); color: var(--subc); font-size: 12.5px; text-align: center; background: transparent;
+  }
+  .ai-note { margin-top: 10px; font-size: 10px; color: var(--ai); display: flex; align-items: center; justify-content: center; gap: 4px; }
+
+  /* palette strip */
+  .pal { display: flex; gap: 6px; padding: 0 4px; }
+  .pal i { flex: 1; height: 34px; border-radius: 10px; display: block; border: 1px solid rgba(0,0,0,.05); }
+  .type-spec { padding: 2px 6px; }
+  .type-spec .t1 { font-size: 19px; font-weight: 700; color: var(--tx); }
+  [data-dir="d"] .type-spec .t1 { font-family: Georgia, "Songti SC", serif; }
+  .type-spec .t2 { font-size: 12.5px; color: var(--subc); margin-top: 2px; }
+</style>
+</head>
+<body>
+  <div class="head">
+    <h1>WeFinally · 粉色婚恋风格方向 ×4</h1>
+    <p>同一首页信息结构（进度 Hero / 下一次介绍 / 新匹配仪式弹窗）在四种粉色语言下的表达 · 用于选择矩阵评审 · WEFINALLY_UI_UX_REFACTOR_GOAL_V1</p>
+  </div>
+
+  <div class="board">
+
+    <!-- A -->
+    <section class="dir" data-dir="a">
+      <div class="dir-name"><b>A · 轻奢柔粉</b><span>高级 安静 细腻 婚恋感强（主候选）</span></div>
+      <div class="phone">
+        <div class="notch"></div>
+        <div class="hero">
+          <div class="ring"></div>
+          <div class="kicker">当前进度 · 第 1 步</div>
+          <h3>有一份新结果等你查看</h3>
+          <p>先看看为什么适合，再决定要不要继续</p>
+          <span class="go">查看匹配理由 →</span>
+        </div>
+        <div class="next">
+          <div><div class="lab">下一次介绍</div><div class="val">周三 00:00</div></div>
+          <div class="clock">2天</div>
+        </div>
+        <div class="match">
+          <div class="row"><span class="chip">AI匹配</span><span class="meta">08-21</span></div>
+          <div class="who">女 · 29岁 · 深圳</div>
+          <div class="meta">双向条件筛选通过 · 三观契合度高</div>
+        </div>
+        <div class="modal-mock">
+          <div class="orb"></div>
+          <h4>WeFinally 为你匹配到一位对象</h4>
+          <p>这次匹配基于你们的画像、偏好与双向适配</p>
+          <span class="cta">查看匹配理由</span>
+          <span class="ghost">稍后再看</span>
+          <div class="ai-note">✦ AI 辅助筛选 · 内容仅供参考</div>
+        </div>
+        <div class="pal">
+          <i style="background:#E8637F"></i><i style="background:#F9DEE4"></i><i style="background:#FAF6F4"></i><i style="background:#3A2E2E"></i><i style="background:#7B6CC8"></i>
+        </div>
+        <div class="type-spec"><div class="t1">认真，是一种温柔</div><div class="t2">正文 28rpx · 说明 24rpx · 克制字重</div></div>
+      </div>
+    </section>
+
+    <!-- B -->
+    <section class="dir" data-dir="b">
+      <div class="dir-name"><b>B · 甜美元气粉</b><span>亲和 年轻 活泼 第一眼好感</span></div>
+      <div class="phone">
+        <div class="notch"></div>
+        <div class="hero">
+          <div class="ring"></div>
+          <div class="kicker">当前进度 · 第 1 步</div>
+          <h3>有新的心动信号！</h3>
+          <p>这位对象和你的双向适配度很不错哦</p>
+          <span class="go">马上看看 →</span>
+        </div>
+        <div class="next">
+          <div><div class="lab">下一份心动</div><div class="val">周三 00:00</div></div>
+          <div class="clock">2天</div>
+        </div>
+        <div class="match">
+          <div class="row"><span class="chip">AI匹配</span><span class="meta">08-21</span></div>
+          <div class="who">女 · 29岁 · 深圳</div>
+          <div class="meta">双向条件筛选通过 · 三观契合度高</div>
+        </div>
+        <div class="modal-mock">
+          <div class="orb"></div>
+          <h4>叮！为你认真筛到一位对象</h4>
+          <p>基于画像、偏好与双向适配，先看看合不合适～</p>
+          <span class="cta">看看 TA 的理由</span>
+          <span class="ghost">稍后再看</span>
+          <div class="ai-note">✦ AI 辅助筛选 · 内容仅供参考</div>
+        </div>
+        <div class="pal">
+          <i style="background:#FF6B8A"></i><i style="background:#FFE3EA"></i><i style="background:#FFF7F8"></i><i style="background:#472D33"></i><i style="background:#8E6FD8"></i>
+        </div>
+        <div class="type-spec"><div class="t1">把心动说清楚</div><div class="t2">对比更强的按钮 · 圆润亲和的文案语气</div></div>
+      </div>
+    </section>
+
+    <!-- C -->
+    <section class="dir" data-dir="c">
+      <div class="dir-name"><b>C · 极简效率粉</b><span>清爽 信息明确 上手快 一眼懂</span></div>
+      <div class="phone">
+        <div class="notch"></div>
+        <div class="hero">
+          <div class="ring"></div>
+          <div class="kicker">当前进度</div>
+          <h3>有 1 份新匹配结果</h3>
+          <p>建议先阅读匹配理由，再决定是否推进</p>
+          <span class="go">查看详情 →</span>
+        </div>
+        <div class="next">
+          <div><div class="lab">下一次匹配</div><div class="val">周三 00:00</div></div>
+          <div class="clock">2天</div>
+        </div>
+        <div class="match">
+          <div class="row"><span class="chip">AI匹配</span><span class="meta">08-21</span></div>
+          <div class="who">女 · 29岁 · 深圳</div>
+          <div class="meta">双向条件筛选通过 · 三观契合度高</div>
+        </div>
+        <div class="modal-mock">
+          <div class="orb"></div>
+          <h4>新匹配结果已生成</h4>
+          <p>本次匹配依据双方资料与偏好测算完成</p>
+          <span class="cta">查看匹配理由</span>
+          <span class="ghost">稍后再看</span>
+          <div class="ai-note">✦ AI 辅助筛选 · 内容仅供参考</div>
+        </div>
+        <div class="pal">
+          <i style="background:#D96C81"></i><i style="background:#F6E7EA"></i><i style="background:#FCFCFC"></i><i style="background:#333333"></i><i style="background:#6E64B8"></i>
+        </div>
+        <div class="type-spec"><div class="t1">每一步都清楚</div><div class="t2">更少装饰 · 结构优先 · 霞姐拿起来就能用</div></div>
+      </div>
+    </section>
+
+    <!-- D -->
+    <section class="dir" data-dir="d">
+      <div class="dir-name"><b>D · 杂志感玫瑰粉</b><span>品牌感 视觉记忆强 精致 编辑排版</span></div>
+      <div class="phone">
+        <div class="notch"></div>
+        <div class="hero">
+          <div class="ring"></div>
+          <div class="kicker">WEFINALLY · 本周精选</div>
+          <h3>为你留了一位合适的人</h3>
+          <p>先读一读你们为什么合适</p>
+          <span class="go">翻开这一期 →</span>
+        </div>
+        <div class="next">
+          <div><div class="lab">下一位 · 期待</div><div class="val">周三 00:00</div></div>
+          <div class="clock">2天</div>
+        </div>
+        <div class="match">
+          <div class="row"><span class="chip">AI匹配</span><span class="meta">08-21</span></div>
+          <div class="who">女 · 29岁 · 深圳</div>
+          <div class="meta">双向条件筛选通过 · 三观契合度高</div>
+        </div>
+        <div class="modal-mock">
+          <div class="orb"></div>
+          <h4>本期 · WeFinally 为你选定</h4>
+          <p>基于你们的画像、偏好与双向适配郑重推荐</p>
+          <span class="cta">阅读匹配理由</span>
+          <span class="ghost">稍后再看</span>
+          <div class="ai-note">✦ AI 辅助筛选 · 内容仅供参考</div>
+        </div>
+        <div class="pal">
+          <i style="background:#C44569"></i><i style="background:#F3DCE2"></i><i style="background:#FAF5EF"></i><i style="background:#35282C"></i><i style="background:#6D5AA8"></i>
+        </div>
+        <div class="type-spec"><div class="t1">被认真安排的一次相遇</div><div class="t2">衬线标题 · 大留白 · 图文节奏</div></div>
+      </div>
+    </section>
+
+  </div>
+</body>
+</html>
