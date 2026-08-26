@@ -67,39 +67,39 @@
 - [x] 本 plan 文件落库
 
 ### Stage 1 研究 + 风格方案
-- [ ] RESEARCH_SUMMARY.md（CMB/Hinge/Bumble 借鉴与取舍）
-- [ ] baoyu skill → DSH skill 安装（Task A）+ 使用记录
-- [ ] 4 套粉色风格方向 HTML 风格板（baoyu-design 产线输出到 `designs/wefinally-uiux-refactor-goal-v1/`）
-- [ ] STYLE_DIRECTIONS.md（含选择矩阵与选型结论）
+- [x] RESEARCH_SUMMARY.md（CMB/Hinge/Bumble 借鉴与取舍）
+- [x] baoyu skill → DSH skill 安装（Task A）+ 使用记录
+- [x] 4 套粉色风格方向 HTML 风格板（baoyu-design 产线输出到 `designs/wefinally-uiux-refactor-goal-v1/`）
+- [x] STYLE_DIRECTIONS.md（含选择矩阵与选型结论：主方案 Style A，备选 C）
 
 ### Stage 2 设计系统
-- [ ] `miniprogram/styles/tokens.wxss`：color/typography/spacing/radius/shadow tokens（CSS variables，page 级注入）
-- [ ] `miniprogram/styles/icons.wxss`：线性圆角 SVG mask 图标体系（约 20 个基础图标）
-- [ ] app.wxss token 化改造（保持旧类名兼容）
-- [ ] 组件：`state-view`（empty/error/network/loading）、`ai-thinking`（AI 统一等待态）、`new-match-modal`（新匹配仪式弹窗）
-- [ ] DESIGN_SYSTEM.md
+- [x] `miniprogram/styles/tokens.wxss`：color/typography/spacing/radius/shadow tokens（CSS variables，page 级注入）
+- [x] `miniprogram/styles/icons.wxss`：线性圆角 SVG mask 图标体系（26 个基础图标）
+- [x] app.wxss token 化改造（保持旧类名兼容）
+- [x] 组件：`state-view`（empty/error/network/loading）、`ai-thinking`（AI 统一等待态）、`new-match-modal`（新匹配仪式弹窗）
+- [x] DESIGN_SYSTEM.md
 
 ### Stage 3 关键页面重构（P0 顺序）
-- [ ] index 首页：Hero 区 + 新匹配强提示 + 下一次介绍倒计时 + AI助手入口 + 最近匹配精选化 + QA面板隔离
-- [ ] new-match-modal 接入首页（last-seen match id 判定，纯客户端）
-- [ ] match-list：列表卡片化 + 状态标签 + QA 面板折叠隔离
-- [ ] match-detail：决策顺序重排（状态头→为什么值得了解→亮点→需要确认→AI建议→CTA）+ AI 报告可读性重构
-- [ ] date-coordination：顶部状态卡统一叙事（邀请中/待回应/协调中/已有最终安排/本次未成）+ 方案对照卡 + AI 服务位收敛
-- [ ] love-advisor + chat：欢迎区自然化 + 用户ID卡收纳 + 气泡/输入区统一 + ai-thinking 组件接入
-- [ ] profile：菜单分组（资料与匹配 / 会员与订单 / 安全与服务）+ 图标统一 + 资料就绪度强化
+- [x] index 首页：Hero 区 + 新匹配强提示 + 下一次介绍倒计时 + AI助手入口 + 最近匹配精选化 + QA面板隔离
+- [x] new-match-modal 接入首页（last-seen match id 判定，纯客户端）
+- [x] match-list：列表卡片化 + 「新」标记 + QA 面板折叠隔离
+- [x] match-detail：决策顺序重排（状态头→为什么值得了解→亮点→需要确认→AI建议→CTA）+ AI 报告可读性重构
+- [x] date-coordination：顶部状态卡统一叙事（状态胶囊+四段步骤条）+ ai-thinking 接入 + AI 服务位收敛
+- [x] love-advisor + chat：欢迎区自然化 + 用户ID卡收纳 + 气泡/输入区统一 + ai-thinking 接入
+- [x] profile：菜单分组（资料与匹配 / 会员与订单 / 安全与服务）+ 图标统一 + 资料就绪度强化
 
 ### Stage 4 统一态收口
-- [ ] 所有 AI 场景接入 ai-thinking（chat / date-coordination 协调中 / match-detail 报告生成中）
-- [ ] error/retry 态统一 state-view
-- [ ] empty/skeleton 态补齐
+- [x] 所有 AI 场景接入 ai-thinking（chat / date-coordination 协调中 / match-detail 报告生成中）
+- [x] error/retry 态统一 state-view
+- [x] empty/skeleton 态补齐（skeleton 公共类 + state-view empty；页面按需使用）
 
 ### Stage 5 测试 + 文档 + push
-- [ ] JS 语法检查（node --check 全量页面/组件/utils）
-- [ ] WXML/WXSS 静态检查（标签配对、花括号平衡、app.json 页面一致性）
-- [ ] 微信开发者工具 CLI 编译尝试（若本机 CLI 可用）；否则以静态检查+代码评审代替并在 QA 文档注明
-- [ ] 业务回归走查清单（对照 AGENTS.md 安全边界逐条核对）
-- [ ] MANUAL_QA_CHECKLIST.md / FINAL_RESULT.md / PAGE_BY_PAGE_CHANGES.md / BAOYU_DSH_PLUGIN_ADAPTATION.md
-- [ ] push origin feature/ui-ux-refactor-goal-v1
+- [x] JS 语法检查（node --check 全量页面/组件/utils）✅ 0 失败
+- [x] WXML/WXSS 静态检查（tools/check-wxml.js 全部配对；WXSS 括号平衡；JSON 有效；usingComponents 路径全部存在）
+- [x] 微信开发者工具 CLI 编译尝试：IDE 服务端口未开启（安全设置，需用户 GUI 开启），已记录人工验证步骤
+- [x] 业务回归走查清单（对照 AGENTS.md 安全边界逐条核对；diff 复核 0 后端文件）
+- [x] MANUAL_QA_CHECKLIST.md / FINAL_RESULT.md / PAGE_BY_PAGE_CHANGES.md / BAOYU_DSH_PLUGIN_ADAPTATION.md / README.md
+- [x] push origin feature/ui-ux-refactor-goal-v1（见 git 记录）
 
 ## 3. 选型预案
 

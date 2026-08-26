@@ -124,14 +124,7 @@ function buildCoordinationDisplay(coordination) {
     showAdvanceSynthetic: Boolean(coordination && coordination.is_test_data)
       && String(coordination && coordination.synthetic_partner_mode || '') === 'manual_step'
       && role === 'initiator',
-    coordinatorHeroText: status === 'inviting_partner' && role !== 'invitee'
-      ? waitingPartnerHero
-      : (status === 'collecting_preferences' ? coordinatingHero
-        : (status === 'no_overlap'
-          ? '目前还没有找到完整共同安排。已经一致的条件不会再重复询问。'
-          : (status === 'waiting_confirmations'
-            ? '已有推荐方案待确认。你也可以继续和 AI 协调员沟通微调。'
-            : '正在帮助双方寻找共同安排。你可以随时告诉 AI 想调整的地方。')))
+    coordinatorHeroText
   }
 }
 
