@@ -1,0 +1,317 @@
+<!doctype html>
+<!-- WeFinally UI Research 2026 · Direction E · coordinate · 严禁用于正式小程序 -->
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WeFinally · 方向E 软性新粗野主义 · 约会协调</title>
+<style>
+/* ============ tokens：全部颜色走 CSS 变量 ============ */
+:root{
+  --bg:#F6EEE1;
+  --panel:#FFFCF4;
+  --ink:#191410;
+  --ink-2:#4D443B;
+  --mut:#77695A;
+  --rose:#EF5D7B;
+  --rose-deep:#C43A57;
+  --rose-pale:#F9CFD9;
+  --yellow:#FFC838;
+  --yellow-pale:#FFE9AC;
+  --mint:#93C09B;
+  --stone:#E0D6C6;
+  --ai-text:#CBB7FF;
+  --ai-bright:#E9E0FF;
+  --ai-dim:#9C86D9;
+  --ai-ring:rgba(203,183,255,.30);
+  --paper-dim:rgba(246,238,225,.84);
+  --tex-lite:rgba(246,238,225,.10);
+  --frame:rgba(25,20,16,.35);
+  --bw:2px;
+  --shadow-btn:4px 4px 0 var(--ink);
+}
+
+/* ============ base ============ */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-text-size-adjust:100%;background:var(--bg)}
+body{
+  max-width:390px;margin:0 auto;
+  font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+  background:var(--bg);color:var(--ink);
+  font-weight:500;line-height:1.75;
+  -webkit-font-smoothing:antialiased;
+}
+p{text-wrap:pretty}
+a{color:inherit}
+.wrap{padding:12px;display:grid;gap:12px}
+.en{text-transform:uppercase}
+.blk{border:var(--bw) solid var(--ink);background:var(--panel)}
+
+.kick{display:flex;align-items:center;gap:8px}
+.k-no{background:var(--ink);color:var(--bg);font-weight:900;font-size:11px;padding:1px 7px;letter-spacing:.08em}
+.k-en{font-size:11px;font-weight:900;letter-spacing:.22em}
+.k-cn{font-size:11px;color:var(--mut);font-weight:700;letter-spacing:.28em}
+.k-rule{flex:1;height:var(--bw);background:var(--ink)}
+
+.chip{display:inline-flex;align-items:center;gap:5px;border:var(--bw) solid var(--ink);padding:2px 8px;font-size:11px;font-weight:800;letter-spacing:.12em;background:var(--panel);line-height:1.6}
+.chip-ink{background:var(--ink);color:var(--bg)}
+.sq{width:8px;height:8px;background:var(--ink);display:inline-block;flex:none}
+
+/* ============ 顶栏 ============ */
+.topbar{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--ink);color:var(--bg);border:var(--bw) solid var(--ink);padding:0 14px;height:54px}
+.brand{font-weight:900;font-size:17px;letter-spacing:.08em}
+.brand i{color:var(--rose);font-style:normal}
+.top-tag{font-size:10px;font-weight:800;letter-spacing:.18em;color:var(--paper-dim)}
+
+/* ============ COORDINATING. 状态大字定格 ============ */
+.flash-wrap{display:grid}
+.flash{
+  background:var(--ink);color:var(--bg);
+  border:var(--bw) solid var(--ink);border-bottom:0;
+  padding:20px 18px 22px;display:grid;gap:12px;
+  background-image:radial-gradient(var(--tex-lite) 1.2px,transparent 1.2px);
+  background-size:12px 12px;
+}
+.f-kick{display:flex;align-items:center;gap:8px;font-size:10px;font-weight:800;letter-spacing:.22em;color:var(--yellow)}
+.f-lamp{width:9px;height:9px;background:var(--yellow);box-shadow:0 0 0 3px var(--ai-ring);flex:none}
+.f-h{font-size:52px;font-weight:900;line-height:.98;letter-spacing:-.02em}
+.f-h .rd{color:var(--rose)}
+.cursor{display:inline-block;width:.42em;height:.76em;background:var(--rose);margin-left:.08em;animation:blink3 1s steps(1,end) 3}
+@keyframes blink3{0%,49%{opacity:1}50%,100%{opacity:0}}
+.f-cn{font-size:24px;font-weight:900;letter-spacing:.42em;line-height:1.2}
+.f-sub{font-size:13px;line-height:1.75;color:var(--paper-dim)}
+.hazard,.flash .hazard{height:10px;border:var(--bw) solid var(--ink);background:repeating-linear-gradient(45deg,var(--yellow) 0 10px,var(--ink) 10px 20px)}
+
+/* ============ 01 时间对峙：OURS VS THEIRS + 推荐章 ============ */
+.coord-head{display:flex;align-items:center;gap:10px;padding:13px 16px 2px;flex-wrap:wrap}
+.stag{display:inline-flex;align-items:center;gap:6px;border:var(--bw) solid var(--ink);padding:3px 9px;font-size:12px;font-weight:900;letter-spacing:.1em;line-height:1.6}
+.stag .dot{width:8px;height:8px;background:var(--ink);flex:none}
+.st-wait{background:var(--yellow)}
+.coord-title{font-size:15px;font-weight:900;letter-spacing:.05em}
+.vs{display:grid;grid-template-columns:1fr 42px 1fr;padding:14px 16px 0;align-items:stretch}
+.vc{border:var(--bw) solid var(--ink);padding:9px 12px 10px;display:grid;gap:2px;align-content:start;background:var(--panel);position:relative}
+.vc.them{background:var(--yellow-pale)}
+.vl{font-size:9.5px;letter-spacing:.14em;color:var(--mut);font-weight:800}
+.vt{font-size:27px;font-weight:900;line-height:1.15;font-variant-numeric:tabular-nums}
+.vn{font-size:11px;font-weight:800;color:var(--ink-2);letter-spacing:.04em}
+.vs-mid{display:grid;place-items:center}
+.vs-mid b{width:32px;height:32px;background:var(--ink);color:var(--bg);display:grid;place-items:center;font-size:12px;font-weight:900}
+.stamp{
+  position:absolute;top:-13px;right:8px;z-index:2;
+  background:var(--ink);color:var(--yellow);
+  font-size:10px;font-weight:900;letter-spacing:.16em;
+  padding:3px 9px;border:var(--bw) solid var(--ink);
+  transform:rotate(-3deg);line-height:1.5;
+}
+.coord-note{padding:11px 16px 0;font-size:12.5px;color:var(--ink-2);line-height:1.75}
+.coord-foot{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 16px 15px;font-size:12.5px;font-weight:800}
+.coord-foot .loc i{color:var(--rose-deep);font-style:normal}
+.coord-foot .by{color:var(--mut);font-weight:700;font-size:11.5px;letter-spacing:.06em}
+
+/* 方块段式时间轴：13:00–18:00，半小时一格 ×10 */
+.tl{border-top:var(--bw) solid var(--ink);padding:12px 16px 14px;display:grid;gap:7px}
+.tl-lbl{font-size:9.5px;letter-spacing:.16em;color:var(--mut);font-weight:800}
+.tl-scale{display:flex;gap:8px;font-size:9px;font-weight:800;color:var(--mut);font-variant-numeric:tabular-nums;letter-spacing:.03em}
+.tl-scale i{width:40px;flex:none}
+.tl-scale span{flex:1;text-align:left;line-height:1}
+.tl-row{display:flex;gap:8px;align-items:center}
+.tl-name{width:40px;flex:none;font-size:11px;font-weight:900;letter-spacing:.06em;line-height:1.4}
+.tl-track{flex:1;display:flex;gap:2px}
+.tl-track i{flex:1;height:18px;border:1.5px solid var(--ink);background:transparent}
+.tl-track .f-r{background:var(--rose-pale)}
+.tl-track .f-y{background:var(--yellow-pale)}
+.tl-track .f-s{background:var(--rose)}
+.legend{display:flex;gap:12px;flex-wrap:wrap;font-size:10.5px;font-weight:700;color:var(--ink-2);line-height:1.6}
+.legend i{width:9px;height:9px;border:1.5px solid var(--ink);display:inline-block;margin-right:4px;vertical-align:-1px}
+.lg-r{background:var(--rose-pale)}.lg-y{background:var(--yellow-pale)}.lg-s{background:var(--rose)}
+.tl-hint{font-size:11.5px;color:var(--ink-2);line-height:1.7;border-top:1.5px dashed var(--frame);padding-top:8px}
+.tl-hint b{font-weight:900;color:var(--ink)}
+
+/* ============ 02 地点块 ============ */
+.place{display:flex;gap:13px;align-items:center;padding:14px 16px;
+  background-image:radial-gradient(rgba(25,20,16,.13) 1.2px,transparent 1.2px);
+  background-size:12px 12px;}
+.pl-pin{width:46px;height:46px;flex:none;background:var(--yellow);border:var(--bw) solid var(--ink);display:grid;place-items:center;font-size:19px;font-weight:900}
+.pl-t{font-size:21px;font-weight:900;line-height:1.25}
+.pl-d{font-size:11.5px;color:var(--ink-2);line-height:1.65}
+.pl-tag{margin-left:auto;flex:none}
+
+/* ============ AI 状态灯行：黑底紫字 ============ */
+.aistrip{display:flex;align-items:center;gap:10px;background:var(--ink);color:var(--ai-text);padding:0 14px;min-height:58px;text-decoration:none}
+.lamp{width:10px;height:10px;background:var(--yellow);box-shadow:0 0 0 3px var(--ai-ring);flex:none}
+.ai-badge{font-size:10px;font-weight:900;letter-spacing:.1em;border:1.5px solid var(--ai-dim);color:var(--ai-text);padding:1px 7px;white-space:nowrap}
+.ai-txt{font-size:13px;font-weight:700;line-height:1.6}
+.ai-txt b{color:var(--ai-bright);font-weight:900}
+.arr{margin-left:auto;color:var(--ai-bright);font-weight:900;font-size:15px}
+
+/* ============ 03 双方确认状态两块 ============ */
+.who{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.wb{border:var(--bw) solid var(--ink);background:var(--panel);padding:12px;display:grid;gap:8px;align-content:start}
+.wb.me{background:var(--panel)}
+.wb.him{background:var(--yellow-pale)}
+.w-top{display:flex;justify-content:space-between;align-items:center;gap:6px}
+.mono-sm{width:36px;height:36px;font-size:18px;display:grid;place-items:center;border:var(--bw) solid var(--ink);background:var(--rose-pale);font-weight:900;flex:none}
+.wb.him .mono-sm{background:var(--panel)}
+.w-nm{font-size:19px;font-weight:900;line-height:1.2}
+.w-en{font-size:9px;letter-spacing:.2em;color:var(--mut);font-weight:800}
+.w-st{font-size:16px;font-weight:900;display:flex;align-items:center;gap:7px;line-height:1.3}
+.w-st .mk{font-size:13px;width:22px;height:22px;display:grid;place-items:center;border:var(--bw) solid var(--ink);flex:none}
+.mk-ok{background:var(--mint)}
+.mk-no{background:var(--yellow)}
+.w-sub{font-size:10.5px;color:var(--ink-2);border-top:1.5px solid var(--ink);padding-top:7px;line-height:1.6}
+
+/* ============ 动作区：唯一主 CTA ============ */
+.acts{display:grid;gap:10px}
+.cta{
+  display:flex;align-items:center;justify-content:center;gap:10px;
+  background:var(--ink);color:var(--bg);
+  min-height:62px;border:var(--bw) solid var(--ink);
+  box-shadow:var(--shadow-btn);
+  font-size:18px;font-weight:900;letter-spacing:.16em;text-decoration:none;
+  transition:transform .08s,box-shadow .08s;
+}
+.cta:hover{transform:translate(-2px,-2px);box-shadow:6px 6px 0 var(--ink)}
+.cta:active{transform:translate(3px,3px);box-shadow:0 0 0 var(--ink)}
+.cta-sub{
+  display:flex;align-items:center;justify-content:center;
+  min-height:56px;border:var(--bw) solid var(--ink);background:var(--panel);
+  color:var(--ink);font-size:15px;font-weight:900;letter-spacing:.22em;text-decoration:none;
+}
+.cta-sub:hover{background:var(--ink);color:var(--bg)}
+.foot{text-align:center;font-size:9.5px;letter-spacing:.22em;color:var(--mut);font-weight:800;padding:4px 0 8px}
+</style>
+</head>
+<body>
+<main class="wrap">
+
+  <!-- 顶栏 -->
+  <header class="topbar">
+    <div class="brand">WEFINALLY<i>■</i></div>
+    <div class="top-tag en">COORD · 约会协调</div>
+  </header>
+
+  <!-- COORDINATING · 协调中 状态大字 -->
+  <div class="flash-wrap">
+    <section class="flash">
+      <div class="f-kick"><i class="f-lamp" aria-hidden="true"></i><span class="en">SYSTEM STATUS — 本周六介绍 · 时间敲定中</span></div>
+      <h1 class="f-h en">COORD-<br>INATING<span class="rd">.</span><span class="cursor" aria-hidden="true"></span></h1>
+      <div class="f-cn">协调中</div>
+      <p class="f-sub">林亦辰提议把周六介绍从 14:30 改到 15:00。你的空闲到 17:00，改后仍在范围内 —— 确认或另提时间都行，定了就由霞姐团队去敲定。</p>
+    </section>
+    <div class="hazard" aria-hidden="true"></div>
+  </div>
+
+  <!-- 01 时间对峙：OURS VS THEIRS（黄底 THEIRS 盖「推荐」章） -->
+  <div class="kick"><b class="k-no">01</b><span class="k-en en">TIME</span><span class="k-cn">时间对峙</span><i class="k-rule"></i></div>
+  <section class="blk" style="display:flex;flex-direction:column">
+    <div class="coord-head">
+      <span class="stag st-wait"><i class="dot" aria-hidden="true"></i>协调中</span>
+      <span class="coord-title">下一次介绍 · 本周六 08·01</span>
+    </div>
+    <div class="vs">
+      <div class="vc">
+        <div class="vl en">OURS · 你提的时间</div>
+        <div class="vt">14:30</div>
+        <div class="vn">周六 · 已提交</div>
+      </div>
+      <div class="vs-mid"><b>VS</b></div>
+      <div class="vc them">
+        <span class="stamp en" aria-hidden="true">推荐 PICK</span>
+        <div class="vl en">THEIRS · 对方提议</div>
+        <div class="vt">15:00</div>
+        <div class="vn">周六 · 待你回应</div>
+      </div>
+    </div>
+    <p class="coord-note">两边只差半小时。你选定一个，官方协调员就去和对方敲定，不用你来回沟通。</p>
+    <!-- 方块段式时间轴：她 13–17 / 他 14–18 / 交叠高亮 14–17 -->
+    <div class="tl">
+      <div class="tl-lbl en">OVERLAP MAP — 双方空闲 · 13:00–18:00</div>
+      <div class="tl-scale" aria-hidden="true"><i></i><span>13:00</span><span>14:00</span><span>15:00</span><span>16:00</span><span>17:00</span><span>18:00</span></div>
+      <div class="tl-row">
+        <span class="tl-name">她 CHEN</span>
+        <div class="tl-track" aria-label="陈晓雯空闲 13:00 至 17:00">
+          <i class="f-r"></i><i class="f-r"></i><i class="f-r"></i><i class="f-r"></i><i class="f-r"></i><i class="f-r"></i><i class="f-r"></i><i class="f-r"></i><i></i><i></i>
+        </div>
+      </div>
+      <div class="tl-row">
+        <span class="tl-name">他 LIN</span>
+        <div class="tl-track" aria-label="林亦辰空闲 14:00 至 18:00">
+          <i></i><i></i><i class="f-y"></i><i class="f-y"></i><i class="f-y"></i><i class="f-y"></i><i class="f-y"></i><i class="f-y"></i><i class="f-y"></i><i class="f-y"></i>
+        </div>
+      </div>
+      <div class="tl-row">
+        <span class="tl-name en">BOTH</span>
+        <div class="tl-track" aria-label="两人共同空闲 14:00 至 17:00">
+          <i></i><i></i><i class="f-s"></i><i class="f-s"></i><i class="f-s"></i><i class="f-s"></i><i class="f-s"></i><i class="f-s"></i><i></i><i></i>
+        </div>
+      </div>
+      <div class="legend">
+        <span><i class="lg-r" aria-hidden="true"></i>她 13:00–17:00</span>
+        <span><i class="lg-y" aria-hidden="true"></i>他 14:00–18:00</span>
+        <span><i class="lg-s" aria-hidden="true"></i>交叠 14:00–17:00</span>
+      </div>
+      <p class="tl-hint">交叠窗口共 <b>3 小时</b>。<b>15:00</b> 落在正中，前后各留约 90 分钟余量；<b>14:30</b> 则贴着他空闲的开头。</p>
+    </div>
+    <div class="coord-foot">
+      <span class="loc"><i aria-hidden="true">■</i> 南头古城 · 深圳</span>
+      <span class="by">官方协调员跟进中</span>
+    </div>
+  </section>
+
+  <!-- 02 见面地点块 -->
+  <div class="kick"><b class="k-no">02</b><span class="k-en en">PLACE</span><span class="k-cn">见面地点</span><i class="k-rule"></i></div>
+  <section class="blk place">
+    <span class="pl-pin" aria-hidden="true">■</span>
+    <div>
+      <div class="pl-t">南头古城</div>
+      <div class="pl-d">深圳南山 · 街巷可漫步，日料店集中，首次见面好下台</div>
+    </div>
+    <span class="chip pl-tag en">官方选点</span>
+  </section>
+
+  <!-- AI 状态灯行：1 条建议（黑底紫字） -->
+  <a class="aistrip" href="#">
+    <i class="lamp" aria-hidden="true"></i>
+    <span class="ai-badge">🤖 AI</span>
+    <span class="ai-txt"><b>1 条建议</b>　改 15:00 更稳 — 看看理由</span>
+    <span class="arr" aria-hidden="true">→</span>
+  </a>
+
+  <!-- 03 双方确认状态两块 -->
+  <div class="kick"><b class="k-no">03</b><span class="k-en en">CONFIRM STATUS</span><span class="k-cn">双方确认</span><i class="k-rule"></i></div>
+  <section class="who">
+    <article class="wb me">
+      <div class="w-top">
+        <span class="mono-sm" aria-hidden="true">陈</span>
+        <span class="w-en en">CHEN XIAOWEN · 我</span>
+      </div>
+      <div>
+        <div class="w-nm">陈晓雯</div>
+        <div class="w-st"><span class="mk mk-ok" aria-hidden="true">✓</span>已确认 14:30</div>
+      </div>
+      <div class="w-sub">你的时间已提交给协调员</div>
+    </article>
+    <article class="wb him">
+      <div class="w-top">
+        <span class="mono-sm" aria-hidden="true">林</span>
+        <span class="w-en en">LIN YICHEN · 对方</span>
+      </div>
+      <div>
+        <div class="w-nm">林亦辰</div>
+        <div class="w-st"><span class="mk mk-no" aria-hidden="true">…</span>待回应 WAITING</div>
+      </div>
+      <div class="w-sub">等你回应后一起敲定</div>
+    </article>
+  </section>
+
+  <!-- 动作区：唯一主 CTA -->
+  <section class="acts">
+    <a class="cta" href="#">确认 15:00 <span aria-hidden="true">→</span></a>
+    <a class="cta-sub" href="#">提议其他时间</a>
+  </section>
+
+  <footer class="foot en">UI RESEARCH PROTOTYPE · DIRECTION E · NOT FOR PRODUCTION</footer>
+
+</main>
+</body>
+</html>

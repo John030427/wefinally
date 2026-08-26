@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<!-- WeFinally UI Research 2026 · Direction C · match-report · 严禁用于正式小程序 -->
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WeFinally · Match Report · 票背报告（方向 C 原型）</title>
+<style>
+/* ============================================================
+   Direction C — DATE PASS / INVITATION TICKET · 票背报告
+   深棕暗场（票背印刷面）：奶油油墨反白 × 印章亮红 × 编辑注墨绿
+   ============================================================ */
+:root{
+  --night:#241C14;          /* 票背底 */
+  --trackline:#4A4032;
+  --cream:#F1E9D8;
+  --cream-dim:#C9BDA6;
+  --faint:#877A64;
+  --red:#B93A24;--red-lite:#D8502F;--red-deep:#962B18;
+  --on-red:#FFF6EA;
+  --green:#33584A;--green-deep:#25453A;--green-wash:#E7ECDF;
+  --ink:#2A2118;--ink-2:#6B5D4B;
+  --cutout:var(--night);
+  --sans:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+  --mono:"SF Mono","Cascadia Mono",Consolas,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html{-webkit-text-size-adjust:100%;}
+body{background:var(--night);color:var(--cream);font:400 14px/1.75 var(--sans);}
+.app{max-width:390px;margin:0 auto;}
+a{color:inherit;}
+a:focus-visible{outline:2px solid var(--red-lite);outline-offset:2px;}
+
+/* ---------- 报头 ---------- */
+.rhead{display:flex;justify-content:space-between;align-items:baseline;padding:16px 20px 10px;
+  font:600 9px/1.7 var(--mono);letter-spacing:.22em;color:var(--cream-dim);}
+.rhead b{color:var(--cream);font-weight:700;}
+
+/* ---------- 标题 ---------- */
+.rtitle{padding:14px 20px 0;}
+.rtitle h1{font:800 27px/1.4 var(--mono);letter-spacing:.04em;}
+.rtitle h1 .hot{color:var(--red-lite);}
+.rtitle .rsub{margin-top:6px;font:600 10px/1.8 var(--mono);letter-spacing:.16em;color:var(--cream-dim);}
+.aichip{
+  display:inline-flex;align-items:center;gap:7px;margin-top:12px;
+  border:1.5px solid var(--red-lite);border-radius:2px;padding:6px 8px 5px;
+  font:700 9.5px/1.6 var(--mono);letter-spacing:.18em;color:var(--red-lite);
+}
+.rtitle p.lead{margin-top:12px;font:500 12px/1.85 var(--sans);color:var(--cream-dim);text-wrap:pretty;}
+
+/* ---------- 分节 ---------- */
+.rsec{margin-top:28px;padding:0 20px;}
+.rsech{display:flex;align-items:baseline;gap:10px;}
+.rsech b{flex:none;font:800 13px/1.6 var(--mono);color:var(--red-lite);letter-spacing:.06em;}
+.rsech .en{flex:none;font:700 10px/1.6 var(--mono);letter-spacing:.22em;color:var(--cream);}
+.rsech .cn{font:600 10px/1.6 var(--sans);letter-spacing:.16em;color:var(--faint);}
+.rsech::after{content:"";flex:1;border-top:1px dashed var(--trackline);transform:translateY(-3px);}
+.rsec > p{margin-top:9px;font:500 12.5px/1.9 var(--sans);color:var(--cream-dim);text-wrap:pretty;}
+.rsec > p b{color:var(--cream);}
+
+/* 共同持有：票面清单式（反白行） */
+.cpoints{list-style:none;margin-top:6px;border-top:1px solid var(--trackline);}
+.cpoints li{
+  display:flex;align-items:center;gap:10px;min-height:46px;
+  border-bottom:1px dashed var(--trackline);
+  font:600 13px/1.75 var(--sans);color:var(--cream);
+}
+.cpoints .pic{flex:none;width:20px;text-align:center;font:700 13px/1 var(--mono);color:var(--red-lite);}
+.cpoints .sub{margin-left:auto;flex:none;font:600 9px/1.7 var(--mono);letter-spacing:.1em;color:var(--faint);text-align:right;}
+
+/* 需要双方确认 */
+.confrow{display:flex;align-items:center;gap:10px;min-height:46px;border-bottom:1px dashed var(--trackline);}
+.confrow .box{flex:none;width:18px;height:18px;display:grid;place-items:center;
+  border:1.5px solid var(--green-wash);border-radius:2px;
+  font:700 11px/1 var(--mono);color:var(--green-wash);}
+.confrow.open .box{border-color:var(--red-lite);color:var(--red-lite);}
+.confrow .ct{font:600 12.5px/1.75 var(--sans);}
+.confrow .cs{margin-left:auto;flex:none;text-align:right;font:600 9px/1.7 var(--mono);letter-spacing:.08em;color:var(--faint);}
+.confrow:not(.open) .cs{color:var(--red-lite);}
+
+/* 服务台编辑注（🤖 全段标识） */
+.ednote{
+  margin-top:10px;background:var(--green-wash);color:var(--ink);
+  border:1.5px dashed var(--green-deep);border-radius:4px;padding:12px 14px;
+}
+.ednote-h{display:flex;align-items:center;gap:8px;font:700 10px/1.7 var(--mono);letter-spacing:.12em;color:var(--green-deep);}
+.ednote-h .bot{flex:none;width:26px;height:26px;display:grid;place-items:center;
+  border:1.5px solid var(--green-deep);border-radius:3px;font-size:13px;}
+.ednote p{margin-top:8px;font:500 11.5px/1.8 var(--sans);text-wrap:pretty;}
+.ednote em{display:block;margin-top:8px;font:500 9px/1.75 var(--sans);font-style:normal;color:var(--ink-2);text-wrap:pretty;}
+
+/* ---------- 票背条码 ---------- */
+.repcode{margin:30px 20px 0;}
+.barcode{
+  width:100%;height:26px;
+  background:
+    repeating-linear-gradient(90deg,var(--cream-dim) 0 2px,transparent 2px 5px),
+    repeating-linear-gradient(90deg,var(--cream-dim) 0 1px,transparent 1px 8px),
+    repeating-linear-gradient(90deg,var(--cream-dim) 0 3px,transparent 3px 11px);
+  opacity:.8;
+}
+.serial{margin-top:6px;text-align:center;font:600 8px/1.7 var(--mono);letter-spacing:.2em;color:var(--faint);}
+
+/* ---------- 动作区 ---------- */
+.acts{padding:24px 20px 0;display:flex;flex-direction:column;gap:12px;}
+.primary{
+  display:flex;align-items:stretch;text-decoration:none;
+  border:1.5px solid var(--red-deep);border-radius:3px;overflow:hidden;
+}
+.primary::before{
+  content:"";flex:none;width:16px;
+  background:repeating-linear-gradient(135deg,var(--on-red) 0 4px,transparent 4px 9px);
+  background-color:var(--red-deep);opacity:.85;
+}
+.primary b{
+  flex:1;display:flex;align-items:center;justify-content:center;gap:10px;
+  min-height:58px;background:var(--red-lite);color:var(--on-red);
+  font:800 17px/1 var(--sans);letter-spacing:.12em;transition:background .15s;
+}
+.primary:hover b{background:var(--red);}
+.primary .ar{font:700 15px/1 var(--mono);}
+.ghost{
+  min-height:48px;display:grid;place-items:center;
+  border:1.5px solid var(--faint);border-radius:3px;
+  color:var(--cream-dim);font:600 13px/1 var(--sans);letter-spacing:.3em;text-indent:.3em;
+  text-decoration:none;transition:border-color .15s,color .15s;
+}
+.ghost:hover{border-color:var(--cream-dim);color:var(--cream);}
+
+/* ---------- 页脚 ---------- */
+.rfoot{
+  display:flex;justify-content:space-between;align-items:baseline;
+  padding:26px 20px 30px;
+  font:600 8.5px/1.7 var(--mono);letter-spacing:.2em;color:var(--faint);
+}
+.rfoot b{color:var(--cream-dim);font-weight:700;}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header class="rhead">
+    <span><b>WEFINALLY</b> ▪ TICKET OFFICE</span>
+    <span>REVERSE SIDE · 票背</span>
+  </header>
+
+  <!-- ===== 标题 + AI 全局标识 ===== -->
+  <section class="rtitle">
+    <h1>MATCH REPORT<br><span class="hot">WF-C08</span> 出票说明</h1>
+    <p class="rsub">票背报告 · PASS NO. WF-C08 · 林亦辰</p>
+    <span class="aichip">🤖 AI GENERATED · AI 生成内容</span>
+    <p class="lead">这一页印在你介绍函的背面：先读理由，再决定要不要赴约。读不完也没关系，结论只有一行——值得周末见一面。</p>
+  </section>
+
+  <!-- ===== 01 为什么出这张票 ===== -->
+  <section class="rsec">
+    <div class="rsech"><b>01</b><span class="en">WHY THIS PASS</span><span class="cn">为什么出这张票</span></div>
+    <p>你们的工作日像两条平行线：他把安静留给<b>宅家看片</b>的夜晚，你把脚步留给<b>市集漫游</b>的白天。互不打扰，却也互相错过。</p>
+    <p>而你们都把周末让给了认真生活——同一段 EBC 的山、同一台胶片机的快门、同一种对日料的执着。<b>平行线在周末交汇，这就是这张票的出发点。</b></p>
+  </section>
+
+  <!-- ===== 02 共同持有 ===== -->
+  <section class="rsec">
+    <div class="rsech"><b>02</b><span class="en">HELD IN COMMON</span><span class="cn">共同持有 · 三条</span></div>
+    <ul class="cpoints">
+      <li><span class="pic">▲</span>各走过一段 EBC 的徒步路线<span class="sub">HIKE</span></li>
+      <li><span class="pic">◆</span>Contax T2 × Nikon FM2 胶片机<span class="sub">FILM</span></li>
+      <li><span class="pic">●</span>周末日料党，都在找那家好店<span class="sub">FOOD</span></li>
+    </ul>
+  </section>
+
+  <!-- ===== 03 差异备注 ===== -->
+  <section class="rsec">
+    <div class="rsech"><b>03</b><span class="en">DIFFERENCE NOTES</span><span class="cn">差异备注</span></div>
+    <p>他偏宅家看片，你偏市集漫游。备注为：<b>互补型节奏，非差距</b>——安静的夜晚有人一起看片，晴朗的周末有人陪你逛集，正好把彼此缺的那一半补上。</p>
+  </section>
+
+  <!-- ===== 04 需要双方确认 ===== -->
+  <section class="rsec">
+    <div class="rsech"><b>04</b><span class="en">TO CONFIRM TOGETHER</span><span class="cn">需要双方确认</span></div>
+    <div style="margin-top:6px;">
+      <div class="confrow">
+        <span class="box">✓</span>
+        <span class="ct">认真交往意愿</span>
+        <span class="cs">双方均已确认</span>
+      </div>
+      <div class="confrow open">
+        <span class="box">◇</span>
+        <span class="ct">第一次见面时间</span>
+        <span class="cs">协调中 · 对方提议 15:00</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== 05 服务台编辑注 ===== -->
+  <section class="rsec">
+    <div class="rsech"><b>05</b><span class="en">EDITOR'S NOTE</span><span class="cn">服务台编辑注</span></div>
+    <aside class="ednote" aria-label="AI 编辑注">
+      <div class="ednote-h"><span class="bot">🤖</span>WEFINALLY CONCIERGE · 本段全部为 AI 生成</div>
+      <p>本报告由 AI 基于双方资料与历史约会反馈综合判断出具，<b>非打分制、无兼容分数</b>；它描述的是节奏与交集，不是任何人的「得分」。</p>
+      <em>🤖 AI 生成内容，仅供参考。正式介绍安排以霞姐团队人工复核为准；如对本报告有疑问，可在服务台要求人工解释、更正或撤回。</em>
+    </aside>
+  </section>
+
+  <!-- ===== 票背条码 ===== -->
+  <div class="repcode" role="presentation">
+    <div class="barcode"></div>
+    <div class="serial">REPORT·WF·C08·2026 · REVERSE OF DATE PASS</div>
+  </div>
+
+  <!-- ===== 动作区 ===== -->
+  <div class="acts">
+    <a class="primary" href="#why-go"><b>查看为什么值得赴约<span class="ar">▸▸</span></b></a>
+    <a class="ghost" href="#back-to-pass">返回票面</a>
+  </div>
+
+  <div class="rfoot">
+    <span><b>WEFINALLY</b> TICKET OFFICE</span>
+    <span>OFFLINE FIRST · 认真奔赴</span>
+  </div>
+
+</div>
+</body>
+</html>

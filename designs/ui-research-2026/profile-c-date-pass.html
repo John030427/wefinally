@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<!-- WeFinally UI Research 2026 · Direction C · profile · 严禁用于正式小程序 -->
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WeFinally · Date Pass · 我的（方向 C 原型）</title>
+<style>
+/* ============================================================
+   Direction C — DATE PASS / INVITATION TICKET · 我的（持票人）
+   母题：证件卡票根 / 等宽大数字进度 / 存根行菜单 / 朱红斜纹 CTA
+   ============================================================ */
+:root{
+  --paper:#EDE4D2;--paper-deep:#DFD3BB;
+  --face:#FBF7EC;--face-dim:#F2EBDA;
+  --ink:#2A2118;--ink-2:#6B5D4B;--ink-3:#A2937C;
+  --rule:#C7B899;--hairline:#DDD0B4;
+  --red:#B93A24;--red-deep:#962B18;--red-wash:#F3DDD0;
+  --green:#33584A;--green-deep:#25453A;--green-wash:#E7ECDF;--on-green:#EDF2E8;
+  --grey-stamp:#8B7E6D;--on-red:#FFF6EA;
+  --face-glass:rgba(251,247,236,.72);        /* 印章下的票面玻璃 */
+  --hover-wash:rgba(42,33,24,.04);           /* 菜单行悬洗 */
+  --cutout:var(--paper);
+  --shadow-ticket:0 14px 28px rgba(42,33,24,.16);
+  --shadow-soft:0 5px 14px rgba(42,33,24,.10);
+  --sans:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+  --mono:"SF Mono","Cascadia Mono",Consolas,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html{-webkit-text-size-adjust:100%;}
+body{background:var(--paper);color:var(--ink);font:400 14px/1.75 var(--sans);}
+.app{max-width:390px;margin:0 auto;}
+a{color:inherit;}
+a:focus-visible{outline:2px solid var(--red);outline-offset:2px;}
+
+/* ---------- 报头 ---------- */
+.mast{display:flex;align-items:center;gap:10px;padding:16px 20px 12px;}
+.brand{
+  font:700 14px/1 var(--mono);letter-spacing:.22em;text-indent:.22em;
+  border:2px solid var(--ink);background:var(--face);
+  padding:7px 8px 6px;box-shadow:2px 2px 0 var(--ink);
+}
+.mast-cn{font:600 10.5px/1.6 var(--sans);color:var(--ink-2);letter-spacing:.08em;}
+.mast-no{margin-left:auto;text-align:right;font:600 9px/1.7 var(--mono);color:var(--ink-3);letter-spacing:.14em;}
+.rules{margin:0 20px;height:5px;border-top:2px solid var(--ink);border-bottom:1px solid var(--ink);}
+
+.slab{display:flex;align-items:baseline;gap:10px;padding:22px 20px 10px;}
+.slab .en{font:700 11px/1 var(--mono);letter-spacing:.24em;}
+.slab .cn{font:600 10.5px/1 var(--sans);color:var(--ink-3);letter-spacing:.18em;}
+.slab::after{content:"";flex:1;border-top:1px dashed var(--rule);transform:translateY(-3px);}
+
+/* ============================================================
+   持票人证件卡
+   ============================================================ */
+.idcard{
+  margin:0 20px;position:relative;
+  border:1.5px solid var(--ink);border-radius:8px;
+  background:var(--face);box-shadow:var(--shadow-ticket);
+}
+.idband{
+  display:flex;align-items:baseline;gap:10px;
+  background:var(--ink);color:var(--face);
+  padding:9px 14px;border-radius:6.5px 6.5px 0 0;
+}
+.idband .bt{font:700 11.5px/1.6 var(--mono);letter-spacing:.26em;}
+.idband .bno{margin-left:auto;font:600 9.5px/1.6 var(--mono);letter-spacing:.1em;color:var(--red-wash);}
+.idmain{display:flex;align-items:center;gap:14px;padding:15px 14px 13px 16px;}
+.win{
+  position:relative;flex:none;width:64px;height:80px;display:grid;place-items:center;
+  background:var(--red-wash);border:1.5px solid var(--rule);
+  font:700 30px/1 var(--sans);color:var(--ink);
+}
+.win i{position:absolute;font-style:normal;}
+.win i.c1,.win i.c2{width:10px;height:10px;border:2px solid var(--ink-2);}
+.win i.c1{top:4px;left:4px;border-right:none;border-bottom:none;}
+.win i.c2{bottom:4px;right:4px;border-left:none;border-top:none;}
+.idt{min-width:0;}
+.idt .nm{font:800 21px/1.5 var(--sans);letter-spacing:.04em;}
+.idt .mt{margin-top:3px;font:600 10px/1.8 var(--mono);color:var(--ink-2);letter-spacing:.05em;}
+.idt .vf{margin-top:5px;font:500 9.5px/1.7 var(--sans);color:var(--ink-3);}
+.hstamp{
+  position:absolute;top:44px;right:12px;z-index:2;
+  font:700 10px/1.6 var(--mono);letter-spacing:.18em;text-indent:.18em;text-align:center;
+  color:var(--green);border:2px solid var(--green);border-radius:3px;
+  padding:4px 6px 3px;transform:rotate(-8deg);opacity:.92;background:var(--face-glass);
+}
+.hstamp::after{content:"";position:absolute;inset:2px;border:1px solid var(--green);border-radius:2px;opacity:.55;}
+.idfoot{
+  display:flex;align-items:center;gap:10px;
+  margin:0 14px;padding:10px 0 12px;border-top:1px dashed var(--rule);
+}
+.idfoot .lab{flex:none;font:600 8px/1.7 var(--mono);letter-spacing:.14em;color:var(--ink-3);}
+.barcode{
+  flex:1;height:22px;min-width:0;
+  background:
+    repeating-linear-gradient(90deg,var(--ink) 0 2px,transparent 2px 5px),
+    repeating-linear-gradient(90deg,var(--ink) 0 1px,transparent 1px 8px),
+    repeating-linear-gradient(90deg,var(--ink) 0 3px,transparent 3px 11px);
+}
+.serial{flex:none;font:600 8px/1.6 var(--mono);letter-spacing:.12em;color:var(--ink-3);}
+
+/* ---------- 资料就绪度 ---------- */
+.ready{
+  margin:0 20px;border:1.5px solid var(--ink);border-radius:6px;
+  background:var(--face);padding:13px 16px 14px;box-shadow:var(--shadow-soft);
+}
+.ready-top{display:flex;align-items:baseline;gap:12px;}
+.pct{font:800 36px/1 var(--mono);color:var(--red);letter-spacing:.02em;}
+.pct small{font-size:17px;font-weight:700;}
+.ready-cap{min-width:0;margin-left:auto;text-align:right;}
+.ready-cap b{display:block;font:700 11.5px/1.7 var(--sans);color:var(--ink);}
+.ready-cap span{display:block;font:600 8px/1.7 var(--mono);letter-spacing:.16em;color:var(--ink-3);}
+.bar{
+  position:relative;height:18px;margin-top:11px;overflow:hidden;
+  border:1.5px solid var(--ink);border-radius:2px;background:var(--face-dim);
+}
+.fill{
+  position:absolute;top:0;bottom:0;left:0;width:92%;
+  background:repeating-linear-gradient(135deg,var(--red) 0 6px,var(--red-deep) 6px 11px);
+}
+.bar::after{
+  content:"";position:absolute;inset:0;
+  background-image:linear-gradient(90deg,var(--hairline) 1px,transparent 1px);
+  background-size:12.5% 100%;
+}
+.scale{display:flex;justify-content:space-between;margin-top:5px;
+  font:600 8px/1.6 var(--mono);color:var(--ink-3);letter-spacing:.1em;}
+.ready-note{margin-top:9px;font:500 10.5px/1.75 var(--sans);color:var(--ink-2);text-wrap:pretty;}
+.ready-note b{color:var(--red);}
+
+/* ---------- 服务记录菜单（票据行式） ---------- */
+.menu{margin:0 20px;border-top:1.5px solid var(--ink);}
+.mrow{
+  display:flex;align-items:center;gap:12px;min-height:54px;
+  padding:8px 2px;border-bottom:1px solid var(--hairline);
+  text-decoration:none;transition:background .15s;
+}
+.mrow:hover{background:var(--hover-wash);}
+.mrow .idx{flex:none;width:26px;font:700 9.5px/1.7 var(--mono);color:var(--ink-3);letter-spacing:.08em;}
+.mrow .mn{font:700 14px/1.7 var(--sans);}
+.mrow .me{margin-left:auto;flex:none;font:600 9px/1.7 var(--mono);letter-spacing:.12em;color:var(--ink-3);}
+.count{
+  flex:none;font:700 10px/1 var(--mono);color:var(--ink-2);
+  border:1px solid var(--ink-3);border-radius:2px;padding:4px 6px 3px;
+}
+.arw{flex:none;font:700 13px/1 var(--mono);color:var(--red);}
+
+/* ---------- AI 辅助说明 ---------- */
+.micro{padding:12px 20px 0;font:500 10px/1.8 var(--sans);color:var(--ink-3);text-wrap:pretty;}
+
+/* ---------- 主 CTA ---------- */
+.acts{padding:20px 20px 0;}
+.primary{
+  display:flex;align-items:stretch;text-decoration:none;
+  border:1.5px solid var(--red-deep);border-radius:3px;overflow:hidden;
+}
+.primary::before{
+  content:"";flex:none;width:16px;
+  background:repeating-linear-gradient(135deg,var(--on-red) 0 4px,transparent 4px 9px);
+  background-color:var(--red-deep);opacity:.85;
+}
+.primary b{
+  flex:1;display:flex;align-items:center;justify-content:center;gap:10px;
+  min-height:58px;background:var(--red);color:var(--on-red);
+  font:800 17px/1 var(--sans);letter-spacing:.12em;transition:background .15s;
+}
+.primary:hover b{background:var(--red-deep);}
+.primary .ar{font:700 15px/1 var(--mono);}
+
+.office{
+  display:flex;justify-content:space-between;align-items:baseline;
+  padding:22px 20px 30px;
+  font:600 8.5px/1.7 var(--mono);letter-spacing:.22em;color:var(--ink-3);
+}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header class="mast">
+    <span class="brand">WEFINALLY</span>
+    <span class="mast-cn">认真婚恋<br>线下介绍 · 票务服务</span>
+    <span class="mast-no">MEMBER NO.0921<br>陈晓雯 · 29</span>
+  </header>
+  <div class="rules" role="presentation"></div>
+
+  <main>
+    <!-- ===== 持票人证件卡 ===== -->
+    <div class="slab"><span class="en">HOLDER'S CARD</span><span class="cn">持票人证件</span></div>
+
+    <article class="idcard" aria-label="陈晓雯的持票人证件卡">
+      <div class="idband">
+        <span class="bt">HOLDER'S&nbsp;CARD</span>
+        <span class="bno">NO.&nbsp;WF-U-0107</span>
+      </div>
+      <div class="idmain">
+        <span class="win"><i class="c1"></i><i class="c2"></i>陈</span>
+        <div class="idt">
+          <div class="nm">陈晓雯</div>
+          <div class="mt">AGE 29 · PRODUCT MANAGER<br>深圳 · 南山</div>
+          <div class="vf">职业与身份已由协调员核实</div>
+        </div>
+      </div>
+      <span class="hstamp">有效会员<br>MEMBERSHIP</span>
+      <div class="idfoot">
+        <span class="lab">ISSUED<br>2026·07</span>
+        <span class="barcode" role="presentation"></span>
+        <span class="serial">U-0107</span>
+      </div>
+    </article>
+
+    <!-- ===== 资料就绪度 ===== -->
+    <div class="slab"><span class="en">PROFILE READINESS</span><span class="cn">资料就绪度</span></div>
+
+    <section class="ready" aria-label="资料就绪度 92%">
+      <div class="ready-top">
+        <span class="pct">92<small>%</small></span>
+        <div class="ready-cap">
+          <b>资料越完整，介绍越准</b>
+          <span>READINESS METER</span>
+        </div>
+      </div>
+      <div class="bar" role="img" aria-label="资料就绪度进度条，92%">
+        <span class="fill"></span>
+      </div>
+      <div class="scale"><span>0</span><span>25</span><span>50</span><span>75</span><span>100%</span></div>
+      <p class="ready-note">还差 <b>1 项</b>：理想的见面频率。补全后，协调员与 AI 都能更准地为你出票。</p>
+    </section>
+
+    <!-- ===== 服务记录菜单 ===== -->
+    <div class="slab"><span class="en">SERVICE RECORDS</span><span class="cn">服务记录</span></div>
+
+    <nav class="menu" aria-label="服务记录菜单">
+      <a class="mrow" href="#my-intros">
+        <span class="idx">01</span>
+        <span class="mn">我的介绍</span>
+        <span class="count">×3</span>
+        <span class="arw">▸</span>
+      </a>
+      <a class="mrow" href="#date-stubs">
+        <span class="idx">02</span>
+        <span class="mn">约会存根</span>
+        <span class="count">×2</span>
+        <span class="arw">▸</span>
+      </a>
+      <a class="mrow" href="#preferences">
+        <span class="idx">03</span>
+        <span class="mn">偏好登记</span>
+        <span class="me">PREF.</span>
+        <span class="arw">▸</span>
+      </a>
+      <a class="mrow" href="#privacy">
+        <span class="idx">04</span>
+        <span class="mn">隐私与数据</span>
+        <span class="me">PRIVACY</span>
+        <span class="arw">▸</span>
+      </a>
+      <a class="mrow" href="#help">
+        <span class="idx">05</span>
+        <span class="mn">帮助与规则</span>
+        <span class="me">HELP</span>
+        <span class="arw">▸</span>
+      </a>
+    </nav>
+
+    <p class="micro">🤖 你的资料摘要由 AI 辅助整理并脱敏展示；对外出示的版本一律以协调员核实记录为准。</p>
+
+    <!-- ===== 主 CTA ===== -->
+    <div class="acts">
+      <a class="primary" href="#complete-profile"><b>补全我的资料<span class="ar">▸▸</span></b></a>
+    </div>
+
+    <div class="office">
+      <span>WEFINALLY MEMBER OFFICE</span>
+      <span>SHENZHEN · 2026</span>
+    </div>
+  </main>
+
+</div>
+</body>
+</html>

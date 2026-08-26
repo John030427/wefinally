@@ -1,0 +1,247 @@
+<!doctype html>
+<!-- WeFinally UI Research 2026 · Direction E · profile · 严禁用于正式小程序 -->
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WeFinally · 方向E 软性新粗野主义 · 我的</title>
+<style>
+/* ============ tokens：全部颜色走 CSS 变量 ============ */
+:root{
+  --bg:#F6EEE1;
+  --panel:#FFFCF4;
+  --ink:#191410;
+  --ink-2:#4D443B;
+  --mut:#77695A;
+  --rose:#EF5D7B;
+  --rose-deep:#C43A57;
+  --rose-pale:#F9CFD9;
+  --yellow:#FFC838;
+  --yellow-pale:#FFE9AC;
+  --mint:#93C09B;
+  --stone:#E0D6C6;
+  --ai-text:#CBB7FF;
+  --ai-bright:#E9E0FF;
+  --ai-dim:#9C86D9;
+  --ai-ring:rgba(203,183,255,.30);
+  --paper-dim:rgba(246,238,225,.84);
+  --frame:rgba(25,20,16,.35);
+  --tex-dot:rgba(25,20,16,.13);
+  --bw:2px;
+  --shadow-hard:5px 5px 0 var(--ink);
+  --shadow-btn:4px 4px 0 var(--ink);
+}
+
+/* ============ base ============ */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-text-size-adjust:100%;background:var(--bg)}
+body{
+  max-width:390px;margin:0 auto;
+  font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+  background:var(--bg);color:var(--ink);
+  font-weight:500;line-height:1.75;
+  -webkit-font-smoothing:antialiased;
+}
+p{text-wrap:pretty}
+a{color:inherit}
+.wrap{padding:12px;display:grid;gap:12px}
+.en{text-transform:uppercase}
+.blk{border:var(--bw) solid var(--ink);background:var(--panel)}
+
+.kick{display:flex;align-items:center;gap:8px}
+.k-no{background:var(--ink);color:var(--bg);font-weight:900;font-size:11px;padding:1px 7px;letter-spacing:.08em}
+.k-en{font-size:11px;font-weight:900;letter-spacing:.22em}
+.k-cn{font-size:11px;color:var(--mut);font-weight:700;letter-spacing:.28em}
+.k-rule{flex:1;height:var(--bw);background:var(--ink)}
+
+.chip{display:inline-flex;align-items:center;gap:5px;border:var(--bw) solid var(--ink);padding:2px 8px;font-size:11px;font-weight:800;letter-spacing:.12em;background:var(--panel);line-height:1.6}
+.chip-ink{background:var(--ink);color:var(--bg)}
+.sq{width:8px;height:8px;background:var(--ink);display:inline-block;flex:none}
+
+/* ============ 顶栏 ============ */
+.topbar{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--ink);color:var(--bg);border:var(--bw) solid var(--ink);padding:0 14px;height:54px}
+.brand{font-weight:900;font-size:17px;letter-spacing:.08em}
+.brand i{color:var(--rose);font-style:normal}
+.top-tag{font-size:10px;font-weight:800;letter-spacing:.18em;color:var(--paper-dim)}
+
+/* ============ 持有人大块：陈 monogram + 身份行 ============ */
+.holder{
+  border:var(--bw) solid var(--ink);background:var(--panel);
+  padding:16px;display:flex;gap:15px;align-items:center;
+  background-image:radial-gradient(var(--tex-dot) 1.2px,transparent 1.2px);
+  background-size:12px 12px;
+}
+.mono-hero{
+  width:96px;height:96px;flex:none;display:grid;place-items:center;
+  background:var(--rose);border:var(--bw) solid var(--ink);
+  box-shadow:var(--shadow-hard);
+  font-size:48px;font-weight:900;position:relative;
+}
+.mono-hero::after{content:"";position:absolute;inset:7px;border:1.5px solid var(--frame)}
+.h-main{display:grid;gap:5px;justify-items:start}
+.h-chips{display:flex;gap:6px;flex-wrap:wrap}
+.h-name{font-size:33px;font-weight:900;line-height:1.05;letter-spacing:.02em}
+.h-en{font-size:10.5px;letter-spacing:.3em;color:var(--mut);font-weight:800}
+.h-meta{font-size:12.5px;font-weight:700;margin-top:2px;display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.h-meta .sq{width:6px;height:6px}
+
+/* ============ 01 资料就绪度：大数字 + 分段进度 + 清单（拼合体） ============ */
+.joined{display:grid}
+.joined .rd-main{border-bottom:0}
+.rd-main{padding:14px 16px;display:grid;gap:8px}
+.lbl{font-size:10px;letter-spacing:.18em;color:var(--mut);font-weight:800}
+.pct-row{display:flex;align-items:flex-end;justify-content:space-between;gap:10px}
+.pct{font-size:64px;font-weight:900;line-height:.95;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.pct small{font-size:26px;font-weight:900}
+.pct-note{text-align:right;font-size:11px;color:var(--ink-2);line-height:1.65;font-weight:600;padding-bottom:4px}
+.pct-note b{color:var(--rose-deep);font-weight:900}
+.seg{display:flex;gap:3px;height:12px}
+.seg i{flex:1;border:1.5px solid var(--ink)}
+.seg i.f{background:var(--rose)}
+.seg i.todo{background:repeating-linear-gradient(45deg,var(--yellow) 0 4px,var(--panel) 4px 8px)}
+.chk-list{display:grid}
+.chk{display:flex;align-items:center;gap:11px;padding:11px 14px}
+.chk + .chk{border-top:1.5px solid var(--ink)}
+.tick{width:24px;height:24px;border:var(--bw) solid var(--ink);flex:none;display:grid;place-items:center;font-size:13px;font-weight:900;background:var(--panel)}
+.tick.on{background:var(--ink);color:var(--bg)}
+.tick.no{background:var(--yellow)}
+.chk-t{flex:1;font-size:14.5px;font-weight:900;line-height:1.4}
+.chk-t small{display:block;font-size:9.5px;letter-spacing:.16em;color:var(--mut);font-weight:800}
+.chk-st{flex:none;font-size:10px;padding:2px 7px;letter-spacing:.08em;border:var(--bw) solid var(--ink);font-weight:900}
+.st-ok{background:var(--mint)}
+.st-todo{background:var(--yellow)}
+
+/* ============ 02 菜单块阵：2×2 + 1 宽块 ============ */
+.menu{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.mi{
+  position:relative;border:var(--bw) solid var(--ink);background:var(--panel);
+  padding:12px 13px 11px;display:grid;gap:3px;align-content:start;
+  min-height:82px;text-decoration:none;
+}
+.mi:hover{background:var(--yellow-pale)}
+.mi .arr{position:absolute;top:10px;right:11px;font-weight:900;font-size:14px}
+.mi .m-cn{font-size:16.5px;font-weight:900;line-height:1.3;padding-right:20px}
+.mi .m-e{font-size:8.5px;letter-spacing:.18em;color:var(--mut);font-weight:800}
+.mi .m-n{margin-top:auto;font-size:23px;font-weight:900;line-height:1;font-variant-numeric:tabular-nums;padding-top:6px}
+.mi .m-n small{font-size:11px;font-weight:800;color:var(--mut);margin-left:3px}
+.mi.hot{background:var(--yellow-pale)}
+.mi.wide{grid-column:1 / -1;min-height:64px;grid-template-columns:1fr auto;align-items:center;display:flex;flex-wrap:wrap;gap:3px 12px}
+.mi.wide .m-cn{padding-right:0;flex:1}
+.mi.wide .m-e{width:100%}
+
+/* ============ 动作区：唯一主 CTA ============ */
+.acts{display:grid}
+.cta{
+  display:flex;align-items:center;justify-content:center;gap:10px;
+  background:var(--ink);color:var(--bg);
+  min-height:62px;border:var(--bw) solid var(--ink);
+  box-shadow:var(--shadow-btn);
+  font-size:18px;font-weight:900;letter-spacing:.16em;text-decoration:none;
+  transition:transform .08s,box-shadow .08s;
+}
+.cta:hover{transform:translate(-2px,-2px);box-shadow:6px 6px 0 var(--ink)}
+.cta:active{transform:translate(3px,3px);box-shadow:0 0 0 var(--ink)}
+.cta-note{text-align:center;font-size:10.5px;letter-spacing:.1em;color:var(--mut);font-weight:700;padding-top:2px}
+.foot{text-align:center;font-size:9.5px;letter-spacing:.22em;color:var(--mut);font-weight:800;padding:4px 0 8px}
+</style>
+</head>
+<body>
+<main class="wrap">
+
+  <!-- 顶栏 -->
+  <header class="topbar">
+    <div class="brand">WEFINALLY<i>■</i></div>
+    <div class="top-tag en">ME · 我的</div>
+  </header>
+
+  <!-- 持有人大块 -->
+  <section class="holder">
+    <div class="mono-hero" aria-hidden="true">陈</div>
+    <div class="h-main">
+      <div class="h-chips"><span class="chip chip-ink">本人</span><span class="chip en">MEMBER · ME</span></div>
+      <div class="h-name">陈晓雯</div>
+      <div class="h-en en">CHEN XIAOWEN</div>
+      <div class="h-meta">29 岁 <i class="sq" aria-hidden="true"></i> 产品经理 <i class="sq" aria-hidden="true"></i> 深圳 · 南山</div>
+    </div>
+  </section>
+
+  <!-- 01 资料就绪度：92% 大数字 + 分段进度 + 四项清单 -->
+  <div class="kick"><b class="k-no">01</b><span class="k-en en">READINESS</span><span class="k-cn">资料就绪度</span><i class="k-rule"></i></div>
+  <div class="joined">
+    <section class="blk rd-main">
+      <div class="lbl en">PROFILE READINESS — 就绪度越高，介绍越准</div>
+      <div class="pct-row">
+        <div class="pct">92<small>%</small></div>
+        <p class="pct-note">只差最后一步：<b>实名认证</b><br>补全后进入完整推荐池</p>
+      </div>
+      <div class="seg" aria-hidden="true">
+        <i class="f"></i><i class="f"></i><i class="f"></i><i class="f"></i><i class="f"></i><i class="f"></i><i class="f"></i><i class="f"></i><i class="f"></i><i class="f"></i><i class="todo"></i><i></i>
+      </div>
+    </section>
+    <section class="blk chk-list">
+      <div class="chk">
+        <span class="tick on" aria-hidden="true">✓</span>
+        <span class="chk-t">基础资料<small class="en">BASIC INFO</small></span>
+        <span class="chk-st st-ok en">已完成 ✓</span>
+      </div>
+      <div class="chk">
+        <span class="tick on" aria-hidden="true">✓</span>
+        <span class="chk-t">生活照<small class="en">LIFE PHOTOS</small></span>
+        <span class="chk-st st-ok en">已完成 ✓</span>
+      </div>
+      <div class="chk">
+        <span class="tick on" aria-hidden="true">✓</span>
+        <span class="chk-t">择偶偏好<small class="en">PREFERENCES</small></span>
+        <span class="chk-st st-ok en">已完成 ✓</span>
+      </div>
+      <div class="chk">
+        <span class="tick no" aria-hidden="true">✗</span>
+        <span class="chk-t">实名认证<small class="en">ID VERIFY</small></span>
+        <span class="chk-st st-todo en">待办 TODO</span>
+      </div>
+    </section>
+  </div>
+
+  <!-- 02 菜单块阵：2×2 + 1 宽块 -->
+  <div class="kick"><b class="k-no">02</b><span class="k-en en">MENU</span><span class="k-cn">我的板块</span><i class="k-rule"></i></div>
+  <nav class="menu" aria-label="我的板块">
+    <a class="mi hot" href="#">
+      <span class="arr" aria-hidden="true">→</span>
+      <span class="m-cn">我的介绍</span>
+      <span class="m-e en">INTROS</span>
+      <span class="m-n">3<small>份进行中</small></span>
+    </a>
+    <a class="mi" href="#">
+      <span class="arr" aria-hidden="true">→</span>
+      <span class="m-cn">约会记录</span>
+      <span class="m-e en">RECORDS</span>
+      <span class="m-n">2<small>次见面</small></span>
+    </a>
+    <a class="mi" href="#">
+      <span class="arr" aria-hidden="true">→</span>
+      <span class="m-cn">偏好设置</span>
+      <span class="m-e en">PREFS</span>
+    </a>
+    <a class="mi" href="#">
+      <span class="arr" aria-hidden="true">→</span>
+      <span class="m-cn">隐私与数据</span>
+      <span class="m-e en">PRIVACY</span>
+    </a>
+    <a class="mi wide" href="#">
+      <span class="m-cn">帮助规则</span>
+      <span class="arr" aria-hidden="true">→</span>
+      <span class="m-e en">HELP &amp; RULES — 介绍流程 · 安全须知 · 找协调员</span>
+    </a>
+  </nav>
+
+  <!-- 动作区：唯一主 CTA 补全认证 -->
+  <section class="acts">
+    <a class="cta" href="#">补全认证 <span aria-hidden="true">→</span></a>
+    <p class="cta-note">官方人工审核 · 约 1 个工作日 · 信息仅用于身份核验</p>
+  </section>
+
+  <footer class="foot en">UI RESEARCH PROTOTYPE · DIRECTION E · NOT FOR PRODUCTION</footer>
+
+</main>
+</body>
+</html>

@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WeFinally · 方向F · 我的 · Profile</title>
+<!-- WeFinally UI Research 2026 · Direction F · profile · 严禁用于正式小程序 -->
+<style>
+/* ============ Direction F · AI-native Future Romance ============
+   母题延续：玻璃光晕面板 / 胶囊徽章 / 信号点线行
+   新增母题：conic-gradient 完整度环（静态，无循环动画）          */
+
+:root{
+  --pearl:#F6F6FA;
+  --white:#FFFFFF;
+  --white-85:rgba(255,255,255,.85);
+  --white-70:rgba(255,255,255,.7);
+  --white-55:rgba(255,255,255,.55);
+
+  --ink:#27272F;
+  --ink-2:#606170;
+  --ink-3:#9A9CA9;
+
+  --pink-100:#FBEBF1;
+  --pink-200:#F7DCE6;
+  --pink-300:#F0C4D6;
+  --pink-400:#E69FBC;
+
+  --berry:#A23A5E;
+  --berry-deep:#842C4C;
+
+  --silver-200:#DBDDE6;
+  --silver-300:#C7CAD7;
+  --hairline:rgba(39,39,47,.08);
+
+  --glass:rgba(255,255,255,.64);
+  --card-line:rgba(255,255,255,.9);
+  --sh-card:0 22px 46px rgba(162,58,94,.09), 0 2px 8px rgba(39,39,47,.04);
+
+  --halo-a:rgba(240,196,214,.55);
+  --halo-b:rgba(231,171,198,.34);
+
+  --grad-cta:linear-gradient(135deg,var(--pink-400) 0%,var(--berry) 78%);
+  --cta-ring:rgba(255,255,255,.65);
+  --on-cta:#FFFFFF;
+  --sh-orb:0 16px 34px rgba(230,159,188,.5),0 4px 12px rgba(162,58,94,.24);
+  --grad-mono:radial-gradient(circle at 30% 25%,var(--white) 0%,var(--pink-100) 48%,var(--pink-300) 100%);
+  --mono-ring:var(--silver-200);
+}
+
+*{margin:0;padding:0;box-sizing:border-box;}
+html{-webkit-text-size-adjust:100%;}
+body{
+  max-width:390px;
+  margin:0 auto;
+  font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+  color:var(--ink);
+  background:
+    radial-gradient(600px 440px at 8% -110px, var(--pink-200), transparent 68%),
+    radial-gradient(660px 540px at 105% 108%, var(--pink-100), transparent 62%),
+    linear-gradient(var(--pearl),var(--pearl));
+  -webkit-font-smoothing:antialiased;
+  overflow-x:hidden;
+}
+a{color:inherit;text-decoration:none;-webkit-tap-highlight-color:transparent;}
+p{text-wrap:pretty;}
+
+.page{max-width:390px;margin:0 auto;padding:26px 22px 10px;display:flex;flex-direction:column;}
+
+/* ---------- micro typography ---------- */
+.micro{font-size:10px;font-weight:500;letter-spacing:.32em;text-transform:uppercase;color:var(--ink-3);}
+.h-thin{font-weight:250;letter-spacing:.06em;line-height:1.4;color:var(--ink);}
+.sub{font-size:13px;line-height:1.75;color:var(--ink-2);text-wrap:pretty;}
+
+.panel{
+  background:var(--glass);
+  -webkit-backdrop-filter:blur(16px) saturate(1.15);
+          backdrop-filter:blur(16px) saturate(1.15);
+  border:1px solid var(--card-line);
+  border-radius:24px;
+  box-shadow:var(--sh-card);
+}
+.divider{height:1px;background:var(--hairline);border:none;}
+.res-head{display:flex;align-items:center;gap:12px;}
+.res-head .line{flex:1;height:1px;background:var(--hairline);}
+
+.chip{display:inline-flex;align-items:center;gap:8px;padding:5px 12px;border-radius:999px;
+  background:var(--pink-100);color:var(--berry);font-size:11px;font-weight:500;letter-spacing:.14em;}
+.ai-line{display:flex;align-items:flex-start;gap:9px;margin-bottom:20px;
+  font-size:11px;line-height:1.7;color:var(--ink-3);text-wrap:pretty;}
+.ai-line .ai-pill{flex:none;}
+.pair{display:inline-flex;align-items:center;}
+.pair.tight{gap:2px;} .pair.tight i{width:5px;height:5px;border-radius:50%;background:var(--berry);}
+.ai-pill{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;
+  background:var(--pink-100);color:var(--berry-deep);font-size:11px;font-weight:500;letter-spacing:.08em;}
+
+/* ---------- personal head ---------- */
+.me-head{display:flex;align-items:center;gap:18px;margin-bottom:20px;}
+.mono-xl{width:76px;height:76px;border-radius:50%;display:grid;place-items:center;flex:none;
+  background:var(--grad-mono);color:var(--berry-deep);
+  font-size:29px;font-weight:250;letter-spacing:.04em;
+  box-shadow:0 0 0 1px var(--mono-ring),0 0 0 8px var(--pink-100),0 14px 28px rgba(230,159,188,.3);}
+.me-id{display:flex;flex-direction:column;gap:6px;min-width:0;}
+.me-id h1{font-size:23px;}
+.me-id .meta{font-size:12px;letter-spacing:.06em;color:var(--ink-3);}
+
+/* ---------- signal archive stats（胶囊数字）---------- */
+.stats{display:grid;grid-template-columns:repeat(3,1fr);padding:20px 8px;margin-bottom:14px;}
+.stat{display:flex;flex-direction:column;align-items:center;gap:9px;padding:0 6px;}
+.stat + .stat{border-left:1px solid var(--hairline);}
+.num{min-width:52px;padding:5px 14px;border-radius:999px;display:grid;place-items:center;
+  background:var(--pink-100);color:var(--berry-deep);
+  font-size:19px;font-weight:250;font-variant-numeric:tabular-nums;letter-spacing:.04em;
+  box-shadow:inset 0 0 0 1px var(--white-85);}
+.stat span{font-size:10px;font-weight:500;letter-spacing:.22em;text-indent:.22em;color:var(--ink-3);}
+
+/* ---------- readiness ring（conic 完整度）---------- */
+.ready{display:flex;align-items:center;gap:18px;padding:20px;margin-bottom:14px;}
+.ring{position:relative;width:96px;height:96px;border-radius:50%;flex:none;display:grid;place-items:center;
+  background:conic-gradient(var(--berry) 0% 92%, var(--silver-200) 92% 100%);
+  box-shadow:0 0 0 7px var(--pink-100),0 12px 26px rgba(230,159,188,.28);}
+.ring-core{width:72px;height:72px;border-radius:50%;display:grid;place-items:center;
+  background:radial-gradient(circle at 32% 28%,var(--white) 0%,var(--pink-100) 78%);
+  box-shadow:inset 0 0 0 1px var(--white-85);}
+.ring-core b{font-size:19px;font-weight:250;color:var(--berry-deep);letter-spacing:.02em;
+  font-variant-numeric:tabular-nums;}
+.ring-core b i{font-style:normal;font-size:11px;font-weight:500;margin-left:1px;}
+.ready-txt{display:flex;flex-direction:column;gap:7px;min-width:0;}
+.ready-main{font-size:15px;font-weight:300;letter-spacing:.1em;color:var(--ink);}
+.ready-sub{font-size:12px;line-height:1.75;color:var(--ink-3);text-wrap:pretty;}
+
+/* ---------- menu（信号点行式）---------- */
+.menu{padding:6px 20px;margin-bottom:24px;}
+.menu a{display:grid;grid-template-columns:auto 1fr auto auto;gap:13px;align-items:center;
+  min-height:56px;border-bottom:1px solid var(--hairline);}
+.menu a:last-child{border-bottom:none;}
+.m-glyph{display:inline-flex;align-items:center;width:36px;}
+.m-glyph i{width:4px;height:4px;border-radius:50%;background:var(--silver-300);}
+.m-glyph i:first-child{background:var(--pink-400);}
+.m-glyph i:last-child{background:var(--berry);}
+.m-glyph s{flex:1;height:1px;background:var(--silver-300);text-decoration:none;margin:0 5px;}
+.m-label{font-size:14px;font-weight:400;letter-spacing:.1em;color:var(--ink);}
+.m-count{min-width:30px;padding:2px 9px;border-radius:999px;display:grid;place-items:center;
+  background:var(--pink-100);color:var(--berry-deep);
+  font-size:12px;font-weight:500;font-variant-numeric:tabular-nums;letter-spacing:.04em;}
+.arr{width:8px;height:8px;border-top:1.5px solid var(--silver-300);border-right:1.5px solid var(--silver-300);
+  transform:rotate(45deg);}
+
+/* ---------- main CTA ---------- */
+.actions{display:flex;flex-direction:column;align-items:center;gap:8px;margin-bottom:8px;}
+.btn-orb{position:relative;display:flex;align-items:center;justify-content:center;gap:10px;
+  width:100%;min-height:56px;border-radius:999px;overflow:hidden;
+  background:var(--grad-cta);color:var(--on-cta);
+  font-size:15px;font-weight:400;letter-spacing:.22em;text-indent:.22em;
+  box-shadow:var(--sh-orb),inset 0 0 0 1px var(--cta-ring);
+  transition:transform .18s ease;}
+.btn-orb::before{content:"";position:absolute;left:-20%;top:-120%;width:70%;height:220%;
+  background:radial-gradient(closest-side,var(--white-55),transparent 72%);transform:rotate(18deg);}
+.btn-orb::after{content:"";position:absolute;left:50%;bottom:-34px;width:120px;height:52px;
+  transform:translateX(-50%);border-radius:50%;
+  background:radial-gradient(closest-side,var(--halo-a),transparent 76%);}
+.btn-orb span{position:relative;z-index:1;}
+.btn-orb:active{transform:scale(.985);}
+.cta-note{font-size:11px;letter-spacing:.1em;color:var(--ink-3);text-align:center;}
+
+/* ---------- signal nav ---------- */
+.nav{display:grid;grid-template-columns:repeat(5,1fr);gap:2px;
+  border-top:1px solid var(--silver-200);
+  padding-top:0;padding-bottom:8px;margin-top:22px;}
+.nav a{display:flex;flex-direction:column;align-items:center;gap:9px;
+  min-height:52px;padding-top:0;justify-content:flex-start;}
+.n-dot{width:9px;height:9px;border-radius:50%;margin-top:-5px;
+  background:var(--pearl);box-shadow:inset 0 0 0 1.5px var(--silver-300);}
+.nav a span{font-size:10px;letter-spacing:.22em;text-indent:.22em;color:var(--ink-3);}
+.nav a.on .n-dot{background:var(--berry);box-shadow:0 0 0 3px var(--pink-100),0 0 12px 3px var(--halo-a);}
+.nav a.on span{color:var(--ink);font-weight:500;}
+
+.footer-micro{text-align:center;padding:16px 0 8px;}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- personal head -->
+  <header class="me-head" aria-label="个人头部">
+    <div class="mono-xl" aria-hidden="true">陈</div>
+    <div class="me-id">
+      <p class="micro">Profile · 我的</p>
+      <h1 class="h-thin">晚上好，陈晓雯</h1>
+      <span class="meta">29 岁 · 深圳南山 · 产品经理</span>
+    </div>
+  </header>
+
+  <!-- signal archive stats -->
+  <section class="panel stats" aria-label="信号档案统计">
+    <div class="stat"><b class="num">3</b><span>收到信号</span></div>
+    <div class="stat"><b class="num">2</b><span>已回应</span></div>
+    <div class="stat"><b class="num">1</b><span>进行中</span></div>
+  </section>
+
+  <!-- readiness ring -->
+  <section class="panel ready" aria-label="资料完整度 92%">
+    <div class="ring" role="img" aria-label="资料完整度 92%">
+      <span class="ring-core"><b>92<i>%</i></b></span>
+    </div>
+    <div class="ready-txt">
+      <p class="micro">Readiness · 资料完整度</p>
+      <p class="ready-main">资料越完整，信号越准。</p>
+      <p class="ready-sub">还差 2 项：周末偏好 1 题 · 相处边界 1 题。</p>
+    </div>
+  </section>
+
+  <!-- menu -->
+  <nav class="panel menu" aria-label="我的菜单">
+    <a href="#">
+      <span class="m-glyph" aria-hidden="true"><i></i><s></s><i></i></span>
+      <span class="m-label">我的信号</span>
+      <span class="m-count">3</span>
+      <span class="arr" aria-hidden="true"></span>
+    </a>
+    <a href="#">
+      <span class="m-glyph" aria-hidden="true"><i></i><s></s><i></i></span>
+      <span class="m-label">约会档案</span>
+      <span class="m-count">2</span>
+      <span class="arr" aria-hidden="true"></span>
+    </a>
+    <a href="#">
+      <span class="m-glyph" aria-hidden="true"><i></i><s></s><i></i></span>
+      <span class="m-label">偏好与边界</span>
+      <span></span>
+      <span class="arr" aria-hidden="true"></span>
+    </a>
+    <a href="#">
+      <span class="m-glyph" aria-hidden="true"><i></i><s></s><i></i></span>
+      <span class="m-label">隐私与数据</span>
+      <span></span>
+      <span class="arr" aria-hidden="true"></span>
+    </a>
+    <a href="#">
+      <span class="m-glyph" aria-hidden="true"><i></i><s></s><i></i></span>
+      <span class="m-label">帮助</span>
+      <span></span>
+      <span class="arr" aria-hidden="true"></span>
+    </a>
+  </nav>
+
+  <!-- main CTA -->
+  <section class="actions">
+    <a class="btn-orb" href="#"><span>完善我的资料</span></a>
+    <p class="cta-note">补上那 2 项，下一条信号会更准</p>
+  </section>
+
+  <!-- AI 生成内容注记 -->
+  <p class="ai-line">
+    <span class="ai-pill">🤖 AI 生成内容 · 非打分制</span>
+    <span>你的信号由 AI 基于双方资料与历史约会反馈收敛而来，不存在任何兼容性评分。</span>
+  </p>
+
+  <!-- signal bottom nav -->
+  <nav class="nav" aria-label="底部导航">
+    <a href="#"><span class="n-dot" aria-hidden="true"></span><span>信号</span></a>
+    <a href="#"><span class="n-dot" aria-hidden="true"></span><span>匹配</span></a>
+    <a href="#"><span class="n-dot" aria-hidden="true"></span><span>协调</span></a>
+    <a href="#"><span class="n-dot" aria-hidden="true"></span><span>助手</span></a>
+    <a class="on" href="#"><span class="n-dot" aria-hidden="true"></span><span>我的</span></a>
+  </nav>
+
+  <p class="micro footer-micro">Wefinally · Direction F Prototype</p>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<!-- WeFinally UI Research 2026 · Direction C · concierge-desk · 严禁用于正式小程序 -->
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WeFinally · Date Pass · 服务台（方向 C 原型）</title>
+<style>
+/* ============================================================
+   Direction C — DATE PASS / INVITATION TICKET · AI 助手（服务台形态）
+   母题：墨绿柜台 / 叫号式建议票 / 服务记录存根行 / 服务须知小票背
+   ============================================================ */
+:root{
+  --paper:#EDE4D2;--paper-deep:#DFD3BB;
+  --face:#FBF7EC;--face-dim:#F2EBDA;
+  --ink:#2A2118;--ink-2:#6B5D4B;--ink-3:#A2937C;
+  --rule:#C7B899;--hairline:#DDD0B4;
+  --red:#B93A24;--red-deep:#962B18;--red-wash:#F3DDD0;
+  --green:#33584A;--green-deep:#25453A;--green-wash:#E7ECDF;--on-green:#EDF2E8;
+  --grey-stamp:#8B7E6D;--on-red:#FFF6EA;
+  --counter-hairline:rgba(237,242,232,.4);   /* 墨绿台面上的浅线 */
+  --counter-glass:rgba(255,255,255,.05);     /* 柜台玻璃高光 */
+  --cutout:var(--paper);
+  --shadow-ticket:0 14px 28px rgba(42,33,24,.16);
+  --shadow-soft:0 5px 14px rgba(42,33,24,.10);
+  --sans:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+  --mono:"SF Mono","Cascadia Mono",Consolas,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html{-webkit-text-size-adjust:100%;}
+body{background:var(--paper);color:var(--ink);font:400 14px/1.75 var(--sans);}
+.app{max-width:390px;margin:0 auto;}
+a{color:inherit;}
+a:focus-visible{outline:2px solid var(--red);outline-offset:2px;}
+
+/* ---------- 报头 ---------- */
+.mast{display:flex;align-items:center;gap:10px;padding:16px 20px 12px;}
+.brand{
+  font:700 14px/1 var(--mono);letter-spacing:.22em;text-indent:.22em;
+  border:2px solid var(--ink);background:var(--face);
+  padding:7px 8px 6px;box-shadow:2px 2px 0 var(--ink);
+}
+.mast-cn{font:600 10.5px/1.6 var(--sans);color:var(--ink-2);letter-spacing:.08em;}
+.mast-no{margin-left:auto;text-align:right;font:600 9px/1.7 var(--mono);color:var(--ink-3);letter-spacing:.14em;}
+.rules{margin:0 20px;height:5px;border-top:2px solid var(--ink);border-bottom:1px solid var(--ink);}
+
+.backrow{margin:0 20px;}
+.back{display:inline-flex;align-items:center;gap:8px;min-height:44px;
+  font:600 11px/1 var(--mono);letter-spacing:.16em;color:var(--ink-2);
+  text-decoration:none;transition:color .15s;}
+.back:hover{color:var(--ink);}
+.back .bk{font:700 13px/1 var(--mono);color:var(--red);}
+
+.slab{display:flex;align-items:baseline;gap:10px;padding:22px 20px 10px;}
+.slab .en{font:700 11px/1 var(--mono);letter-spacing:.24em;}
+.slab .cn{font:600 10.5px/1 var(--sans);color:var(--ink-3);letter-spacing:.18em;}
+.slab::after{content:"";flex:1;border-top:1px dashed var(--rule);transform:translateY(-3px);}
+
+/* ============================================================
+   服务台柜台
+   ============================================================ */
+.counter{
+  margin:16px 20px 0;position:relative;
+  background:var(--green);color:var(--on-green);
+  border:1.5px solid var(--green-deep);border-radius:6px;
+  box-shadow:var(--shadow-ticket);
+}
+.counter-top{display:flex;align-items:center;gap:12px;padding:14px 14px 12px;}
+.counter-bot{
+  flex:none;width:44px;height:44px;display:grid;place-items:center;
+  border:1.5px solid var(--on-green);border-radius:3px;font-size:19px;background:var(--counter-glass);
+}
+.counter-t{min-width:0;}
+.counter-t b{display:block;font:700 13px/1.6 var(--mono);letter-spacing:.16em;}
+.counter-t span{display:block;margin-top:2px;font:600 11.5px/1.7 var(--sans);letter-spacing:.06em;text-wrap:pretty;}
+.queuebox{
+  margin-left:auto;flex:none;text-align:center;
+  border:1.5px solid var(--on-green);border-radius:3px;padding:6px 9px 5px;
+}
+.queuebox i{display:block;font:500 8px/1.6 var(--mono);letter-spacing:.18em;font-style:normal;opacity:.75;}
+.queuebox b{display:block;font:800 15px/1.2 var(--mono);letter-spacing:.08em;color:#F7D9A0;}
+.counter-meta{display:flex;justify-content:space-between;align-items:baseline;gap:10px;
+  padding:8px 14px;border-top:1px dashed var(--counter-hairline);
+  font:600 8.5px/1.7 var(--mono);letter-spacing:.14em;opacity:.85;}
+.counter-ledge{
+  height:10px;border-radius:0 0 4.5px 4.5px;
+  background:repeating-linear-gradient(135deg,var(--green-deep) 0 6px,var(--green) 6px 12px);
+  border-top:1.5px solid var(--green-deep);
+}
+
+/* ---------- 叫号式建议票（新建议 · 展开） ---------- */
+.callticket{
+  margin:0 20px;position:relative;display:grid;grid-template-columns:58px 1fr;
+  border:1.5px solid var(--ink);border-radius:6px;background:var(--face);
+  box-shadow:var(--shadow-ticket);
+}
+.ct-no{
+  display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:6px;
+  padding:14px 6px;border-right:1.5px dashed var(--rule);
+}
+.ct-no b{font:800 21px/1 var(--mono);color:var(--red);}
+.ct-no .flag{
+  font:700 8px/1 var(--mono);letter-spacing:.18em;text-indent:.18em;
+  color:var(--on-red);background:var(--red);border-radius:2px;padding:3px 5px 2px;
+}
+.ct-body{padding:13px 14px 14px;min-width:0;}
+.ct-title{font:800 15px/1.65 var(--sans);text-wrap:pretty;}
+.ct-meta{margin-top:3px;font:600 9px/1.7 var(--mono);color:var(--ink-3);letter-spacing:.08em;}
+.ct-rule{height:0;border-top:1px dashed var(--rule);margin:10px 0;}
+.ct-reason{font:500 12px/1.8 var(--sans);color:var(--ink-2);text-wrap:pretty;}
+.ct-reason b{color:var(--ink);}
+.ct-ai{margin-top:9px;font:500 9px/1.7 var(--sans);color:var(--ink-3);text-wrap:pretty;}
+.ct-acts{display:flex;gap:10px;margin-top:11px;}
+.abtn{
+  flex:1;min-height:44px;display:grid;place-items:center;
+  border-radius:3px;text-decoration:none;
+  font:700 12.5px/1 var(--sans);letter-spacing:.14em;
+  transition:background .15s,color .15s;
+}
+.abtn.adopt{border:1.5px solid var(--red);color:var(--red);background:var(--face);}
+.abtn.adopt:hover{background:var(--red);color:var(--on-red);}
+.abtn.think{border:1.5px solid var(--ink-3);color:var(--ink-2);background:var(--face-dim);}
+.abtn.think:hover{border-color:var(--ink);color:var(--ink);}
+
+/* ---------- 历史服务记录 ---------- */
+.logs{margin:0 20px;border-top:1.5px solid var(--ink);}
+.log{display:flex;align-items:center;gap:12px;min-height:60px;padding:9px 2px;border-bottom:1px solid var(--hairline);}
+.log .lno{flex:none;width:52px;font:700 9.5px/1.7 var(--mono);color:var(--ink-3);letter-spacing:.1em;}
+.log .lt{min-width:0;}
+.log .lt b{display:block;font:700 13.5px/1.65 var(--sans);text-wrap:pretty;}
+.log .lt span{display:block;font:500 9.5px/1.7 var(--sans);color:var(--ink-3);text-wrap:pretty;}
+.stamp{
+  position:relative;flex:none;margin-left:auto;
+  font:700 10px/1 var(--mono);letter-spacing:.2em;text-indent:.2em;
+  color:var(--green);border:2px solid var(--green);border-radius:3px;
+  padding:5px 6px 4px;transform:rotate(-7deg);opacity:.92;
+}
+.stamp::after{content:"";position:absolute;inset:2px;border:1px solid var(--green);border-radius:2px;opacity:.55;}
+.stamp.grey{color:var(--grey-stamp);border-color:var(--grey-stamp);}
+.stamp.grey::after{border-color:var(--grey-stamp);}
+
+/* ---------- 服务须知 ---------- */
+.terms{margin:26px 20px 0;border-top:1.5px solid var(--ink);padding-top:12px;}
+.terms h2{font:700 9px/1.7 var(--mono);letter-spacing:.28em;color:var(--ink-2);}
+.terms p{margin-top:7px;font:500 10.5px/1.85 var(--sans);color:var(--ink-3);text-wrap:pretty;}
+.terms p b{color:var(--ink-2);font-family:var(--mono);font-weight:700;margin-right:6px;}
+
+/* ---------- 主 CTA ---------- */
+.acts{padding:22px 20px 0;}
+.primary{
+  display:flex;align-items:stretch;text-decoration:none;
+  border:1.5px solid var(--red-deep);border-radius:3px;overflow:hidden;
+}
+.primary::before{
+  content:"";flex:none;width:16px;
+  background:repeating-linear-gradient(135deg,var(--on-red) 0 4px,transparent 4px 9px);
+  background-color:var(--red-deep);opacity:.85;
+}
+.primary b{
+  flex:1;display:flex;align-items:center;justify-content:center;gap:10px;
+  min-height:58px;background:var(--red);color:var(--on-red);
+  font:800 17px/1 var(--sans);letter-spacing:.12em;transition:background .15s;
+}
+.primary:hover b{background:var(--red-deep);}
+.primary .ar{font:700 15px/1 var(--mono);}
+
+.office{
+  display:flex;justify-content:space-between;align-items:baseline;
+  padding:22px 20px 30px;
+  font:600 8.5px/1.7 var(--mono);letter-spacing:.22em;color:var(--ink-3);
+}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header class="mast">
+    <span class="brand">WEFINALLY</span>
+    <span class="mast-cn">认真婚恋<br>线下介绍 · 票务服务</span>
+    <span class="mast-no">MEMBER NO.0921<br>陈晓雯 · 29</span>
+  </header>
+  <div class="rules" role="presentation"></div>
+
+  <nav class="backrow" aria-label="返回">
+    <a class="back" href="#wallet"><span class="bk">‹</span>BACK · 返回票夹</a>
+  </nav>
+
+  <main>
+    <!-- ===== 服务台柜台 ===== -->
+    <section class="counter" aria-label="服务台柜台">
+      <div class="counter-top">
+        <span class="counter-bot">🤖</span>
+        <div class="counter-t">
+          <b>CONCIERGE DESK</b>
+          <span>霞姐团队 × AI 协调员 · 为你的每次介绍值守</span>
+        </div>
+        <div class="queuebox">
+          <i>NOW SERVING</i>
+          <b>NO.01</b>
+        </div>
+      </div>
+      <div class="counter-meta">
+        <span>SERVICE HOURS 10:00–22:00</span>
+        <span>人工协调员在线</span>
+      </div>
+      <div class="counter-ledge" role="presentation"></div>
+    </section>
+
+    <!-- ===== 叫号式建议：新建议置顶 ===== -->
+    <div class="slab"><span class="en">NOW SERVING</span><span class="cn">新建议 · 叫号 NO.01</span></div>
+
+    <article class="callticket" aria-label="新建议：周六 15:00 时间调整">
+      <div class="ct-no">
+        <b>01</b>
+        <span class="flag">NEW</span>
+      </div>
+      <div class="ct-body">
+        <h2 class="ct-title">关于周六 15:00 的时间调整</h2>
+        <p class="ct-meta">PASS WF-C08 · 本周六 · 南头古城</p>
+        <div class="ct-rule" role="presentation"></div>
+        <p class="ct-reason">林亦辰周六上午另有安排，提议从 14:30 改到 <b>15:00</b>。新时间仍落在你们<b>共同空闲 14:00–17:00</b> 之内，前后各留约一小时余量，赶路与迟到风险都更低。</p>
+        <p class="ct-ai">🤖 AI 生成内容，仅供参考 · 可随时转人工协调员复核。</p>
+        <div class="ct-acts">
+          <a class="abtn adopt" href="#adopt-1500">采纳，去确认</a>
+          <a class="abtn think" href="#rethink">再想想</a>
+        </div>
+      </div>
+    </article>
+
+    <!-- ===== 历史服务记录 ===== -->
+    <div class="slab"><span class="en">SERVICE LOG</span><span class="cn">历史服务记录</span></div>
+
+    <section class="logs" aria-label="历史服务记录">
+      <div class="log">
+        <span class="lno">NO.<br>02</span>
+        <div class="lt">
+          <b>上次介绍的时间协调</b>
+          <span>周牧遥 · WF-B04 · 已敲定周六下午安排</span>
+        </div>
+        <span class="stamp">已完成</span>
+      </div>
+      <div class="log">
+        <span class="lno">NO.<br>03</span>
+        <div class="lt">
+          <b>赵屹然介绍的后续善后</b>
+          <span>WF-A11 · 双方反馈已归档，不影响后续介绍</span>
+        </div>
+        <span class="stamp grey">已归档</span>
+      </div>
+    </section>
+
+    <!-- ===== 服务须知 ===== -->
+    <footer class="terms">
+      <h2>TERMS OF SERVICE · 服务须知</h2>
+      <p><b>01</b>🤖 AI 协调员生成的建议仅供参考，不构成任何承诺或保证。</p>
+      <p><b>02</b>任何一条建议都可以转给人工协调员复核、接管或撤销。</p>
+      <p><b>03</b>涉及个人信息与时间变更的操作，以协调员最终确认为准。</p>
+    </footer>
+
+    <!-- ===== 主 CTA ===== -->
+    <div class="acts">
+      <a class="primary" href="#ask-desk"><b>向服务台提问<span class="ar">▸▸</span></b></a>
+    </div>
+
+    <div class="office">
+      <span>WEFINALLY CONCIERGE DESK</span>
+      <span>SHENZHEN · 2026</span>
+    </div>
+  </main>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WeFinally · 方向F · AI 助手 · Coordinator</title>
+<!-- WeFinally UI Research 2026 · Direction F · assistant · 严禁用于正式小程序 -->
+<style>
+/* ============ Direction F · AI-native Future Romance ============
+   母题延续：呼吸 orb / 玻璃光晕面板 / 胶囊徽章 / 信号点线
+   对话形态克制呈现：建议卡 + 历史信号，不做泡泡墙               */
+
+:root{
+  --pearl:#F6F6FA;
+  --white:#FFFFFF;
+  --white-85:rgba(255,255,255,.85);
+  --white-70:rgba(255,255,255,.7);
+  --white-55:rgba(255,255,255,.55);
+
+  --ink:#27272F;
+  --ink-2:#606170;
+  --ink-3:#9A9CA9;
+
+  --pink-100:#FBEBF1;
+  --pink-200:#F7DCE6;
+  --pink-300:#F0C4D6;
+  --pink-400:#E69FBC;
+
+  --berry:#A23A5E;
+  --berry-deep:#842C4C;
+
+  --silver-200:#DBDDE6;
+  --silver-300:#C7CAD7;
+  --hairline:rgba(39,39,47,.08);
+  --ring-a:rgba(180,183,199,.34);
+  --ring-b:rgba(180,183,199,.2);
+
+  --glass:rgba(255,255,255,.64);
+  --card-line:rgba(255,255,255,.9);
+  --sh-card:0 22px 46px rgba(162,58,94,.09), 0 2px 8px rgba(39,39,47,.04);
+
+  --halo-a:rgba(240,196,214,.55);
+  --halo-b:rgba(231,171,198,.34);
+
+  --grad-cta:linear-gradient(135deg,var(--pink-400) 0%,var(--berry) 78%);
+  --cta-ring:rgba(255,255,255,.65);
+  --on-cta:#FFFFFF;
+  --sh-orb:0 16px 34px rgba(230,159,188,.5),0 4px 12px rgba(162,58,94,.24);
+  --grad-core:radial-gradient(circle at 32% 28%,var(--white) 0%,var(--pink-200) 42%,var(--pink-400) 100%);
+  --grad-mono:radial-gradient(circle at 30% 25%,var(--white) 0%,var(--pink-100) 48%,var(--pink-300) 100%);
+  --mono-ring:var(--silver-200);
+}
+
+*{margin:0;padding:0;box-sizing:border-box;}
+html{-webkit-text-size-adjust:100%;}
+body{
+  max-width:390px;
+  margin:0 auto;
+  font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+  color:var(--ink);
+  background:
+    radial-gradient(620px 460px at 92% -100px, var(--pink-200), transparent 68%),
+    radial-gradient(640px 520px at -150px 108%, var(--pink-100), transparent 62%),
+    linear-gradient(var(--pearl),var(--pearl));
+  -webkit-font-smoothing:antialiased;
+  overflow-x:hidden;
+}
+a{color:inherit;text-decoration:none;-webkit-tap-highlight-color:transparent;}
+p{text-wrap:pretty;}
+
+.page{max-width:390px;margin:0 auto;padding:26px 22px 10px;display:flex;flex-direction:column;}
+
+/* ---------- micro typography ---------- */
+.micro{font-size:10px;font-weight:500;letter-spacing:.32em;text-transform:uppercase;color:var(--ink-3);}
+.h-thin{font-weight:250;letter-spacing:.06em;line-height:1.4;color:var(--ink);}
+.sub{font-size:13px;line-height:1.75;color:var(--ink-2);text-wrap:pretty;}
+
+/* ---------- shared surfaces ---------- */
+.panel{
+  background:var(--glass);
+  -webkit-backdrop-filter:blur(16px) saturate(1.15);
+          backdrop-filter:blur(16px) saturate(1.15);
+  border:1px solid var(--card-line);
+  border-radius:24px;
+  box-shadow:var(--sh-card);
+}
+.divider{height:1px;background:var(--hairline);border:none;}
+.res-head{display:flex;align-items:center;gap:12px;}
+.res-head .line{flex:1;height:1px;background:var(--hairline);}
+
+.chip{display:inline-flex;align-items:center;gap:8px;padding:5px 12px;border-radius:999px;
+  background:var(--pink-100);color:var(--berry);font-size:11px;font-weight:500;letter-spacing:.14em;}
+.pair{display:inline-flex;align-items:center;}
+.pair.tight{gap:2px;} .pair.tight i{width:5px;height:5px;border-radius:50%;background:var(--berry);}
+.ai-pill{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;
+  background:var(--pink-100);color:var(--berry-deep);font-size:11px;font-weight:500;letter-spacing:.08em;}
+.sig-tag{font-family:"SF Mono","Cascadia Mono",Consolas,monospace;font-size:10px;letter-spacing:.16em;
+  color:var(--ink-2);background:var(--white-70);border:1px solid var(--silver-200);
+  border-radius:999px;padding:5px 11px;font-variant-numeric:tabular-nums;}
+
+/* ---------- coordinator header（呼吸光晕）---------- */
+.asstop{display:flex;align-items:center;gap:16px;margin-bottom:22px;}
+.breathe-wrap{position:relative;width:64px;height:64px;flex:none;}
+.halo-run{position:absolute;inset:-9px;border-radius:50%;
+  background:radial-gradient(circle,var(--halo-a) 0%,transparent 70%);
+  animation:breathe 3.8s ease-in-out infinite;}
+.breathe-core{position:absolute;inset:13px;border-radius:50%;background:var(--grad-core);
+  box-shadow:0 0 14px 3px var(--halo-a);}
+@keyframes breathe{0%,100%{transform:scale(.84);opacity:.5;}50%{transform:scale(1.12);opacity:.95;}}
+@media (prefers-reduced-motion:reduce){.halo-run{animation:none;}}
+.asst-id{flex:1;display:flex;flex-direction:column;gap:5px;min-width:0;}
+.asst-id h1{font-size:20px;}
+.online{display:flex;align-items:center;gap:8px;font-size:11px;letter-spacing:.08em;color:var(--ink-2);}
+.online .pulse{position:relative;width:9px;height:9px;display:inline-block;flex:none;}
+.online .pulse i{position:absolute;inset:-4px;border-radius:50%;
+  background:radial-gradient(circle,var(--halo-a),transparent 70%);
+  animation:breathe 3.8s ease-in-out infinite;}
+.online .pulse u{position:absolute;inset:2px;border-radius:50%;background:var(--pink-400);
+  text-decoration:none;box-shadow:0 0 8px 2px var(--halo-a);}
+@media (prefers-reduced-motion:reduce){.online .pulse i{animation:none;}}
+
+/* ---------- suggestion card ---------- */
+.sugg{padding:20px;display:flex;flex-direction:column;gap:13px;margin-bottom:14px;}
+.sugg-t{font-size:17px;font-weight:300;letter-spacing:.08em;line-height:1.5;color:var(--ink);}
+.node-line{display:flex;align-items:center;gap:0;height:12px;margin:2px 0;}
+.node-line i{width:5px;height:5px;border-radius:50%;background:var(--silver-300);flex:none;}
+.node-line i:first-child{background:var(--pink-400);}
+.node-line i:last-child{background:var(--berry);}
+.node-line s{flex:1;height:1px;background:linear-gradient(90deg,var(--pink-300),var(--silver-300),var(--pink-300));text-decoration:none;margin:0 7px;}
+.quick-row{display:flex;gap:10px;}
+.quick{flex:1;display:flex;align-items:center;justify-content:center;min-height:44px;
+  border-radius:999px;background:var(--white-70);border:1px solid var(--silver-200);
+  font-size:13px;font-weight:400;letter-spacing:.14em;text-indent:.14em;color:var(--ink-2);}
+.quick.pri{background:var(--pink-100);border-color:transparent;color:var(--berry-deep);}
+
+/* ---------- past signals ---------- */
+.past{padding:18px 20px 14px;margin-bottom:22px;}
+.past-row{display:grid;grid-template-columns:64px 1fr auto;gap:12px;align-items:center;
+  padding:14px 2px;border-bottom:1px solid var(--hairline);}
+.past-row:last-child{border-bottom:none;padding-bottom:4px;}
+.diag{position:relative;height:14px;}
+.dline{position:absolute;left:9px;right:9px;top:6.5px;height:1px;}
+.dline.fade{background:linear-gradient(90deg,var(--silver-300),transparent);}
+.ddot{position:absolute;top:4px;width:5px;height:5px;border-radius:50%;}
+.ddot.a{left:0;background:var(--silver-300);}
+.ddot.z-out{right:0;background:var(--silver-200);}
+.settled{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+  width:7px;height:7px;border-radius:50%;background:var(--pink-400);
+  box-shadow:0 0 0 4px var(--pink-100),0 0 10px 2px var(--halo-a);}
+.past-name{font-size:13px;letter-spacing:.08em;color:var(--ink-2);}
+.past-note{font-size:10px;letter-spacing:.06em;color:var(--ink-3);margin-top:3px;}
+.past-status{font-size:11px;letter-spacing:.1em;color:var(--ink-3);}
+
+/* ---------- main CTA ---------- */
+.actions{display:flex;flex-direction:column;align-items:center;gap:8px;margin-bottom:24px;}
+.btn-orb{position:relative;display:flex;align-items:center;justify-content:center;gap:10px;
+  width:100%;min-height:56px;border-radius:999px;overflow:hidden;
+  background:var(--grad-cta);color:var(--on-cta);
+  font-size:15px;font-weight:400;letter-spacing:.22em;text-indent:.22em;
+  box-shadow:var(--sh-orb),inset 0 0 0 1px var(--cta-ring);
+  transition:transform .18s ease;}
+.btn-orb::before{content:"";position:absolute;left:-20%;top:-120%;width:70%;height:220%;
+  background:radial-gradient(closest-side,var(--white-55),transparent 72%);transform:rotate(18deg);}
+.btn-orb::after{content:"";position:absolute;left:50%;bottom:-34px;width:120px;height:52px;
+  transform:translateX(-50%);border-radius:50%;
+  background:radial-gradient(closest-side,var(--halo-a),transparent 76%);}
+.btn-orb span{position:relative;z-index:1;}
+.btn-orb:active{transform:scale(.985);}
+.cta-note{font-size:11px;letter-spacing:.1em;color:var(--ink-3);text-align:center;}
+
+/* ---------- input bar（底部造型）---------- */
+.inputbar{display:flex;align-items:center;gap:10px;min-height:56px;
+  border-radius:999px;padding:7px 7px 7px 22px;
+  background:var(--glass);
+  -webkit-backdrop-filter:blur(16px) saturate(1.15);
+          backdrop-filter:blur(16px) saturate(1.15);
+  border:1px solid var(--card-line);
+  box-shadow:var(--sh-card);}
+.ph{flex:1;font-size:14px;letter-spacing:.05em;color:var(--ink-3);}
+.send{width:42px;height:42px;border-radius:50%;flex:none;display:grid;place-items:center;
+  background:var(--white-85);border:1px solid var(--silver-200);}
+.send i{width:10px;height:10px;border-top:1.5px solid var(--ink-2);border-right:1.5px solid var(--ink-2);
+  transform:rotate(-45deg) translate(-1px,1px);}
+.ai-line{display:flex;align-items:center;gap:9px;margin-top:12px;
+  font-size:11px;line-height:1.7;color:var(--ink-3);text-wrap:pretty;}
+.ai-line .ai-pill{flex:none;}
+
+/* ---------- signal nav ---------- */
+.nav{display:grid;grid-template-columns:repeat(5,1fr);gap:2px;
+  border-top:1px solid var(--silver-200);
+  padding-top:0;padding-bottom:8px;margin-top:22px;}
+.nav a{display:flex;flex-direction:column;align-items:center;gap:9px;
+  min-height:52px;padding-top:0;justify-content:flex-start;}
+.n-dot{width:9px;height:9px;border-radius:50%;margin-top:-5px;
+  background:var(--pearl);box-shadow:inset 0 0 0 1.5px var(--silver-300);}
+.nav a span{font-size:10px;letter-spacing:.22em;text-indent:.22em;color:var(--ink-3);}
+.nav a.on .n-dot{background:var(--berry);box-shadow:0 0 0 3px var(--pink-100),0 0 12px 3px var(--halo-a);}
+.nav a.on span{color:var(--ink);font-weight:500;}
+
+.footer-micro{text-align:center;padding:16px 0 8px;}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- coordinator header -->
+  <header class="asstop" aria-label="AI 协调员，在线">
+    <span class="breathe-wrap" aria-hidden="true">
+      <span class="halo-run"></span>
+      <span class="breathe-core"></span>
+    </span>
+    <div class="asst-id">
+      <p class="micro">AI Coordinator</p>
+      <h1 class="h-thin">AI 协调员</h1>
+      <p class="online"><span class="pulse" aria-hidden="true"><i></i><u></u></span>在线 · 正替你盯着周六的安排</p>
+    </div>
+    <span class="sig-tag">SIG-0847</span>
+  </header>
+
+  <!-- new suggestion -->
+  <section class="panel sugg" aria-label="新建议">
+    <div class="res-head">
+      <p class="micro" style="letter-spacing:.24em">New Suggestion · 1 条新建议</p>
+      <span class="line"></span>
+    </div>
+    <h2 class="sugg-t">关于周六 15:00，是否可行？</h2>
+    <p class="sub">我已经替你算过两边的时间——你们的空闲在 14:00–17:00 交叠，15:00 出发正好落在中间，去南头古城谁都不赶。</p>
+    <span class="node-line" aria-hidden="true"><i></i><s></s><i></i><s></s><i></i></span>
+    <hr class="divider">
+    <div class="quick-row">
+      <a class="quick pri" href="#">听起来不错</a>
+      <a class="quick" href="#">再想想</a>
+    </div>
+  </section>
+
+  <!-- past signals -->
+  <section class="panel past" aria-label="历史信号">
+    <div class="res-head" style="margin-bottom:2px">
+      <p class="micro" style="letter-spacing:.24em">Past Signals · 历史信号</p>
+      <span class="line"></span>
+    </div>
+    <div class="past-row">
+      <span class="diag" aria-hidden="true">
+        <span class="dline fade"></span>
+        <span class="ddot a"></span><span class="ddot z-out"></span>
+      </span>
+      <span>
+        <span class="past-name">赵屹然</span>
+        <p class="past-note">上周推荐 · 已发散</p>
+      </span>
+      <span class="past-status">本次未成</span>
+    </div>
+    <div class="past-row">
+      <span class="diag" aria-hidden="true"><span class="settled"></span></span>
+      <span>
+        <span class="past-name">周牧遥</span>
+        <p class="past-note">上月推荐 · 已同步</p>
+      </span>
+      <span class="past-status">已有安排</span>
+    </div>
+  </section>
+
+  <!-- main CTA -->
+  <section class="actions">
+    <a class="btn-orb" href="#"><span>发送第一条消息</span></a>
+    <p class="cta-note">第一句不必隆重，说清你是谁就好</p>
+  </section>
+
+  <!-- input bar + AI note line -->
+  <div class="inputbar" role="presentation" aria-hidden="true">
+    <span class="ph">问问你的协调员…</span>
+    <span class="send"><i></i></span>
+  </div>
+  <p class="ai-line">
+    <span class="ai-pill">🤖 AI 生成内容</span>
+    本页建议由 AI 协调员基于双方资料收敛而来 · 非打分制 · 仅供参考
+  </p>
+
+  <!-- signal bottom nav -->
+  <nav class="nav" aria-label="底部导航">
+    <a href="#"><span class="n-dot" aria-hidden="true"></span><span>信号</span></a>
+    <a href="#"><span class="n-dot" aria-hidden="true"></span><span>匹配</span></a>
+    <a href="#"><span class="n-dot" aria-hidden="true"></span><span>协调</span></a>
+    <a class="on" href="#"><span class="n-dot" aria-hidden="true"></span><span>助手</span></a>
+    <a href="#"><span class="n-dot" aria-hidden="true"></span><span>我的</span></a>
+  </nav>
+
+  <p class="micro footer-micro">Wefinally · Direction F Prototype</p>
+
+</div>
+</body>
+</html>

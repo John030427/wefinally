@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WeFinally · 方向F · 信号报告 · SIG-0847</title>
+<!-- WeFinally UI Research 2026 · Direction F · report · 严禁用于正式小程序 -->
+<style>
+/* ============ Direction F · AI-native Future Romance ============
+   母题延续：两点一线收敛小样 / 玻璃光晕面板 / 共鸣递进点线
+   文档式编号分节 01–04，收束于边界说明                          */
+
+:root{
+  --pearl:#F6F6FA;
+  --white:#FFFFFF;
+  --white-85:rgba(255,255,255,.85);
+  --white-70:rgba(255,255,255,.7);
+  --white-55:rgba(255,255,255,.55);
+
+  --ink:#27272F;
+  --ink-2:#606170;
+  --ink-3:#9A9CA9;
+
+  --pink-100:#FBEBF1;
+  --pink-200:#F7DCE6;
+  --pink-300:#F0C4D6;
+  --pink-400:#E69FBC;
+
+  --berry:#A23A5E;
+  --berry-deep:#842C4C;
+
+  --silver-200:#DBDDE6;
+  --silver-300:#C7CAD7;
+  --hairline:rgba(39,39,47,.08);
+  --ring-a:rgba(180,183,199,.32);
+  --ring-b:rgba(180,183,199,.18);
+
+  --glass:rgba(255,255,255,.64);
+  --card-line:rgba(255,255,255,.9);
+  --sh-card:0 22px 46px rgba(162,58,94,.09), 0 2px 8px rgba(39,39,47,.04);
+
+  --halo-a:rgba(240,196,214,.55);
+  --halo-b:rgba(231,171,198,.34);
+
+  --grad-cta:linear-gradient(135deg,var(--pink-400) 0%,var(--berry) 78%);
+  --cta-ring:rgba(255,255,255,.65);
+  --on-cta:#FFFFFF;
+  --sh-orb:0 16px 34px rgba(230,159,188,.5),0 4px 12px rgba(162,58,94,.24);
+}
+
+*{margin:0;padding:0;box-sizing:border-box;}
+html{-webkit-text-size-adjust:100%;}
+body{
+  max-width:390px;
+  margin:0 auto;
+  font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+  color:var(--ink);
+  background:
+    radial-gradient(600px 440px at 50% -110px, var(--pink-200), transparent 70%),
+    radial-gradient(640px 520px at -150px 108%, var(--pink-100), transparent 62%),
+    linear-gradient(var(--pearl),var(--pearl));
+  -webkit-font-smoothing:antialiased;
+  overflow-x:hidden;
+}
+a{color:inherit;text-decoration:none;-webkit-tap-highlight-color:transparent;}
+p{text-wrap:pretty;}
+
+.page{max-width:390px;margin:0 auto;padding:22px 22px 8px;display:flex;flex-direction:column;}
+
+/* ---------- micro typography ---------- */
+.micro{font-size:10px;font-weight:500;letter-spacing:.32em;text-transform:uppercase;color:var(--ink-3);}
+.h-thin{font-weight:250;letter-spacing:.06em;line-height:1.4;color:var(--ink);}
+.sub{font-size:13px;line-height:1.75;color:var(--ink-2);text-wrap:pretty;}
+
+.panel{
+  background:var(--glass);
+  -webkit-backdrop-filter:blur(16px) saturate(1.15);
+          backdrop-filter:blur(16px) saturate(1.15);
+  border:1px solid var(--card-line);
+  border-radius:24px;
+  box-shadow:var(--sh-card);
+}
+.divider{height:1px;background:var(--hairline);border:none;}
+
+.chip{display:inline-flex;align-items:center;gap:8px;padding:5px 12px;border-radius:999px;
+  background:var(--pink-100);color:var(--berry);font-size:11px;font-weight:500;letter-spacing:.14em;}
+.pair{display:inline-flex;align-items:center;}
+.pair.tight{gap:2px;} .pair.tight i{width:5px;height:5px;border-radius:50%;background:var(--berry);}
+.ai-pill{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;
+  background:var(--pink-100);color:var(--berry-deep);font-size:11px;font-weight:500;letter-spacing:.08em;}
+
+/* ---------- top bar ---------- */
+.top{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px;}
+.back{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;flex:none;
+  background:var(--glass);border:1px solid var(--hairline);}
+.back i{width:11px;height:11px;border-left:1.5px solid var(--ink-2);border-bottom:1.5px solid var(--ink-2);
+  transform:rotate(45deg) translate(1px,-1px);}
+
+/* ---------- doc head ---------- */
+.doc-head{display:flex;flex-direction:column;gap:10px;margin-bottom:20px;}
+.doc-head h1{font-size:25px;}
+.mono-t{font-family:"SF Mono","Cascadia Mono",Consolas,monospace;font-size:19px;
+  letter-spacing:.08em;color:var(--berry-deep);font-weight:300;}
+
+/* ---------- report body（一整块玻璃文档）---------- */
+.report{padding:22px 20px;display:flex;flex-direction:column;gap:16px;margin-bottom:22px;}
+
+/* 收敛图小样 */
+.mini{position:relative;height:190px;overflow:hidden;border-radius:18px;}
+.orb-ring{position:absolute;border-radius:50%;pointer-events:none;
+  -webkit-mask:radial-gradient(closest-side,transparent 97.2%,#000 97.8% 98.6%,transparent 99.2%);
+          mask:radial-gradient(closest-side,transparent 97.2%,#000 97.8% 98.6%,transparent 99.2%);}
+.c1{width:140px;height:140px;left:calc(50% - 70px);top:calc(48% - 70px);background:var(--ring-a);}
+.c2{width:216px;height:216px;left:calc(50% - 108px);top:calc(48% - 108px);background:var(--ring-b);opacity:.75;}
+.traj{position:absolute;border-radius:50%;pointer-events:none;
+  -webkit-mask:radial-gradient(closest-side,transparent 96.8%,#000 97.6% 98.8%,transparent 99.6%);
+          mask:radial-gradient(closest-side,transparent 96.8%,#000 97.6% 98.8%,transparent 99.6%);}
+.wl{width:216px;height:216px;left:calc(50% - 108px);top:calc(48% - 108px);
+  background:conic-gradient(from 116deg,transparent 0deg,var(--pink-400) 58deg,transparent 122deg);opacity:.8;}
+.wr{width:216px;height:216px;left:calc(50% - 108px);top:calc(48% - 108px);
+  background:conic-gradient(from 226deg,transparent 0deg,var(--berry) 54deg,transparent 118deg);opacity:.5;}
+.streak{position:absolute;left:50%;top:calc(48% - 1px);height:2px;border-radius:2px;
+  transform-origin:left center;pointer-events:none;}
+.kl{width:84px;background:linear-gradient(90deg,transparent 5%,var(--pink-400));transform:rotate(211deg);}
+.kr{width:78px;background:linear-gradient(90deg,transparent 5%,var(--berry));transform:rotate(-28deg);opacity:.85;}
+.src{position:absolute;width:11px;height:11px;border-radius:50%;pointer-events:none;}
+.src-l{left:13%;top:21%;background:var(--pink-400);box-shadow:0 0 18px 5px var(--halo-a);}
+.src-r{right:12%;top:66%;background:var(--berry);box-shadow:0 0 16px 5px var(--halo-b);}
+.mote{position:absolute;width:4px;height:4px;border-radius:50%;background:var(--silver-300);}
+.v1{left:30%;top:9%;} .v2{right:17%;top:15%;opacity:.7;} .v3{left:9%;top:72%;opacity:.6;} .v4{left:64%;top:90%;opacity:.5;}
+.merge-halo{position:absolute;border-radius:50%;pointer-events:none;transform:translate(-50%,-50%);}
+.mx{left:50%;top:48%;width:82px;height:82px;background:radial-gradient(circle,var(--halo-a) 0%,transparent 68%);}
+.my{left:50%;top:48%;width:172px;height:172px;background:radial-gradient(circle,var(--halo-b) 0%,transparent 66%);}
+.merge-dot{position:absolute;left:50%;top:48%;width:14px;height:14px;border-radius:50%;
+  transform:translate(-50%,-50%);
+  background:radial-gradient(circle at 34% 28%,var(--white) 0%,var(--pink-300) 52%,var(--berry) 100%);
+  box-shadow:0 0 20px 6px var(--halo-a),0 0 52px 18px var(--halo-b);}
+.ground{position:absolute;left:50%;top:86%;width:170px;height:28px;transform:translate(-50%,-50%);
+  border-radius:50%;background:radial-gradient(closest-side,var(--halo-b),transparent 78%);opacity:.85;}
+.fig-cap{text-align:center;margin-top:-4px;}
+
+/* numbered sections */
+.sec-head{display:flex;align-items:baseline;gap:12px;}
+.sec-num{font-family:"SF Mono","Cascadia Mono",Consolas,monospace;font-size:11px;
+  letter-spacing:.2em;color:var(--berry);}
+.sec-title{font-size:15px;font-weight:350;letter-spacing:.14em;color:var(--ink);}
+.sec-body{display:flex;flex-direction:column;gap:11px;}
+
+/* resonance rows（点线递进）*/
+.res-list{list-style:none;display:flex;flex-direction:column;gap:14px;}
+.res-row{display:grid;grid-template-columns:58px 1fr;gap:13px;align-items:center;}
+.motif{position:relative;height:12px;}
+.motif .mline{position:absolute;top:5.5px;height:1px;background:var(--silver-300);}
+.motif .md{position:absolute;top:3.5px;width:5px;height:5px;border-radius:50%;}
+.mo-1 .mline{left:7px;right:7px;opacity:.55;}
+.mo-1 .md.a{left:0;background:var(--pink-400);}
+.mo-1 .md.z{right:0;background:var(--berry);}
+.mo-2 .mline{left:15px;right:15px;}
+.mo-2 .md.a{left:8px;background:var(--pink-400);}
+.mo-2 .md.z{right:8px;background:var(--berry);}
+.mo-3 .mline{left:22px;right:22px;}
+.mo-3 .md.a{left:15px;background:var(--berry);}
+.mo-3 .md.z{right:15px;background:var(--berry);box-shadow:0 0 8px 2px var(--halo-a);}
+.res-txt{font-size:13px;line-height:1.7;color:var(--ink-2);text-wrap:pretty;}
+.res-txt b{font-weight:500;color:var(--ink);letter-spacing:.08em;}
+
+/* 差异与互补：他/你 两行 + 结论 */
+.vs-row{display:grid;grid-template-columns:auto 1fr;gap:12px;align-items:center;}
+.vs-orb{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;flex:none;
+  background:var(--white-85);border:1px solid var(--silver-200);
+  font-size:13px;font-weight:250;color:var(--ink-2);letter-spacing:.05em;}
+.vs-txt{font-size:13px;line-height:1.7;color:var(--ink-2);text-wrap:pretty;}
+.vs-txt b{font-weight:500;color:var(--ink);letter-spacing:.06em;}
+
+.diff-note{display:flex;gap:9px;align-items:flex-start;font-size:12px;line-height:1.7;color:var(--ink-3);text-wrap:pretty;}
+.diff-note .pair{flex:none;margin-top:6px;}
+
+/* 边界说明块（醒目不可移除）*/
+.ai-note{background:var(--pink-100);border-radius:18px;padding:14px 16px;
+  display:flex;flex-direction:column;gap:6px;
+  box-shadow:inset 0 0 0 1px var(--white-85);}
+.ai-note .lead{font-size:12px;font-weight:600;letter-spacing:.1em;color:var(--berry-deep);}
+.ai-note p{font-size:12px;line-height:1.75;color:var(--ink-2);text-wrap:pretty;}
+
+/* ---------- actions ---------- */
+.actions{display:flex;flex-direction:column;align-items:center;gap:8px;margin-bottom:8px;}
+.btn-orb{position:relative;display:flex;align-items:center;justify-content:center;gap:10px;
+  width:100%;min-height:56px;border-radius:999px;overflow:hidden;
+  background:var(--grad-cta);color:var(--on-cta);
+  font-size:15px;font-weight:400;letter-spacing:.22em;text-indent:.22em;
+  box-shadow:var(--sh-orb),inset 0 0 0 1px var(--cta-ring);
+  transition:transform .18s ease;}
+.btn-orb::before{content:"";position:absolute;left:-20%;top:-120%;width:70%;height:220%;
+  background:radial-gradient(closest-side,var(--white-55),transparent 72%);transform:rotate(18deg);}
+.btn-orb::after{content:"";position:absolute;left:50%;bottom:-34px;width:120px;height:52px;
+  transform:translateX(-50%);border-radius:50%;
+  background:radial-gradient(closest-side,var(--halo-a),transparent 76%);}
+.btn-orb span{position:relative;z-index:1;}
+.btn-orb:active{transform:scale(.985);}
+.btn-ghost{display:flex;align-items:center;justify-content:center;min-height:48px;
+  padding:0 18px;color:var(--ink-3);font-size:13px;letter-spacing:.24em;text-indent:.24em;}
+
+.footer-micro{text-align:center;padding:20px 0 10px;}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- top -->
+  <header class="top">
+    <button type="button" class="back" aria-label="返回"><i aria-hidden="true"></i></button>
+    <p class="micro">Signal Report · AI 报告</p>
+    <span class="chip" style="white-space:nowrap"><span class="pair tight" aria-hidden="true"><i></i><i></i></span>非打分制</span>
+  </header>
+
+  <!-- doc head -->
+  <section class="doc-head" aria-label="报告标题">
+    <p class="micro">Generated · 本周五 · 为陈晓雯收敛</p>
+    <h1 class="h-thin">信号报告 · <span class="mono-t">SIG-0847</span></h1>
+    <p class="sub">关于林亦辰的一份收敛记录——它解释这条信号为何出现，也交代它的边界。</p>
+  </section>
+
+  <!-- report body -->
+  <article class="panel report" aria-label="信号报告正文">
+
+    <!-- 收敛图小样 -->
+    <div>
+      <div class="mini" aria-hidden="true">
+        <span class="orb-ring c2"></span>
+        <span class="orb-ring c1"></span>
+        <span class="traj wl"></span>
+        <span class="traj wr"></span>
+        <span class="streak kl"></span><span class="streak kr"></span>
+        <i class="mote v1"></i><i class="mote v2"></i><i class="mote v3"></i><i class="mote v4"></i>
+        <span class="merge-halo my"></span>
+        <span class="merge-halo mx"></span>
+        <span class="ground"></span>
+        <span class="src src-l"></span>
+        <span class="src src-r"></span>
+        <span class="merge-dot"></span>
+      </div>
+      <p class="micro fig-cap">Convergence · 两点一线</p>
+    </div>
+
+    <hr class="divider">
+
+    <!-- 01 收敛解读 -->
+    <section class="sec-body" aria-label="01 收敛解读">
+      <div class="sec-head">
+        <span class="sec-num">01</span>
+        <h2 class="sec-title">收敛解读</h2>
+      </div>
+      <p class="sub">这个信号的起点很简单：你们的生活节奏是两条平行线——工作日互不相干，周末各有去处。而这个周六，两段空闲第一次落进了同一格时间。信号不是缘分天降，是一次可解释的重合。</p>
+      <span class="ai-pill" style="align-self:flex-start">🤖 AI 收敛解读</span>
+    </section>
+
+    <hr class="divider">
+
+    <!-- 02 共振点 -->
+    <section class="sec-body" aria-label="02 共振点">
+      <div class="sec-head">
+        <span class="sec-num">02</span>
+        <h2 class="sec-title">共振点 ×3</h2>
+      </div>
+      <ul class="res-list">
+        <li class="res-row">
+          <span class="motif mo-1" aria-hidden="true"><span class="mline"></span><span class="md a"></span><span class="md z"></span></span>
+          <p class="res-txt"><b>徒步</b> · 各自走过 EBC 的一段路，聊起海拔就有话可说。</p>
+        </li>
+        <li class="res-row">
+          <span class="motif mo-2" aria-hidden="true"><span class="mline"></span><span class="md a"></span><span class="md z"></span></span>
+          <p class="res-txt"><b>胶片</b> · 她的 Contax T2，他的 Nikon FM2，都在等一个周末。</p>
+        </li>
+        <li class="res-row">
+          <span class="motif mo-3" aria-hidden="true"><span class="mline"></span><span class="md a"></span><span class="md z"></span></span>
+          <p class="res-txt"><b>日料</b> · 各自存着一份周末店单，正好互相借来抄。</p>
+        </li>
+      </ul>
+    </section>
+
+    <hr class="divider">
+
+    <!-- 03 差异与互补 -->
+    <section class="sec-body" aria-label="03 差异与互补">
+      <div class="sec-head">
+        <span class="sec-num">03</span>
+        <h2 class="sec-title">差异与互补</h2>
+      </div>
+      <div class="vs-row">
+        <span class="vs-orb" aria-hidden="true">他</span>
+        <p class="vs-txt"><b>他把周末留给电影</b>——宅家看片也能自洽，节奏向内。</p>
+      </div>
+      <div class="vs-row">
+        <span class="vs-orb" aria-hidden="true">你</span>
+        <p class="vs-txt"><b>你把周末留给市集</b>——在人群里走动充电，节奏向外。</p>
+      </div>
+      <p class="diff-note">
+        <span class="pair tight" aria-hidden="true"><i></i><i></i></span>
+        <span><span class="ai-pill" style="padding:2px 8px">🤖 AI 解读</span>&nbsp;&nbsp;一个向内、一个向外，这被读作互补的节奏，而非分歧。</span>
+      </p>
+    </section>
+
+    <hr class="divider">
+
+    <!-- 04 边界说明 -->
+    <section class="sec-body" aria-label="04 边界说明">
+      <div class="sec-head">
+        <span class="sec-num">04</span>
+        <h2 class="sec-title">边界说明</h2>
+      </div>
+      <aside class="ai-note">
+        <span class="lead">🤖 AI 生成内容 · 非打分制</span>
+        <p>本报告由 AI 基于双方资料与历史约会反馈收敛而来；其中不存在任何兼容性评分，也不对结果做任何预测。它只把值得注意的事实摆到你面前——判断与决定，始终属于你。</p>
+      </aside>
+    </section>
+
+  </article>
+
+  <!-- actions -->
+  <section class="actions">
+    <a class="btn-orb" href="#"><span>了解这个信号</span></a>
+    <a class="btn-ghost" href="#">返回信号流</a>
+  </section>
+
+  <p class="micro footer-micro">Wefinally · Direction F Prototype</p>
+
+</div>
+</body>
+</html>

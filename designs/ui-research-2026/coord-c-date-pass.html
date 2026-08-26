@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<!-- WeFinally UI Research 2026 · Direction C · date-coordination · 严禁用于正式小程序 -->
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WeFinally · Date Pass · 约会协调（方向 C 原型）</title>
+<style>
+/* ============================================================
+   Direction C — DATE PASS / INVITATION TICKET · 约会协调
+   母题：状态横幅 / 打孔小票根提案 A·B / 等宽刻度交叠条 / 服务台墨绿
+   ============================================================ */
+:root{
+  --paper:#EDE4D2;--paper-deep:#DFD3BB;
+  --face:#FBF7EC;--face-dim:#F2EBDA;
+  --ink:#2A2118;--ink-2:#6B5D4B;--ink-3:#A2937C;
+  --rule:#C7B899;--hairline:#DDD0B4;
+  --red:#B93A24;--red-deep:#962B18;--red-wash:#F3DDD0;
+  --green:#33584A;--green-deep:#25453A;--green-wash:#E7ECDF;--on-green:#EDF2E8;
+  --grey-stamp:#8B7E6D;--on-red:#FFF6EA;
+  --cutout:var(--paper);
+  --shadow-ticket:0 14px 28px rgba(42,33,24,.16);
+  --shadow-soft:0 5px 14px rgba(42,33,24,.10);
+  --shadow-stamp:1px 2px 0 rgba(42,33,24,.25);   /* 橡皮章投影 */
+  --sans:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+  --mono:"SF Mono","Cascadia Mono",Consolas,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html{-webkit-text-size-adjust:100%;}
+body{background:var(--paper);color:var(--ink);font:400 14px/1.75 var(--sans);}
+.app{max-width:390px;margin:0 auto;}
+a{color:inherit;}
+a:focus-visible{outline:2px solid var(--red);outline-offset:2px;}
+
+/* ---------- 报头 ---------- */
+.mast{display:flex;align-items:center;gap:10px;padding:16px 20px 12px;}
+.brand{
+  font:700 14px/1 var(--mono);letter-spacing:.22em;text-indent:.22em;
+  border:2px solid var(--ink);background:var(--face);
+  padding:7px 8px 6px;box-shadow:2px 2px 0 var(--ink);
+}
+.mast-cn{font:600 10.5px/1.6 var(--sans);color:var(--ink-2);letter-spacing:.08em;}
+.mast-no{margin-left:auto;text-align:right;font:600 9px/1.7 var(--mono);color:var(--ink-3);letter-spacing:.14em;}
+.rules{margin:0 20px;height:5px;border-top:2px solid var(--ink);border-bottom:1px solid var(--ink);}
+
+.backrow{margin:0 20px;}
+.back{display:inline-flex;align-items:center;gap:8px;min-height:44px;
+  font:600 11px/1 var(--mono);letter-spacing:.16em;color:var(--ink-2);
+  text-decoration:none;transition:color .15s;}
+.back:hover{color:var(--ink);}
+.back .bk{font:700 13px/1 var(--mono);color:var(--red);}
+
+.slab{display:flex;align-items:baseline;gap:10px;padding:22px 20px 10px;}
+.slab .en{font:700 11px/1 var(--mono);letter-spacing:.24em;}
+.slab .cn{font:600 10.5px/1 var(--sans);color:var(--ink-3);letter-spacing:.18em;}
+.slab::after{content:"";flex:1;border-top:1px dashed var(--rule);transform:translateY(-3px);}
+
+/* ---------- 状态横幅：协调中 ---------- */
+.statusbar{
+  margin:16px 20px 0;position:relative;
+  display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 10px;
+  background:var(--ink);color:var(--face);
+  border:1.5px solid var(--ink);border-radius:4px;
+  padding:12px 14px;box-shadow:var(--shadow-soft);
+}
+.statusbar .sdot{flex:none;width:9px;height:9px;background:var(--red);transform:rotate(45deg) translateY(-1px);}
+.statusbar b{font:700 14px/1.6 var(--sans);letter-spacing:.2em;}
+.statusbar .en{font:700 10px/1.6 var(--mono);letter-spacing:.24em;color:var(--paper-deep);}
+.statusbar .flag{margin-left:auto;font:700 9.5px/1.6 var(--mono);letter-spacing:.12em;color:var(--red-wash);border:1px solid var(--red-wash);border-radius:2px;padding:3px 6px 2px;}
+.statusbar .sub{flex-basis:100%;margin-top:2px;font:500 11px/1.75 var(--sans);color:var(--paper-deep);text-wrap:pretty;}
+
+/* ============================================================
+   时间提案 A / B —— 打孔小票根
+   ============================================================ */
+.props{margin:0 20px;display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.prop{
+  position:relative;display:grid;grid-template-columns:12px 1fr;
+  border:1.5px solid var(--ink-3);border-radius:5px;
+  background:var(--face);box-shadow:var(--shadow-soft);
+}
+.prop.reco{border-color:var(--red);box-shadow:var(--shadow-ticket);}
+.pcut{
+  background-image:radial-gradient(circle at 6px 9px,var(--cutout) 2.6px,transparent 3.3px);
+  background-size:12px 18px;background-repeat:repeat-y;background-position:center top;
+}
+.pbody{padding:12px 12px 12px 10px;min-width:0;display:flex;flex-direction:column;gap:6px;}
+.ph{display:flex;align-items:baseline;gap:7px;}
+.ph b{font:800 19px/1 var(--mono);color:var(--ink-3);}
+.prop.reco .ph b{color:var(--red);}
+.ph span{font:700 8.5px/1.6 var(--mono);letter-spacing:.14em;color:var(--ink-3);}
+.pt{font:700 31px/1 var(--mono);letter-spacing:.02em;color:var(--ink-2);}
+.prop.reco .pt{color:var(--red);}
+.pdow{font:600 9px/1.7 var(--mono);letter-spacing:.14em;color:var(--ink-3);}
+.pfoot{margin-top:auto;padding-top:8px;border-top:1px dashed var(--rule);
+  font:500 9.5px/1.7 var(--sans);color:var(--ink-3);text-wrap:pretty;}
+.prop.reco .pfoot{color:var(--red-deep);}
+.reco-stamp{
+  position:absolute;top:-11px;right:10px;z-index:2;
+  font:700 10px/1 var(--mono);letter-spacing:.26em;text-indent:.26em;
+  color:var(--on-red);background:var(--red);border-radius:2px;
+  padding:5px 6px 4px;transform:rotate(-7deg);
+  box-shadow:var(--shadow-stamp);
+}
+
+/* ---------- 双方空闲 · 交叠条 ---------- */
+.skels{margin:0 20px;border:1.5px solid var(--ink);border-radius:6px;background:var(--face);
+  padding:12px 14px 14px;box-shadow:var(--shadow-soft);}
+.skels-h{display:flex;align-items:baseline;gap:8px;font:700 9px/1.7 var(--mono);letter-spacing:.2em;color:var(--ink-2);}
+.skels-h .cn{font:600 9.5px/1.7 var(--sans);letter-spacing:.14em;color:var(--ink-3);}
+.ruler,.lane{display:grid;grid-template-columns:44px 1fr;gap:8px;align-items:center;}
+.lane{margin-top:8px;}
+.lane .who{font:600 9px/1.6 var(--mono);color:var(--ink-3);letter-spacing:.08em;text-align:right;}
+.track{position:relative;height:22px;background:var(--face-dim);border:1px solid var(--hairline);border-radius:2px;overflow:hidden;}
+.bar{position:absolute;top:0;bottom:0;}
+.bar.her{left:14.29%;width:57.15%;background:var(--ink-2);opacity:.85;}
+.bar.him{left:28.57%;width:57.15%;
+  background:repeating-linear-gradient(45deg,var(--ink-3) 0 4px,transparent 4px 8px);
+  border-left:1.5px solid var(--ink-3);border-right:1.5px solid var(--ink-3);}
+.bar.ovl{left:28.57%;width:42.87%;
+  background:repeating-linear-gradient(135deg,var(--red) 0 5px,var(--red-deep) 5px 10px);
+  border:1.5px solid var(--red-deep);
+  display:flex;align-items:center;justify-content:center;
+  font:700 9px/1 var(--mono);letter-spacing:.1em;color:var(--on-red);}
+.hours{position:relative;height:15px;margin-top:6px;margin-left:52px;
+  font:600 8px/1.6 var(--mono);color:var(--ink-3);}
+.hours span{position:absolute;top:0;padding-left:2px;border-left:1px solid var(--hairline);}
+.hours span.last{left:auto;right:0;padding-left:0;padding-right:2px;border-left:none;border-right:1px solid var(--hairline);transform:none;}
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:10px;padding-top:9px;border-top:1px dashed var(--rule);
+  font:500 9px/1.7 var(--sans);color:var(--ink-2);}
+.legend i{display:inline-block;width:14px;height:9px;margin-right:5px;font-style:normal;vertical-align:0;}
+.legend .l1 i{background:var(--ink-2);}
+.legend .l2 i{background:repeating-linear-gradient(45deg,var(--ink-3) 0 3px,transparent 3px 6px);border:1px solid var(--ink-3);}
+.legend .l3 i{background:repeating-linear-gradient(135deg,var(--red) 0 3px,var(--red-deep) 3px 6px);}
+
+/* ---------- 地点确认行 ---------- */
+.venuecard{margin:14px 20px 0;display:flex;align-items:baseline;gap:8px;
+  background:var(--face);border:1.5px solid var(--ink);border-radius:4px;
+  padding:12px 14px;box-shadow:var(--shadow-soft);}
+.vpin{font:700 12px/1 var(--mono);color:var(--red);}
+.vname{font:800 18px/1.5 var(--sans);letter-spacing:.06em;}
+.vsub{margin-left:auto;text-align:right;font:600 9px/1.7 var(--mono);color:var(--ink-3);letter-spacing:.12em;}
+.vnote{margin:6px 20px 0;font:500 10px/1.8 var(--sans);color:var(--ink-3);text-wrap:pretty;}
+
+/* ---------- CONCIERGE 建议 ---------- */
+.note{
+  margin:16px 20px 0;transform:rotate(.6deg);
+  background:var(--green-wash);border:1.5px dashed var(--green);border-radius:4px;
+  padding:12px 14px;color:var(--ink);
+}
+.note-h{display:flex;align-items:center;gap:8px;font:700 10px/1.7 var(--mono);letter-spacing:.14em;color:var(--green-deep);}
+.note-h .bot{flex:none;width:26px;height:26px;display:grid;place-items:center;border:1.5px solid var(--green-deep);border-radius:3px;font-size:13px;}
+.note p{margin-top:8px;font:600 13px/1.75 var(--sans);text-wrap:pretty;}
+.note em{display:block;margin-top:8px;font:500 9px/1.7 var(--sans);font-style:normal;color:var(--ink-2);text-wrap:pretty;}
+
+/* ---------- 双方确认状态行 ---------- */
+.confs{margin:14px 20px 0;border:1.5px solid var(--ink);border-radius:5px;background:var(--face);box-shadow:var(--shadow-soft);}
+.conf{display:flex;align-items:center;gap:10px;min-height:54px;padding:8px 14px;}
+.conf + .conf{border-top:1px dashed var(--rule);}
+.conf .ck{flex:none;width:18px;height:18px;display:grid;place-items:center;border:1.5px solid var(--green);
+  border-radius:2px;font:700 11px/1 var(--mono);color:var(--green);}
+.conf.wait .ck{border-color:var(--grey-stamp);color:var(--grey-stamp);}
+.conf .ct{font:600 12px/1.7 var(--sans);}
+.conf .cs{margin-left:auto;font:600 9px/1.7 var(--mono);color:var(--ink-3);letter-spacing:.06em;}
+.stamp{
+  position:relative;flex:none;margin-left:10px;
+  font:700 10px/1 var(--mono);letter-spacing:.2em;text-indent:.2em;
+  color:var(--green);border:2px solid var(--green);border-radius:3px;
+  padding:5px 6px 4px;transform:rotate(-7deg);opacity:.92;
+}
+.stamp::after{content:"";position:absolute;inset:2px;border:1px solid var(--green);border-radius:2px;opacity:.55;}
+.stamp.grey{color:var(--grey-stamp);border-color:var(--grey-stamp);}
+.stamp.grey::after{border-color:var(--grey-stamp);}
+
+/* ---------- 动作区 ---------- */
+.acts{padding:22px 20px 0;display:flex;flex-direction:column;gap:12px;}
+.primary{
+  display:flex;align-items:stretch;text-decoration:none;
+  border:1.5px solid var(--red-deep);border-radius:3px;overflow:hidden;
+}
+.primary::before{
+  content:"";flex:none;width:16px;
+  background:repeating-linear-gradient(135deg,var(--on-red) 0 4px,transparent 4px 9px);
+  background-color:var(--red-deep);opacity:.85;
+}
+.primary b{
+  flex:1;display:flex;align-items:center;justify-content:center;gap:10px;
+  min-height:58px;background:var(--red);color:var(--on-red);
+  font:800 17px/1 var(--sans);letter-spacing:.12em;transition:background .15s;
+}
+.primary:hover b{background:var(--red-deep);}
+.primary .ar{font:700 15px/1 var(--mono);}
+.ghost{
+  min-height:48px;display:grid;place-items:center;
+  border:1.5px solid var(--ink-3);border-radius:3px;
+  color:var(--ink-2);font:600 13px/1 var(--sans);letter-spacing:.3em;text-indent:.3em;
+  text-decoration:none;transition:border-color .15s,color .15s;
+}
+.ghost:hover{border-color:var(--ink);color:var(--ink);}
+
+.office{
+  display:flex;justify-content:space-between;align-items:baseline;
+  padding:22px 20px 30px;
+  font:600 8.5px/1.7 var(--mono);letter-spacing:.22em;color:var(--ink-3);
+}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header class="mast">
+    <span class="brand">WEFINALLY</span>
+    <span class="mast-cn">认真婚恋<br>线下介绍 · 票务服务</span>
+    <span class="mast-no">MEMBER NO.0921<br>陈晓雯 · 29</span>
+  </header>
+  <div class="rules" role="presentation"></div>
+
+  <nav class="backrow" aria-label="返回">
+    <a class="back" href="#detail-c08"><span class="bk">‹</span>BACK · 返回匹配详情</a>
+  </nav>
+
+  <main>
+    <!-- ===== 状态横幅 ===== -->
+    <section class="statusbar" aria-label="当前协调状态">
+      <span class="sdot" role="presentation"></span>
+      <b>协调中</b>
+      <span class="en">· COORDINATING</span>
+      <span class="flag">PASS WF-C08</span>
+      <span class="sub">林亦辰提议把周六见面从 14:30 改到 15:00——他周六上午另有安排。等你确认后，时间即最终生效。</span>
+    </section>
+
+    <!-- ===== 时间提案 A / B ===== -->
+    <div class="slab"><span class="en">TIME PROPOSALS</span><span class="cn">时间提案 · 本周六</span></div>
+
+    <div class="props">
+      <!-- 提案 A：原定 -->
+      <article class="prop" aria-label="提案 A，原定 14:30">
+        <div class="pcut" role="presentation"></div>
+        <div class="pbody">
+          <div class="ph"><b>A</b><span>原定 ORIG.</span></div>
+          <div class="pt">14:30</div>
+          <div class="pdow">周六 SAT · PM</div>
+          <div class="pfoot">由你方先提出的时间。</div>
+        </div>
+      </article>
+
+      <!-- 提案 B：对方提议（推荐） -->
+      <article class="prop reco" aria-label="提案 B，对方提议 15:00，推荐">
+        <span class="reco-stamp">推荐</span>
+        <div class="pcut" role="presentation"></div>
+        <div class="pbody">
+          <div class="ph"><b>B</b><span>对方提议 PROP.</span></div>
+          <div class="pt">15:00</div>
+          <div class="pdow">周六 SAT · PM</div>
+          <div class="pfoot">林亦辰提出 · 待你确认后生效。</div>
+        </div>
+      </article>
+    </div>
+
+    <!-- ===== 双方空闲交叠条 ===== -->
+    <div class="slab"><span class="en">AVAILABILITY</span><span class="cn">双方空闲 · 周六</span></div>
+
+    <section class="skels" aria-label="双方空闲时间对比">
+      <div class="skels-h">OVERLAP<span class="cn">共同空闲 14:00–17:00</span></div>
+
+      <div class="lane">
+        <span class="who">你<br>13–17</span>
+        <div class="track"><span class="bar her" role="presentation"></span></div>
+      </div>
+      <div class="lane">
+        <span class="who">他<br>14–18</span>
+        <div class="track"><span class="bar him" role="presentation"></span></div>
+      </div>
+      <div class="lane">
+        <span class="who">交叠<br>共同</span>
+        <div class="track"><span class="bar ovl">14:00–17:00</span></div>
+      </div>
+
+      <div class="hours" role="presentation">
+        <span style="left:0;">12:00</span><span style="left:14.29%;">13</span><span style="left:28.57%;">14</span><span style="left:42.86%;">15</span><span style="left:57.14%;">16</span><span style="left:71.43%;">17</span><span style="left:85.71%;">18</span><span class="last">19:00</span>
+      </div>
+
+      <div class="legend">
+        <span class="l1"><i role="presentation"></i>你的空闲</span>
+        <span class="l2"><i role="presentation"></i>他的空闲</span>
+        <span class="l3"><i role="presentation"></i>共同交叠段</span>
+      </div>
+    </section>
+
+    <!-- ===== 地点确认行 ===== -->
+    <div class="venuecard">
+      <span class="vpin">◆</span>
+      <span class="vname">南头古城</span>
+      <span class="vsub">NANTOU ANCIENT CITY<br>深圳 · 南山</span>
+    </div>
+    <p class="vnote">地点双方已确认无需改动；初次见面为公共场所，改期不影响地点。</p>
+
+    <!-- ===== CONCIERGE 建议 ===== -->
+    <aside class="note" aria-label="AI 协调员建议">
+      <div class="note-h"><span class="bot">🤖</span>WEFINALLY CONCIERGE · 协调建议</div>
+      <p>他上午有事、你下午四点后有空——15:00 落在共同空闲的中段，前后都留了余量，比 14:30 更稳。</p>
+      <em>🤖 AI 生成内容，仅供参考。是否采纳由你决定，也可随时转人工协调员处理。</em>
+    </aside>
+
+    <!-- ===== 双方确认状态行 ===== -->
+    <section class="confs" aria-label="双方确认状态">
+      <div class="conf">
+        <span class="ck">✓</span>
+        <span class="ct">我 · 陈晓雯</span>
+        <span class="cs">已确认 15:00</span>
+        <span class="stamp">已确认</span>
+      </div>
+      <div class="conf wait">
+        <span class="ck">◇</span>
+        <span class="ct">他 · 林亦辰</span>
+        <span class="cs">等待你确认 15:00</span>
+        <span class="stamp grey">待回应</span>
+      </div>
+    </section>
+
+    <!-- ===== 动作区 ===== -->
+    <div class="acts">
+      <a class="primary" href="#confirm-1500"><b>确认改到 15:00<span class="ar">▸▸</span></b></a>
+      <a class="ghost" href="#other-time">提议其他时间</a>
+    </div>
+
+    <div class="office">
+      <span>WEFINALLY TICKET OFFICE</span>
+      <span>SHENZHEN · 2026</span>
+    </div>
+  </main>
+
+</div>
+</body>
+</html>
