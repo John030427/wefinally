@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<!-- WeFinally UI Research 2026 · Direction D · reveal · 严禁用于正式小程序 -->
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WeFinally · For you, this week.</title>
+<style>
+  :root{
+    --ivory:      #F5EFE4;
+    --ivory-deep: #EDE5D5;
+    --ink:        #33302B;
+    --ink-60:     #6F6860;
+    --ink-40:     #9A928A;
+    --rose:       #B08378;
+    --rose-soft:  #D8BFB4;
+    --wine:       #6B2130;
+    --wine-line:  rgba(107,33,48,.45);
+    --hairline:   #DACFB9;
+
+    --serif: Georgia, "Songti SC", "Noto Serif SC", "SimSun", serif;
+  }
+
+  *{ margin:0; padding:0; box-sizing:border-box; }
+  body{
+    background:var(--ivory);
+    color:var(--ink);
+    font-family:var(--serif);
+    font-weight:400;
+    line-height:1.8;
+    -webkit-font-smoothing:antialiased;
+  }
+
+  .page{
+    max-width:390px;
+    margin:0 auto;
+    display:flex;
+    flex-direction:column;
+    min-height:100vh;
+  }
+
+  .eyebrow{
+    font-size:11px;
+    letter-spacing:.34em;
+    text-indent:.34em;
+    color:var(--rose);
+  }
+  .rule{
+    border:none;
+    border-top:1px solid var(--hairline);
+    width:56px;
+    margin-left:auto;
+    margin-right:auto;
+  }
+  .rule.full{ width:calc(100% - 96px); }
+  .dots{
+    text-align:center;
+    color:var(--rose-soft);
+    font-size:14px;
+    letter-spacing:.9em;
+    text-indent:.9em;
+    line-height:1;
+  }
+
+  @keyframes unfold{
+    from{ opacity:0; transform:translateY(14px); }
+    to  { opacity:1; transform:none; }
+  }
+  .rise{ animation:unfold 1s ease-out both; }
+
+  /* ---------- 信封抬头 ---------- */
+  .masthead{
+    padding:60px 32px 0;
+    text-align:center;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:20px;
+  }
+  .seal{
+    width:46px;
+    height:46px;
+    border:1px solid var(--rose);
+    border-radius:50%;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-size:15px;
+    letter-spacing:.08em;
+    text-indent:.08em;
+    color:var(--wine);
+  }
+  .brand{
+    font-size:11px;
+    letter-spacing:.5em;
+    text-indent:.5em;
+    color:var(--ink-40);
+  }
+
+  /* ---------- 信笺标题 ---------- */
+  .letterhead{
+    padding:44px 36px 48px;
+    text-align:center;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:18px;
+  }
+  .letterhead h1{
+    font-family:Georgia, var(--serif);
+    font-style:italic;
+    font-weight:400;
+    font-size:29px;
+    letter-spacing:.04em;
+    color:var(--wine);
+    line-height:1.6;
+    text-wrap:balance;
+  }
+  .letterhead .sub{
+    font-size:13.5px;
+    color:var(--ink-60);
+    letter-spacing:.14em;
+    text-indent:.14em;
+  }
+
+  /* ---------- 信的正文（monogram 浮水印在此） ---------- */
+  .letter{
+    position:relative;
+    overflow:hidden;
+    background:var(--ivory-deep);
+    padding:64px 36px 58px;
+    text-align:center;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:22px;
+  }
+  .monogram{
+    position:absolute;
+    inset:0;
+    display:flex;
+    align-items:flex-start;
+    justify-content:center;
+    padding-top:8px;
+    font-size:230px;
+    line-height:1;
+    color:var(--rose);
+    opacity:.12;
+    pointer-events:none;
+    user-select:none;
+  }
+  .letter > *{ position:relative; }
+
+  .salutation{
+    font-size:13px;
+    letter-spacing:.24em;
+    text-indent:.24em;
+    color:var(--ink-60);
+  }
+  .lead{
+    font-size:14.5px;
+    max-width:280px;
+    text-wrap:pretty;
+  }
+  .name{
+    font-weight:400;
+    font-size:33px;
+    letter-spacing:.35em;
+    text-indent:.35em;
+    line-height:1.5;
+  }
+  .meta{
+    font-size:13px;
+    color:var(--ink-60);
+    letter-spacing:.18em;
+    text-indent:.18em;
+  }
+  .common-label{
+    margin-top:10px;
+  }
+  .common p{
+    font-size:14.5px;
+    line-height:2.05;
+    max-width:280px;
+    text-wrap:pretty;
+  }
+  .contrast{
+    font-size:13.5px;
+    color:var(--ink-60);
+    max-width:272px;
+    text-wrap:pretty;
+  }
+
+  /* AI 私人顾问落款 —— 克制但合规醒目 */
+  .ai-note{
+    width:min(300px,100%);
+    border-top:1px solid var(--hairline);
+    border-bottom:1px solid var(--hairline);
+    padding:24px 4px;
+    display:flex;
+    flex-direction:column;
+    gap:12px;
+  }
+  .ai-note .quote{
+    font-size:15.5px;
+    color:var(--wine);
+    line-height:2;
+    text-wrap:pretty;
+  }
+  .ai-note .attr{
+    font-size:11px;
+    letter-spacing:.14em;
+    color:var(--rose);
+    line-height:1.9;
+    text-wrap:pretty;
+  }
+
+  /* ---------- 动作区 ---------- */
+  .actions{
+    padding:56px 36px 20px;
+    text-align:center;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:16px;
+  }
+  .cta{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    min-height:54px;
+    width:min(280px,100%);
+    border:1px solid var(--wine-line);
+    border-radius:2px;
+    background:transparent;
+    color:var(--wine);
+    font-family:var(--serif);
+    font-size:15px;
+    letter-spacing:.4em;
+    text-indent:.4em;
+    text-decoration:none;
+  }
+  .cta:hover{ background:var(--wine); color:var(--ivory); }
+  .skip{
+    display:inline-block;
+    padding:13px 12px;
+    font-size:12px;
+    letter-spacing:.32em;
+    text-indent:.32em;
+    color:var(--ink-40);
+    text-decoration:none;
+  }
+  .skip:hover{ color:var(--ink-60); text-decoration:underline; text-underline-offset:6px; text-decoration-color:var(--rose-soft); }
+
+  /* ---------- 落款与页脚 ---------- */
+  .closing{
+    padding:26px 36px 46px;
+    text-align:center;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:10px;
+  }
+  .closing .wish{
+    font-size:13.5px;
+    color:var(--ink-60);
+    letter-spacing:.1em;
+  }
+  .closing .sign{
+    font-size:12px;
+    color:var(--wine);
+    letter-spacing:.12em;
+    text-wrap:pretty;
+  }
+  .foot{
+    margin-top:auto;
+    padding:0 24px calc(30px + env(safe-area-inset-bottom));
+    text-align:center;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:20px;
+  }
+  .ai-foot{
+    font-size:10px;
+    letter-spacing:.26em;
+    text-indent:.26em;
+    color:var(--ink-40);
+    text-wrap:pretty;
+  }
+  .colophon{
+    font-size:10px;
+    letter-spacing:.22em;
+    text-indent:.22em;
+    color:var(--ink-40);
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header class="masthead rise">
+    <span class="seal">W</span>
+    <p class="brand">WEFINALLY · 私人介绍</p>
+  </header>
+
+  <section class="letterhead rise" style="animation-delay:.1s">
+    <p class="eyebrow">一封新的介绍信 · 已启</p>
+    <h1>For you, this week.</h1>
+    <p class="sub">这一周，为你留意到一个人。</p>
+    <hr class="rule">
+  </section>
+
+  <section class="letter rise" style="animation-delay:.2s">
+    <span class="monogram" aria-hidden="true">林</span>
+
+    <p class="salutation">晓雯 女士：</p>
+    <p class="lead">这封信到得刚刚好。本周值得你认真认识的人，我们认为是下面这一位。</p>
+
+    <h2 class="name">林亦辰</h2>
+    <p class="meta">31 岁 · 深圳福田 · 建筑师</p>
+
+    <div class="common">
+      <p>你们各自走过一段 EBC，懂得长路的样子。</p>
+      <p>你用 Contax T2，他用 Nikon FM2——胶片的耐心，你们都有。</p>
+      <p>周末的一顿好日料，是你们共同的默契。</p>
+    </div>
+
+    <hr class="rule">
+
+    <p class="contrast">差异也有：他偏爱居家的夜晚，你更爱市集与漫游。<br>顾问相信这是互补，而非分歧。</p>
+
+    <div class="ai-note">
+      <p class="quote">「你们的生活节奏像两条平行线，在周末交汇。」</p>
+      <p class="attr">🤖 AI 生成内容 · 基于双方资料与历史约会反馈综合判断，非打分制</p>
+    </div>
+  </section>
+
+  <section class="actions rise" style="animation-delay:.3s">
+    <a class="cta" href="#read-letter">阅读这份介绍</a>
+    <a class="skip" href="#later">稍后</a>
+  </section>
+
+  <section class="closing rise" style="animation-delay:.38s">
+    <p class="wish">读完之后，无论答案是什么，请告诉我们。</p>
+    <p class="dots">···</p>
+    <p class="sign">静候你的回音。<br>🤖 私人顾问 · 代表霞姐团队 敬上</p>
+  </section>
+
+  <footer class="foot">
+    <hr class="rule full">
+    <p class="ai-foot">🤖 本页包含 AI 生成内容 · 仅供参考</p>
+    <p class="colophon">WEFINALLY · 为认真的相遇而作</p>
+  </footer>
+
+</div>
+</body>
+</html>

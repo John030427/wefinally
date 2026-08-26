@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<!-- WeFinally UI Research 2026 · Direction A · home · 严禁用于正式小程序 -->
+<!--
+  Direction A — Independent Editorial（独立杂志）
+  首页 = 一本每周只介绍一位对象的独立杂志之「本期目录页」。
+  差异维度落实：IA=杂志目录式 Issue 结构 / Typography=大衬线标题+细正文 /
+  Spatial=不对称栏格+细分隔线 / Card=无卡片纯文章区 / CTA=文字下划线链接式 /
+  Iconography=无图标纯文字标记 / AI=编辑注脚注体 / Motion=无动效 / Density=低密度大留白。
+-->
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>本期目录 · Issue No.047 — WeFinally Review</title>
+<style>
+  :root{
+    /* —— 纸与油墨 —— */
+    --paper:#F6F1E6;            /* ivory 纸面 */
+    --paper-deep:#EDE6D6;       /* 深一档纸色（占位底） */
+    --ink:#26221C;              /* graphite 主墨 */
+    --ink-soft:#57503F;         /* 次级墨 */
+    --ink-mute:#8D8471;         /* 弱化墨 */
+    /* —— editorial marker：dusty rose 只做细线/角标/下划线 —— */
+    --rose:#B2696F;
+    --rose-deep:#96525A;
+    --rose-wash:#E3CCC9;
+    /* —— 分隔线 —— */
+    --rule:#D8CFBB;             /* 发丝线 */
+    --rule-strong:#26221C;      /* 版式粗线 */
+    /* —— 织物占位（封面小样） —— */
+    --linen:#3B352C;
+    --linen-thread-lt:rgba(246,241,230,0.07);
+    --linen-thread-dk:rgba(20,17,12,0.22);
+    --monogram:#F6F1E6;
+
+    /* —— 字体 —— */
+    --serif:Georgia,"Songti SC","Noto Serif SC",SimSun,serif;
+  }
+
+  *{margin:0;padding:0;box-sizing:border-box;}
+  html{background:var(--paper);}
+  body{
+    max-width:390px;margin:0 auto;background:var(--paper);
+    border-left:1px solid var(--rule);border-right:1px solid var(--rule);
+    font-family:var(--serif);color:var(--ink);
+    -webkit-font-smoothing:antialiased;
+  }
+  ::selection{background:var(--rose-wash);color:var(--ink);}
+  a{color:inherit;}
+  p{text-wrap:pretty;}
+
+  .page{padding:0 26px;}
+
+  /* ===================== 书眉 / Folio ===================== */
+  .folio{
+    display:flex;justify-content:space-between;align-items:baseline;
+    padding:14px 0 12px;border-bottom:1px solid var(--rule);
+    font-size:10px;letter-spacing:.24em;color:var(--ink-mute);
+  }
+  .folio b{font-weight:normal;color:var(--rose);}
+
+  /* ===================== 报头 / Masthead ===================== */
+  .masthead{padding:30px 0 6px;}
+  .mast-kicker{
+    display:flex;align-items:center;gap:10px;
+    font-size:10px;letter-spacing:.32em;color:var(--rose-deep);
+  }
+  .mast-kicker::before{content:"";width:26px;height:1px;background:var(--rose);}
+  .brand{
+    margin-top:14px;
+    font-size:58px;line-height:1.02;font-weight:normal;letter-spacing:-0.015em;
+  }
+  .brand em{font-style:italic;color:var(--rose-deep);}
+  .tagline{
+    margin-top:14px;padding-bottom:24px;border-bottom:3px double var(--rule-strong);
+    font-size:12px;letter-spacing:.42em;color:var(--ink-soft);
+  }
+  .motto{
+    padding:16px 0 0;
+    font-size:13px;line-height:1.8;color:var(--ink-mute);
+  }
+  .motto i{font-style:normal;color:var(--rose);}
+
+  /* ===================== 封面故事 ===================== */
+  .cover-story{
+    display:grid;grid-template-columns:1fr 92px;gap:20px;
+    padding:30px 0 34px;border-bottom:1px solid var(--rule);
+  }
+  .sec-no{
+    display:flex;align-items:baseline;gap:8px;margin-bottom:16px;
+    font-size:10px;letter-spacing:.3em;color:var(--ink-mute);
+  }
+  .sec-no b{font-weight:normal;font-size:15px;color:var(--rose);letter-spacing:.08em;}
+  .cs-body h2{
+    font-size:44px;line-height:1.12;font-weight:normal;letter-spacing:.04em;
+  }
+  .cs-meta{
+    margin-top:12px;font-size:11px;letter-spacing:.22em;color:var(--ink-soft);
+  }
+  .cs-meta span{color:var(--rose-deep);}
+  .cs-dek{
+    margin-top:14px;font-size:14px;line-height:1.85;color:var(--ink-soft);
+    text-wrap:pretty;
+  }
+
+  /* 主 CTA：唯一的主动作，文字下划线链接式 */
+  .cta-primary{
+    display:inline-block;margin-top:22px;padding:12px 0;
+    font-size:18px;letter-spacing:.06em;color:var(--ink);text-decoration:none;
+    border-bottom:2px solid var(--rose);
+    min-height:44px;
+  }
+  .cta-primary .arr{color:var(--rose-deep);padding-left:8px;}
+  .cta-primary:active{color:var(--rose-deep);}
+
+  /* 封面小样：织物纹理 + monogram，带印刷角线 */
+  .swatch-wrap{position:relative;align-self:end;}
+  .swatch{
+    width:92px;height:128px;
+    background:
+      repeating-linear-gradient(0deg,var(--linen-thread-lt) 0 1px,var(--linen-thread-dk) 1px 2px,transparent 2px 5px),
+      repeating-linear-gradient(90deg,var(--linen-thread-lt) 0 1px,transparent 1px 5px),
+      var(--linen);
+    display:flex;align-items:center;justify-content:center;
+  }
+  .swatch span{
+    font-size:52px;color:var(--monogram);letter-spacing:0;
+    transform:translateY(-2px);
+  }
+  .swatch-cap{
+    margin-top:8px;text-align:right;
+    font-size:9px;letter-spacing:.2em;color:var(--ink-mute);
+  }
+  .crop::before,.crop::after{
+    content:"";position:absolute;width:10px;height:10px;pointer-events:none;
+  }
+  .crop::before{top:-5px;left:-5px;border-top:1px solid var(--rose);border-left:1px solid var(--rose);}
+  .crop::after{bottom:-5px;right:-5px;border-bottom:1px solid var(--rose);border-right:1px solid var(--rose);}
+
+  /* ===================== 目录区 ===================== */
+  .toc-head{
+    display:flex;justify-content:space-between;align-items:baseline;
+    padding:26px 0 4px;
+    font-size:10px;letter-spacing:.34em;color:var(--ink-mute);
+  }
+  .toc-head b{font-weight:normal;color:var(--ink);}
+
+  .entry{
+    display:grid;grid-template-columns:58px 1fr;gap:14px;
+    padding:24px 0;border-bottom:1px solid var(--rule);
+  }
+  .entry:last-of-type{border-bottom:none;}
+  .entry-no{
+    font-size:22px;color:var(--rose);line-height:1.2;
+  }
+  .entry-label{
+    font-size:10px;letter-spacing:.3em;color:var(--ink-mute);margin-top:6px;
+  }
+  .entry h3{
+    font-size:19px;font-weight:normal;letter-spacing:.05em;line-height:1.5;
+  }
+  .entry p{
+    margin-top:8px;font-size:13px;line-height:1.8;color:var(--ink-soft);text-wrap:pretty;
+  }
+
+  /* 02 本周安排：时间用大数字排印 */
+  .sched-time{
+    display:flex;align-items:baseline;gap:12px;margin-top:10px;
+  }
+  .sched-time strong{
+    font-weight:normal;font-size:34px;letter-spacing:.03em;line-height:1.1;
+  }
+  .sched-time .place{font-size:13px;color:var(--ink-soft);letter-spacing:.08em;}
+  .state-mark{
+    display:inline-flex;align-items:center;gap:7px;margin-top:12px;
+    font-size:11px;letter-spacing:.26em;color:var(--rose-deep);
+  }
+  .state-mark::before{content:"";width:7px;height:7px;background:transparent;border:1px solid var(--rose);}
+  .sched-note{margin-top:8px;font-size:12px;line-height:1.8;color:var(--ink-mute);text-wrap:pretty;}
+
+  /* 03 AI 编辑注：脚注体 */
+  .editor-note{
+    grid-column:2;position:relative;
+    padding-left:14px;border-left:2px solid var(--rose-wash);
+  }
+  .en-head{
+    font-size:12px;letter-spacing:.14em;color:var(--ink);
+  }
+  .en-head .bot{color:var(--rose-deep);}
+  .en-count{
+    display:inline-block;margin-left:8px;
+    font-size:10px;color:var(--paper);background:var(--rose);padding:2px 7px 1px;letter-spacing:.18em;
+  }
+  .editor-note p{margin-top:8px;}
+  .ai-comply{
+    margin-top:10px;font-size:10px;line-height:1.7;letter-spacing:.12em;color:var(--ink-mute);
+  }
+  .link-quiet{
+    display:inline-block;margin-top:10px;padding:12px 0;
+    font-size:12px;letter-spacing:.14em;color:var(--ink-mute);text-decoration:none;
+    border-bottom:1px dotted var(--ink-mute);min-height:44px;
+  }
+
+  /* 04 精选存档：点线索引行 */
+  .arc-block{padding-left:34px;}          /* 不对称：存档整体右缩进 */
+  .arc-row{
+    display:flex;align-items:baseline;gap:10px;
+    min-height:48px;padding:10px 0;
+  }
+  .arc-issue{font-size:11px;letter-spacing:.14em;color:var(--ink-mute);white-space:nowrap;}
+  .arc-name{font-size:16px;letter-spacing:.1em;white-space:nowrap;}
+  .arc-leader{flex:1;border-bottom:1px dotted var(--ink-mute);transform:translateY(-4px);}
+  .arc-state{font-size:11px;letter-spacing:.2em;color:var(--ink-soft);white-space:nowrap;}
+  .arc-state.done{color:var(--ink-mute);}
+  .arc-foot{margin-top:6px;font-size:11px;letter-spacing:.2em;color:var(--ink-mute);}
+
+  /* ===================== 页脚导航 ===================== */
+  .colophon{
+    margin-top:8px;padding:22px 0 14px;border-top:3px double var(--rule-strong);
+    font-size:10px;line-height:1.9;letter-spacing:.18em;color:var(--ink-mute);text-align:center;
+  }
+  .nav{
+    display:grid;grid-template-columns:repeat(5,1fr);
+    border-top:1px solid var(--rule-strong);
+  }
+  .nav a{
+    min-height:64px;padding:10px 2px;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;
+    text-decoration:none;
+  }
+  .nav a + a{border-left:1px solid var(--rule);}
+  .nav .zh{font-size:13px;letter-spacing:.24em;color:var(--ink-soft);}
+  .nav .en{font-size:8px;letter-spacing:.22em;color:var(--ink-mute);}
+  .nav a.active .zh{color:var(--ink);}
+  .nav a.active{box-shadow:inset 0 2px 0 var(--rose);}
+  .end-folio{
+    padding:12px 0 20px;text-align:center;
+    font-size:9px;letter-spacing:.3em;color:var(--ink-mute);
+    border-top:1px solid var(--rule);
+  }
+</style>
+</head>
+<body>
+<main class="page">
+
+  <!-- 书眉 -->
+  <header class="folio">
+    <span>WEFINALLY<b> · </b>REVIEW</span>
+    <span>认真婚恋 · 深圳刊</span>
+  </header>
+
+  <!-- 报头：Issue 编号 + 大号衬线主标题 -->
+  <section class="masthead">
+    <p class="mast-kicker">ISSUE&nbsp;NO.047&nbsp;·&nbsp;二〇二六年七月</p>
+    <h1 class="brand">每 周<br>一 个 <em>人</em></h1>
+    <p class="tagline">一本只介绍一位对象的独立杂志</p>
+    <p class="motto">先看看为什么适合，<i>再决定要不要继续。</i></p>
+  </section>
+
+  <!-- 01 封面故事：本周新匹配 -->
+  <article class="cover-story">
+    <div class="cs-body">
+      <p class="sec-no"><b>01</b>封面故事 · COVER STORY</p>
+      <h2>林亦辰</h2>
+      <p class="cs-meta">31 岁 <span>/</span> 深圳福田 <span>/</span> 建筑师</p>
+      <p class="cs-dek">徒步走过同一段山路，各自挂一台胶片机，周末都愿意为一场市集或一顿日料出门——本周，我们把他印在了封面上。</p>
+      <a class="cta-primary" href="#">阅读为什么值得认识<span class="arr">→</span></a>
+    </div>
+    <figure class="swatch-wrap crop">
+      <div class="swatch"><span>林</span></div>
+      <figcaption class="swatch-cap">NO.047</figcaption>
+    </figure>
+  </article>
+
+  <!-- 目录 -->
+  <p class="toc-head"><b>本 期 目 录</b><span>CONTENTS</span></p>
+
+  <!-- 02 本周安排 -->
+  <section class="entry">
+    <div>
+      <p class="entry-no">02</p>
+      <p class="entry-label">本周安排</p>
+    </div>
+    <div>
+      <h3>下一次介绍</h3>
+      <div class="sched-time">
+        <strong>周六 14:30</strong>
+        <span class="place">南头古城</span>
+      </div>
+      <p class="state-mark">协调中</p>
+      <p class="sched-note">对方已提议改到 15:00，正在等双方确认。</p>
+    </div>
+  </section>
+
+  <!-- 03 AI 编辑注（脚注体） -->
+  <section class="entry">
+    <div>
+      <p class="entry-no">03</p>
+      <p class="entry-label">编辑注</p>
+    </div>
+    <div class="editor-note">
+      <p class="en-head"><span class="bot">🤖 AI 编辑注</span><span class="en-count">1 条新建议</span></p>
+      <p>关于周六的时间调整，编辑部为你整理了一条参考建议。</p>
+      <p class="ai-comply">🤖 AI 生成内容，仅供参考。</p>
+      <a class="link-quiet" href="#">查看这条建议</a>
+    </div>
+  </section>
+
+  <!-- 04 精选存档 -->
+  <section class="entry">
+    <div>
+      <p class="entry-no">04</p>
+      <p class="entry-label">精选存档</p>
+    </div>
+    <div class="arc-block">
+      <h3>最近两期回顾</h3>
+      <div class="arc-row">
+        <span class="arc-issue">NO.046</span>
+        <span class="arc-name">赵屹然</span>
+        <span class="arc-leader"></span>
+        <span class="arc-state done">本次未成</span>
+      </div>
+      <div class="arc-row">
+        <span class="arc-issue">NO.044</span>
+        <span class="arc-name">周牧遥</span>
+        <span class="arc-leader"></span>
+        <span class="arc-state">已有安排</span>
+      </div>
+      <p class="arc-foot">完整档案见「存档」栏目 →</p>
+    </div>
+  </section>
+
+  <!-- 版权栏 + 底部导航 -->
+  <footer>
+    <p class="colophon">WeFinally Review · 由霞姐团队与 AI 协调员共同编排<br>每周只介绍一位认真的人</p>
+    <nav class="nav" aria-label="主导航">
+      <a class="active" href="#"><span class="zh">本期</span><span class="en">ISSUE</span></a>
+      <a href="#"><span class="zh">存档</span><span class="en">ARCHIVE</span></a>
+      <a href="#"><span class="zh">安排</span><span class="en">DATES</span></a>
+      <a href="#"><span class="zh">编辑部</span><span class="en">DESK</span></a>
+      <a href="#"><span class="zh">我的</span><span class="en">PROFILE</span></a>
+    </nav>
+    <p class="end-folio">SHENZHEN · NO.047 · PRINTED FOR CHEN XIAOWEN</p>
+  </footer>
+
+</main>
+</body>
+</html>

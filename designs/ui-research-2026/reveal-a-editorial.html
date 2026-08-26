@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<!-- WeFinally UI Research 2026 · Direction A · reveal · 严禁用于正式小程序 -->
+<!--
+  Direction A — Independent Editorial（独立杂志）
+  New Match Reveal = 杂志封面揭晓：新一期 Issue 的 cover reveal，不是弹窗。
+  差异维度落实：Match reveal 隐喻=封面揭晓（Issue No.）/ CTA=文字下划线链接式 /
+  Card morphology=无卡片 / Iconography=无图标纯文字标记 / AI=编辑注脚注体 /
+  Motion=无动效静态排版 / Density=低密度大留白。
+-->
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>封面揭晓 · Issue No.047 — WeFinally Review</title>
+<style>
+  :root{
+    /* —— 纸与油墨 —— */
+    --paper:#F6F1E6;
+    --paper-deep:#EDE6D6;
+    --ink:#26221C;
+    --ink-soft:#57503F;
+    --ink-mute:#8D8471;
+    /* —— editorial marker：dusty rose 只做细线/角标/下划线 —— */
+    --rose:#B2696F;
+    --rose-deep:#96525A;
+    --rose-wash:#E3CCC9;
+    /* —— 分隔线 —— */
+    --rule:#D8CFBB;
+    --rule-strong:#26221C;
+    /* —— 封面织物占位 —— */
+    --linen:#38322A;
+    --linen-frame:#F6F1E6;
+    --linen-thread-lt:rgba(246,241,230,0.08);
+    --linen-thread-dk:rgba(18,15,10,0.28);
+    --linen-frame-soft:rgba(246,241,230,0.35);
+    --monogram:#F6F1E6;
+    --cover-line:#C9BFAA;
+
+    --serif:Georgia,"Songti SC","Noto Serif SC",SimSun,serif;
+  }
+
+  *{margin:0;padding:0;box-sizing:border-box;}
+  html{background:var(--paper);}
+  body{
+    max-width:390px;margin:0 auto;background:var(--paper);
+    border-left:1px solid var(--rule);border-right:1px solid var(--rule);
+    font-family:var(--serif);color:var(--ink);
+    -webkit-font-smoothing:antialiased;
+  }
+  ::selection{background:var(--rose-wash);color:var(--ink);}
+  a{color:inherit;}
+  p{text-wrap:pretty;}
+
+  .page{padding:0 26px;}
+
+  /* ===================== 书眉 ===================== */
+  .folio{
+    display:flex;justify-content:space-between;align-items:baseline;
+    padding:14px 0 12px;border-bottom:1px solid var(--rule);
+    font-size:10px;letter-spacing:.24em;color:var(--ink-mute);
+  }
+  .folio b{font-weight:normal;color:var(--rose);}
+
+  /* ===================== 揭晓引言 ===================== */
+  .reveal-head{padding:34px 0 30px;}
+  .rv-kicker{
+    display:flex;align-items:center;gap:10px;
+    font-size:10px;letter-spacing:.32em;color:var(--rose-deep);
+  }
+  .rv-kicker::before{content:"";width:26px;height:1px;background:var(--rose);}
+  .rv-title{
+    margin-top:16px;
+    font-size:34px;line-height:1.35;font-weight:normal;letter-spacing:.06em;
+  }
+  .rv-title i{font-style:normal;color:var(--rose-deep);}
+
+  /* ===================== 封面本体（不对称构图） ===================== */
+  .cover-stage{
+    display:flex;justify-content:flex-end;gap:20px;
+    padding-bottom:34px;border-bottom:1px solid var(--rule);
+  }
+  .spine{
+    writing-mode:vertical-rl;align-self:flex-start;padding-top:4px;
+    font-size:10px;letter-spacing:.42em;color:var(--rose-deep);
+  }
+  .cover{
+    position:relative;width:264px;height:352px;
+    background:
+      repeating-linear-gradient(0deg,var(--linen-thread-lt) 0 1px,var(--linen-thread-dk) 1px 2px,transparent 2px 5px),
+      repeating-linear-gradient(90deg,var(--linen-thread-lt) 0 1px,var(--linen-thread-dk) 1px 2px,transparent 2px 5px),
+      var(--linen);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+  }
+  /* 印刷内框（双细线） */
+  .cover::before{
+    content:"";position:absolute;inset:12px;
+    border:1px solid var(--linen-frame);outline:1px solid var(--linen-frame-soft);
+    outline-offset:3px;pointer-events:none;
+  }
+  .cover-issue{
+    position:absolute;top:26px;left:0;right:0;text-align:center;
+    font-size:9px;letter-spacing:.4em;color:var(--cover-line);
+  }
+  .cover-mono{
+    font-size:118px;line-height:1;color:var(--monogram);
+    transform:translateY(6px);
+  }
+  .cover-lines{
+    position:absolute;bottom:24px;left:0;right:0;
+    display:flex;flex-direction:column;align-items:center;gap:5px;
+    font-size:10px;letter-spacing:.3em;color:var(--cover-line);
+  }
+  .cover-lines span::before{content:"·";color:var(--rose);margin-right:8px;}
+  .cover-lines span:last-child::after{content:"·";color:var(--rose);margin-left:8px;}
+  /* 印刷角线 */
+  .crop i{position:absolute;width:11px;height:11px;pointer-events:none;}
+  .crop i:nth-child(1){top:-6px;left:-6px;border-top:1px solid var(--rose);border-left:1px solid var(--rose);}
+  .crop i:nth-child(2){top:-6px;right:-6px;border-top:1px solid var(--rose);border-right:1px solid var(--rose);}
+  .crop i:nth-child(3){bottom:-6px;left:-6px;border-bottom:1px solid var(--rose);border-left:1px solid var(--rose);}
+  .crop i:nth-child(4){bottom:-6px;right:-6px;border-bottom:1px solid var(--rose);border-right:1px solid var(--rose);}
+
+  /* ===================== 封面人物署名 ===================== */
+  .nameplate{padding:30px 0 28px;border-bottom:1px solid var(--rule);}
+  .np-kicker{font-size:10px;letter-spacing:.32em;color:var(--ink-mute);}
+  .np-name{
+    margin-top:14px;font-size:56px;font-weight:normal;line-height:1.05;letter-spacing:.05em;
+  }
+  .np-meta{
+    margin-top:14px;display:flex;align-items:center;gap:10px;
+    font-size:11px;letter-spacing:.22em;color:var(--ink-soft);
+  }
+  .np-meta i{font-style:normal;color:var(--rose);}
+
+  /* ===================== AI 编辑注 · pull quote 脚注体 ===================== */
+  .pullquote{padding:28px 0 26px;border-bottom:3px double var(--rule-strong);}
+  .pq-mark{
+    display:flex;align-items:baseline;gap:8px;margin-bottom:12px;
+    font-size:10px;letter-spacing:.3em;color:var(--ink-mute);
+  }
+  .pq-mark b{font-weight:normal;color:var(--rose-deep);}
+  blockquote{
+    border-left:2px solid var(--rose-wash);padding-left:16px;
+    font-size:19px;line-height:1.75;letter-spacing:.03em;color:var(--ink);
+  }
+  .pq-attr{
+    margin-top:12px;padding-left:18px;
+    font-size:11px;letter-spacing:.16em;color:var(--ink-mute);
+  }
+  .ai-comply{
+    margin-top:10px;padding-left:18px;
+    font-size:10px;line-height:1.8;letter-spacing:.12em;color:var(--ink-mute);
+  }
+
+  /* ===================== 本期将读到（章节预告） ===================== */
+  .preview{padding:26px 0 8px;}
+  .pv-head{
+    display:flex;justify-content:space-between;align-items:baseline;margin-bottom:14px;
+    font-size:10px;letter-spacing:.34em;color:var(--ink-mute);
+  }
+  .pv-head b{font-weight:normal;color:var(--ink);}
+  .pv-row{
+    display:grid;grid-template-columns:44px 1fr;gap:12px;align-items:baseline;
+    min-height:44px;padding:8px 0;border-bottom:1px solid var(--rule);
+  }
+  .pv-row:last-child{border-bottom:none;}
+  .pv-no{font-size:17px;color:var(--rose);}
+  .pv-title{font-size:14px;letter-spacing:.1em;color:var(--ink-soft);}
+
+  /* ===================== 动作区 ===================== */
+  .actions{padding:26px 0 30px;}
+  .cta-primary{
+    display:block;padding:14px 0;min-height:48px;
+    font-size:19px;letter-spacing:.06em;color:var(--ink);text-decoration:none;
+    border-bottom:2px solid var(--rose);
+    width:fit-content;
+  }
+  .cta-primary .arr{color:var(--rose-deep);padding-left:10px;}
+  .cta-primary:active{color:var(--rose-deep);}
+  .cta-secondary{
+    display:inline-block;margin-top:16px;padding:13px 2px;min-height:44px;
+    font-size:12px;letter-spacing:.2em;color:var(--ink-mute);text-decoration:none;
+    border-bottom:1px dotted var(--ink-mute);
+  }
+
+  /* ===================== 版权栏 ===================== */
+  .colophon{
+    padding:20px 0 26px;border-top:1px solid var(--rule-strong);
+    font-size:10px;line-height:2;letter-spacing:.16em;color:var(--ink-mute);text-align:center;
+  }
+</style>
+</head>
+<body>
+<main class="page">
+
+  <!-- 书眉 -->
+  <header class="folio">
+    <span>WEFINALLY<b> · </b>REVIEW</span>
+    <span>封面揭晓 · ISSUE NO.047</span>
+  </header>
+
+  <!-- 揭晓引言 -->
+  <section class="reveal-head">
+    <p class="rv-kicker">NEW&nbsp;ISSUE&nbsp;·&nbsp;新匹配已送达</p>
+    <h1 class="rv-title">本期封面，<br>刚刚<i>印好</i>。</h1>
+  </section>
+
+  <!-- 封面本体 -->
+  <section class="cover-stage">
+    <p class="spine">第四十七期 · 封面人物</p>
+    <figure class="cover crop">
+      <i></i><i></i><i></i><i></i>
+      <p class="cover-issue">WF REVIEW — NO.047</p>
+      <span class="cover-mono">林</span>
+      <div class="cover-lines">
+        <span>徒步走过同一段山路</span>
+        <span>各挂一台胶片相机</span>
+        <span>周末日料同行者</span>
+      </div>
+    </figure>
+  </section>
+
+  <!-- 署名 -->
+  <section class="nameplate">
+    <p class="np-kicker">COVER STORY · 本周只介绍这一位</p>
+    <h2 class="np-name">林亦辰</h2>
+    <p class="np-meta">31 岁<i>/</i>深圳福田<i>/</i>建筑师</p>
+  </section>
+
+  <!-- AI 编辑注：pull quote + 脚注体 -->
+  <section class="pullquote">
+    <p class="pq-mark"><b>*</b>AI 编辑注 · 为什么放上封面</p>
+    <blockquote>“你们的生活节奏像两条平行线，在周末交汇。”</blockquote>
+    <p class="pq-attr">🤖 摘自本期匹配理由，全文见正文</p>
+    <p class="ai-comply">🤖 AI 生成内容，仅供参考。基于双方资料与历史约会反馈综合判断，非打分制。</p>
+  </section>
+
+  <!-- 章节预告 -->
+  <section class="preview">
+    <div class="pv-head"><b>本 期 将 读 到</b><span>IN THIS ISSUE</span></div>
+    <div class="pv-row"><span class="pv-no">01</span><span class="pv-title">为什么值得认识</span></div>
+    <div class="pv-row"><span class="pv-no">02</span><span class="pv-title">你们的共性</span></div>
+    <div class="pv-row"><span class="pv-no">03</span><span class="pv-title">互补的差异</span></div>
+    <div class="pv-row"><span class="pv-no">04</span><span class="pv-title">AI 编辑注全文</span></div>
+  </section>
+
+  <!-- 动作 -->
+  <section class="actions">
+    <a class="cta-primary" href="#">阅读为什么值得认识<span class="arr">→</span></a>
+    <a class="cta-secondary" href="#">稍后再看</a>
+  </section>
+
+  <!-- 版权栏 -->
+  <footer class="colophon">
+    WeFinally Review · 由霞姐团队与 AI 协调员共同编排<br>
+    SHENZHEN · NO.047 · PRINTED FOR CHEN XIAOWEN
+  </footer>
+
+</main>
+</body>
+</html>

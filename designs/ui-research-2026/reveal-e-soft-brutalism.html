@@ -1,0 +1,243 @@
+<!doctype html>
+<!-- WeFinally UI Research 2026 · Direction E · reveal · 严禁用于正式小程序 -->
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WeFinally · 方向E 软性新粗野主义 · 新匹配揭晓</title>
+<style>
+/* ============ tokens：全部颜色走 CSS 变量 ============ */
+:root{
+  --bg:#F6EEE1;
+  --panel:#FFFCF4;
+  --ink:#191410;
+  --ink-2:#4D443B;
+  --mut:#77695A;
+  --rose:#EF5D7B;
+  --rose-deep:#C43A57;
+  --rose-pale:#F9CFD9;
+  --yellow:#FFC838;
+  --yellow-pale:#FFE9AC;
+  --ai-text:#CBB7FF;
+  --ai-bright:#E9E0FF;
+  --ai-dim:#9C86D9;
+  --ai-ink:#6E55BE;
+  --ai-ring:rgba(203,183,255,.30);
+  --paper-dim:rgba(246,238,225,.84);
+  --frame:rgba(25,20,16,.35);
+  --tex-lite:rgba(246,238,225,.10);
+  --bw:2px;
+  --shadow-hard:5px 5px 0 var(--ink);
+  --shadow-btn:4px 4px 0 var(--ink);
+}
+
+/* ============ base ============ */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-text-size-adjust:100%}
+body{
+  font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+  background:var(--bg);color:var(--ink);
+  font-weight:500;line-height:1.75;
+  -webkit-font-smoothing:antialiased;
+}
+p{text-wrap:pretty}
+a{color:inherit}
+.phone{width:390px;max-width:100%;margin:0 auto;padding:12px;display:grid;gap:12px}
+.en{text-transform:uppercase}
+.blk{border:var(--bw) solid var(--ink);background:var(--panel)}
+
+.kick{display:flex;align-items:center;gap:8px}
+.k-no{background:var(--ink);color:var(--bg);font-weight:900;font-size:11px;padding:1px 7px;letter-spacing:.08em}
+.k-en{font-size:11px;font-weight:900;letter-spacing:.22em}
+.k-cn{font-size:11px;color:var(--mut);font-weight:700;letter-spacing:.28em}
+.k-rule{flex:1;height:var(--bw);background:var(--ink)}
+
+.chip{display:inline-flex;align-items:center;gap:5px;border:var(--bw) solid var(--ink);padding:2px 8px;font-size:11px;font-weight:800;letter-spacing:.12em;background:var(--panel);line-height:1.6}
+.chip-ink{background:var(--ink);color:var(--bg)}
+.sq{width:8px;height:8px;background:var(--ink);display:inline-block;flex:none}
+
+/* ============ 顶栏 ============ */
+.topbar{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--ink);color:var(--bg);border:var(--bw) solid var(--ink);padding:0 14px;height:54px}
+.brand{font-weight:900;font-size:17px;letter-spacing:.08em}
+.brand i{color:var(--rose);font-style:normal}
+.top-tag{font-size:10px;font-weight:800;letter-spacing:.18em;color:var(--paper-dim)}
+
+/* ============ MATCH FOUND. 状态闪现定格 ============ */
+.flash-wrap{display:grid;gap:0}
+.flash{
+  background:var(--ink);color:var(--bg);
+  border:var(--bw) solid var(--ink);border-bottom:0;
+  padding:22px 18px 24px;display:grid;gap:14px;
+  background-image:radial-gradient(var(--tex-lite) 1.2px,transparent 1.2px);
+  background-size:12px 12px;
+}
+.f-kick{display:flex;align-items:center;gap:8px;font-size:10px;font-weight:800;letter-spacing:.22em;color:var(--yellow)}
+.f-lamp{width:9px;height:9px;background:var(--yellow);box-shadow:0 0 0 3px var(--ai-ring);flex:none}
+.f-h{font-size:62px;font-weight:900;line-height:.98;letter-spacing:-.02em}
+.f-h .rd{color:var(--rose)}
+.cursor{display:inline-block;width:.42em;height:.76em;background:var(--rose);margin-left:.08em;animation:blink3 1s steps(1,end) 3}
+@keyframes blink3{0%,49%{opacity:1}50%,100%{opacity:0}}
+.f-sub{font-size:13.5px;line-height:1.75;color:var(--paper-dim);max-width:34ch}
+.flash .hazard,.hazard{height:10px;border:var(--bw) solid var(--ink);background:repeating-linear-gradient(45deg,var(--yellow) 0 10px,var(--ink) 10px 20px)}
+
+/* ============ 对象档案：monogram 大块 + 事实格 ============ */
+.person{display:flex;gap:14px;align-items:center;padding:2px}
+.mono-hero{
+  width:112px;height:112px;flex:none;display:grid;place-items:center;
+  background:var(--rose);border:var(--bw) solid var(--ink);
+  box-shadow:var(--shadow-hard);
+  font-size:56px;font-weight:900;position:relative;
+}
+.mono-hero::after{content:"";position:absolute;inset:7px;border:1.5px solid var(--frame)}
+.p-main{display:grid;gap:6px;justify-items:start}
+.p-chips{display:flex;gap:6px;flex-wrap:wrap}
+.p-name{font-size:38px;font-weight:900;line-height:1.05;letter-spacing:.02em}
+.p-en{font-size:11px;letter-spacing:.3em;color:var(--mut);font-weight:800}
+.p-line{font-size:12.5px;font-weight:700;color:var(--ink-2);display:flex;align-items:center;gap:7px;margin-top:2px}
+.p-line .sq{width:6px;height:6px}
+.facts{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.fact{border:var(--bw) solid var(--ink);background:var(--panel);padding:10px 12px 11px;display:grid;gap:3px;align-content:start}
+.f-l{font-size:9.5px;letter-spacing:.16em;color:var(--mut);font-weight:800}
+.f-v{font-size:19px;font-weight:900;line-height:1.3}
+.fact.mode .f-v{font-size:13px;letter-spacing:.02em;padding-top:4px}
+
+/* ============ 共同点：三块并置 + 差异点 ============ */
+.commons{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.cc{border:var(--bw) solid var(--ink);background:var(--panel);padding:12px 10px 13px;display:grid;gap:5px;align-content:start}
+.cc:nth-child(2){background:var(--rose-pale)}
+.c-head{display:flex;justify-content:space-between;align-items:center}
+.c-g{font-size:14px;line-height:1}
+.c-i{font-size:9px;letter-spacing:.14em;color:var(--mut);font-weight:800;font-variant-numeric:tabular-nums}
+.c-t{font-size:16px;font-weight:900;line-height:1.25}
+.c-e{font-size:8.5px;letter-spacing:.14em;color:var(--mut);font-weight:800}
+.c-d{font-size:11.5px;color:var(--ink-2);line-height:1.65;border-top:1.5px solid var(--ink);padding-top:6px}
+.diff{border:var(--bw) solid var(--ink);background:var(--yellow-pale);padding:12px 14px;display:flex;gap:10px;align-items:flex-start}
+.diff .chip{flex:none;background:var(--panel)}
+.diff p{font-size:12.5px;line-height:1.75;font-weight:600}
+.diff b{font-weight:900}
+
+/* ============ AI 区：状态灯条 → 摘要引文 → 黑底紫字合规条 ============ */
+.engine{display:flex;align-items:center;gap:10px;background:var(--ink);border:var(--bw) solid var(--ink);padding:0 14px;min-height:52px;color:var(--ai-text)}
+.engine .lamp{width:10px;height:10px;background:var(--yellow);box-shadow:0 0 0 3px var(--ai-ring);flex:none}
+.engine .ai-badge{font-size:10px;font-weight:900;letter-spacing:.1em;border:1.5px solid var(--ai-dim);padding:1px 7px;white-space:nowrap}
+.engine .e-txt{font-size:12px;font-weight:800;letter-spacing:.04em}
+.bars{display:flex;gap:3px;margin-left:auto}
+.bars i{width:10px;height:14px;border:1.5px solid var(--ai-dim)}
+.bars i.f{background:var(--ai-text);border-color:var(--ai-text)}
+.quote{border:var(--bw) solid var(--ink);border-left:10px solid var(--ink);background:var(--panel);padding:14px 16px;display:grid;gap:10px}
+.q-t{font-size:16.5px;font-weight:800;line-height:1.75}
+.q-t::before{content:"> ";color:var(--rose-deep);font-weight:900}
+.q-f{justify-self:start;display:inline-flex;align-items:center;gap:6px;font-size:10.5px;font-weight:800;color:var(--ai-ink);border:1.5px solid var(--ai-ink);padding:2px 8px;letter-spacing:.06em}
+.disclaimer{background:var(--ink);border:var(--bw) solid var(--ink);color:var(--ai-text);padding:11px 14px;font-size:11.5px;line-height:1.7;font-weight:700}
+.disclaimer b{color:var(--ai-bright)}
+
+/* ============ 动作区：唯一主 CTA 满宽黑底白字块 ============ */
+.acts{display:grid;gap:10px}
+.cta{
+  display:flex;align-items:center;justify-content:center;gap:10px;
+  background:var(--ink);color:var(--bg);
+  min-height:62px;border:var(--bw) solid var(--ink);
+  box-shadow:var(--shadow-btn);
+  font-size:18px;font-weight:900;letter-spacing:.16em;text-decoration:none;
+  transition:transform .08s,box-shadow .08s;
+}
+.cta:hover{transform:translate(-2px,-2px);box-shadow:6px 6px 0 var(--ink)}
+.cta:active{transform:translate(3px,3px);box-shadow:0 0 0 var(--ink)}
+.cta-sub{
+  display:flex;align-items:center;justify-content:center;
+  min-height:56px;border:var(--bw) solid var(--ink);background:var(--panel);
+  color:var(--ink);font-size:15px;font-weight:900;letter-spacing:.22em;text-decoration:none;
+}
+.cta-sub:hover{background:var(--ink);color:var(--bg)}
+.foot{text-align:center;font-size:9.5px;letter-spacing:.22em;color:var(--mut);font-weight:800;padding:4px 0 8px}
+</style>
+</head>
+<body>
+<main class="phone">
+
+  <!-- 顶栏 -->
+  <header class="topbar">
+    <div class="brand">WEFINALLY<i>■</i></div>
+    <div class="top-tag en">REVEAL · 新匹配</div>
+  </header>
+
+  <!-- 全屏状态闪现定格：MATCH FOUND. -->
+  <div class="flash-wrap">
+    <section class="flash">
+      <div class="f-kick"><i class="f-lamp" aria-hidden="true"></i><span class="en">SYSTEM STATUS — 为你更新 1 条状态</span></div>
+      <h1 class="f-h en">MATCH<br>FOUND<span class="rd">.</span><span class="cursor" aria-hidden="true"></span></h1>
+      <p class="f-sub">系统为陈晓雯找到 1 位新的介绍对象。先看看为什么适合，再决定要不要继续。</p>
+    </section>
+    <div class="hazard" aria-hidden="true"></div>
+  </div>
+
+  <!-- 对象档案 -->
+  <div class="kick"><b class="k-no">01</b><span class="k-en en">PROFILE</span><span class="k-cn">介绍对象</span><i class="k-rule"></i></div>
+  <section style="display:grid;gap:10px">
+    <div class="person">
+      <div class="mono-hero" aria-hidden="true">林</div>
+      <div class="p-main">
+        <div class="p-chips"><span class="chip chip-ink">新匹配</span><span class="chip en">NEW MATCH</span></div>
+        <div class="p-name">林亦辰</div>
+        <div class="p-en en">LIN YICHEN</div>
+        <div class="p-line">官方介绍 <i class="sq" aria-hidden="true"></i> 协调线下奔现</div>
+      </div>
+    </div>
+    <div class="facts">
+      <div class="fact"><span class="f-l en">NAME · 姓名</span><span class="f-v">林亦辰</span></div>
+      <div class="fact"><span class="f-l en">AGE · 年龄</span><span class="f-v">31 岁</span></div>
+      <div class="fact"><span class="f-l en">CITY · 城市</span><span class="f-v">深圳 · 福田</span></div>
+      <div class="fact mode"><span class="f-l en">JOB · 职业</span><span class="f-v">建筑师</span></div>
+    </div>
+  </section>
+
+  <!-- 共同点三方块 + 差异点 -->
+  <div class="kick"><b class="k-no">02</b><span class="k-en en">COMMON</span><span class="k-cn">共同点 ×3</span><i class="k-rule"></i></div>
+  <section style="display:grid;gap:10px">
+    <div class="commons">
+      <article class="cc">
+        <div class="c-head"><span class="c-g" aria-hidden="true">■</span><span class="c-i en">01</span></div>
+        <div><div class="c-t">徒步</div><div class="c-e en">HIKING</div></div>
+        <div class="c-d">各走过一段 EBC，聊得开</div>
+      </article>
+      <article class="cc">
+        <div class="c-head"><span class="c-g" aria-hidden="true">■</span><span class="c-i en">02</span></div>
+        <div><div class="c-t">胶片相机</div><div class="c-e en">FILM CAMERA</div></div>
+        <div class="c-d">她 Contax T2 ／ 他 Nikon FM2</div>
+      </article>
+      <article class="cc">
+        <div class="c-head"><span class="c-g" aria-hidden="true">■</span><span class="c-i en">03</span></div>
+        <div><div class="c-t">周末日料</div><div class="c-e en">WEEKEND</div></div>
+        <div class="c-d">周末都留给一顿日料</div>
+      </article>
+    </div>
+    <div class="diff">
+      <span class="chip chip-ink en">DIFF</span>
+      <p>差异点：他偏宅家看片，她偏市集漫游 —— <b>互补型节奏</b>，周末正好汇合。</p>
+    </div>
+  </section>
+
+  <!-- AI 区：状态灯 + 条形加载 / 摘要 / 合规标识（醒目且不可移除） -->
+  <div class="engine">
+    <i class="lamp" aria-hidden="true"></i>
+    <span class="ai-badge">🤖 AI</span>
+    <span class="e-txt en">AI ENGINE — 匹配摘要已生成</span>
+    <span class="bars" aria-hidden="true"><i class="f"></i><i class="f"></i><i class="f"></i><i class="f"></i><i></i></span>
+  </div>
+  <blockquote class="quote">
+    <p class="q-t">你们的生活节奏像两条平行线，在周末交汇。</p>
+    <span class="q-f">🤖 AI 匹配理由摘要 · 非打分制</span>
+  </blockquote>
+  <p class="disclaimer"><b>🤖 AI 生成内容，仅供参考</b> — 基于双方资料与历史约会反馈综合判断；是否继续由你决定。</p>
+
+  <!-- 动作区 -->
+  <section class="acts">
+    <a class="cta" href="#">看为什么匹配 <span aria-hidden="true">→</span></a>
+    <a class="cta-sub" href="#">稍后再看</a>
+  </section>
+
+  <footer class="foot en">UI RESEARCH PROTOTYPE · DIRECTION E · NOT FOR PRODUCTION</footer>
+
+</main>
+</body>
+</html>

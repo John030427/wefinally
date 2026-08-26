@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<!-- WeFinally UI Research 2026 · Direction B · home · 严禁用于正式小程序 -->
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MY MATCH FILE · 方向B 日式恋爱档案</title>
+<style>
+/* ============ tokens : Japanese Match File ============ */
+:root{
+  /* paper & desk */
+  --desk:#E7DFCF;
+  --paper:#F7F2E8;
+  --paper-hi:#FCF8F1;
+  --manila:#F0E5D0;
+  --manila-deep:#E5D6BA;
+  --pink:#F3DBD4;
+  --pink-soft:#FAECE5;
+  /* low-saturation coral family */
+  --coral:#C4715B;
+  --coral-deep:#A95543;
+  --stamp:#B54A38;
+  /* graphite ink */
+  --ink:#34302A;
+  --ink-soft:#6E6659;
+  --ink-faint:#A79D8B;
+  --rule:#DACFB9;
+  --rule-strong:#B7AA90;
+  /* photo placeholder greys */
+  --photo-bg:#DFD8CA;
+  --photo-fg:#B5AC9A;
+  /* rgb triplets for translucency */
+  --ink-rgb:52,48,42;
+  --coral-rgb:196,113,91;
+  --stamp-rgb:181,74,56;
+  --paper-hi-rgb:252,248,241;
+  /* type */
+  --font-mono:"SF Mono","Cascadia Mono",Consolas,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+  --font-sans:-apple-system,"PingFang SC","Microsoft YaHei","Noto Sans SC",sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-text-size-adjust:100%}
+body{
+  background:var(--desk);
+  color:var(--ink);
+  font-family:var(--font-mono); /* 打字机拉丁/数字 + 黑体中文 自动分层 */
+  font-size:14px;
+  line-height:1.75;
+}
+p,li,dd,blockquote{text-wrap:pretty}
+a{color:inherit}
+ul,ol{list-style:none}
+em,i,b{font-style:normal}
+
+.page{
+  max-width:390px;margin:0 auto;
+  background-color:var(--paper);
+  /* 细横格纸纹 */
+  background-image:repeating-linear-gradient(0deg,transparent 0 31px,rgba(var(--ink-rgb),.032) 31px 32px);
+  box-shadow:0 0 0 1px var(--rule-strong),0 22px 48px rgba(var(--ink-rgb),.20);
+  min-height:100vh;
+  display:flex;flex-direction:column;
+}
+.mono-xs{font-size:10px;letter-spacing:.16em;color:var(--ink-faint)}
+
+/* ============ 封面 ============ */
+.cover{position:relative;padding:18px 18px 14px;border-bottom:1.5px solid var(--ink)}
+.cover-meta{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.cover-title{
+  font-family:var(--font-mono);
+  font-size:37px;line-height:1.1;font-weight:800;
+  letter-spacing:.045em;margin:12px 0 8px;
+}
+.title-bar{display:block;width:58px;height:4px;background:var(--stamp);margin-bottom:2px}
+.cover-row{display:flex;gap:14px;align-items:stretch;margin-top:12px}
+.file-no{
+  flex:none;align-self:flex-start;
+  border:1.5px solid var(--ink);border-radius:2px;
+  padding:7px 13px 5px;text-align:center;background:var(--paper-hi);
+}
+.file-no small{display:block;font-size:9px;letter-spacing:.28em;color:var(--ink-faint)}
+.file-no em{display:block;font-size:29px;font-weight:800;letter-spacing:.04em;line-height:1.2}
+.cover-form{flex:1;display:grid;align-content:start}
+.cf-row{display:grid;grid-template-columns:88px 1fr;gap:8px;align-items:baseline;
+  padding:4px 0;border-bottom:1px dotted var(--rule)}
+.cf-row dt{font-size:9.5px;letter-spacing:.18em;color:var(--ink-faint)}
+.cf-row dd{font-size:12.5px;line-height:1.7}
+.meter{display:inline-block;vertical-align:middle;width:104px;height:9px;
+  border:1px solid var(--ink-soft);margin-right:8px;background:var(--paper-hi)}
+.meter i{display:block;height:100%;
+  background:repeating-linear-gradient(90deg,var(--coral) 0 5px,transparent 5px 8px)}
+.seal{
+  position:absolute;right:14px;top:56px;width:76px;height:76px;
+  border:1.5px solid var(--coral-deep);border-radius:50%;
+  display:grid;place-content:center;text-align:center;gap:1px;
+  color:var(--coral-deep);transform:rotate(9deg);
+  opacity:.82;mix-blend-mode:multiply;
+}
+.seal::before{content:'';position:absolute;inset:4px;border:1px solid var(--coral-deep);border-radius:50%}
+.seal b{font-size:12px;font-weight:800;letter-spacing:.3em;text-indent:.3em}
+.seal i{font-size:7px;letter-spacing:.14em}
+.cover-strip{display:flex;justify-content:space-between;gap:8px;margin-top:14px}
+
+/* ============ 索引标签页 ============ */
+.tabs{display:flex;gap:6px;padding:14px 18px 0}
+.tab{
+  flex:1;min-height:44px;display:flex;align-items:center;justify-content:center;gap:6px;
+  font-size:12px;letter-spacing:.08em;text-decoration:none;
+  border:1px solid var(--rule-strong);border-bottom:0;border-radius:5px 5px 0 0;
+  background:var(--manila);color:var(--ink-soft);
+  transition:background .15s;
+}
+.tab b{font-weight:400;font-size:10px;color:var(--ink-faint)}
+.tab.is-on{background:var(--paper);color:var(--ink);font-weight:800;box-shadow:inset 0 3px 0 var(--coral)}
+.tab.is-on b{color:var(--coral-deep)}
+
+/* ============ 台账区 ============ */
+.sheet{border-top:1.5px solid var(--ink);padding:0 18px 10px;flex:1}
+.entry{border-top:3px double var(--rule-strong);padding:16px 0 18px}
+.entry:first-child{border-top:0}
+.sec-head{display:grid;grid-template-columns:auto 1fr auto;align-items:end;gap:10px;
+  padding-bottom:7px;border-bottom:1px solid var(--ink)}
+.sh-i{font-size:10px;letter-spacing:.2em;color:var(--coral-deep)}
+.sec-head h2{font-size:15px;font-weight:800;letter-spacing:.1em}
+.sh-aux{font-size:9.5px;letter-spacing:.14em;color:var(--ink-faint);text-align:right}
+
+.form-grid{margin-top:2px}
+.f-row{display:grid;grid-template-columns:88px 1fr;gap:8px;align-items:baseline;
+  padding:9px 0;border-bottom:1px dotted var(--rule)}
+.f-label{font-size:9.5px;letter-spacing:.18em;color:var(--ink-faint)}
+.f-val{font-size:13.5px;line-height:1.75}
+.f-val small{display:block;font-size:10.5px;color:var(--ink-faint);letter-spacing:.04em}
+.f-val s{color:var(--ink-faint)}
+.propose{color:var(--coral-deep);font-weight:800;letter-spacing:.06em}
+.arr{color:var(--coral);margin:0 6px}
+.pencil{color:var(--ink-soft);font-size:11px}
+
+.stamp{
+  display:inline-flex;align-items:center;
+  padding:3px 12px;border:2px solid var(--stamp);outline:1px solid rgba(var(--stamp-rgb),.55);outline-offset:2px;
+  border-radius:3px;color:var(--stamp);
+  font-weight:800;font-size:12.5px;letter-spacing:.42em;text-indent:.42em;
+  transform:rotate(var(--rot,-5deg));opacity:.88;mix-blend-mode:multiply;
+  background:rgba(var(--stamp-rgb),.05);
+  animation:stampIn .5s cubic-bezier(.25,1.2,.4,1) both;animation-delay:var(--delay,.15s);
+}
+.stamp.new{font-size:13px;letter-spacing:.3em;text-indent:.3em;padding:2px 10px}
+@keyframes stampIn{
+  0%{opacity:0;transform:rotate(var(--rot,-5deg)) scale(1.65)}
+  62%{opacity:.95;transform:rotate(var(--rot,-5deg)) scale(.94)}
+  100%{opacity:.88;transform:rotate(var(--rot,-5deg)) scale(1)}
+}
+
+.entry-foot{display:flex;justify-content:space-between;align-items:center;gap:10px;min-height:48px;margin-top:10px}
+.link-sub{
+  display:inline-flex;align-items:center;min-height:44px;
+  color:var(--coral-deep);font-size:12.5px;letter-spacing:.05em;
+  text-decoration:underline;text-underline-offset:4px;text-decoration-thickness:1px;
+}
+.link-sub:hover{color:var(--stamp)}
+
+/* ============ AI NOTE 旁注贴 ============ */
+.note-slot{display:flex;justify-content:flex-end;padding:2px 0 16px}
+.ai-note{
+  width:88%;position:relative;
+  background:var(--pink-soft);border:1px dashed var(--coral);border-radius:2px;
+  padding:13px 14px 10px;transform:rotate(1.3deg);
+  box-shadow:2px 3px 0 rgba(var(--ink-rgb),.06);
+}
+.tape{position:absolute;top:-9px;left:50%;transform:translateX(-50%) rotate(-2.5deg);
+  width:76px;height:17px;background:rgba(var(--coral-rgb),.20);
+  border-left:1px dashed rgba(var(--ink-rgb),.15);border-right:1px dashed rgba(var(--ink-rgb),.15)}
+.ai-head{display:flex;align-items:center;gap:7px;font-size:11px;font-weight:800;letter-spacing:.14em}
+.ai-bot{font-size:13px}
+.ai-no{margin-left:auto;font-weight:400;font-size:9.5px;letter-spacing:.12em;color:var(--coral-deep)}
+.ai-body{font-size:12.5px;line-height:1.75;margin-top:7px}
+.ai-comply{margin-top:9px;padding-top:6px;border-top:1px dashed var(--coral);
+  font-size:9.5px;letter-spacing:.1em;color:var(--stamp)}
+
+/* ============ 新建档卷宗条 ============ */
+.slip{position:relative;background:var(--manila);border:1px solid var(--rule-strong);
+  border-radius:3px;padding:14px;margin-top:12px;box-shadow:2px 3px 0 rgba(var(--ink-rgb),.05)}
+.slip::before{content:'';position:absolute;inset:5px;border:1px dashed rgba(var(--ink-rgb),.22);
+  border-radius:2px;pointer-events:none}
+.slip .stamp.new{position:absolute;top:-13px;right:12px;--rot:7deg;--delay:.35s;background:var(--manila)}
+.idcard{display:flex;gap:12px;align-items:center;position:relative}
+.photo{position:relative;width:62px;height:80px;flex:none;background:var(--photo-bg);overflow:hidden}
+.photo .sil-head{position:absolute;top:15px;left:50%;transform:translateX(-50%);
+  width:23px;height:23px;border-radius:50%;background:var(--photo-fg)}
+.photo .sil-body{position:absolute;bottom:0;left:50%;transform:translateX(-50%);
+  width:52px;height:27px;border-radius:26px 26px 0 0;background:var(--photo-fg)}
+.photo-cap{display:block;font-size:9px;letter-spacing:.1em;color:var(--ink-faint);text-align:center;margin-top:4px}
+.idc-main{flex:1;min-width:0}
+.idc-name{font-size:16.5px;font-weight:800;letter-spacing:.06em}
+.idc-name span{font-size:10px;font-weight:400;letter-spacing:.18em;color:var(--ink-faint);margin-left:6px}
+.idc-meta{font-size:11.5px;color:var(--ink-soft);letter-spacing:.05em;margin-top:2px}
+.idc-file{display:inline-block;margin-top:7px;padding:2px 8px;border:1px solid var(--ink-soft);
+  font-size:10px;letter-spacing:.16em;color:var(--ink)}
+.tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+.tags li{border:1px solid var(--rule-strong);background:var(--paper-hi);border-radius:2px;
+  padding:2px 9px;font-size:11px;letter-spacing:.04em;color:var(--ink-soft)}
+.why{margin-top:11px;font-size:12.5px;line-height:1.75}
+.why .src{display:block;font-size:9.5px;letter-spacing:.12em;color:var(--ink-faint);margin-top:2px}
+
+/* ============ 主 CTA（签收条式） ============ */
+.cta-primary{
+  margin-top:14px;display:flex;align-items:center;gap:12px;width:100%;min-height:58px;
+  padding:9px 14px;text-decoration:none;border-radius:3px;
+  background:var(--ink);color:var(--paper-hi);border:1px solid var(--ink);
+  box-shadow:3px 3px 0 rgba(var(--stamp-rgb),.38);
+  transition:transform .15s,box-shadow .15s;
+}
+.cta-primary:hover{transform:translate(1px,1px);box-shadow:2px 2px 0 rgba(var(--stamp-rgb),.38)}
+.seal-sq{flex:none;width:38px;height:38px;display:grid;place-items:center;border-radius:3px;
+  background:var(--stamp);color:var(--paper-hi);font-size:19px;font-weight:800;
+  transform:rotate(-5deg);box-shadow:inset 0 0 0 1.5px rgba(var(--paper-hi-rgb),.75)}
+.cta-tx{flex:1;display:grid;gap:1px;text-align:left}
+.cta-tx strong{font-size:15px;font-weight:800;letter-spacing:.08em}
+.cta-tx b{font-size:10.5px;font-weight:400;letter-spacing:.06em;opacity:.78}
+.cta-arrow{font-size:17px}
+.cta-note{display:block;margin-top:8px;text-align:right}
+
+/* ============ 归档台账 ============ */
+.ledger li{border-bottom:1px dashed var(--rule)}
+.ledger li:last-child{border-bottom:0}
+.ledger a{display:grid;grid-template-columns:44px 1fr auto 14px;gap:10px;align-items:center;
+  min-height:54px;text-decoration:none}
+.l-no{font-size:11px;letter-spacing:.08em;color:var(--ink-faint)}
+.l-name{font-size:13.5px;font-weight:700;letter-spacing:.05em;line-height:1.5}
+.l-name small{display:block;font-size:9px;font-weight:400;letter-spacing:.2em;color:var(--ink-faint)}
+.chip{display:inline-block;padding:2px 9px;border-radius:2px;font-size:10.5px;letter-spacing:.14em;text-indent:.14em}
+.chip.plan{background:var(--coral-deep);color:var(--paper-hi)}
+.chip.closed{border:1px solid var(--ink-faint);color:var(--ink-faint)}
+.l-go{color:var(--ink-faint);font-size:15px}
+.ledger li.closed-row{opacity:.72}
+
+/* ============ 页脚 & 抽屉导航 ============ */
+.colophon{text-align:center;padding:16px 18px 14px;border-top:1px solid var(--rule)}
+.colophon p{font-size:11px;color:var(--ink-soft);letter-spacing:.06em;line-height:1.8}
+.colophon .mono-xs{display:block;margin-top:3px}
+.dock{display:grid;grid-template-columns:repeat(5,1fr);border-top:2px solid var(--ink);background:var(--paper-hi)}
+.dock a{position:relative;min-height:60px;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:3px;text-decoration:none;color:var(--ink-soft);font-size:11.5px;letter-spacing:.08em}
+.dock i{font-size:8.5px;letter-spacing:.24em;color:var(--ink-faint)}
+.dock a.is-on{color:var(--ink);font-weight:800}
+.dock a.is-on i{color:var(--coral-deep)}
+.dock a.is-on::before{content:'';position:absolute;top:-2px;left:50%;transform:translateX(-50%);
+  width:26px;height:3px;background:var(--stamp)}
+
+@media (prefers-reduced-motion:reduce){
+  *{animation:none!important;transition:none!important}
+}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- ═══ 档案封面 ═══ -->
+  <header class="cover">
+    <div class="cover-meta">
+      <span class="mono-xs">WEFINALLY ARCHIVE DEPT.</span>
+      <span class="mono-xs">CONFIDENTIAL · 仅本人可见</span>
+    </div>
+    <h1 class="cover-title">MY MATCH FILE<span class="title-bar" aria-hidden="true"></span></h1>
+    <div class="cover-row">
+      <div class="file-no">
+        <small>FILE&nbsp;NO.</small>
+        <em>#024</em>
+      </div>
+      <dl class="cover-form">
+        <div class="cf-row"><dt>管理人 KEEPER</dt><dd>陈晓雯 <span class="mono-xs">CHEN XIAOWEN</span></dd></div>
+        <div class="cf-row"><dt>所在地 BASE</dt><dd>深圳南山 · 29 岁 · 产品经理</dd></div>
+        <div class="cf-row"><dt>开卷 SINCE</dt><dd>2025.11 记录至今</dd></div>
+        <div class="cf-row"><dt>资料就绪 READY</dt><dd><span class="meter" aria-hidden="true"><i style="width:92%"></i></span>92% 已达标</dd></div>
+      </dl>
+    </div>
+    <span class="seal" aria-hidden="true"><b>官方协调</b><i>SERIOUS MATCHING</i></span>
+    <div class="cover-strip">
+      <span class="mono-xs">非滑动匹配 · 官方引荐制</span>
+      <span class="mono-xs">SHENZHEN · 2026</span>
+    </div>
+  </header>
+
+  <!-- ═══ 索引标签页 ═══ -->
+  <nav class="tabs" aria-label="档案分区">
+    <a class="tab is-on" href="#now">进行中 <b>02</b></a>
+    <a class="tab" href="#archived">已归档 <b>22</b></a>
+    <a class="tab" href="#all">全部 <b>24</b></a>
+  </nav>
+
+  <!-- ═══ 台账 ═══ -->
+  <main class="sheet">
+
+    <!-- 条目一：下一次介绍安排 -->
+    <section class="entry" id="now">
+      <header class="sec-head">
+        <span class="sh-i">ENTRY·01</span>
+        <h2>下一次介绍安排</h2>
+        <span class="sh-aux">FILE #024 · 使用中</span>
+      </header>
+      <div class="form-grid">
+        <div class="f-row"><span class="f-label">日期 DATE</span><span class="f-val">本周六 <b class="mono-xs">SAT</b></span></div>
+        <div class="f-row"><span class="f-label">时间 TIME</span>
+          <span class="f-val"><s>14:30</s><span class="arr">→</span><b class="propose">15:00</b>
+          <small>原定 14:30 · 对方已提议改到 15:00，待你确认</small></span></div>
+        <div class="f-row"><span class="f-label">地点 PLACE</span>
+          <span class="f-val">南头古城<small>深圳南山 · 官方推荐首次见面对点</small></span></div>
+        <div class="f-row"><span class="f-label">引荐 BY</span>
+          <span class="f-val">霞姐团队当面引荐<small>双方资料均已完成人工核验</small></span></div>
+      </div>
+      <div class="entry-foot">
+        <span class="stamp" style="--rot:-5deg">协调中</span>
+        <a class="link-sub" href="#reply-time">回应改到 15:00 →</a>
+      </div>
+    </section>
+
+    <!-- AI NOTE 旁注贴 -->
+    <div class="note-slot">
+      <aside class="ai-note">
+        <span class="tape" aria-hidden="true"></span>
+        <p class="ai-head"><span class="ai-bot">🤖</span>AI NOTE<span class="ai-no">旁注 · 1 条新建议</span></p>
+        <p class="ai-body">关于周六时间：倾向接受 15:00——南头古城下午三点后游人渐散，光线也更柔和，适合第一次见面；若担心拖到晚饭，可回个折中的 14:45。</p>
+        <p class="ai-comply">🤖 AI 生成内容 · 仅供参考 · 不可移除标识</p>
+      </aside>
+    </div>
+
+    <!-- 条目二：新档案建档 -->
+    <section class="entry" id="new-file">
+      <header class="sec-head">
+        <span class="sh-i">ENTRY·02</span>
+        <h2>新档案建档通知</h2>
+        <span class="sh-aux">今日 09:12 登记</span>
+      </header>
+      <div class="slip">
+        <span class="stamp new" style="--rot:7deg">NEW</span>
+        <div class="idcard">
+          <span>
+            <span class="photo" aria-hidden="true"><i class="sil-head"></i><i class="sil-body"></i></span>
+            <span class="photo-cap">证件照 · 未交换</span>
+          </span>
+          <div class="idc-main">
+            <p class="idc-name">林亦辰<span>LIN YICHEN</span></p>
+            <p class="idc-meta">31 岁 · 深圳福田 · 建筑师</p>
+            <p class="idc-file">RESERVED → FILE #025</p>
+          </div>
+        </div>
+        <ul class="tags">
+          <li>徒步 · 各走过 EBC 一段</li>
+          <li>胶片党 Contax T2 × Nikon FM2</li>
+          <li>周末日料</li>
+        </ul>
+        <p class="why">🤖 AI 摘要：你们的生活节奏像两条平行线，在周末交汇。
+          <span class="src">完整匹配理由在新档案内页 · 非打分制</span></p>
+      </div>
+      <a class="cta-primary" href="#open-025">
+        <span class="seal-sq" aria-hidden="true">签</span>
+        <span class="cta-tx">
+          <strong>翻开新档案 FILE #025</strong>
+          <b>先看看为什么适合，再决定要不要继续</b>
+        </span>
+        <span class="cta-arrow" aria-hidden="true">→</span>
+      </a>
+      <span class="mono-xs cta-note">建档编号顺延 · 等待你签收翻阅</span>
+    </section>
+
+    <!-- 条目三：最近档案 -->
+    <section class="entry" id="archived">
+      <header class="sec-head">
+        <span class="sh-i">ENTRY·03</span>
+        <h2>最近档案</h2>
+        <span class="sh-aux">共 24 卷</span>
+      </header>
+      <ol class="ledger">
+        <li>
+          <a href="#f023">
+            <span class="l-no">#023</span>
+            <span class="l-name">周牧遥<small>ZHOU MUYAO</small></span>
+            <span class="chip plan">已有安排</span>
+            <span class="l-go" aria-hidden="true">›</span>
+          </a>
+        </li>
+        <li class="closed-row">
+          <a href="#f022">
+            <span class="l-no">#022</span>
+            <span class="l-name">赵屹然<small>ZHAO YIRAN</small></span>
+            <span class="chip closed">本次未成</span>
+            <span class="l-go" aria-hidden="true">›</span>
+          </a>
+        </li>
+      </ol>
+    </section>
+
+  </main>
+
+  <!-- ═══ 页脚 ═══ -->
+  <footer class="colophon">
+    <p>本柜档案仅本人可见 · 由霞姐团队与 AI 协调员共同维护</p>
+    <span class="mono-xs">VISUAL RESEARCH PROTOTYPE · NOT FOR PRODUCTION</span>
+  </footer>
+
+  <!-- ═══ 抽屉式底部导航 ═══ -->
+  <nav class="dock" aria-label="主导航">
+    <a class="is-on" href="#files"><i>01</i>档案柜</a>
+    <a href="#schedule"><i>02</i>安排</a>
+    <a href="#notes"><i>03</i>NOTE</a>
+    <a href="#inbox"><i>04</i>通知</a>
+    <a href="#me"><i>05</i>我的</a>
+  </nav>
+
+</div>
+</body>
+</html>
