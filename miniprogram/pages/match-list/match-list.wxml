@@ -1,66 +1,84 @@
 <view class="match-list-page container">
-  <qa-match-panel bind:completed="onQaMatchCompleted" />
-
-  <block wx:if="{{pageState === 'loading'}}">
-    <view class="state-wrap">
-      <view class="state-icon">⏳</view>
-      <view class="state-text">正在加载...</view>
-    </view>
-  </block>
-
-  <block wx:elif="{{pageState === 'no-network'}}">
-    <view class="state-wrap">
-      <view class="state-icon">📡</view>
-      <view class="state-text">网络不可用</view>
-      <view class="state-btn" bindtap="onRetry">重新加载</view>
-    </view>
-  </block>
-
-  <block wx:elif="{{pageState === 'error'}}">
-    <view class="state-wrap">
-      <view class="state-icon">⚠️</view>
-      <view class="state-text">{{errorMsg}}</view>
-      <view class="state-btn" bindtap="onRetry">重试</view>
-    </view>
-  </block>
-
-  <block wx:elif="{{pageState === 'empty'}}">
-    <view class="state-wrap">
-      <view class="state-icon">📋</view>
-      <view class="state-text">暂无匹配记录</view>
-      <view class="state-hint">VIP 会员将在每周三、周五自动获得匹配</view>
-    </view>
-  </block>
+  <state-view
+    wx:if="{{pageState === 'loading'}}"
+    type="loading"
+  />
+  <state-view
+    wx:elif="{{pageState === 'no-network'}}"
+    type="network"
+    desc="请检查网络后重新加载"
+    bind:action="onRetry"
+  />
+  <state-view
+    wx:elif="{{pageState === 'error'}}"
+    type="error"
+    title="加载失败了"
+    desc="{{errorMsg}}"
+    bind:action="onRetry"
+  />
+  <state-view
+    wx:elif="{{pageState === 'empty'}}"
+    type="empty"
+    title="还没有匹配记录"
+    desc="VIP 会员将在每周三、周五自动获得系统匹配"
+  />
 
   <block wx:else>
-    <view class="notify-entry card" bindtap="goNotifications" hover-class="notify-entry-pressed">
+    <view class="notify-entry card" bindtap="goNotifications" hover-class="row-card-pressed">
       <view class="notify-entry-left">
-        <text class="notify-entry-icon">🔔</text>
+        <view class="notify-entry-icon">
+          <view class="wf-icon wf-icon-bell icon-sm"></view>
+          <view class="notify-entry-dot" wx:if="{{unreadCount > 0}}"></view>
+        </view>
         <text class="notify-entry-title">消息通知</text>
       </view>
       <view class="notify-entry-right">
         <text class="notify-entry-count" wx:if="{{unreadCount > 0}}">{{unreadCount}}条未读</text>
-        <text class="notify-entry-arrow">›</text>
+        <view class="wf-icon wf-icon-arrow icon-sm icon-hint"></view>
       </view>
     </view>
+
+    <view class="list-tip">
+      <view class="wf-icon wf-icon-sparkle icon-sm list-tip-icon"></view>
+      <text>每次匹配都经过双向条件筛选，点开先看匹配理由</text>
+    </view>
+
     <view
       class="list-item card"
       wx:for="{{list}}"
       wx:key="id"
       bindtap="goDetail"
       data-id="{{item.id}}"
+      hover-class="row-card-pressed"
     >
-      <view class="item-header">
-        <text class="item-tag">{{item.matchType || 'AI匹配'}}</text>
-        <text class="item-date">{{item.matchDate}}</text>
+      <view class="item-main">
+        <view class="item-header">
+          <text class="tag tag-pink">{{item.matchType || 'AI匹配'}}</text>
+          <text class="tag tag-new" wx:if="{{item.isNew}}">新</text>
+          <text class="tag tag-gray" wx:if="{{item.testDataBadge}}">{{item.testDataBadge}}</text>
+          <text class="item-date">{{item.matchDate}}</text>
+        </view>
+        <view class="item-body">{{item.gender}} · {{item.ageText}} · {{item.city}}</view>
+        <view class="item-score" wx:if="{{item.score !== null}}">
+          <text class="tag tag-pink" wx:if="{{item.totalScore !== null}}">{{item.totalScoreText}}</text>
+          <text class="tag {{item.scoreTag}}">{{item.scoreText}}</text>
+        </view>
       </view>
-      <view class="item-test-badge" wx:if="{{item.testDataBadge}}">{{item.testDataBadge}}</view>
-      <view class="item-body">{{item.gender}} · {{item.ageText}} · {{item.city}}</view>
-      <view class="item-score" wx:if="{{item.score !== null}}">
-        <text class="tag tag-pink" wx:if="{{item.totalScore !== null}}">{{item.totalScoreText}}</text>
-        <text class="tag {{item.scoreTag}}">{{item.scoreText}}</text>
-      </view>
-      <view class="item-arrow">›</view>
+      <view class="wf-icon wf-icon-arrow icon-sm icon-hint item-arrow"></view>
     </view>
   </block>
+
+  <!-- 内部测试工具：默认折叠，与正式用户视图隔离 -->
+  <view class="qa-drawer">
+    <view class="qa-drawer-head" bindtap="toggleQaPanel" hover-class="row-card-pressed">
+      <view class="qa-drawer-title">
+        <view class="wf-icon wf-icon-gear icon-sm icon-hint"></view>
+        <text>内部测试工具</text>
+      </view>
+      <text class="qa-drawer-toggle">{{qaPanelOpen ? '收起' : '展开'}}</text>
+    </view>
+    <view class="qa-drawer-body" wx:if="{{qaPanelOpen}}">
+      <qa-match-panel bind:completed="onQaMatchCompleted" />
+    </view>
+  </view>
 </view>

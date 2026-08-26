@@ -1,3 +1,8 @@
 {
-  "navigationBarTitleText": "匹配详情"
+  "navigationBarTitleText": "匹配详情",
+  "usingComponents": {
+    "state-view": "/components/state-view/state-view",
+    "ai-thinking": "/components/ai-thinking/ai-thinking",
+    "new-match-modal": "/components/new-match-modal/new-match-modal"
+  }
 }

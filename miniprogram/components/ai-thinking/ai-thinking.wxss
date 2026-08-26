@@ -1,0 +1,128 @@
+/* WeFinally 统一 AI 等待态 — 呼吸光环 + 三点呼吸，结果到齐前稳定展示 */
+.ai-thinking {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 48rpx 32rpx 40rpx;
+}
+
+.ai-thinking-visual {
+  position: relative;
+  width: 120rpx;
+  height: 120rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 24rpx;
+}
+
+.ai-thinking-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 4rpx solid var(--wf-ai-soft);
+  border-top-color: var(--wf-ai);
+  animation: wf-ai-spin 1.6s linear infinite;
+}
+
+.ai-thinking-ring::after {
+  content: '';
+  position: absolute;
+  inset: 14rpx;
+  border-radius: 50%;
+  background: var(--wf-ai-soft);
+  animation: wf-ai-breathe 1.6s ease-in-out infinite;
+}
+
+.ai-thinking-dots {
+  position: relative;
+  display: flex;
+  gap: 10rpx;
+  z-index: 1;
+}
+
+.ai-thinking-dot {
+  width: 12rpx;
+  height: 12rpx;
+  border-radius: 50%;
+  background: var(--wf-ai);
+  animation: wf-ai-dot 1.2s ease-in-out infinite;
+}
+
+.ai-thinking-dot.d2 { animation-delay: 0.15s; }
+.ai-thinking-dot.d3 { animation-delay: 0.3s; }
+
+.ai-thinking-copy {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6rpx;
+}
+
+.ai-thinking-text {
+  font-size: var(--wf-fs-body);
+  color: var(--wf-text-main);
+  font-weight: 500;
+}
+
+.ai-thinking-label {
+  font-size: var(--wf-fs-tiny);
+  color: var(--wf-ai);
+  letter-spacing: 2rpx;
+}
+
+.ai-thinking-note {
+  margin-top: 20rpx;
+}
+
+/* 行内紧凑版（卡片内嵌） */
+.ai-thinking.is-compact {
+  flex-direction: row;
+  text-align: left;
+  padding: 24rpx;
+  gap: 20rpx;
+  justify-content: flex-start;
+}
+
+.ai-thinking.is-compact .ai-thinking-visual {
+  width: 64rpx;
+  height: 64rpx;
+  margin-bottom: 0;
+  flex-shrink: 0;
+}
+
+.ai-thinking.is-compact .ai-thinking-ring {
+  border-width: 3rpx;
+}
+
+.ai-thinking.is-compact .ai-thinking-ring::after {
+  inset: 8rpx;
+}
+
+.ai-thinking.is-compact .ai-thinking-dot {
+  width: 8rpx;
+  height: 8rpx;
+}
+
+.ai-thinking.is-compact .ai-thinking-copy {
+  align-items: flex-start;
+}
+
+.ai-thinking.is-compact .ai-thinking-note {
+  margin-top: 8rpx;
+}
+
+@keyframes wf-ai-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes wf-ai-breathe {
+  0%, 100% { transform: scale(0.86); opacity: 0.7; }
+  50% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes wf-ai-dot {
+  0%, 100% { transform: translateY(0); opacity: 0.45; }
+  50% { transform: translateY(-8rpx); opacity: 1; }
+}

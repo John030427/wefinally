@@ -1,6 +1,9 @@
 {
   "navigationBarTitleText": "匹配记录",
   "usingComponents": {
-    "qa-match-panel": "/components/qa-match-panel/qa-match-panel"
+    "qa-match-panel": "/components/qa-match-panel/qa-match-panel",
+    "state-view": "/components/state-view/state-view",
+    "ai-thinking": "/components/ai-thinking/ai-thinking",
+    "new-match-modal": "/components/new-match-modal/new-match-modal"
   }
 }

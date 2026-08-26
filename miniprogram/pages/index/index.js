@@ -3,6 +3,8 @@ const { API_PATHS, MATCH_SCHEDULE, GUANGDONG_110_DEFAULT } = require('../../util
 const { formatDateOnly, getNextMatchTime, genderText, calcAge, getCompatibilityDisplayText } = require('../../utils/util')
 const { buildProfileReadiness, buildJourneyState } = require('../../utils/productExperience')
 
+const SEEN_MATCH_KEY = 'wf_seen_match_id'
+
 Page({
   data: {
     pageState: 'loading',
@@ -14,7 +16,10 @@ Page({
     latestMatch: null,
     hasLatest: false,
     readiness: null,
-    journeyState: null
+    journeyState: null,
+    newMatchVisible: false,
+    newMatchInfo: null,
+    qaPanelOpen: false
   },
 
   onShow() {
@@ -70,12 +75,52 @@ Page({
         readiness,
         journeyState
       })
+      this.maybeShowNewMatch(latestMatch)
     } catch (err) {
       this.setData({
         pageState: 'error',
         errorMsg: (err && err.message) || '加载失败'
       })
     }
+  },
+
+  // 新匹配仪式弹窗：仅在出现「未确认过的新结果」时首次展示（纯客户端判定，不改接口）
+  maybeShowNewMatch(latestMatch) {
+    if (!latestMatch || !latestMatch.id) return
+    let seenId = ''
+    try {
+      seenId = String(wx.getStorageSync(SEEN_MATCH_KEY) || '')
+    } catch (err) {
+      seenId = ''
+    }
+    if (String(latestMatch.id) === seenId) return
+    this.setData({
+      newMatchVisible: true,
+      newMatchInfo: latestMatch
+    })
+  },
+
+  markMatchSeen() {
+    const { latestMatch } = this.data
+    if (!latestMatch || !latestMatch.id) return
+    try {
+      wx.setStorageSync(SEEN_MATCH_KEY, String(latestMatch.id))
+    } catch (err) {}
+  },
+
+  onNewMatchView() {
+    this.markMatchSeen()
+    this.setData({ newMatchVisible: false })
+    this.goMatchDetail()
+  },
+
+  onNewMatchLater() {
+    this.markMatchSeen()
+    this.setData({ newMatchVisible: false })
+  },
+
+  toggleQaPanel() {
+    this.setData({ qaPanelOpen: !this.data.qaPanelOpen })
   },
 
   onRetry() {

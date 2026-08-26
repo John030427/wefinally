@@ -1,51 +1,47 @@
 <view class="index-page container">
-  <block wx:if="{{pageState === 'loading'}}">
-    <view class="state-wrap">
-      <view class="state-icon">⏳</view>
-      <view class="state-text">正在加载...</view>
-    </view>
-  </block>
-
-  <block wx:elif="{{pageState === 'no-network'}}">
-    <view class="state-wrap">
-      <view class="state-icon">📡</view>
-      <view class="state-text">网络不可用</view>
-      <view class="state-btn" bindtap="onRetry">重新加载</view>
-    </view>
-  </block>
-
-  <block wx:elif="{{pageState === 'error'}}">
-    <view class="state-wrap">
-      <view class="state-icon">⚠️</view>
-      <view class="state-text">{{errorMsg}}</view>
-      <view class="state-btn" bindtap="onRetry">重试</view>
-    </view>
-  </block>
+  <state-view
+    wx:if="{{pageState === 'loading'}}"
+    type="loading"
+  />
+  <state-view
+    wx:elif="{{pageState === 'no-network'}}"
+    type="network"
+    desc="请检查网络后重新加载"
+    bind:action="onRetry"
+  />
+  <state-view
+    wx:elif="{{pageState === 'error'}}"
+    type="error"
+    title="加载失败了"
+    desc="{{errorMsg}}"
+    bind:action="onRetry"
+  />
 
   <block wx:else>
+    <!-- 主线 Hero：我现在在哪一步、该做什么 -->
     <view class="journey-band" wx:if="{{journeyState}}">
+      <view class="journey-halo" aria-hidden="true"></view>
       <view class="journey-status">
         <view class="journey-status-dot"></view>
-        <text>当前进度</text>
+        <text>{{journeyState.eyebrow}}</text>
       </view>
-      <view class="journey-body">
-        <view class="journey-copy">
-          <view class="journey-kicker">{{journeyState.eyebrow}}</view>
-          <view class="journey-title">{{journeyState.title}}</view>
-          <view class="journey-desc">{{journeyState.description}}</view>
-        </view>
-        <button class="journey-action" bindtap="onJourneyAction">
-          <text>{{journeyState.actionText}}</text>
-          <text class="journey-action-arrow">→</text>
-        </button>
+      <view class="journey-title">{{journeyState.title}}</view>
+      <view class="journey-desc">{{journeyState.description}}</view>
+      <view class="journey-action" bindtap="onJourneyAction" hover-class="journey-action-pressed">
+        <text>{{journeyState.actionText}}</text>
+        <view class="wf-icon wf-icon-arrow icon-sm journey-action-arrow"></view>
       </view>
     </view>
 
+    <!-- 下一次介绍：被安排的确定感 -->
     <view class="match-stage">
-      <view class="match-stage-orbit orbit-large"></view>
-      <view class="match-stage-orbit orbit-small"></view>
+      <view class="match-stage-orbit orbit-large" aria-hidden="true"></view>
+      <view class="match-stage-orbit orbit-small" aria-hidden="true"></view>
       <view class="match-stage-head">
-        <view class="match-stage-kicker">下一次介绍</view>
+        <view class="match-stage-kicker">
+          <view class="wf-icon wf-icon-clock icon-sm match-stage-kicker-icon"></view>
+          <text>下一次介绍</text>
+        </view>
         <view class="match-stage-frequency">每周 2 次</view>
       </view>
       <view class="match-stage-time">{{nextMatchText}}</view>
@@ -56,70 +52,101 @@
       </view>
     </view>
 
-    <qa-match-panel title="内部测试" bind:completed="onQaMatchCompleted" />
-
+    <!-- VIP -->
     <view class="vip-banner card" wx:if="{{!isVip}}">
-      <view class="vip-banner-text">开通 VIP 参与每周 2 次 AI 匹配</view>
-      <button class="btn-primary btn-sm" bindtap="goVip">188元/30天 开通</button>
+      <view class="vip-banner-copy">
+        <view class="vip-banner-title">开通 VIP 参与每周 2 次 AI 匹配</view>
+        <view class="vip-banner-desc">审核制会员 · 系统按双向条件认真筛选</view>
+      </view>
+      <button class="btn-primary btn-sm vip-banner-btn" bindtap="goVip">188元/30天 开通</button>
     </view>
 
     <view class="vip-active card" wx:else>
-      <text class="vip-badge">VIP 有效</text>
-      <text class="vip-expire" wx:if="{{vipExpireText}}">到期：{{vipExpireText}}</text>
-    </view>
-
-    <view class="safety-home card">
-      <navigator class="safety-main" url="/pages/meet-safety-list/meet-safety-list">
-        <view class="safety-title">安全求助</view>
-        <view class="safety-desc">按每次约会管理安全确认，紧急情况请直接报警</view>
-      </navigator>
-      <view class="safety-call" catchtap="callPolice">110</view>
-    </view>
-
-    <view class="love-advisor-card card" bindtap="goLoveAdvisor">
-      <view class="love-advisor-copy">
-        <view class="love-advisor-title">AI恋爱助手</view>
-        <view class="love-advisor-desc">聊聊沟通、边界和初次见面的准备</view>
+      <view class="vip-active-row">
+        <view class="wf-icon wf-icon-crown icon-sm vip-active-icon"></view>
+        <text class="vip-badge">VIP 有效</text>
+        <text class="vip-expire" wx:if="{{vipExpireText}}">到期：{{vipExpireText}}</text>
       </view>
-      <view class="love-advisor-arrow">›</view>
     </view>
 
+    <!-- AI 恋爱助手：长期陪伴服务 -->
+    <view class="love-advisor-card card" bindtap="goLoveAdvisor" hover-class="row-card-pressed">
+      <view class="love-advisor-icon">
+        <view class="wf-icon wf-icon-sparkle icon-lg love-advisor-icon-glyph"></view>
+      </view>
+      <view class="love-advisor-copy">
+        <view class="love-advisor-title">AI 恋爱助手</view>
+        <view class="love-advisor-desc">陪你梳理沟通、边界和初次见面的准备</view>
+      </view>
+      <view class="wf-icon wf-icon-arrow icon-sm icon-hint"></view>
+    </view>
+
+    <!-- 最近匹配：精选结果，而不是列表残片 -->
     <view class="section-header">
-      <text class="section-title">最近匹配</text>
+      <text class="section-header-title">最近匹配</text>
       <text class="section-link" bindtap="goMatchList">全部记录 ›</text>
     </view>
 
-    <view class="match-card card" wx:if="{{hasLatest}}" bindtap="goMatchDetail">
+    <view class="match-card card" wx:if="{{hasLatest}}" bindtap="goMatchDetail" hover-class="row-card-pressed">
       <view class="match-row">
-        <text class="match-tag">{{latestMatch.matchType || 'AI匹配'}}</text>
+        <text class="tag tag-pink">{{latestMatch.matchType || 'AI匹配'}}</text>
         <text class="match-date">{{latestMatch.matchDate}}</text>
       </view>
       <view class="match-info">
         <text>{{latestMatch.gender}} · {{latestMatch.ageText}} · {{latestMatch.city}}</text>
       </view>
-      <view class="match-score" wx:if="{{latestMatch.score !== null}}">
-        {{latestMatch.scoreText}}
+      <view class="match-footer">
+        <text class="match-score" wx:if="{{latestMatch.score !== null}}">{{latestMatch.scoreText}}</text>
+        <view class="match-link">
+          <text>查看匹配理由</text>
+          <view class="wf-icon wf-icon-arrow icon-sm"></view>
+        </view>
       </view>
-      <view class="match-link">查看详情 ›</view>
     </view>
 
     <view class="empty-card card" wx:else>
-      <view class="empty-icon">🎯</view>
-      <view class="empty-text">暂无匹配记录</view>
-      <view class="empty-hint">{{isVip ? '请等待下次定时匹配' : '开通 VIP 后参与 AI 定时匹配'}}</view>
+      <view class="empty-icon">
+        <view class="wf-icon wf-icon-heart icon-xl"></view>
+      </view>
+      <view class="empty-text">还没有匹配记录</view>
+      <view class="empty-hint">{{isVip ? '下一份结果会在匹配时间自动送达' : '开通 VIP 后参与 AI 定时匹配'}}</view>
     </view>
 
+    <!-- 安全求助 -->
+    <view class="safety-home card">
+      <navigator class="safety-main" url="/pages/meet-safety-list/meet-safety-list" hover-class="none">
+        <view class="safety-icon">
+          <view class="wf-icon wf-icon-shield icon-lg safety-icon-glyph"></view>
+        </view>
+        <view class="safety-copy">
+          <view class="safety-title">安全求助</view>
+          <view class="safety-desc">按每次约会管理安全确认，紧急情况请直接报警</view>
+        </view>
+      </navigator>
+      <view class="safety-call" catchtap="callPolice" hover-class="safety-call-pressed">
+        <view class="wf-icon wf-icon-sos icon-sm"></view>
+        <text>110</text>
+      </view>
+    </view>
+
+    <!-- 快捷入口 -->
     <view class="quick-actions card">
-      <view class="action-item" bindtap="goMatchSetting">
-        <text class="action-icon">⚙️</text>
+      <view class="action-item" bindtap="goMatchSetting" hover-class="action-item-pressed">
+        <view class="action-icon-wrap">
+          <view class="wf-icon wf-icon-gear icon-lg action-icon"></view>
+        </view>
         <text class="action-text">择偶配置</text>
       </view>
-      <view class="action-item" bindtap="goRules">
-        <text class="action-icon">📜</text>
+      <view class="action-item" bindtap="goRules" hover-class="action-item-pressed">
+        <view class="action-icon-wrap">
+          <view class="wf-icon wf-icon-doc icon-lg action-icon"></view>
+        </view>
         <text class="action-text">平台规则</text>
       </view>
-      <view class="action-item" bindtap="goMeetSafety">
-        <text class="action-icon">🛡️</text>
+      <view class="action-item" bindtap="goMeetSafety" hover-class="action-item-pressed">
+        <view class="action-icon-wrap">
+          <view class="wf-icon wf-icon-shield icon-lg action-icon"></view>
+        </view>
         <text class="action-text">安全确认</text>
       </view>
     </view>
@@ -128,5 +155,27 @@
       <text class="notice-text">· 系统不支持手动刷新匹配</text>
       <text class="notice-text">· 用户间无私聊，仅平台一对一奔现对接</text>
     </view>
+
+    <!-- 内部测试工具：默认折叠，与正式用户视图隔离 -->
+    <view class="qa-drawer">
+      <view class="qa-drawer-head" bindtap="toggleQaPanel" hover-class="row-card-pressed">
+        <view class="qa-drawer-title">
+          <view class="wf-icon wf-icon-gear icon-sm icon-hint"></view>
+          <text>内部测试工具</text>
+        </view>
+        <text class="qa-drawer-toggle">{{qaPanelOpen ? '收起' : '展开'}}</text>
+      </view>
+      <view class="qa-drawer-body" wx:if="{{qaPanelOpen}}">
+        <qa-match-panel title="内部测试" bind:completed="onQaMatchCompleted" />
+      </view>
+    </view>
   </block>
+
+  <!-- 新匹配仪式弹窗（有未读新结果时首次打开展示） -->
+  <new-match-modal
+    visible="{{newMatchVisible}}"
+    match="{{newMatchInfo}}"
+    bind:view="onNewMatchView"
+    bind:later="onNewMatchLater"
+  />
 </view>

@@ -1,0 +1,38 @@
+<view wx:if="{{visible}}" class="nmm-mask" catchtouchmove="noop">
+  <view class="nmm-card" catchtap="noop">
+    <view class="nmm-halo h1" aria-hidden="true"></view>
+    <view class="nmm-halo h2" aria-hidden="true"></view>
+
+    <view class="nmm-orb-wrap" aria-hidden="true">
+      <view class="nmm-orb-ring r1"></view>
+      <view class="nmm-orb-ring r2"></view>
+      <view class="nmm-orb">
+        <view class="wf-icon wf-icon-heart icon-xl nmm-orb-icon"></view>
+      </view>
+    </view>
+
+    <view class="nmm-kicker">WEFINALLY · 本期精选</view>
+    <view class="nmm-title">WeFinally 为你匹配到一位对象</view>
+    <view class="nmm-sub">先看看为什么适合，再决定是否深入了解</view>
+
+    <view class="nmm-info" wx:if="{{match}}">
+      <view class="nmm-info-main">
+        <text>{{match.gender}}</text>
+        <text wx:if="{{match.ageText}}"> · {{match.ageText}}</text>
+        <text wx:if="{{match.city}}"> · {{match.city}}</text>
+      </view>
+      <view class="nmm-info-meta">
+        <text wx:if="{{match.matchDate}}">{{match.matchDate}} 匹配</text>
+        <text wx:if="{{match.scoreText}}" class="nmm-score">{{match.scoreText}}</text>
+      </view>
+    </view>
+
+    <view class="nmm-reason">这次匹配基于你们的画像、偏好与双向适配，由系统认真筛选</view>
+
+    <button class="nmm-cta" bindtap="onView">查看匹配理由</button>
+    <view class="nmm-later" bindtap="onLater">稍后再看</view>
+    <view class="nmm-date-cta" wx:if="{{showDateCta}}" bindtap="onDate">直接发起第一次约会建议 ›</view>
+
+    <view class="ai-disclaimer nmm-ai-note">🤖 AI 生成内容｜匹配结果由人工智能辅助筛选，仅供参考</view>
+  </view>
+</view>

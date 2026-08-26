@@ -11,12 +11,19 @@ const {
   getCompatibilityTagClass
 } = require('../../utils/util')
 
+const SEEN_MATCH_KEY = 'wf_seen_match_id'
+
 Page({
   data: {
     pageState: 'loading',
     errorMsg: '',
     list: [],
-    unreadCount: 0
+    unreadCount: 0,
+    qaPanelOpen: false
+  },
+
+  toggleQaPanel() {
+    this.setData({ qaPanelOpen: !this.data.qaPanelOpen })
   },
 
   onShow() {
@@ -56,7 +63,13 @@ Page({
     try {
       const data = await get(API_PATHS.MATCH_LIST, {}, { showError: false })
       const raw = (data && (data.list || data.items)) || (Array.isArray(data) ? data : [])
-      const list = raw.map((item) => {
+      let seenId = ''
+      try {
+        seenId = String(wx.getStorageSync(SEEN_MATCH_KEY) || '')
+      } catch (storageErr) {
+        seenId = ''
+      }
+      const list = raw.map((item, index) => {
         const score = item.view_similarity !== null && item.view_similarity !== undefined
           ? item.view_similarity
           : item.compatibilityScore
@@ -77,7 +90,8 @@ Page({
           scoreText: score != null ? getCompatibilityDisplayText(score) : '',
           scoreColor: score != null ? getCompatibilityColor(score) : '',
           scoreTag: score != null ? getCompatibilityTagClass(score) : '',
-          testDataBadge: item.test_data_badge || ''
+          testDataBadge: item.test_data_badge || '',
+          isNew: index === 0 && String(item.id || item.matchId || '') !== seenId
         }
       })
       this.setData({

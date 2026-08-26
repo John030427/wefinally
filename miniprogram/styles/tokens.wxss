@@ -1,0 +1,58 @@
+/**
+ * WeFinally Design Tokens — Style A 轻奢柔粉
+ * WEFINALLY_UI_UX_REFACTOR_GOAL_V1 · Stage 2
+ * 规则：页面样式禁止硬编码新颜色，一律引用本文件 token。
+ * 本文件由 app.wxss @import 注入到 page 根，全部页面可用。
+ */
+page {
+  /* ===== color ===== */
+  --wf-primary: #E8637F;
+  --wf-primary-strong: #D14D6B;
+  --wf-primary-soft: #F9DEE4;
+  --wf-primary-soft-2: #FDF1F3;
+  --wf-primary-grad: linear-gradient(135deg, #E8637F, #F07A93);
+  --wf-bg: #FAF6F4;
+  --wf-card: #FFFFFF;
+  --wf-text-main: #3A2E2E;
+  --wf-text-sub: #8C7B7B;
+  --wf-text-hint: #B5A5A5;
+  --wf-success: #4CAF87;
+  --wf-success-soft: #E6F5EE;
+  --wf-warning: #E8A23D;
+  --wf-warning-soft: #FBF1E1;
+  --wf-danger: #D9534F;
+  --wf-danger-soft: #FBE9E8;
+  --wf-ai: #7B6CC8;
+  --wf-ai-soft: #EFEBFA;
+  --wf-border: #F0E4E4;
+  --wf-mask: rgba(58, 46, 46, 0.55);
+
+  /* ===== typography ===== */
+  --wf-fs-hero: 44rpx;
+  --wf-fs-h1: 36rpx;
+  --wf-fs-h2: 32rpx;
+  --wf-fs-body: 28rpx;
+  --wf-fs-caption: 24rpx;
+  --wf-fs-tiny: 20rpx;
+
+  /* ===== spacing (4/8/12/16/20/24/32 体系) ===== */
+  --wf-sp-1: 8rpx;
+  --wf-sp-2: 16rpx;
+  --wf-sp-3: 24rpx;
+  --wf-sp-4: 32rpx;
+  --wf-sp-5: 40rpx;
+  --wf-sp-6: 48rpx;
+  --wf-sp-7: 64rpx;
+
+  /* ===== radius ===== */
+  --wf-radius-sm: 12rpx;
+  --wf-radius-md: 16rpx;
+  --wf-radius-lg: 24rpx;
+  --wf-radius-xl: 32rpx;
+  --wf-radius-pill: 999rpx;
+
+  /* ===== shadow（轻、暖、无重投影） ===== */
+  --wf-shadow-card: 0 6rpx 24rpx rgba(214, 116, 140, 0.08);
+  --wf-shadow-float: 0 12rpx 40rpx rgba(214, 116, 140, 0.18);
+  --wf-shadow-cta: 0 8rpx 20rpx rgba(232, 99, 127, 0.28);
+}

@@ -1,0 +1,10 @@
+<view class="state-wrap">
+  <view class="state-badge">
+    <view class="wf-icon icon-xl {{icon || defaultIcon[type] || 'wf-icon-heart'}} state-badge-icon"></view>
+  </view>
+  <view class="state-title">{{title || defaultTitle[type] || '这里还是空的'}}</view>
+  <view class="state-desc" wx:if="{{desc}}">{{desc}}</view>
+  <view class="state-btn" wx:if="{{actionText || (defaultAction[type] && type !== 'empty')}}" bindtap="onAction">
+    {{actionText || defaultAction[type]}}
+  </view>
+</view>

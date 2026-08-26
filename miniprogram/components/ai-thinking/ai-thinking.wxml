@@ -1,0 +1,15 @@
+<view class="ai-thinking {{compact ? 'is-compact' : ''}}">
+  <view class="ai-thinking-visual" aria-hidden="true">
+    <view class="ai-thinking-ring"></view>
+    <view class="ai-thinking-dots">
+      <view class="ai-thinking-dot d1"></view>
+      <view class="ai-thinking-dot d2"></view>
+      <view class="ai-thinking-dot d3"></view>
+    </view>
+  </view>
+  <view class="ai-thinking-copy">
+    <text class="ai-thinking-text">{{text}}</text>
+    <text class="ai-thinking-label">{{label}}</text>
+  </view>
+  <view class="ai-disclaimer ai-thinking-note">🤖 AI 生成内容，仅供参考</view>
+</view>
