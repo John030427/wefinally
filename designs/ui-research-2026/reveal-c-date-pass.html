@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<!-- WeFinally UI Research 2026 · Direction C · reveal · 严禁用于正式小程序 -->
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WeFinally · You've Got a Date Pass（方向 C 原型）</title>
+<style>
+/* ============================================================
+   Direction C — DATE PASS / INVITATION TICKET · 出票瞬间
+   暗场 + 一张介绍函定格：奶油纸 × 油墨 × 印章朱红 × 服务台墨绿
+   ============================================================ */
+:root{
+  --night:#241C14;          /* 暗场底 */
+  --trackline:#4A4032;
+  --cream:#F1E9D8;          /* 票面奶油 */
+  --face:#FBF7EC;
+  --face-dim:#F2EBDA;
+  --paper-deep:#DFD3BB;
+  --ink:#2A2118;
+  --ink-2:#6B5D4B;
+  --ink-3:#A2937C;
+  --rule:#C7B899;
+  --hairline:#DDD0B4;
+  --red:#B93A24;
+  --red-lite:#D8502F;       /* 暗场上更亮的印章红 */
+  --red-halo:rgba(216,80,47,.28); /* 当前节点光晕 */
+  --red-deep:#962B18;
+  --red-wash:#F3DDD0;
+  --green:#33584A;
+  --green-deep:#25453A;
+  --green-wash:#E7ECDF;
+  --on-red:#FFF6EA;
+  --cream-dim:#C9BDA6;      /* 暗场次级文字 */
+  --faint:#877A64;          /* 暗场弱文字/描边 */
+  --cutout:var(--night);    /* 打孔露出暗场 */
+  --shadow-ticket:0 22px 44px rgba(0,0,0,.5);
+  --sans:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+  --mono:"SF Mono","Cascadia Mono",Consolas,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{
+  background:var(--night);
+  color:var(--cream);
+  font:400 14px/1.75 var(--sans);
+}
+.app{max-width:390px;margin:0 auto;}
+a{color:inherit;}
+a:focus-visible{outline:2px solid var(--red-lite);outline-offset:2px;}
+
+/* ---------- 报头 ---------- */
+.rhead{display:flex;justify-content:space-between;align-items:baseline;padding:16px 20px 10px;font:600 9px/1.6 var(--mono);letter-spacing:.22em;color:var(--cream-dim);}
+.rhead b{color:var(--cream);font-weight:700;}
+
+/* ---------- 出票流水线：行程时间线 ---------- */
+.track{margin:0 20px;display:grid;grid-template-columns:repeat(3,1fr);position:relative;padding-bottom:4px;}
+.track::before{content:"";position:absolute;top:5px;left:16.6%;right:16.6%;height:2px;background:var(--trackline);}
+.tstep{position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;gap:6px;}
+.tdot{width:12px;height:12px;border-radius:50%;border:2px solid var(--faint);background:var(--night);}
+.tdot.done{background:var(--cream-dim);border-color:var(--cream-dim);}
+.tdot.now{background:var(--red-lite);border-color:var(--red-lite);box-shadow:0 0 0 3px var(--red-halo);}
+.tstep b{font:600 9px/1.5 var(--sans);letter-spacing:.08em;color:var(--cream-dim);white-space:nowrap;}
+.tstep.hot b{color:var(--red-lite);}
+
+/* ---------- 标题 ---------- */
+.rtitle{padding:22px 20px 4px;}
+.rtitle h1{font:800 30px/1.32 var(--mono);letter-spacing:.05em;color:var(--cream);}
+.rtitle h1 .hot{color:var(--red-lite);}
+.rtitle p{margin-top:8px;font:500 12.5px/1.75 var(--sans);color:var(--cream-dim);text-wrap:pretty;}
+
+/* ---------- 下坠轨迹（出票滑入的定格暗示，纯静态） ---------- */
+.drop{display:flex;flex-direction:column;align-items:center;gap:5px;padding:10px 0 0;}
+.drop i{display:block;height:2px;background:var(--trackline);}
+.drop i:nth-child(1){width:52px;}
+.drop i:nth-child(2){width:32px;}
+.drop i:nth-child(3){width:16px;}
+.drop b{font:700 11px/1 var(--mono);color:var(--red-lite);}
+
+/* ============================================================
+   票券本体（微倾定格）
+   ============================================================ */
+.pass{
+  margin:10px 20px 0;position:relative;
+  transform:rotate(-1.4deg);
+  border:1.5px solid var(--ink);border-radius:8px;
+  background:var(--face);box-shadow:var(--shadow-ticket);
+}
+.band{
+  display:flex;align-items:baseline;gap:10px;
+  background:var(--ink);color:var(--face);
+  padding:11px 14px;border-radius:6.5px 6.5px 0 0;
+}
+.band .bt{font:700 13px/1 var(--mono);letter-spacing:.3em;}
+.band .bs{font:600 10px/1 var(--sans);letter-spacing:.2em;color:var(--paper-deep);}
+.band .bno{margin-left:auto;font:600 10px/1 var(--mono);letter-spacing:.1em;color:var(--red-wash);}
+
+.pgrid{display:grid;grid-template-columns:1fr 18px 96px;}
+.pmain{padding:16px 14px 14px 16px;min-width:0;}
+
+/* 头像窗 + 对象信息 */
+.idrow{display:flex;align-items:center;gap:14px;}
+.win{
+  position:relative;flex:none;width:88px;height:106px;display:grid;place-items:center;
+  background:var(--red-wash);border:1.5px solid var(--rule);
+  font:700 38px/1 var(--sans);color:var(--ink);
+}
+.win i{position:absolute;font-style:normal;}
+.win i.c1,.win i.c2{width:11px;height:11px;border:2px solid var(--ink-2);}
+.win i.c1{top:5px;left:5px;border-right:none;border-bottom:none;}
+.win i.c2{bottom:5px;right:5px;border-left:none;border-top:none;}
+.idt .nm{font:800 21px/1.4 var(--sans);color:var(--ink);letter-spacing:.04em;}
+.idt .nm .tag{
+  display:inline-block;vertical-align:3px;margin-left:8px;
+  font:700 8.5px/1 var(--mono);letter-spacing:.2em;text-indent:.2em;
+  color:var(--red);border:1.5px solid var(--red);border-radius:2px;padding:3px 4px 2px;
+}
+.idt .mt{margin-top:4px;font:600 10px/1.8 var(--mono);color:var(--ink-2);letter-spacing:.06em;}
+.idt .vf{margin-top:6px;font:600 9px/1.7 var(--sans);color:var(--ink-3);letter-spacing:.05em;}
+
+/* 共同点三行（票面附注） */
+.incommon{margin-top:14px;display:flex;align-items:baseline;gap:10px;}
+.incommon .en{flex:none;font:700 9.5px/1 var(--mono);letter-spacing:.24em;color:var(--ink-2);}
+.incommon .cn{font:600 9.5px/1 var(--sans);letter-spacing:.18em;color:var(--ink-3);}
+.incommon::after{content:"";flex:1;border-top:1px dashed var(--rule);transform:translateY(-3px);}
+.cpoints{list-style:none;margin-top:4px;}
+.cpoints li{
+  display:flex;align-items:center;gap:10px;min-height:42px;
+  border-bottom:1px dashed var(--hairline);
+  font:600 13px/1.65 var(--sans);color:var(--ink);
+}
+.cpoints li:last-child{border-bottom:none;}
+.cpoints .pic{flex:none;width:20px;text-align:center;font:700 13px/1 var(--mono);color:var(--red);}
+.cpoints .sub{margin-left:auto;flex:none;font:600 9px/1.7 var(--mono);color:var(--ink-3);letter-spacing:.08em;text-align:right;}
+.diffrow{
+  display:flex;align-items:center;gap:10px;min-height:36px;
+  font:500 11.5px/1.65 var(--sans);color:var(--ink-3);
+}
+.diffrow .pic{flex:none;width:20px;text-align:center;font:700 13px/1 var(--mono);color:var(--ink-3);}
+
+/* 打孔竖列 / 存根联 */
+.perfv{
+  background-image:radial-gradient(circle at 9px 9px,var(--cutout) 3.2px,transparent 3.9px);
+  background-size:18px 18px;background-repeat:repeat-y;background-position:center top;
+}
+.pstub{
+  background:var(--face-dim);
+  display:flex;flex-direction:column;align-items:center;justify-content:space-between;
+  padding:14px 9px;gap:10px;
+}
+.stamp{
+  position:relative;font:700 12px/1.5 var(--mono);letter-spacing:.22em;text-indent:.22em;
+  color:var(--red);border:2px solid var(--red);border-radius:3px;
+  padding:6px 7px 5px;transform:rotate(-9deg);opacity:.92;text-align:center;
+}
+.stamp::after{content:"";position:absolute;inset:2px;border:1px solid var(--red);border-radius:2px;opacity:.55;}
+.vertno{writing-mode:vertical-rl;font:600 9px/1 var(--mono);letter-spacing:.3em;color:var(--ink-3);}
+.barcode{
+  width:100%;height:24px;
+  background:
+    repeating-linear-gradient(90deg,var(--ink) 0 2px,transparent 2px 5px),
+    repeating-linear-gradient(90deg,var(--ink) 0 1px,transparent 1px 8px),
+    repeating-linear-gradient(90deg,var(--ink) 0 3px,transparent 3px 11px);
+}
+.serial{font:600 8px/1.6 var(--mono);letter-spacing:.14em;color:var(--ink-3);text-align:center;}
+
+/* 主 CTA：登机牌式满长条 */
+.cta{display:flex;align-items:stretch;border-top:1.5px solid var(--ink);text-decoration:none;}
+.cta::before{
+  content:"";flex:none;width:16px;
+  background:repeating-linear-gradient(135deg,var(--on-red) 0 4px,transparent 4px 9px);
+  background-color:var(--red-deep);opacity:.85;
+}
+.cta-btn{
+  flex:1;display:flex;align-items:center;justify-content:center;gap:10px;
+  min-height:58px;background:var(--red);color:var(--on-red);
+  font:800 17px/1 var(--sans);letter-spacing:.12em;
+  transition:background .15s;
+}
+.cta:hover .cta-btn{background:var(--red-deep);}
+.cta .ar{font:700 15px/1 var(--mono);}
+
+/* 撕裂打孔线 + 回执联 */
+.tearzone{position:relative;}
+.perfh{
+  height:16px;
+  background-image:radial-gradient(circle at 8px 8px,var(--cutout) 3.2px,transparent 3.9px);
+  background-size:16px 16px;background-repeat:repeat-x;background-position:left center;
+}
+.tearzone::before,.tearzone::after{
+  content:"";position:absolute;top:50%;width:20px;height:20px;border-radius:50%;
+  background:var(--cutout);transform:translateY(-50%);
+}
+.tearzone::before{left:-11px;}
+.tearzone::after{right:-11px;}
+.receipt{
+  display:flex;align-items:center;gap:8px;
+  background:var(--face-dim);padding:9px 14px;
+  border-top:1px dashed var(--rule);border-radius:0 0 6.5px 6.5px;
+}
+.receipt .rk{font:700 10px/1 var(--mono);color:var(--red);}
+.receipt .rt{font:600 9.5px/1.6 var(--sans);color:var(--ink-2);letter-spacing:.05em;}
+.receipt .rn{margin-left:auto;font:600 8.5px/1 var(--mono);letter-spacing:.14em;color:var(--ink-3);}
+
+/* ---------- CONCIERGE 服务台注记（钉在票下） ---------- */
+.note{
+  margin:20px 20px 0;transform:rotate(.6deg);
+  background:var(--green-wash);border:1.5px dashed var(--green);border-radius:4px;
+  padding:12px 14px;color:var(--ink);
+}
+.note-h{display:flex;align-items:center;gap:8px;font:700 10px/1.6 var(--mono);letter-spacing:.14em;color:var(--green-deep);}
+.note-h .bot{flex:none;width:26px;height:26px;display:grid;place-items:center;border:1.5px solid var(--green-deep);border-radius:3px;font-size:13px;}
+.note q{display:block;margin-top:8px;font:600 13.5px/1.75 var(--sans);quotes:「」;text-wrap:pretty;}
+.note em{display:block;margin-top:8px;font:500 9px/1.7 var(--sans);font-style:normal;color:var(--ink-2);text-wrap:pretty;}
+
+/* ---------- 动作区 ---------- */
+.acts{padding:22px 20px 0;display:flex;flex-direction:column;gap:12px;}
+.primary{
+  display:flex;align-items:stretch;text-decoration:none;
+  border:1.5px solid var(--red-deep);border-radius:3px;overflow:hidden;
+}
+.primary::before{
+  content:"";flex:none;width:16px;
+  background:repeating-linear-gradient(135deg,var(--on-red) 0 4px,transparent 4px 9px);
+  background-color:var(--red-deep);opacity:.85;
+}
+.primary b{
+  flex:1;display:flex;align-items:center;justify-content:center;gap:10px;
+  min-height:58px;background:var(--red);color:var(--on-red);
+  font:800 17px/1 var(--sans);letter-spacing:.12em;transition:background .15s;
+}
+.primary:hover b{background:var(--red-deep);}
+.primary .ar{font:700 15px/1 var(--mono);}
+.ghost{
+  min-height:48px;display:grid;place-items:center;
+  border:1.5px solid var(--faint);border-radius:3px;
+  color:var(--cream-dim);font:600 13px/1 var(--sans);letter-spacing:.3em;text-indent:.3em;
+  text-decoration:none;transition:border-color .15s,color .15s;
+}
+.ghost:hover{border-color:var(--cream-dim);color:var(--cream);}
+
+/* ---------- 票背条款 ---------- */
+.terms{margin:28px 20px 0;border-top:1px solid var(--trackline);padding-top:12px;}
+.terms h2{font:700 9px/1.6 var(--mono);letter-spacing:.28em;color:var(--faint);}
+.terms p{margin-top:7px;font:500 10.5px/1.85 var(--sans);color:var(--cream-dim);text-wrap:pretty;}
+.terms p b{color:var(--cream-dim);font-family:var(--mono);font-weight:700;margin-right:6px;}
+
+/* ---------- 页脚 ---------- */
+.rfoot{
+  display:flex;justify-content:space-between;align-items:baseline;
+  padding:24px 20px 30px;
+  font:600 8.5px/1.7 var(--mono);letter-spacing:.2em;color:var(--faint);
+}
+.rfoot b{color:var(--cream-dim);font-weight:700;}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header class="rhead">
+    <span><b>WEFINALLY</b> ▪ TICKET OFFICE</span>
+    <span>ISSUE 流水 ISS-2607-C08</span>
+  </header>
+
+  <!-- 出票流水线 -->
+  <ol class="track" aria-label="出票流程">
+    <li class="tstep"><span class="tdot done"></span><b>匹配建立</b></li>
+    <li class="tstep"><span class="tdot done"></span><b>人工复核 · 霞姐团队</b></li>
+    <li class="tstep hot"><span class="tdot now"></span><b>出票完成</b></li>
+  </ol>
+
+  <!-- 标题 -->
+  <section class="rtitle">
+    <h1>YOU'VE GOT<br>A <span class="hot">DATE PASS</span></h1>
+    <p>一封新的介绍函已为你出票。先看看为什么值得赴约，再决定要不要去——不去也没关系。</p>
+  </section>
+
+  <!-- 下坠轨迹：滑入定格暗示 -->
+  <div class="drop" role="presentation"><i></i><i></i><i></i><b>▾</b></div>
+
+  <!-- ===== 票券 ===== -->
+  <article class="pass" aria-label="林亦辰的介绍函票券">
+    <div class="band">
+      <span class="bt">DATE&nbsp;PASS</span>
+      <span class="bs">介绍函 · 新出票</span>
+      <span class="bno">NO.&nbsp;WF-C08</span>
+    </div>
+
+    <div class="pgrid">
+      <!-- 主联 -->
+      <div class="pmain">
+        <div class="idrow">
+          <span class="win"><i class="c1"></i><i class="c2"></i>林</span>
+          <div class="idt">
+            <div class="nm">林亦辰<span class="tag">NEW ISSUE</span></div>
+            <div class="mt">AGE 31 · ARCHITECT<br>深圳 · 福田</div>
+            <div class="vf">身份与职业已经协调员核实</div>
+          </div>
+        </div>
+
+        <div class="incommon"><span class="en">IN COMMON</span><span class="cn">共同点 · 三条</span></div>
+        <ul class="cpoints">
+          <li><span class="pic">▲</span>都走过一段 EBC 的徒步人<span class="sub">HIKE</span></li>
+          <li><span class="pic">◆</span>胶片相机：Contax T2 × Nikon FM2<span class="sub">FILM</span></li>
+          <li><span class="pic">●</span>周末总在找好吃的日料<span class="sub">FOOD</span></li>
+        </ul>
+        <div class="diffrow"><span class="pic">▫</span>节奏互补：他偏宅家看片，你偏市集漫游</div>
+      </div>
+
+      <!-- 打孔竖列 -->
+      <div class="perfv" role="presentation"></div>
+
+      <!-- 存根联 -->
+      <div class="pstub">
+        <span class="stamp">已出票<br>ISSUED</span>
+        <span class="vertno">PASS WF-C08</span>
+        <span class="barcode" role="presentation"></span>
+        <span class="serial">ADMIT TWO<br>仅限一次介绍</span>
+      </div>
+    </div>
+
+    <!-- 主 CTA -->
+    <a class="cta" href="#why-c08">
+      <span class="cta-btn">查看为什么值得赴约<span class="ar">▸▸</span></span>
+    </a>
+
+    <!-- 撕裂打孔线 -->
+    <div class="tearzone"><div class="perfh" role="presentation"></div></div>
+
+    <!-- 回执联 -->
+    <div class="receipt">
+      <span class="rk">◆</span>
+      <span class="rt">官方出具 · 仅限本人使用 · 请在赴约前完成确认</span>
+      <span class="rn">C08</span>
+    </div>
+  </article>
+
+  <!-- CONCIERGE 服务台注记 -->
+  <aside class="note" aria-label="AI 协调员注记">
+    <div class="note-h"><span class="bot">🤖</span>WEFINALLY CONCIERGE · 服务台注记</div>
+    <q>你们的生活节奏像两条平行线，在周末交汇。</q>
+    <em>🤖 AI 生成内容，仅供参考。基于双方资料与历史约会反馈综合判断，非打分制。</em>
+  </aside>
+
+  <!-- 动作区 -->
+  <div class="acts">
+    <a class="primary" href="#why-c08"><b>查看为什么值得赴约<span class="ar">▸▸</span></b></a>
+    <a class="ghost" href="#later">稍后再看</a>
+  </div>
+
+  <!-- 票背条款 -->
+  <footer class="terms">
+    <h2>TERMS ON REVERSE · 票背条款</h2>
+    <p><b>01</b>介绍函不含双方联系方式；个人信息由官方协调员转达，不建立私聊。</p>
+    <p><b>02</b>如需改期或婉拒，请联系服务台，无需说明理由，也不影响后续介绍。</p>
+    <p><b>03</b>初次见面建议选择公共场所，并把行程告知亲友。</p>
+  </footer>
+
+  <div class="rfoot">
+    <span><b>WEFINALLY</b> TICKET OFFICE</span>
+    <span>OFFLINE FIRST · 认真奔赴</span>
+  </div>
+
+</div>
+</body>
+</html>

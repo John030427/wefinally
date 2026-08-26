@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<!-- WeFinally UI Research 2026 · Direction C · home · 严禁用于正式小程序 -->
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WeFinally · Date Pass · 首页（方向 C 原型）</title>
+<style>
+/* ============================================================
+   Direction C — DATE PASS / INVITATION TICKET
+   纸质介绍函语言：奶油纸 × 油墨 × 印章朱红 × 服务台墨绿
+   ============================================================ */
+:root{
+  /* paper & ink */
+  --paper:#EDE4D2;          /* 页面：牛皮纸暖米 */
+  --paper-deep:#DFD3BB;
+  --face:#FBF7EC;           /* 票面 */
+  --face-dim:#F2EBDA;       /* 票面副层/存根 */
+  --ink:#2A2118;            /* 油墨黑棕 */
+  --ink-2:#6B5D4B;
+  --ink-3:#A2937C;
+  --rule:#C7B899;
+  --hairline:#DDD0B4;
+  /* stamps */
+  --red:#B93A24;            /* 印章朱红 */
+  --red-deep:#962B18;
+  --red-wash:#F3DDD0;
+  --green:#33584A;          /* 服务台墨绿 */
+  --green-deep:#25453A;
+  --on-green:#EDF2E8;
+  --grey-stamp:#8B7E6D;     /* 本次未成 */
+  --ink-4:#8D7F69;          /* 暗底导航弱文字 */
+  --on-red:#FFF6EA;
+  /* structure */
+  --cutout:var(--paper);    /* 打孔露出的底色 */
+  --shadow-ticket:0 14px 28px rgba(42,33,24,.16);
+  --shadow-soft:0 5px 14px rgba(42,33,24,.10);
+  /* type */
+  --sans:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+  --mono:"SF Mono","Cascadia Mono",Consolas,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html{-webkit-text-size-adjust:100%;}
+body{
+  background:var(--paper);
+  color:var(--ink);
+  font:400 14px/1.75 var(--sans);
+}
+.app{max-width:390px;margin:0 auto;}
+a{color:inherit;}
+a:focus-visible{outline:2px solid var(--red);outline-offset:2px;}
+
+/* ---------- 报头：票务服务处 ---------- */
+.mast{display:flex;align-items:center;gap:10px;padding:16px 20px 12px;}
+.brand{
+  font:700 14px/1 var(--mono);letter-spacing:.22em;text-indent:.22em;
+  border:2px solid var(--ink);background:var(--face);
+  padding:7px 8px 6px;box-shadow:2px 2px 0 var(--ink);
+}
+.mast-cn{font:600 10.5px/1.6 var(--sans);color:var(--ink-2);letter-spacing:.08em;}
+.mast-no{margin-left:auto;text-align:right;font:600 9px/1.7 var(--mono);color:var(--ink-3);letter-spacing:.14em;}
+.rules{margin:0 20px;height:5px;border-top:2px solid var(--ink);border-bottom:1px solid var(--ink);}
+
+/* ---------- 分节标签：等宽 + 点线引导 ---------- */
+.slab{display:flex;align-items:baseline;gap:10px;padding:24px 20px 10px;}
+.slab .en{font:700 11px/1 var(--mono);letter-spacing:.24em;}
+.slab .cn{font:600 10.5px/1 var(--sans);color:var(--ink-3);letter-spacing:.18em;}
+.slab::after{content:"";flex:1;border-top:1px dashed var(--rule);transform:translateY(-3px);}
+
+/* ============================================================
+   主票券 DATE PASS —— 头带 / 主联 | 打孔列 | 存根联 / 主CTA / 撕裂打孔 / 回执联
+   ============================================================ */
+.pass{
+  margin:0 20px;position:relative;
+  border:1.5px solid var(--ink);border-radius:8px;
+  background:var(--face);box-shadow:var(--shadow-ticket);
+}
+.band{
+  display:flex;align-items:baseline;gap:10px;
+  background:var(--ink);color:var(--face);
+  padding:10px 14px;border-radius:6.5px 6.5px 0 0;
+}
+.band .bt{font:700 13px/1 var(--mono);letter-spacing:.3em;}
+.band .bs{font:600 10px/1 var(--sans);letter-spacing:.22em;color:var(--paper-deep);}
+.band .bno{margin-left:auto;font:600 10px/1 var(--mono);letter-spacing:.12em;color:var(--red-wash);}
+
+.pgrid{display:grid;grid-template-columns:1fr 18px 112px;}
+.pmain{padding:16px 14px 14px 16px;min-width:0;}
+
+/* 人物头像窗（几何 monogram + 相片角贴） */
+.who{display:flex;align-items:flex-end;gap:10px;}
+.fig{display:flex;flex-direction:column;align-items:center;gap:6px;}
+.win{
+  position:relative;display:grid;place-items:center;
+  background:var(--red-wash);border:1.5px solid var(--rule);
+  font:700 32px/1 var(--sans);color:var(--ink);
+}
+.win.holder{width:54px;height:66px;font-size:23px;background:var(--face-dim);}
+.win.guest{width:74px;height:90px;}
+.win i{position:absolute;font-style:normal;}
+.win i.c1,.win i.c2{width:10px;height:10px;border:2px solid var(--ink-2);}
+.win i.c1{top:4px;left:4px;border-right:none;border-bottom:none;}
+.win i.c2{bottom:4px;right:4px;border-left:none;border-top:none;}
+.fig figcaption{font:600 8.5px/1.5 var(--mono);letter-spacing:.16em;color:var(--ink-3);}
+.xmark{align-self:flex-end;padding:0 2px 40px;font:700 12px/1 var(--mono);color:var(--red);}
+.whonote{margin-left:auto;align-self:flex-end;text-align:right;font:600 9.5px/1.8 var(--mono);color:var(--ink-3);letter-spacing:.1em;}
+
+/* 时间表：等宽大数字 */
+.times{margin-top:14px;display:flex;flex-direction:column;}
+.trow{display:flex;align-items:baseline;gap:10px;min-height:34px;}
+.tlab{flex:none;width:92px;font:600 9.5px/1.6 var(--mono);letter-spacing:.14em;color:var(--ink-3);}
+.tval{font:700 27px/1 var(--mono);letter-spacing:.02em;}
+.tval.prop{color:var(--red);}
+.tdow{font:600 12px/1 var(--sans);color:var(--ink-2);letter-spacing:.1em;}
+.chip{
+  margin-left:auto;font:700 9.5px/1 var(--mono);letter-spacing:.2em;text-indent:.2em;
+  color:var(--red);border:1.5px solid var(--red);border-radius:2px;padding:4px 6px 3px;
+}
+
+/* 地点 */
+.venue{margin-top:13px;padding-top:12px;border-top:1px dashed var(--rule);display:flex;align-items:baseline;gap:8px;}
+.vpin{font:700 12px/1 var(--mono);color:var(--red);}
+.vname{font:800 19px/1.3 var(--sans);letter-spacing:.06em;}
+.vsub{margin-left:auto;text-align:right;font:600 9px/1.7 var(--mono);color:var(--ink-3);letter-spacing:.12em;}
+
+/* 协调进度：行程时间线（点 + 接线） */
+.steps{margin-top:14px;display:grid;grid-template-columns:repeat(4,1fr);position:relative;}
+.steps::before{content:"";position:absolute;top:4.5px;left:12.5%;right:12.5%;height:2px;background:var(--hairline);}
+.step{position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;gap:6px;}
+.dot{width:11px;height:11px;border-radius:50%;border:2px solid var(--ink-3);background:var(--face);}
+.dot.done{background:var(--ink-2);border-color:var(--ink-2);}
+.dot.now{background:var(--red);border-color:var(--red);box-shadow:0 0 0 3px var(--red-wash);}
+.step b{font:600 9px/1.4 var(--sans);color:var(--ink-2);letter-spacing:.06em;white-space:nowrap;}
+.step.hot b{color:var(--red);}
+
+/* 打孔竖列（radial-gradient 圆点列） */
+.perfv{
+  background-image:radial-gradient(circle at 9px 9px,var(--cutout) 3.2px,transparent 3.9px);
+  background-size:18px 18px;background-repeat:repeat-y;background-position:center top;
+}
+
+/* 存根联 */
+.pstub{
+  background:var(--face-dim);
+  display:flex;flex-direction:column;align-items:center;justify-content:space-between;
+  padding:14px 10px;gap:10px;
+}
+.stamp{
+  position:relative;font:700 12.5px/1 var(--mono);letter-spacing:.3em;text-indent:.3em;
+  color:var(--red);border:2px solid var(--red);border-radius:3px;
+  padding:7px 8px 6px;transform:rotate(-8deg);opacity:.9;
+}
+.stamp::after{content:"";position:absolute;inset:2px;border:1px solid var(--red);border-radius:2px;opacity:.55;}
+.stamp.sm{font-size:10px;letter-spacing:.2em;text-indent:.2em;padding:5px 6px 4px;}
+.stamp.grey{color:var(--grey-stamp);border-color:var(--grey-stamp);}
+.stamp.grey::after{border-color:var(--grey-stamp);}
+.stamp.green{color:var(--green);border-color:var(--green);}
+.stamp.green::after{border-color:var(--green);}
+.vertno{writing-mode:vertical-rl;font:600 9px/1 var(--mono);letter-spacing:.32em;color:var(--ink-3);}
+.barcode{
+  width:100%;height:24px;
+  background:
+    repeating-linear-gradient(90deg,var(--ink) 0 2px,transparent 2px 5px),
+    repeating-linear-gradient(90deg,var(--ink) 0 1px,transparent 1px 8px),
+    repeating-linear-gradient(90deg,var(--ink) 0 3px,transparent 3px 11px);
+}
+.serial{font:600 8px/1.5 var(--mono);letter-spacing:.18em;color:var(--ink-3);text-align:center;}
+
+/* 主 CTA：登机牌式满长条（票宽通栏） */
+.cta{display:flex;align-items:stretch;border-top:1.5px solid var(--ink);text-decoration:none;}
+.cta::before{
+  content:"";flex:none;width:16px;
+  background:repeating-linear-gradient(135deg,var(--on-red) 0 4px,transparent 4px 9px);
+  background-color:var(--red-deep);opacity:.85;
+}
+.cta-btn{
+  flex:1;display:flex;align-items:center;justify-content:center;gap:10px;
+  min-height:56px;background:var(--red);color:var(--on-red);
+  font:800 16px/1 var(--sans);letter-spacing:.14em;
+  transition:background .15s;
+}
+.cta:hover .cta-btn{background:var(--red-deep);}
+.cta .ar{font:700 14px/1 var(--mono);letter-spacing:.1em;}
+
+/* 撕裂线：radial-gradient 打孔横列 + 两侧半圆缺口 */
+.tearzone{position:relative;}
+.perfh{
+  height:16px;
+  background-image:radial-gradient(circle at 8px 8px,var(--cutout) 3.2px,transparent 3.9px);
+  background-size:16px 16px;background-repeat:repeat-x;background-position:left center;
+}
+.tearzone::before,.tearzone::after{
+  content:"";position:absolute;top:50%;width:20px;height:20px;border-radius:50%;
+  background:var(--cutout);transform:translateY(-50%);
+}
+.tearzone::before{left:-11px;}
+.tearzone::after{right:-11px;}
+
+/* 回执联 */
+.receipt{
+  display:flex;align-items:center;gap:8px;
+  background:var(--face-dim);padding:9px 14px;
+  border-top:1px dashed var(--rule);border-radius:0 0 6.5px 6.5px;
+}
+.receipt .rk{font:700 10px/1 var(--mono);color:var(--red);}
+.receipt .rt{font:600 10px/1.6 var(--sans);color:var(--ink-2);letter-spacing:.06em;}
+.receipt .rn{margin-left:auto;font:600 8.5px/1 var(--mono);letter-spacing:.16em;color:var(--ink-3);}
+
+/* ============================================================
+   新票待领取（虚线函套）
+   ============================================================ */
+.claim{
+  position:relative;margin:0 20px;
+  border:1.5px dashed var(--ink-2);border-radius:6px;
+  background:var(--face);box-shadow:var(--shadow-soft);
+}
+.claim-flag{
+  position:absolute;top:-9px;left:14px;
+  background:var(--red);color:var(--on-red);
+  font:700 9px/1 var(--mono);letter-spacing:.24em;text-indent:.24em;
+  padding:4px 8px 3px;
+}
+.claim-row{display:flex;align-items:center;gap:12px;padding:16px 14px 8px;}
+.win.mini{width:46px;height:56px;font-size:21px;background:var(--face-dim);}
+.cname{font:800 16.5px/1.4 var(--sans);letter-spacing:.04em;}
+.cname .tag{
+  display:inline-block;vertical-align:2px;margin-left:8px;
+  font:700 8.5px/1 var(--mono);letter-spacing:.18em;text-indent:.18em;
+  color:var(--ink-2);border:1px solid var(--ink-3);border-radius:2px;padding:3px 4px 2px;
+}
+.cmeta{font:600 10px/1.8 var(--mono);color:var(--ink-2);letter-spacing:.08em;}
+.cteaser{margin-left:auto;text-align:right;font:600 9px/1.8 var(--mono);color:var(--ink-3);letter-spacing:.08em;}
+.claim-btn{
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
+  margin:6px 14px 14px;min-height:44px;padding:0 14px;
+  border:1.5px solid var(--ink);border-radius:3px;background:var(--face-dim);
+  font:700 13px/1 var(--sans);letter-spacing:.16em;text-decoration:none;color:var(--ink);
+  transition:background .15s,color .15s;
+}
+.claim-btn .ar{font:700 13px/1 var(--mono);}
+.claim-btn:hover{background:var(--ink);color:var(--face);}
+
+/* ============================================================
+   WEFINALLY CONCIERGE 服务台
+   ============================================================ */
+.desk{
+  margin:0 20px;display:flex;align-items:center;gap:12px;
+  min-height:76px;padding:12px 14px;text-decoration:none;
+  background:var(--green);color:var(--on-green);
+  border:1.5px solid var(--green-deep);border-radius:4px;
+  box-shadow:var(--shadow-soft);transition:background .15s;
+}
+.desk:hover{background:var(--green-deep);}
+.desk-bot{
+  flex:none;width:44px;height:44px;display:grid;place-items:center;
+  border:1.5px solid var(--on-green);border-radius:3px;font-size:19px;
+}
+.desk-t{min-width:0;}
+.desk-t b{display:block;font:700 11.5px/1.4 var(--mono);letter-spacing:.14em;}
+.desk-t span{display:block;margin-top:2px;font:600 12px/1.7 var(--sans);text-wrap:pretty;}
+.desk-t em{display:block;margin-top:2px;font:500 9px/1.6 var(--sans);font-style:normal;opacity:.78;}
+.desk .go{margin-left:auto;flex:none;font:700 16px/1 var(--mono);}
+
+/* ============================================================
+   存根档案
+   ============================================================ */
+.stubs{margin:0 20px;border-top:1.5px solid var(--ink);}
+.stub{
+  display:flex;align-items:center;gap:12px;
+  min-height:64px;padding:10px 2px;border-bottom:1px solid var(--hairline);
+}
+.s-no{flex:none;width:66px;font:700 9.5px/1.7 var(--mono);color:var(--ink-3);letter-spacing:.1em;}
+.s-name{font:800 15px/1.4 var(--sans);letter-spacing:.04em;}
+.s-sub{display:block;font:600 9.5px/1.7 var(--sans);color:var(--ink-3);letter-spacing:.05em;}
+.stub .stamp{margin-left:auto;flex:none;}
+.micro{padding:10px 20px 0;font:500 10px/1.8 var(--sans);color:var(--ink-3);text-wrap:pretty;}
+
+/* ---------- 页脚 + 票务导航 ---------- */
+.office{
+  display:flex;justify-content:space-between;align-items:baseline;
+  padding:20px 20px 12px;
+  font:600 8.5px/1.6 var(--mono);letter-spacing:.22em;color:var(--ink-3);
+}
+.tabrail .perfh{background-color:var(--ink);}
+.tabs{display:flex;background:var(--ink);}
+.tab{
+  flex:1;min-height:58px;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:4px;
+  text-decoration:none;color:var(--paper-deep);position:relative;
+}
+.tab b{font:700 12.5px/1 var(--sans);letter-spacing:.14em;}
+.tab i{font:500 8px/1 var(--mono);letter-spacing:.2em;font-style:normal;color:var(--ink-4);}
+.tab.on{color:var(--face);}
+.tab.on::before{content:"";position:absolute;top:0;left:16%;right:16%;height:3px;background:var(--red);}
+.tab.on b::before{content:"● ";font-size:8px;color:var(--red-wash);vertical-align:2px;}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- 报头 -->
+  <header class="mast">
+    <span class="brand">WEFINALLY</span>
+    <span class="mast-cn">认真婚恋<br>线下介绍 · 票务服务处</span>
+    <span class="mast-no">MEMBER NO.0921<br>陈晓雯 · 29</span>
+  </header>
+  <div class="rules" role="presentation"></div>
+
+  <main>
+    <!-- ===== 当前 DATE PASS ===== -->
+    <div class="slab"><span class="en">YOUR NEXT INTRODUCTION</span><span class="cn">下一次介绍</span></div>
+
+    <article class="pass" aria-label="当前 Date Pass 票券">
+      <div class="band">
+        <span class="bt">DATE&nbsp;PASS</span>
+        <span class="bs">介绍函 · 凭函赴会</span>
+        <span class="bno">NO.&nbsp;WF-B04</span>
+      </div>
+
+      <div class="pgrid">
+        <!-- 主联 -->
+        <div class="pmain">
+          <div class="who">
+            <figure class="fig">
+              <span class="win holder"><i class="c1"></i><i class="c2"></i>陈</span>
+              <figcaption>HOLDER 持票人</figcaption>
+            </figure>
+            <span class="xmark">◆</span>
+            <figure class="fig">
+              <span class="win guest"><i class="c1"></i><i class="c2"></i>周</span>
+              <figcaption>GUEST 受邀人</figcaption>
+            </figure>
+            <span class="whonote">陈晓雯 × 周牧遥<br>双方均已同意介绍</span>
+          </div>
+
+          <div class="times">
+            <div class="trow">
+              <span class="tlab">原定 ORIG.</span>
+              <b class="tval">14:30</b>
+              <span class="tdow">周六 SAT</span>
+            </div>
+            <div class="trow">
+              <span class="tlab">对方提议 PROP.</span>
+              <b class="tval prop">15:00</b>
+              <span class="chip">待确认</span>
+            </div>
+          </div>
+
+          <div class="venue">
+            <span class="vpin">◆</span>
+            <span class="vname">南头古城</span>
+            <span class="vsub">NANTOU ANCIENT CITY<br>深圳 · 南山</span>
+          </div>
+
+          <div class="steps" aria-label="协调进度">
+            <div class="step"><span class="dot done"></span><b>匹配建立</b></div>
+            <div class="step"><span class="dot done"></span><b>双方同意</b></div>
+            <div class="step hot"><span class="dot now"></span><b>时间协商</b></div>
+            <div class="step"><span class="dot"></span><b>如约见面</b></div>
+          </div>
+        </div>
+
+        <!-- 打孔竖列 -->
+        <div class="perfv" role="presentation"></div>
+
+        <!-- 存根联 -->
+        <div class="pstub">
+          <span class="stamp">协调中</span>
+          <span class="vertno">PASS WF-B04</span>
+          <span class="barcode" role="presentation"></span>
+          <span class="serial">WF·2026·B04<br>ADMIT TWO</span>
+        </div>
+      </div>
+
+      <!-- 主 CTA：确认对方的改期提议 -->
+      <a class="cta" href="#confirm-slot">
+        <span class="cta-btn">确认改到 15:00<span class="ar">▸▸</span></span>
+      </a>
+
+      <!-- 撕裂打孔线 -->
+      <div class="tearzone"><div class="perfh" role="presentation"></div></div>
+
+      <!-- 回执联 -->
+      <div class="receipt">
+        <span class="rk">◆</span>
+        <span class="rt">回执联 · 到场请向现场协调员出示</span>
+        <span class="rn">SAT PM</span>
+      </div>
+    </article>
+
+    <!-- ===== 新票待领取 ===== -->
+    <div class="slab"><span class="en">NEW PASS TO CLAIM</span><span class="cn">新票待领取</span></div>
+
+    <section class="claim" aria-label="新 Date Pass 待领取">
+      <span class="claim-flag">NEW PASS</span>
+      <div class="claim-row">
+        <span class="win mini"><i class="c1"></i><i class="c2"></i>林</span>
+        <div>
+          <div class="cname">林亦辰<span class="tag">新匹配</span></div>
+          <div class="cmeta">31 · 建筑师 · 深圳福田</div>
+        </div>
+        <span class="cteaser">IN COMMON ×3<br>领取后查看</span>
+      </div>
+      <a class="claim-btn" href="#claim-c08">领取这张介绍函<span class="ar">▸</span></a>
+    </section>
+
+    <!-- ===== CONCIERGE 服务台 ===== -->
+    <div class="slab"><span class="en">CONCIERGE DESK</span><span class="cn">服务台</span></div>
+
+    <a class="desk" href="#desk">
+      <span class="desk-bot">🤖</span>
+      <span class="desk-t">
+        <b>WEFINALLY CONCIERGE</b>
+        <span>1 条新建议：关于周六 15:00 的时间调整</span>
+        <em>🤖 AI 生成内容，仅供参考 · 可随时转人工协调员</em>
+      </span>
+      <span class="go">▸</span>
+    </a>
+
+    <!-- ===== 存根档案 ===== -->
+    <div class="slab"><span class="en">STUB ARCHIVE</span><span class="cn">过往存根</span></div>
+
+    <section class="stubs" aria-label="过往票据存根">
+      <div class="stub">
+        <span class="s-no">NO.<br>WF-A11</span>
+        <div>
+          <div class="s-name">赵屹然</div>
+          <span class="s-sub">上次介绍未达成 · 已由协调员归档</span>
+        </div>
+        <span class="stamp sm grey">本次未成</span>
+      </div>
+      <div class="stub">
+        <span class="s-no">NO.<br>WF-B04</span>
+        <div>
+          <div class="s-name">周牧遥</div>
+          <span class="s-sub">即上方票面之安排 · 进行中</span>
+        </div>
+        <span class="stamp sm green">已有安排</span>
+      </div>
+    </section>
+    <p class="micro">存根仅本人可见，不影响后续介绍安排。</p>
+
+    <div class="office">
+      <span>WEFINALLY TICKET OFFICE</span>
+      <span>SHENZHEN · 2026</span>
+    </div>
+  </main>
+
+  <!-- 票务风底部导航 -->
+  <nav class="tabrail" aria-label="底部导航">
+    <div class="perfh" role="presentation"></div>
+    <div class="tabs">
+      <a class="tab on" href="#wallet"><b>票夹</b><i>WALLET</i></a>
+      <a class="tab" href="#new"><b>新票</b><i>NEW</i></a>
+      <a class="tab" href="#coord"><b>协调</b><i>COORD</i></a>
+      <a class="tab" href="#desk"><b>服务台</b><i>DESK</i></a>
+      <a class="tab" href="#me"><b>我的</b><i>ME</i></a>
+    </div>
+  </nav>
+
+</div>
+</body>
+</html>
