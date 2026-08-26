@@ -1,28 +1,21 @@
 <view class="profile-page container">
-  <block wx:if="{{pageState === 'loading'}}">
-    <view class="state-wrap">
-      <view class="state-icon">⏳</view>
-      <view class="state-text">正在加载...</view>
-    </view>
-  </block>
-
-  <block wx:elif="{{pageState === 'no-network'}}">
-    <view class="state-wrap">
-      <view class="state-icon">📡</view>
-      <view class="state-text">网络不可用</view>
-      <view class="state-btn" bindtap="onRetry">重新加载</view>
-    </view>
-  </block>
-
-  <block wx:elif="{{pageState === 'error'}}">
-    <view class="state-wrap">
-      <view class="state-icon">⚠️</view>
-      <view class="state-text">{{errorMsg}}</view>
-      <view class="state-btn" bindtap="onRetry">重试</view>
-    </view>
-  </block>
+  <state-view wx:if="{{pageState === 'loading'}}" type="loading" />
+  <state-view
+    wx:elif="{{pageState === 'no-network'}}"
+    type="network"
+    desc="请检查网络后重新加载"
+    bind:action="onRetry"
+  />
+  <state-view
+    wx:elif="{{pageState === 'error'}}"
+    type="error"
+    title="加载失败了"
+    desc="{{errorMsg}}"
+    bind:action="onRetry"
+  />
 
   <block wx:else>
+    <!-- 个人卡 -->
     <view class="user-card card">
       <view class="user-header">
         <view class="user-avatar-text">{{userInfo.display.gender || '用'}}</view>
@@ -35,12 +28,16 @@
           </view>
           <view class="user-meta">{{userInfo.display.city}} · {{userInfo.display.education}}</view>
           <view class="user-meta">{{userInfo.display.circleName}} · {{userInfo.display.babyPlan}}</view>
-          <view class="user-edit-link" bindtap="editBaseProfile">编辑 ›</view>
+          <view class="user-edit-link" bindtap="editBaseProfile" hover-class="user-edit-link-pressed">
+            <view class="wf-icon wf-icon-edit icon-sm user-edit-icon"></view>
+            <text>编辑资料</text>
+          </view>
           <view class="user-support-code">用户ID {{userInfo.support_code || '正在分配'}}</view>
         </view>
       </view>
     </view>
 
+    <!-- 资料就绪度：被理解的前提 -->
     <view class="readiness-card card" wx:if="{{readiness}}">
       <view class="readiness-head">
         <view>
@@ -56,14 +53,18 @@
         缺失：{{readiness.missingText}}
       </view>
       <view class="readiness-actions" wx:if="{{!readiness.isComplete}}">
-        <view class="readiness-action" bindtap="editBaseProfile">完善基本资料</view>
-        <view class="readiness-action secondary" bindtap="editMatchProfile">完善择偶与价值观</view>
+        <view class="readiness-action" bindtap="editBaseProfile" hover-class="user-edit-link-pressed">完善基本资料</view>
+        <view class="readiness-action secondary" bindtap="editMatchProfile" hover-class="user-edit-link-pressed">完善择偶与价值观</view>
       </view>
       <view class="readiness-ready" wx:else>资料会用于硬性筛选和双向评分，你可以随时更新。</view>
     </view>
 
-    <view class="partner-workspace card state-{{partnerStatus.state}}" bindtap="openPartnerWorkspace">
-      <view>
+    <!-- 合伙人工作台（业务入口保留） -->
+    <view class="partner-workspace card state-{{partnerStatus.state}}" bindtap="openPartnerWorkspace" hover-class="row-card-pressed">
+      <view class="partner-workspace-icon">
+        <view class="wf-icon wf-icon-heart icon-lg"></view>
+      </view>
+      <view class="partner-workspace-copy">
         <view class="partner-workspace-kicker">WEFINALLY PARTNER</view>
         <view class="partner-workspace-title" wx:if="{{partnerStatus.state === 'active'}}">合伙人工作台</view>
         <view class="partner-workspace-title" wx:elif="{{partnerStatus.state === 'pending'}}">合伙人申请审核中</view>
@@ -77,24 +78,32 @@
         <view class="partner-workspace-desc" wx:elif="{{partnerStatus.review_note}}">{{partnerStatus.review_note}}</view>
         <view class="partner-workspace-desc" wx:else>已有合作合伙人可输入名单手机号激活</view>
       </view>
-      <text class="menu-arrow">›</text>
+      <view class="wf-icon wf-icon-arrow icon-sm icon-hint"></view>
     </view>
 
-    <view class="menu-card card">
+    <!-- 分组菜单 -->
+    <view class="menu-group card" wx:for="{{menuGroups}}" wx:for-item="group" wx:key="title">
+      <view class="menu-group-title">{{group.title}}</view>
       <view
         class="menu-item"
-        wx:for="{{menuList}}"
+        wx:for="{{group.items}}"
         wx:key="title"
         bindtap="onMenuTap"
         data-url="{{item.url}}"
         data-action="{{item.action}}"
+        hover-class="menu-item-pressed"
       >
-        <text class="menu-icon">{{item.icon}}</text>
+        <view class="menu-icon-wrap">
+          <view class="wf-icon {{item.icon}} icon-sm menu-icon"></view>
+        </view>
         <text class="menu-title">{{item.title}}</text>
-        <text class="menu-arrow">›</text>
+        <view class="wf-icon wf-icon-arrow icon-sm icon-hint"></view>
       </view>
     </view>
 
-    <button class="btn-secondary logout-btn" bindtap="onLogout">退出登录</button>
+    <button class="logout-btn" bindtap="onLogout">
+      <view class="wf-icon wf-icon-logout icon-sm logout-icon"></view>
+      <text>退出登录</text>
+    </button>
   </block>
 </view>

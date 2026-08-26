@@ -1,34 +1,42 @@
 <view class="date-page container">
-  <block wx:if="{{pageState === 'loading'}}">
-    <view class="state-wrap"><view class="state-text">正在准备约会协调...</view></view>
-  </block>
-
-  <block wx:elif="{{pageState === 'no-network'}}">
-    <view class="state-wrap"><view class="state-text">网络不可用</view><view class="state-btn" bindtap="onRetry">重试</view></view>
-  </block>
-
-  <block wx:elif="{{pageState === 'error'}}">
-    <view class="state-wrap"><view class="state-text">{{errorMsg}}</view><view class="state-btn" bindtap="onRetry">重试</view></view>
-  </block>
-
-  <block wx:elif="{{pageState === 'expired'}}">
-    <view class="state-wrap"><view class="state-text">本次约会邀请暂未得到回应，协调已结束。</view><view class="state-btn" bindtap="goService">联系平台客服</view></view>
-  </block>
+  <state-view wx:if="{{pageState === 'loading'}}" type="loading" title="正在准备约会协调…" />
+  <state-view
+    wx:elif="{{pageState === 'no-network'}}"
+    type="network"
+    desc="请检查网络后重新加载"
+    bind:action="onRetry"
+  />
+  <state-view
+    wx:elif="{{pageState === 'error'}}"
+    type="error"
+    title="加载失败了"
+    desc="{{errorMsg}}"
+    bind:action="onRetry"
+  />
+  <state-view
+    wx:elif="{{pageState === 'expired'}}"
+    type="empty"
+    icon="wf-icon-clock"
+    title="本次约会邀请暂未得到回应，协调已结束"
+    desc="仍想推进的话，可以联系平台客服协助"
+    actionText="联系平台客服"
+    bind:action="goService"
+  />
 
   <block wx:elif="{{pageState === 'fixture-simulation'}}">
     <view class="date-head card">
-      <view class="date-title">约会申请进度</view>
+      <view class="date-kicker">约会申请进度</view>
       <view class="date-desc">{{fixtureStatusText}}</view>
-      <view class="status-pill">{{fixtureStage === 'completed' ? '已反馈' : (fixtureStage === 'generating' ? '处理中' : '待处理')}}</view>
+      <view class="status-pill is-ai">{{fixtureStage === 'completed' ? '已反馈' : (fixtureStage === 'generating' ? '处理中' : '待处理')}}</view>
     </view>
     <view class="progress-card card coordination-track">
-      <view class="section-title">AI协调进度</view>
-      <view class="coordination-step done"><view class="step-dot"></view><view><view class="step-title">约会申请已提交</view><view class="step-desc">系统已经保存你的时间、区域和活动偏好</view></view></view>
-      <view class="coordination-step {{fixtureStage === 'generating' || fixtureStage === 'completed' ? 'done' : 'active'}}"><view class="step-dot"></view><view><view class="step-title">AI协调处理中</view><view class="step-desc">{{fixtureStage === 'queued' ? 'AI协调任务已进入队列，可离开页面，后台会继续处理' : '正在整理协调结果，请稍候'}}</view></view></view>
-      <view class="coordination-step {{fixtureStage === 'completed' ? 'done' : ''}}"><view class="step-dot"></view><view><view class="step-title">协调结果反馈</view><view class="step-desc">{{fixtureStage === 'completed' ? '协调结果已经生成' : '完成后会在本页显示反馈'}}</view></view></view>
+      <view class="section-title">AI 协调进度</view>
+      <view class="coordination-step done"><view class="step-dot"></view><view class="step-copy"><view class="step-title">约会申请已提交</view><view class="step-desc">系统已经保存你的时间、区域和活动偏好</view></view></view>
+      <view class="coordination-step {{fixtureStage === 'generating' || fixtureStage === 'completed' ? 'done' : 'active'}}"><view class="step-dot"></view><view class="step-copy"><view class="step-title">AI 协调处理中</view><view class="step-desc">{{fixtureStage === 'queued' ? 'AI协调任务已进入队列，可离开页面，后台会继续处理' : '正在整理协调结果，请稍候'}}</view></view></view>
+      <view class="coordination-step {{fixtureStage === 'completed' ? 'done' : ''}}"><view class="step-dot"></view><view class="step-copy"><view class="step-title">协调结果反馈</view><view class="step-desc">{{fixtureStage === 'completed' ? '协调结果已经生成' : '完成后会在本页显示反馈'}}</view></view></view>
     </view>
     <view class="invite-card card">
-      <view class="section-title">AI协调反馈</view>
+      <view class="section-title">AI 协调反馈</view>
       <view class="invite-text" wx:if="{{fixtureResponseMessage}}">{{fixtureResponseMessage}}</view>
       <view class="muted" wx:else>{{fixtureStage === 'generating' ? '正在整理协调结果，请稍候。' : 'AI协调任务已进入队列。你可以先离开，稍后回来查看结果。'}}</view>
       <button class="outline-btn full-btn" bindtap="refreshFixtureSimulation" loading="{{refreshingFixture}}">刷新协调进度</button>
@@ -36,14 +44,38 @@
   </block>
 
   <block wx:else>
+    <!-- 顶部状态卡：一眼看懂现在到哪一步 -->
     <view class="date-head card">
       <view class="test-data-badge" wx:if="{{coordination.test_data_badge || coordination.is_test_data}}">{{coordination.test_data_badge || '测试数据'}}</view>
-      <view class="date-title">第一次约会</view>
+      <view class="date-kicker">第一次约会 · 协调进度</view>
+      <view class="date-title-row">
+        <view class="date-title">第一次约会</view>
+        <view class="status-pill is-{{coordinationDisplay.statusTone}}">{{coordinationDisplay.statusText}}</view>
+      </view>
+
+      <!-- 统一步骤条：邀请 → 协调 → 确认 → 安排 -->
+      <view class="date-steps" wx:if="{{!coordinationDisplay.statusEnded}}">
+        <view class="date-step {{coordinationDisplay.statusStepIndex >= 0 ? 'done' : ''}}">
+          <view class="date-step-dot"></view><text>邀请</text>
+        </view>
+        <view class="date-step-line {{coordinationDisplay.statusStepIndex >= 1 ? 'done' : ''}}"></view>
+        <view class="date-step {{coordinationDisplay.statusStepIndex >= 1 ? 'done' : ''}}">
+          <view class="date-step-dot"></view><text>协调</text>
+        </view>
+        <view class="date-step-line {{coordinationDisplay.statusStepIndex >= 2 ? 'done' : ''}}"></view>
+        <view class="date-step {{coordinationDisplay.statusStepIndex >= 2 ? 'done' : ''}}">
+          <view class="date-step-dot"></view><text>确认</text>
+        </view>
+        <view class="date-step-line {{coordinationDisplay.statusStepIndex >= 3 ? 'done' : ''}}"></view>
+        <view class="date-step {{coordinationDisplay.statusStepIndex >= 3 ? 'done' : ''}}">
+          <view class="date-step-dot"></view><text>安排</text>
+        </view>
+      </view>
+
       <view class="date-desc" wx:if="{{coordination.status === 'collecting_initiator'}}">先提出你建议的第一次约会安排，保存后会邀请对方回应。</view>
       <view class="date-desc" wx:elif="{{coordinationDisplay.waitingPartner}}">约会邀请已发送。当前正在等待对方回应。</view>
       <view class="date-desc" wx:elif="{{coordinationDisplay.receivedInvitation}}">对方建议了一次轻松、安全的初次见面。你可以接受、和 AI 协调，或这次暂不方便。</view>
       <view class="date-desc" wx:else>事实显示在卡片上。AI 只负责解释、询问和协调还没解决的差异。</view>
-      <view class="status-pill">{{coordinationDisplay.statusText}}</view>
     </view>
 
     <view class="result-card card" wx:if="{{resultCard}}">
@@ -52,8 +84,13 @@
       <view class="muted" wx:if="{{coordination.status === 'invitation_declined' || coordination.status === 'expired'}}">本次协调已结束，不能继续修改安排。</view>
     </view>
 
+    <!-- 协调处理中：统一 AI 等待态 -->
     <view class="processing-card card" wx:if="{{coordinationDisplay.processing}}">
-      <view class="section-title">{{coordinationDisplay.queued ? '协调任务待处理' : '正在计算共同方案'}}</view>
+      <ai-thinking
+        text="{{coordinationDisplay.queued ? '协调任务已进入队列，后台会继续处理…' : 'AI 正在核对双方的时间、区域和活动…'}}"
+        label="AI 协调中"
+        compact="{{true}}"
+      />
       <view class="public-note">{{coordinationDisplay.queued ? '任务已进入后台队列，可以先离开页面；完成后本页会自动更新。' : '后台正在核对双方当前版本的共同时间、区域和活动。'}}</view>
     </view>
 
@@ -97,15 +134,15 @@
     </view>
 
     <view class="coordinator-hero card pre-submit-card" wx:if="{{showPreSubmitCoordinatorCard}}">
-      <view class="section-title">AI约会协调</view>
+      <view class="section-title">AI 约会协调</view>
       <view class="public-note">提交约会邀请后，你可以随时和 AI 协调员补充或修改安排。</view>
-      <view class="ai-disclosure">AI生成内容，仅供参考</view>
+      <view class="ai-dislosure-line"><view class="ai-disclaimer">🤖 AI 生成内容，仅供参考</view></view>
     </view>
 
     <view class="coordinator-hero card" wx:if="{{showCoordinatorCta}}">
-      <view class="section-title">{{coordination.status === 'inviting_partner' ? '和 AI 约会协调员沟通' : 'AI约会协调'}}</view>
+      <view class="section-title">{{coordination.status === 'inviting_partner' ? '和 AI 约会协调员沟通' : 'AI 约会协调'}}</view>
       <view class="public-note">{{coordinatorHeroText}}</view>
-      <view class="ai-disclosure">AI生成内容，仅供参考</view>
+      <view class="ai-dislosure-line"><view class="ai-disclaimer">🤖 AI 生成内容，仅供参考</view></view>
       <button class="primary-btn full-btn" bindtap="goCoordinator">和 AI 约会协调员沟通</button>
       <view class="muted coordinator-hint">已经一致的条件不会再重复询问。修改前会先展示预览。</view>
       <button class="outline-btn compact-btn" bindtap="onEnableSubscribe">开启协调提醒</button>
@@ -117,7 +154,10 @@
       <view class="section-title">{{coordination.status === 'collecting_initiator' ? '填写第一次约会建议' : '完整填写我的安排'}}</view>
       <view class="form-hint" wx:if="{{coordination.status === 'collecting_initiator'}}">提交后会邀请对方。这表示你愿意按当前建议参加，但还不是最终确认。</view>
       <view class="form-item">
-        <view class="form-label required">📅 可约时间</view>
+        <view class="form-label required">
+          <view class="wf-icon wf-icon-calendar icon-sm form-label-icon"></view>
+          <text>可约时间</text>
+        </view>
         <picker mode="date" start="{{dateMin}}" end="{{dateMax}}" value="{{selectedDate}}" bindchange="onDateChange">
           <view class="picker-value">未来14天内选择日期</view>
         </picker>
@@ -126,7 +166,7 @@
             <text>{{dateItem.date}}</text>
             <text class="remove-date" bindtap="removeAvailability" data-value="{{dateItem.date}}">移除</text>
           </view>
-          <view class="form-label">🕰 可约时间段</view>
+          <view class="form-label">可约时间段</view>
           <view class="choice-list">
             <view class="choice-tag {{selection.periods[dateItem.date] && selection.periods[dateItem.date][periodItem.value] ? 'selected' : ''}}" wx:for="{{periodOptions}}" wx:for-item="periodItem" wx:key="value" bindtap="togglePeriod" data-date="{{dateItem.date}}" data-period="{{periodItem.value}}" hover-class="choice-tag-pressed">{{periodItem.label}}</view>
           </view>
@@ -134,32 +174,50 @@
         </view>
       </view>
       <view class="form-item">
-        <view class="form-label required">📍 偏好区域</view>
+        <view class="form-label required">
+          <view class="wf-icon wf-icon-pin icon-sm form-label-icon"></view>
+          <text>偏好区域</text>
+        </view>
         <input class="input field-input" placeholder="例如：南山区、福田区" value="{{areaText}}" bindinput="onAreasInput" />
         <view class="field-help">可以填写多个区域，用顿号或逗号分隔</view>
       </view>
       <view class="form-item">
-        <view class="form-label required">🎯 活动偏好（最多3项）</view>
+        <view class="form-label required">
+          <view class="wf-icon wf-icon-heart icon-sm form-label-icon"></view>
+          <text>活动偏好（最多3项）</text>
+        </view>
         <view class="choice-list">
           <view class="choice-tag {{selection.activities[item.value] ? 'selected' : ''}}" wx:for="{{activityOptions}}" wx:key="value" bindtap="toggleActivity" data-value="{{item.value}}" hover-class="choice-tag-pressed">{{item.label}}</view>
         </view>
         <view class="selected-periods">已选择：{{form.activities}}</view>
       </view>
       <view class="form-item">
-        <view class="form-label required">💰 人均预算</view>
+        <view class="form-label required">
+          <view class="wf-icon wf-icon-wallet icon-sm form-label-icon"></view>
+          <text>人均预算</text>
+        </view>
         <view class="choice-list"><view class="choice-tag {{form.budget === item.value ? 'selected' : ''}}" wx:for="{{budgetOptions}}" wx:key="value" bindtap="selectOption" data-key="budget" data-value="{{item.value}}" hover-class="choice-tag-pressed">{{item.label}}</view></view>
       </view>
       <view class="form-item">
-        <view class="form-label required">🤝 费用方式</view>
+        <view class="form-label required">
+          <view class="wf-icon wf-icon-check icon-sm form-label-icon"></view>
+          <text>费用方式</text>
+        </view>
         <view class="choice-list"><view class="choice-tag {{form.payment_preference === item.value ? 'selected' : ''}}" wx:for="{{paymentOptions}}" wx:key="value" bindtap="selectOption" data-key="payment_preference" data-value="{{item.value}}" hover-class="choice-tag-pressed">{{item.label}}</view></view>
       </view>
       <view class="form-item">
-        <view class="form-label required">⏳ 可接受时长</view>
+        <view class="form-label required">
+          <view class="wf-icon wf-icon-clock icon-sm form-label-icon"></view>
+          <text>可接受时长</text>
+        </view>
         <view class="choice-list"><view class="choice-tag {{form.duration === item.value ? 'selected' : ''}}" wx:for="{{durationOptions}}" wx:key="value" bindtap="selectOption" data-key="duration" data-value="{{item.value}}" hover-class="choice-tag-pressed">{{item.label}}</view></view>
       </view>
       <block wx:if="{{coordination.status === 'collecting_initiator' && primaryOptions.needsExplicit}}">
         <view class="form-item">
-          <view class="form-label required">⭐ 本次建议安排</view>
+          <view class="form-label required">
+            <view class="wf-icon wf-icon-sparkle icon-sm form-label-icon"></view>
+            <text>本次建议安排</text>
+          </view>
           <view class="field-help">可接受范围可以有多个；请再明确这次优先建议哪一个，对方会先看到这份建议。</view>
           <view class="form-label">本次建议时间</view>
           <view class="choice-list">
@@ -176,11 +234,11 @@
         </view>
       </block>
       <view class="form-item">
-        <view class="form-label">🚌 出行限制</view>
+        <view class="form-label">出行限制</view>
         <input class="input field-input" placeholder="例如：不方便走远、需要靠近地铁" value="{{form.transport_constraints}}" data-key="transport_constraints" bindinput="onInput" />
         <view class="field-help">没有限制也可以留空，不需要填写详细地址</view>
       </view>
-      <view class="form-item"><view class="form-label">📝 其他要求</view><textarea class="textarea" maxlength="100" placeholder="选填，告诉平台你在意的安排" value="{{form.other_requirements}}" data-key="other_requirements" bindinput="onInput"></textarea></view>
+      <view class="form-item"><view class="form-label">其他要求</view><textarea class="textarea" maxlength="100" placeholder="选填，告诉平台你在意的安排" value="{{form.other_requirements}}" data-key="other_requirements" bindinput="onInput"></textarea></view>
       <view class="public-note">建议选择白天、公共场所，尊重彼此的边界和节奏。</view>
       <button class="primary-btn full-btn" bindtap="submitApplication" loading="{{submitting}}" disabled="{{submitting}}">{{coordination.status === 'collecting_initiator' ? '发送第一次约会邀请' : '提交我的安排'}}</button>
     </view>
@@ -212,20 +270,24 @@
     </view>
 
     <view class="support-card support-card-ai" wx:if="{{coordinationId && showCoordinatorCta}}" bindtap="goCoordinator" hover-class="support-card-pressed">
-      <view class="support-icon">💗</view>
+      <view class="support-icon ai">
+        <view class="wf-icon wf-icon-sparkle icon-lg"></view>
+      </view>
       <view class="support-content">
-        <view class="support-title">AI约会协调员</view>
+        <view class="support-title">AI 约会协调员</view>
         <view class="support-desc">解释进度、理解自然语言、生成修改预览</view>
       </view>
-      <view class="support-arrow">›</view>
+      <view class="wf-icon wf-icon-arrow icon-sm icon-hint"></view>
     </view>
     <view class="support-card support-card-human" bindtap="goService" hover-class="support-card-pressed">
-      <view class="support-icon">🎧</view>
+      <view class="support-icon human">
+        <view class="wf-icon wf-icon-chat icon-lg"></view>
+      </view>
       <view class="support-content">
         <view class="support-title">人工客服协助</view>
         <view class="support-desc">遇到复杂情况，由平台客服继续处理</view>
       </view>
-      <view class="support-arrow">›</view>
+      <view class="wf-icon wf-icon-arrow icon-sm icon-hint"></view>
     </view>
   </block>
 </view>

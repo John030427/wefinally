@@ -1,53 +1,47 @@
 <view class="chat-page">
-  <block wx:if="{{pageState === 'loading'}}">
-    <view class="state-wrap">
-      <view class="state-icon">⏳</view>
-      <view class="state-text">正在加载...</view>
-    </view>
-  </block>
-
-  <block wx:elif="{{pageState === 'no-network'}}">
-    <view class="state-wrap">
-      <view class="state-icon">📡</view>
-      <view class="state-text">网络不可用</view>
-      <view class="state-btn" bindtap="onRetry">重新加载</view>
-    </view>
-  </block>
+  <state-view wx:if="{{pageState === 'loading'}}" type="loading" />
+  <state-view
+    wx:elif="{{pageState === 'no-network'}}"
+    type="network"
+    desc="请检查网络后重新加载"
+    bind:action="onRetry"
+  />
 
   <block wx:else>
+    <!-- 工具行：用户ID收纳为轻量条，不抢注意力 -->
     <view class="user-id-bar">
       <view class="user-id-copy-row">
         <view class="user-id-label">用户ID</view>
         <view wx:if="{{supportCodeState === 'ready'}}" class="user-id-code">{{supportCode}}</view>
-        <view wx:elif="{{supportCodeState === 'loading'}}" class="user-id-state">加载中...</view>
+        <view wx:elif="{{supportCodeState === 'loading'}}" class="user-id-state">加载中…</view>
         <view wx:else class="user-id-state user-id-error">{{supportCodeError || '加载失败'}}</view>
-        <button wx:if="{{supportCodeState === 'ready'}}" class="user-id-copy" bindtap="copySupportCode">复制</button>
-        <button wx:elif="{{supportCodeState === 'error'}}" class="user-id-copy" bindtap="retrySupportCode">重试</button>
+        <view wx:if="{{supportCodeState === 'ready'}}" class="user-id-copy" bindtap="copySupportCode" hover-class="user-id-copy-pressed">复制</view>
+        <view wx:elif="{{supportCodeState === 'error'}}" class="user-id-copy" bindtap="retrySupportCode" hover-class="user-id-copy-pressed">重试</view>
       </view>
       <view class="user-id-help">咨询账号问题时，可向客服提供此编号快速查询</view>
     </view>
+
     <scroll-view class="chat-scroll" scroll-y scroll-into-view="{{scrollToView}}" scroll-with-animation>
       <view class="chat-tip">{{agentType === 'love_advisor' ? '温和陪伴，信息有限时会明确说明知识不足' : (agentType === 'date_coordinator' ? '只说明共同进度，不展示对方原始回答' : '优先处理平台业务咨询')}}</view>
-      <view class="ai-disclaimer">🤖 AI 生成回复仅供参考，重要事项请以官方客服确认为准</view>
+      <view class="chat-disclaimer-line"><view class="ai-disclaimer">🤖 AI 生成回复仅供参考，重要事项请以官方客服确认为准</view></view>
+
       <view
         id="msg-{{item.id}}"
         class="msg-row {{item.isBot ? 'msg-bot' : 'msg-user'}}"
         wx:for="{{messages}}"
         wx:key="id"
       >
-        <!-- Generating placeholder (same bubble slot) -->
+        <!-- 生成中：统一 AI 等待态（结果到齐前不吐半截内容） -->
         <view wx:if="{{item.isBot && item.status === 'generating'}}" class="msg-bubble msg-bubble-generating">
-          <view class="gen-row">
-            <view class="gen-ring" aria-hidden="true"></view>
-            <view class="gen-copy">
-              <text class="gen-primary">{{item.waitingText || item.waitingPrimary || '正在思考…'}}</text>
-              <text class="gen-label">AI生成中</text>
-            </view>
-          </view>
-          <text class="msg-time">{{item.timeText}}</text>
+          <ai-thinking
+            text="{{item.waitingText || item.waitingPrimary || 'AI 正在整理回复…'}}"
+            label="AI 生成中"
+            compact="{{true}}"
+          />
+          <text class="msg-time msg-time-inset">{{item.timeText}}</text>
         </view>
 
-        <!-- Error + retry (same bubble slot) -->
+        <!-- 失败：明确错误态 + 重新生成 -->
         <view wx:elif="{{item.isBot && item.status === 'error'}}" class="msg-bubble msg-bubble-error">
           <text class="msg-text error-text">{{item.errorText || '回复生成失败'}}</text>
           <button
@@ -56,10 +50,10 @@
             bindtap="retryAiMessage"
             disabled="{{sending}}"
           >重新生成</button>
-          <text class="msg-time">{{item.timeText}}</text>
+          <text class="msg-time msg-time-inset">{{item.timeText}}</text>
         </view>
 
-        <!-- Completed assistant / user content -->
+        <!-- 完成内容 -->
         <block wx:else>
           <view class="msg-bubble {{item.isBot && item.reveal ? 'msg-bubble-reveal' : ''}}">
             <text class="msg-text">{{item.content}}</text>
@@ -114,12 +108,14 @@
           <button wx:if="{{item.isBot && item.status === 'completed' && item.handoff && item.handoff.provider === 'wecom'}}" class="human-service-btn" data-message-id="{{item.id}}" bindtap="openHumanService">打开企业微信客服</button>
         </block>
       </view>
+
+      <view class="chat-scroll-pad"></view>
     </scroll-view>
 
     <view class="chat-input-bar safe-bottom">
       <input
         class="chat-input"
-        placeholder="{{coordinatorReadOnly ? '当前结果仅供查看' : '输入您的问题...'}}"
+        placeholder="{{coordinatorReadOnly ? '当前结果仅供查看' : '输入您的问题…'}}"
         value="{{inputText}}"
         bindinput="onInput"
         confirm-type="send"

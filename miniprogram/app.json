@@ -31,17 +31,17 @@
     "pages/notifications/notifications"
   ],
   "window": {
-    "navigationBarBackgroundColor": "#FF6B8A",
+    "navigationBarBackgroundColor": "#E8637F",
     "navigationBarTitleText": "WeFinally",
     "navigationBarTextStyle": "white",
-    "backgroundColor": "#F8F4F5",
+    "backgroundColor": "#FAF6F4",
     "backgroundTextStyle": "dark"
   },
   "tabBar": {
-    "color": "#999999",
-    "selectedColor": "#FF6B8A",
+    "color": "#B5A5A5",
+    "selectedColor": "#E8637F",
     "backgroundColor": "#FFFFFF",
-    "borderStyle": "black",
+    "borderStyle": "white",
     "list": [
       {
         "pagePath": "pages/index/index",

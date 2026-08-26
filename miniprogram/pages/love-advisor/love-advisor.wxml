@@ -1,19 +1,32 @@
 <view class="love-page container">
   <view class="love-hero">
+    <view class="love-halo" aria-hidden="true"></view>
+    <view class="love-orb" aria-hidden="true">
+      <view class="wf-icon wf-icon-sparkle icon-xl love-orb-icon"></view>
+    </view>
     <view class="love-title">把关系聊得更清楚一点</view>
     <view class="love-copy">
       <view class="love-subtitle">温和、尊重地陪你梳理当下的感受和选择。</view>
       <view class="love-subtitle">健康恋爱，从尊重、坦诚和边界开始。</view>
     </view>
-    <view class="love-ai-disclosure">🤖 AI 生成内容｜对话回复由人工智能生成，仅供参考</view>
+    <view class="ai-dislosure-line"><view class="ai-disclaimer">🤖 AI 生成内容｜对话回复由人工智能生成，仅供参考</view></view>
     <button class="love-start" bindtap="openConversation">开始聊聊</button>
   </view>
 
-  <view class="section-title">恋爱小知识</view>
-  <view class="topic-card card" wx:for="{{topics}}" wx:key="title" bindtap="askTopic" data-topic="{{item.title}}">
-    <view class="topic-title">{{item.title}}</view>
-    <view class="topic-desc">{{item.desc}}</view>
+  <view class="section-header">
+    <text class="section-header-title">可以从这些话题开始</text>
+  </view>
+  <view class="topic-card card" wx:for="{{topics}}" wx:key="title" bindtap="askTopic" data-topic="{{item.title}}" hover-class="row-card-pressed">
+    <view class="topic-index" aria-hidden="true">{{index + 1}}</view>
+    <view class="topic-copy">
+      <view class="topic-title">{{item.title}}</view>
+      <view class="topic-desc">{{item.desc}}</view>
+    </view>
+    <view class="wf-icon wf-icon-arrow icon-sm icon-hint"></view>
   </view>
 
-  <view class="knowledge-note">信息有限时，我会明确说明知识不足，不把猜测当成建议。</view>
+  <view class="knowledge-note">
+    <view class="wf-icon wf-icon-shield icon-sm knowledge-note-icon"></view>
+    <text>信息有限时，我会明确说明知识不足，不把猜测当成建议。</text>
+  </view>
 </view>

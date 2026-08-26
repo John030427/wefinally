@@ -51,11 +51,50 @@ function buildCoordinationDisplay(coordination) {
   const coordinatingHero = coordination.invitee_intent === 'coordinate' && role === 'initiator' && !(coordination.participant_progress || []).find((item) => item.side === 'partner' && item.application_submitted)
     ? '对方已接受约会邀请，目前正在补充自己的安排。'
     : '目前我正在根据双方已经确认的信息继续协调。'
+  const coordinatorHeroText = status === 'inviting_partner' && role !== 'invitee'
+    ? waitingPartnerHero
+    : (status === 'collecting_preferences' ? coordinatingHero
+      : (status === 'no_overlap'
+        ? '目前还没有找到完整共同安排。已经一致的条件不会再重复询问。'
+        : (status === 'waiting_confirmations'
+          ? '已有推荐方案待确认。你也可以继续和 AI 协调员沟通微调。'
+          : '正在帮助双方寻找共同安排。你可以随时告诉 AI 想调整的地方。')))
+  // 统一状态叙事：邀请中 → 协调中 → 待确认 → 已有安排（结束态单独标色）
+  const stageByStatus = {
+    collecting_initiator: 0,
+    inviting_partner: 0,
+    collecting_preferences: 1,
+    computing_overlap: 1,
+    no_overlap: 1,
+    replanning: 1,
+    waiting_confirmations: 2,
+    arranged: 3
+  }
+  const toneByStatus = {
+    collecting_initiator: 'warning',
+    inviting_partner: 'warning',
+    collecting_preferences: 'ai',
+    computing_overlap: 'ai',
+    no_overlap: 'ai',
+    replanning: 'ai',
+    waiting_confirmations: 'ai',
+    arranged: 'success',
+    invitation_declined: 'muted',
+    manual_handoff: 'muted',
+    expired: 'muted',
+    cancelled: 'muted',
+    closed: 'muted'
+  }
+  const statusStepIndex = Object.prototype.hasOwnProperty.call(stageByStatus, status) ? stageByStatus[status] : -1
+  const statusEnded = statusStepIndex === -1
   return {
     roundNumber,
     maxRounds,
     version: Math.max(1, Number(coordination && coordination.coordination_version || 1)),
     statusText: labels[status] || '协调中',
+    statusTone: toneByStatus[status] || 'ai',
+    statusStepIndex,
+    statusEnded,
     processing: status === 'computing_overlap' && ['queued', 'processing'].includes(processingStatus),
     queued: status === 'computing_overlap' && processingStatus === 'queued',
     failed: status === 'computing_overlap' && processingStatus === 'failed',

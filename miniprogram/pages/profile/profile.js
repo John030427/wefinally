@@ -12,20 +12,40 @@ Page({
     isVip: false,
     partnerStatus: { state: 'loading', allowed_actions: [] },
     readiness: null,
-    menuList: [
-      { icon: '👤', title: '个人资料', url: '/pages/register/register?edit=1' },
-      { icon: '⚙️', title: '择偶配置', url: '/pages/match-setting/match-setting' },
-      { icon: '🧠', title: 'AI 对你的理解', url: '/pages/match-setting/match-setting?focus=ai-profile' },
-      { icon: '📝', title: '外貌描述', url: '/pages/appearance/appearance' },
-      { icon: '👑', title: 'VIP 会员', url: '/pages/vip/vip' },
-      { icon: '🧾', title: '我的订单', url: '/pages/orders/orders' },
-      { icon: '🎖️', title: '激活码兑换', action: 'claimFree' },
-      { icon: '🛡️', title: '见面安全记录', url: '/pages/meet-safety-list/meet-safety-list' },
-      { icon: '💒', title: '领证数据公示', url: '/pages/marry-stat/marry-stat' },
-      { icon: '📋', title: '婚姻报备', url: '/pages/marry-report/marry-report' },
-      { icon: '💬', title: '平台AI客服', url: '/pages/chat/chat?agentType=platform_service' },
-      { icon: '📜', title: '平台规则', url: '/pages/rules/rules' },
-      { icon: '❌', title: '账号注销', url: '/pages/account-cancel/account-cancel' }
+    menuGroups: [
+      {
+        title: '资料与匹配',
+        items: [
+          { icon: 'wf-icon-edit', title: '个人资料', url: '/pages/register/register?edit=1' },
+          { icon: 'wf-icon-gear', title: '择偶配置', url: '/pages/match-setting/match-setting' },
+          { icon: 'wf-icon-sparkle', title: 'AI 对你的理解', url: '/pages/match-setting/match-setting?focus=ai-profile' },
+          { icon: 'wf-icon-eye', title: '外貌描述', url: '/pages/appearance/appearance' }
+        ]
+      },
+      {
+        title: '会员与订单',
+        items: [
+          { icon: 'wf-icon-crown', title: 'VIP 会员', url: '/pages/vip/vip' },
+          { icon: 'wf-icon-wallet', title: '我的订单', url: '/pages/orders/orders' },
+          { icon: 'wf-icon-gift', title: '激活码兑换', action: 'claimFree' }
+        ]
+      },
+      {
+        title: '安全与信任',
+        items: [
+          { icon: 'wf-icon-shield', title: '见面安全记录', url: '/pages/meet-safety-list/meet-safety-list' },
+          { icon: 'wf-icon-chart', title: '领证数据公示', url: '/pages/marry-stat/marry-stat' },
+          { icon: 'wf-icon-book', title: '婚姻报备', url: '/pages/marry-report/marry-report' }
+        ]
+      },
+      {
+        title: '服务与设置',
+        items: [
+          { icon: 'wf-icon-chat', title: '平台AI客服', url: '/pages/chat/chat?agentType=platform_service' },
+          { icon: 'wf-icon-doc', title: '平台规则', url: '/pages/rules/rules' },
+          { icon: 'wf-icon-close', title: '账号注销', url: '/pages/account-cancel/account-cancel' }
+        ]
+      }
     ]
   },
 
