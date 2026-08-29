@@ -20,6 +20,8 @@ Page({
   },
 
   onShow() {
+    const tabBar = this.getTabBar && this.getTabBar()
+    if (tabBar && typeof tabBar.syncForRoute === 'function') tabBar.syncForRoute('/pages/match-list/match-list')
     this.loadList()
     this.loadUnread()
   },
