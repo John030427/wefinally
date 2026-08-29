@@ -6,6 +6,7 @@ const { canonicalPairKey, deliverPair, createCloudClaimStore, CLAIM_STATUS } = r
 const { semanticRerank, intentMatchGate } = require('./semanticMatchService')
 const { indexClaimsForMatching } = require('./matchCycleService')
 const { sharesCandidateCohort } = require('./matchCohortPolicy')
+const { qaRunKey, shouldExcludeHistoricalPair } = require('./qaRegistrationReplayPolicy')
 
 function semanticDetail(best, side, rank) {
   const detail = scoreDetailFor(best, side, rank)
@@ -38,9 +39,10 @@ function semanticDetail(best, side, rank) {
   })
 }
 
-function isHistoricalPair(userId, partnerId, historicalPairKeys) {
+function isHistoricalPair(user, partner, historicalClaimsByPair) {
   try {
-    return historicalPairKeys.has(canonicalPairKey(userId, partnerId))
+    const claims = historicalClaimsByPair.get(canonicalPairKey(user.id, partner.id)) || []
+    return claims.some((claim) => shouldExcludeHistoricalPair(claim, user, partner))
   } catch (err) {
     return false
   }
@@ -58,7 +60,7 @@ async function executeFormalMatching(ctx = {}) {
     .filter((row) => memberStatus(row) === MEMBER_STATUS.APPROVED)
     .filter((row) => isVipActive(row))
   const claims = await deps.list('match_claim', { status: CLAIM_STATUS }, 500)
-  const { cycleClaimed, historicalPairKeys } = indexClaimsForMatching(claims, matchCycleId)
+  const { cycleClaimed, historicalClaimsByPair } = indexClaimsForMatching(claims, matchCycleId)
   const settings = await deps.list('user_match_setting', {}, 500)
   const settingsByUserId = {}
   ;(settings || []).forEach((row) => {
@@ -77,7 +79,7 @@ async function executeFormalMatching(ctx = {}) {
     const user = remaining.shift()
     const cohortCandidates = remaining.filter((candidate) => sharesCandidateCohort(user, candidate))
     const ranked = rankCandidates(user, cohortCandidates, settingsByUserId, { blockedIds: cycleClaimed })
-      .filter((item) => !isHistoricalPair(user.id, item.candidate.id, historicalPairKeys))
+      .filter((item) => !isHistoricalPair(user, item.candidate, historicalClaimsByPair))
     evaluated += ranked.length
     const reranked = await rerank(ranked, user, settingsByUserId)
     if (!reranked || reranked.applied !== true) continue
@@ -91,6 +93,7 @@ async function executeFormalMatching(ctx = {}) {
       ? `formal:${matchCycleId}:${user.id}:${partner.id}`
       : `formal:${clock.businessDate}:${user.id}:${partner.id}`
     const pairKey = canonicalPairKey(user.id, partner.id)
+    const currentQaRunKey = qaRunKey(user, partner)
     const deliveryData = {
       logA: {
         user_id: user.id,
@@ -124,6 +127,7 @@ async function executeFormalMatching(ctx = {}) {
         status: 'matched',
         action: 'formal_batch',
         match_cycle_id: matchCycleId || null,
+        ...(currentQaRunKey ? { qa_match_run_key: currentQaRunKey } : {}),
         ...(reranked && reranked.degraded === true
           ? { degraded: true, degraded_reason: String(reranked.reason || 'fallback_deterministic') }
           : {})
@@ -134,6 +138,7 @@ async function executeFormalMatching(ctx = {}) {
       partnerId: partner.id,
       requestId,
       matchCycleId,
+      qaMatchRunKey: currentQaRunKey,
       deliveryData,
       userDoc: user,
       partnerDoc: partner,
@@ -147,7 +152,11 @@ async function executeFormalMatching(ctx = {}) {
     matchedCount += 1
     cycleClaimed.add(Number(user.id))
     cycleClaimed.add(Number(partner.id))
-    historicalPairKeys.add(pairKey)
+    if (!historicalClaimsByPair.has(pairKey)) historicalClaimsByPair.set(pairKey, [])
+    historicalClaimsByPair.get(pairKey).push(Object.assign({}, delivery.claim || {}, {
+      pair_key: pairKey,
+      create_time: new Date()
+    }))
     const idx = remaining.findIndex((row) => Number(row.id) === Number(partner.id))
     if (idx >= 0) remaining.splice(idx, 1)
   }

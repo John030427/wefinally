@@ -15,6 +15,7 @@ const { resolveRegion } = require('../lib/regionNormalize')
 const {
   QA_REGISTRATION_CONFIRM_TEXT,
   canReplayRegistration,
+  createQaMatchRunId,
   buildReplayRequestPatch,
   buildReplayCompletionPatch,
   buildResetMatchSettingPatch
@@ -129,6 +130,8 @@ async function register(data, wxContext) {
       const region = resolveRegion(data)
       const replayedAt = now()
       const replayPatch = Object.assign(buildReplayCompletionPatch(data, replayedAt), {
+        qa_match_run_id: createQaMatchRunId(existing.id, replayedAt),
+        qa_match_run_started_at: replayedAt,
         circle_id: occupation.circleId,
         occupation_description: occupation.description,
         city: region.city || data.city || '深圳',

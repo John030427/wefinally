@@ -45,6 +45,7 @@ function claimPayload(input) {
   const matchCycleId = String(input.matchCycleId || input.match_cycle_id || '').trim()
   const isTest = input.isTest === true || Number(input.is_test || 0) === 1
   const qaCycle = input.qaCycle === true || Number(input.qa_cycle || 0) === 1
+  const qaMatchRunKey = String(input.qaMatchRunKey || input.qa_match_run_key || '').trim()
   const matchedAt = input.matchedAt || input.matched_at || new Date()
   return {
     user_id: userId,
@@ -55,7 +56,8 @@ function claimPayload(input) {
     match_cycle_id: matchCycleId || null,
     is_test: isTest ? 1 : 0,
     qa_cycle: qaCycle ? 1 : 0,
-    matched_at: matchedAt
+    matched_at: matchedAt,
+    ...(qaMatchRunKey ? { qa_match_run_key: qaMatchRunKey } : {})
   }
 }
 

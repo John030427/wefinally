@@ -1,3 +1,4 @@
+const crypto = require('crypto')
 const { isInternalQaAccount } = require('./testIdentityPolicy')
 
 const QA_REGISTRATION_CONFIRM_TEXT = '重新注册测试资料'
@@ -9,6 +10,62 @@ function boolFlag(value) {
 
 function canReplayRegistration(user = {}) {
   return boolFlag(user.qa_test_run_enabled) || isInternalQaAccount(user)
+}
+
+function cohortKey(user = {}) {
+  return String(user.qa_match_cohort || '').trim()
+}
+
+function runId(user = {}) {
+  return String(user.qa_match_run_id || '').trim()
+}
+
+function timestampOf(value) {
+  if (value && typeof value.toDate === 'function') return timestampOf(value.toDate())
+  if (value && Number.isFinite(Number(value._seconds))) return Number(value._seconds) * 1000
+  const timestamp = value instanceof Date ? value.getTime() : new Date(value).getTime()
+  return Number.isFinite(timestamp) ? timestamp : NaN
+}
+
+function createQaMatchRunId(userId, timestamp = new Date(), nonce = '') {
+  const normalizedUserId = Number(userId)
+  const at = timestampOf(timestamp)
+  if (!Number.isFinite(normalizedUserId) || normalizedUserId <= 0 || !Number.isFinite(at)) {
+    throw new Error('QA 匹配轮次参数无效')
+  }
+  const entropy = String(nonce || crypto.randomBytes(12).toString('hex'))
+  const digest = crypto.createHash('sha256')
+    .update(`${normalizedUserId}:${at}:${entropy}`)
+    .digest('hex')
+    .slice(0, 16)
+  return `qarun_${normalizedUserId}_${at}_${digest}`
+}
+
+function qaRunKey(left = {}, right = {}) {
+  const participants = [left, right]
+    .map((user) => ({ id: Number(user.id), runId: runId(user) }))
+    .filter((item) => Number.isFinite(item.id) && item.id > 0 && item.runId)
+    .sort((a, b) => a.id - b.id)
+  if (participants.length !== 2 || participants[0].id === participants[1].id) return ''
+  return `qarunpair_${crypto.createHash('sha256')
+    .update(participants.map((item) => `${item.id}:${item.runId}`).join('|'))
+    .digest('hex')
+    .slice(0, 24)}`
+}
+
+function shouldExcludeHistoricalPair(claim = {}, left = {}, right = {}) {
+  if (!claim || !claim.pair_key) return false
+  if (!canReplayRegistration(left) || !canReplayRegistration(right)) return true
+  const cohort = cohortKey(left)
+  if (!cohort || cohort !== cohortKey(right)) return true
+  if (!runId(left) || !runId(right) || !qaRunKey(left, right)) return true
+  const claimAt = timestampOf(
+    claim.created_at || claim.create_time || claim.claimed_at || claim.matched_at || claim.updated_at || claim.update_time
+  )
+  const leftAt = timestampOf(left.qa_match_run_started_at)
+  const rightAt = timestampOf(right.qa_match_run_started_at)
+  if (![claimAt, leftAt, rightAt].every(Number.isFinite)) return true
+  return !(leftAt > claimAt && rightAt > claimAt)
 }
 
 function parseGender(value) {
@@ -94,6 +151,9 @@ module.exports = {
   QA_REGISTRATION_CONFIRM_TEXT,
   QA_REAL_DEVICE_MATCH_COHORT,
   canReplayRegistration,
+  createQaMatchRunId,
+  qaRunKey,
+  shouldExcludeHistoricalPair,
   buildReplayRequestPatch,
   buildReplayCompletionPatch,
   buildResetMatchSettingPatch

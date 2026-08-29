@@ -5,6 +5,9 @@ const path = require('path')
 const {
   QA_REGISTRATION_CONFIRM_TEXT,
   canReplayRegistration,
+  createQaMatchRunId,
+  qaRunKey,
+  shouldExcludeHistoricalPair,
   buildReplayRequestPatch,
   buildReplayCompletionPatch,
   buildResetMatchSettingPatch
@@ -45,6 +48,37 @@ assert.strictEqual(sharesCandidateCohort({ qa_match_cohort: 'pair-a' }, { qa_mat
 assert.strictEqual(sharesCandidateCohort({ qa_match_cohort: 'pair-a' }, { qa_match_cohort: 'pair-a' }), true)
 assert.strictEqual(registrationReplayEnabledFromProfile({ qa_test_run_enabled: true }), false)
 assert.strictEqual(registrationReplayEnabledFromProfile({ qa_registration_replay_enabled: true }), true)
+
+const oldClaim = {
+  pair_key: '10:11',
+  created_at: new Date('2026-08-20T00:00:00Z')
+}
+const qaA = {
+  id: 10,
+  qa_test_run_enabled: true,
+  qa_match_cohort: 'qa-real-device-registration-v1',
+  qa_match_run_id: 'run-a2',
+  qa_match_run_started_at: new Date('2026-08-21T00:00:00Z')
+}
+const qaB = {
+  id: 11,
+  qa_test_run_enabled: true,
+  qa_match_cohort: 'qa-real-device-registration-v1',
+  qa_match_run_id: 'run-b2',
+  qa_match_run_started_at: new Date('2026-08-21T00:01:00Z')
+}
+assert.strictEqual(shouldExcludeHistoricalPair(oldClaim, qaA, qaB), false)
+assert.strictEqual(shouldExcludeHistoricalPair({
+  ...oldClaim,
+  created_at: new Date('2026-08-22T00:00:00Z')
+}, qaA, qaB), true)
+assert.strictEqual(shouldExcludeHistoricalPair(oldClaim, { ...qaA, qa_test_run_enabled: false }, qaB), true)
+assert.strictEqual(shouldExcludeHistoricalPair(oldClaim, qaA, { ...qaB, qa_match_run_id: '' }), true)
+assert.strictEqual(qaRunKey(qaA, qaB), qaRunKey(qaB, qaA))
+assert.match(
+  createQaMatchRunId(10, new Date('2026-08-21T00:00:00Z'), 'abc12345'),
+  /^qarun_10_/
+)
 
 const profile = { id: 123, support_code: 'WF000123' }
 assert.strictEqual(seenStorageKey(profile), 'wf_match_reveal_seen_123')
