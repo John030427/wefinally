@@ -3,6 +3,7 @@ const fs = require('fs')
 const path = require('path')
 const {
   canonicalPairKey,
+  claimDocumentIds,
   claimPair,
   deliverPair
 } = require('../../miniprogram/cloudfunctions/api/lib/matchClaim')
@@ -11,6 +12,11 @@ const {
   assert.strictEqual(canonicalPairKey(20, 3), '3-20')
   assert.strictEqual(canonicalPairKey('3', '20'), '3-20')
   assert.throws(() => canonicalPairKey(0, 2), /匹配用户无效/)
+  const qaRunOneIds = claimDocumentIds('3-20', 3, 20, '2026-08-28-FRI', 'qarunpair_run_one')
+  const qaRunTwoIds = claimDocumentIds('3-20', 3, 20, '2026-08-28-FRI', 'qarunpair_run_two')
+  assert.notStrictEqual(qaRunOneIds.pair, qaRunTwoIds.pair)
+  assert.notStrictEqual(qaRunOneIds.user, qaRunTwoIds.user)
+  assert.strictEqual(qaRunOneIds.history, qaRunTwoIds.history)
 
 function createStore() {
   const claims = new Map()
@@ -38,7 +44,8 @@ function createDeliveryStore(options = {}) {
     claims: new Map(),
     logs: new Map(),
     users: new Map([[3, { id: 3, match_status: '' }], [20, { id: 20, match_status: '' }]]),
-    audits: new Map()
+    audits: new Map(),
+    lookupScopes: []
   }
   let queue = Promise.resolve()
   return {
@@ -52,8 +59,14 @@ function createDeliveryStore(options = {}) {
           audits: new Map(state.audits)
         }
         const result = await work({
-          findByUserIds: async (ids) => ids.map((id) => draft.claims.get(`user:${id}`)).filter(Boolean),
-          findByPairKey: async (pairKey) => draft.claims.get(`pair:${pairKey}`) || null,
+          findByUserIds: async (ids, cycleId, qaMatchRunKey) => {
+            state.lookupScopes.push({ kind: 'users', cycleId, qaMatchRunKey })
+            return ids.map((id) => draft.claims.get(`user:${id}`)).filter(Boolean)
+          },
+          findByPairKey: async (pairKey, cycleId, qaMatchRunKey) => {
+            state.lookupScopes.push({ kind: 'pair', cycleId, qaMatchRunKey })
+            return draft.claims.get(`pair:${pairKey}`) || null
+          },
           prepareDelivery: async (data) => ({
             logA: { _id: 'match_log_301', id: 301, ...data.logA },
             logB: { _id: 'match_log_302', id: 302, ...data.logB },
@@ -146,6 +159,28 @@ function deliveryFixture(requestId) {
   assert.notStrictEqual(prepared.logA.id, prepared.logB.id)
   assert.strictEqual(preparedStore.state.logs.size, 2)
   assert.strictEqual(preparedStore.state.audits.size, 1)
+  const qaScopedStore = createDeliveryStore()
+  const qaScoped = await deliverPair({
+    userId: 3,
+    partnerId: 20,
+    requestId: 'qa-scoped-delivery',
+    matchCycleId: '2026-08-28-FRI',
+    qaMatchRunKey: 'qarunpair_run_one',
+    deliveryData: {
+      logA: { user_id: 3, match_user_id: 20 },
+      logB: { user_id: 20, match_user_id: 3 },
+      audit: { action: 'formal_batch' }
+    },
+    userDoc: { _id: 'user_3', id: 3 },
+    partnerDoc: { _id: 'user_20', id: 20 },
+    userPatch: {},
+    partnerPatch: {}
+  }, qaScopedStore)
+  assert.strictEqual(qaScoped.delivered, true)
+  assert.strictEqual(qaScopedStore.state.lookupScopes.length, 2)
+  assert.strictEqual(qaScopedStore.state.lookupScopes.every((row) => (
+    row.cycleId === '2026-08-28-FRI' && row.qaMatchRunKey === 'qarunpair_run_one'
+  )), true)
   assert.strictEqual(deliveryStore.state.users.get(3).match_status, 'matched')
   assert.strictEqual(deliveryStore.state.users.get(20).match_status, 'matched')
   const replay = await deliverPair(deliveryFixture('delivery-a'), deliveryStore)
