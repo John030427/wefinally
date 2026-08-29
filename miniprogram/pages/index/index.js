@@ -2,6 +2,7 @@ const { get, post } = require('../../utils/request')
 const { API_PATHS, MATCH_SCHEDULE, GUANGDONG_110_DEFAULT } = require('../../utils/constants')
 const { formatDateOnly, getNextMatchTime, genderText, calcAge, getCompatibilityDisplayText } = require('../../utils/util')
 const { buildProfileReadiness, buildJourneyState } = require('../../utils/productExperience')
+const { seenStorageKey, shouldRevealLatestMatch } = require('../../utils/matchResultReveal')
 
 Page({
   data: {
@@ -14,7 +15,9 @@ Page({
     latestMatch: null,
     hasLatest: false,
     readiness: null,
-    journeyState: null
+    journeyState: null,
+    matchRevealVisible: false,
+    matchRevealStorageKey: ''
   },
 
   onShow() {
@@ -50,6 +53,13 @@ Page({
 
       const isVip = profile && (profile.isVip || profile.is_vip === 1)
       const latestMatch = this.normalizeLatestMatch(latest)
+      const matchRevealStorageKey = seenStorageKey(profile)
+      const seenMatchId = matchRevealStorageKey ? wx.getStorageSync(matchRevealStorageKey) : ''
+      const matchRevealVisible = shouldRevealLatestMatch({
+        latest: latestMatch,
+        seenMatchId,
+        now: new Date()
+      })
 
       const readiness = buildProfileReadiness(profile)
       const journeyState = buildJourneyState({
@@ -68,7 +78,9 @@ Page({
         latestMatch,
         hasLatest: !!latestMatch,
         readiness,
-        journeyState
+        journeyState,
+        matchRevealVisible,
+        matchRevealStorageKey
       })
     } catch (err) {
       this.setData({
@@ -116,6 +128,23 @@ Page({
     const { latestMatch } = this.data
     if (!latestMatch || !latestMatch.id) return
     wx.navigateTo({ url: `/pages/match-detail/match-detail?id=${latestMatch.id}` })
+  },
+
+  markLatestMatchSeen() {
+    const { latestMatch, matchRevealStorageKey } = this.data
+    if (latestMatch && latestMatch.id && matchRevealStorageKey) {
+      wx.setStorageSync(matchRevealStorageKey, String(latestMatch.id))
+    }
+    this.setData({ matchRevealVisible: false })
+  },
+
+  onMatchRevealView() {
+    this.markLatestMatchSeen()
+    this.goMatchDetail()
+  },
+
+  onMatchRevealDismiss() {
+    this.markLatestMatchSeen()
   },
 
   goRules() {

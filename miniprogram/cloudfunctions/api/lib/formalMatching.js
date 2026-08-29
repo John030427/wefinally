@@ -5,6 +5,7 @@ const { canEnterFormalCandidatePool } = require('./testIdentityPolicy')
 const { canonicalPairKey, deliverPair, createCloudClaimStore, CLAIM_STATUS } = require('./matchClaim')
 const { semanticRerank, intentMatchGate } = require('./semanticMatchService')
 const { indexClaimsForMatching } = require('./matchCycleService')
+const { sharesCandidateCohort } = require('./matchCohortPolicy')
 
 function semanticDetail(best, side, rank) {
   const detail = scoreDetailFor(best, side, rank)
@@ -74,7 +75,8 @@ async function executeFormalMatching(ctx = {}) {
   const rerank = typeof deps.semanticRerank === 'function' ? deps.semanticRerank : semanticRerank
   while (remaining.length >= 2) {
     const user = remaining.shift()
-    const ranked = rankCandidates(user, remaining, settingsByUserId, { blockedIds: cycleClaimed })
+    const cohortCandidates = remaining.filter((candidate) => sharesCandidateCohort(user, candidate))
+    const ranked = rankCandidates(user, cohortCandidates, settingsByUserId, { blockedIds: cycleClaimed })
       .filter((item) => !isHistoricalPair(user.id, item.candidate.id, historicalPairKeys))
     evaluated += ranked.length
     const reranked = await rerank(ranked, user, settingsByUserId)

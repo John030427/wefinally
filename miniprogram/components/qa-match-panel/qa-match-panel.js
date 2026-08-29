@@ -17,6 +17,7 @@ Component({
 
   data: {
     visible: false,
+    resetVisible: false,
     scenarioPickerVisible: false,
     scenario: 'coordinate',
     scenarios: QA_SCENARIOS,
@@ -53,7 +54,10 @@ Component({
 
     async loadAccess(force = false) {
       const access = await refreshQaAccess({ force })
-      this.setData({ visible: access.enabled })
+      this.setData({
+        visible: access.enabled,
+        resetVisible: access.registrationReplayEnabled
+      })
     },
 
     onToggleScenario() {
@@ -143,6 +147,31 @@ Component({
       } finally {
         this.setData({ running: false, countdown: 0 })
       }
+    },
+
+    onResetRegistration() {
+      if (!this.data.resetVisible || this.data.running) return
+      wx.showModal({
+        title: '重新录入测试资料？',
+        content: '仅重置注册资料与择偶配置，不删除账号、会员权益、订单或推广归属。确认后需要重新完成注册。',
+        confirmText: '确认重录',
+        confirmColor: '#D14D6B',
+        success: async (modal) => {
+          if (!modal.confirm) return
+          this.setData({ running: true, statusText: '正在开启资料重录…' })
+          try {
+            await post(API_PATHS.QA_REGISTRATION_RESET, {
+              request_id: buildRequestId(),
+              confirm_text: '重新注册测试资料'
+            }, { showLoading: true, loadingText: '正在重置…' })
+            getApp().resetLocalForRegistration()
+          } catch (err) {
+            this.setData({ statusText: (err && err.message) || '开启资料重录失败' })
+          } finally {
+            this.setData({ running: false })
+          }
+        }
+      })
     }
   }
 })

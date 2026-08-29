@@ -51,6 +51,7 @@ function route(method, path) {
     'GET /api/user/profile': user.getProfile,
     'PUT /api/user/profile': user.updateProfile,
     'POST /api/user/register': user.register,
+    'POST /api/user/qa-registration-reset': user.resetQaRegistration,
     'POST /api/user/marry-report': user.marryReport,
     'POST /api/user/cancel': user.cancel,
     'POST /api/user/claim-free': user.claimFree,

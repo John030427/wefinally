@@ -33,6 +33,29 @@
   margin-bottom: 20rpx;
 }
 
+.qa-reset-link {
+  width: 100%;
+  height: 72rpx;
+  line-height: 72rpx;
+  margin: 0 0 20rpx;
+  padding: 0 24rpx;
+  border: 2rpx solid #f0b8c3;
+  border-radius: 36rpx;
+  background: #fff;
+  color: #d14d6b;
+  font-size: 26rpx;
+  font-weight: 600;
+}
+
+.qa-reset-link::after {
+  border: none;
+}
+
+.qa-reset-link[disabled] {
+  color: #caa4ad;
+  background: #faf6f4;
+}
+
 .qa-scenario-block {
   margin-bottom: 20rpx;
 }

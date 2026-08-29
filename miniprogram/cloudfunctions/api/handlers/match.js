@@ -20,6 +20,7 @@ const reportTask = require('./reportTask')
 const { isMatchOnlyFixture, canUseFixtureForMatch, canEnterFormalCandidatePool } = require('../lib/testFixturePolicy')
 const { fixtureSceneBadge } = require('../lib/syntheticPartnerJourney')
 const { createMatchTestRunHandlers } = require('../lib/matchTestRunService')
+const { sharesCandidateCohort } = require('../lib/matchCohortPolicy')
 
 function parseJson(value) {
   if (!value) return null
@@ -614,6 +615,7 @@ async function start(data, wxContext) {
     .filter((item) => memberStatus(item) === MEMBER_STATUS.APPROVED)
     .filter((item) => canEnterFormalCandidatePool(item))
     .filter((item) => canUseFixtureForMatch(user, item, now()))
+    .filter((item) => sharesCandidateCohort(user, item))
   if (data.dev_seed_current_user_candidates && candidates.length === 0) {
     candidates.push(await seedDemoCandidate(user))
   }

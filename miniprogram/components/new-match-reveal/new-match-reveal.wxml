@@ -1,0 +1,31 @@
+<view class="reveal-layer" wx:if="{{visible}}" catchtouchmove="preventMove">
+  <view class="reveal-backdrop"></view>
+  <view class="reveal-glow glow-left"></view>
+  <view class="reveal-glow glow-right"></view>
+
+  <view class="reveal-sheet" role="dialog" aria-label="新的匹配结果">
+    <view class="reveal-mark" aria-hidden="true">
+      <view class="mark-ring ring-one"></view>
+      <view class="mark-ring ring-two"></view>
+      <view class="mark-core">
+        <view class="mark-line line-left"></view>
+        <view class="mark-line line-right"></view>
+      </view>
+    </view>
+
+    <view class="reveal-kicker">WEFINALLY MATCH</view>
+    <view class="reveal-title">新的匹配已经抵达</view>
+    <view class="reveal-copy">双方条件已完成依次筛选，为你保留了这次相遇。</view>
+
+    <view class="reveal-summary" wx:if="{{match}}">
+      <view class="summary-primary">{{match.gender}} · {{match.ageText}} · {{match.city}}</view>
+      <view class="summary-meta">
+        <text>{{match.matchDate}}</text>
+        <text wx:if="{{match.scoreText}}">{{match.scoreText}}</text>
+      </view>
+    </view>
+
+    <button class="reveal-primary" bindtap="onView">立即查看</button>
+    <button class="reveal-secondary" bindtap="onDismiss">稍后再看</button>
+  </view>
+</view>

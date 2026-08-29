@@ -1,4 +1,4 @@
-const { col, first, byId, addWithId, updateByDoc, ensureUserSupportCode, authError, now } = require('../lib/db')
+const { col, first, byId, addWithId, updateByDoc, transaction, ensureUserSupportCode, authError, now } = require('../lib/db')
 const { tokenFor } = require('./auth')
 const { isVipActive } = require('../lib/format')
 const { ensureReferralAttribution } = require('../lib/partnerReferralAttributionPolicy')
@@ -12,6 +12,13 @@ const { resolveTestIdentity } = require('../lib/testIdentityPolicy')
 const { resolveQaTestRunEnabled } = require('../lib/qaAccessPolicy')
 const { flagEnabled } = require('../lib/flags')
 const { resolveRegion } = require('../lib/regionNormalize')
+const {
+  QA_REGISTRATION_CONFIRM_TEXT,
+  canReplayRegistration,
+  buildReplayRequestPatch,
+  buildReplayCompletionPatch,
+  buildResetMatchSettingPatch
+} = require('../lib/qaRegistrationReplayPolicy')
 const {
   shouldInvalidateAiMatchProfile
 } = require('../lib/aiMatchProfile')
@@ -85,6 +92,7 @@ async function profilePayload(user) {
     account_mode: identity.account_mode,
     identity_kind: identity.kind,
     qa_test_run_enabled: resolveQaTestRunEnabled(user, publicTestRunEnabled),
+    qa_registration_replay_enabled: canReplayRegistration(user),
     primary_circle_id: summarized.primary_circle_id || user.circle_id,
     secondary_circle_ids: summarized.secondary_circle_ids,
     identity_tags: summarized.tags,
@@ -108,6 +116,59 @@ async function register(data, wxContext) {
   if (!openid) throw new Error('缺少 openid')
   const existing = await first('user', { openid })
   if (existing) {
+    if (Number(existing.registration_replay_pending || 0) === 1 && canReplayRegistration(existing)) {
+      const identity = normalizeIdentityInput({
+        circle_id: data.primary_circle_id != null ? data.primary_circle_id : data.circle_id,
+        secondary_circle_ids: data.secondary_circle_ids,
+        occupation_description: data.occupation_description
+      })
+      const occupation = normalizeOccupation({
+        circleId: identity.primary_circle_id,
+        description: identity.occupation_description
+      })
+      const region = resolveRegion(data)
+      const replayedAt = now()
+      const replayPatch = Object.assign(buildReplayCompletionPatch(data, replayedAt), {
+        circle_id: occupation.circleId,
+        occupation_description: occupation.description,
+        city: region.city || data.city || '深圳',
+        province_code: region.province_code || '',
+        province_name: region.province_name || '',
+        city_code: region.city_code || '',
+        city_name: region.city_name || region.city || data.city || '深圳',
+        country_code: region.country_code || 'CN',
+        country_name: region.country_name || '中国'
+      })
+      const replayedUser = await updateByDoc('user', existing, replayPatch)
+      try {
+        await replaceIdentityTags(existing.id, identity.tags)
+      } catch (error) {
+        console.warn('identity tag replay write skipped:', error.message || error)
+      }
+      try {
+        await addWithId('partner_user_audit_log', {
+          application_id: 0,
+          partner_id: Number(existing.promote_partner_id || 0),
+          user_id: existing.id,
+          actor_role: 'user',
+          actor_id: existing.id,
+          action: 'complete_qa_registration_replay',
+          from_status: 'registration_replay_pending',
+          to_status: memberStatus(existing),
+          reason: 'QA 真机资料重录完成',
+          request_id: existing.qa_registration_reset_request_id || ''
+        }, 'member_audit')
+      } catch (error) {
+        console.warn('registration replay audit skipped:', error.message || error)
+      }
+      const replayedProfile = await profilePayload(replayedUser)
+      return {
+        token: tokenFor(openid),
+        user: replayedProfile,
+        userInfo: replayedProfile,
+        registration_replayed: true
+      }
+    }
     if (Number(existing.promote_partner_id || 0) > 0) {
       await ensureReferralAttribution(
         existing,
@@ -207,6 +268,48 @@ async function register(data, wxContext) {
     user: registeredProfile,
     userInfo: registeredProfile
   }
+}
+
+async function resetQaRegistration(data, wxContext) {
+  const user = await currentUser(wxContext)
+  if (!canReplayRegistration(user)) {
+    const error = new Error('仅显式 QA 测试账号可重新录入资料')
+    error.code = 403
+    throw error
+  }
+  const requestedAt = now()
+  const patch = buildReplayRequestPatch(data, requestedAt)
+  if (
+    Number(user.registration_replay_pending || 0) === 1
+    && String(user.qa_registration_reset_request_id || '') === patch.qa_registration_reset_request_id
+  ) {
+    return { reset: true, need_register: true, idempotent: true }
+  }
+
+  const setting = await first('user_match_setting', { user_id: user.id })
+  await transaction(async (store) => {
+    const current = await store.byId('user', user.id)
+    if (!current || !canReplayRegistration(current)) throw new Error('QA 测试账号状态已变化，请刷新后重试')
+    if (setting && setting._id) {
+      const currentSetting = await store.byDocId('user_match_setting', setting._id)
+      if (currentSetting) await store.updateByDoc('user_match_setting', currentSetting, buildResetMatchSettingPatch())
+    }
+    await store.updateByDoc('user', current, patch)
+    await store.addWithId('partner_user_audit_log', {
+      application_id: 0,
+      partner_id: Number(current.promote_partner_id || 0),
+      user_id: current.id,
+      actor_role: 'user',
+      actor_id: current.id,
+      action: 'request_qa_registration_replay',
+      from_status: memberStatus(current),
+      to_status: 'registration_replay_pending',
+      reason: `用户确认“${QA_REGISTRATION_CONFIRM_TEXT}”`,
+      request_id: patch.qa_registration_reset_request_id
+    }, 'member_audit')
+  })
+
+  return { reset: true, need_register: true, idempotent: false }
 }
 
 async function getProfile(data, wxContext) {
@@ -373,6 +476,7 @@ module.exports = {
   currentUser,
   profilePayload,
   register,
+  resetQaRegistration,
   getProfile,
   updateProfile,
   marryReport,
