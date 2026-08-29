@@ -65,16 +65,18 @@
         <text class="form-label required">具体职业</text>
         <input class="text-input" value="{{form.occupationDescription}}" placeholder="请输入你的职业，例如：工业设计师" maxlength="100" bindinput="onOccupationDescriptionInput" />
       </view>
-      <view class="form-item" wx:if="{{secondaryIdentityOptions.length}}">
+      <view class="form-item" wx:if="{{circleOptions.length}}">
         <text class="form-label">其他符合身份（最多2个）</text>
-        <view class="identity-chip-list">
+        <view class="identity-summary" wx:if="{{selectedSecondaryIdentities.length}}">
           <view
-            class="identity-chip {{item.selected ? 'selected' : ''}}"
-            wx:for="{{secondaryIdentityOptions}}"
+            class="identity-chip selected"
+            wx:for="{{selectedSecondaryIdentities}}"
             wx:key="id"
-            data-id="{{item.id}}"
-            bindtap="toggleSecondaryIdentity"
           >{{item.name}}</view>
+        </view>
+        <view class="identity-picker-entry" bindtap="openSecondaryIdentityDrawer">
+          <text>{{selectedSecondaryIdentities.length ? '修改其他身份' : '选择其他身份'}}</text>
+          <text class="identity-picker-count">{{selectedSecondaryIdentities.length}} / 2</text>
         </view>
         <view class="form-hint">学历仍单独填写；身份用于理解背景，不影响推广归属。</view>
       </view>
@@ -148,4 +150,58 @@
       <button class="btn-primary" bindtap="onSubmit" disabled="{{submitting}}" loading="{{submitting}}">{{editMode ? '保存修改' : '提交资料'}}</button>
     </view>
   </block>
+
+  <view wx:if="{{secondaryIdentityDrawerVisible}}" class="identity-drawer-layer" catchtap="closeSecondaryIdentityDrawer">
+    <view class="identity-drawer" catchtap="noop">
+      <view class="identity-drawer-handle"></view>
+      <view class="identity-drawer-header">
+        <view>
+          <view class="identity-drawer-title">选择其他身份</view>
+          <view class="identity-drawer-subtitle">最多选择 2 个，也可以搜索职业或板块</view>
+        </view>
+        <view class="identity-drawer-close" bindtap="closeSecondaryIdentityDrawer">关闭选择</view>
+      </view>
+      <view class="identity-search">
+        <input
+          value="{{secondaryIdentityQuery}}"
+          placeholder="搜索职业或板块"
+          maxlength="30"
+          confirm-type="search"
+          bindinput="onSecondaryIdentitySearch"
+        />
+      </view>
+      <view class="identity-selected-section">
+        <view class="identity-section-label">已选 {{selectedSecondaryIdentities.length}} / 2</view>
+        <view wx:if="{{selectedSecondaryIdentities.length}}" class="identity-chip-list">
+          <view
+            class="identity-chip selected removable"
+            wx:for="{{selectedSecondaryIdentities}}"
+            wx:key="id"
+            data-id="{{item.id}}"
+            bindtap="toggleSecondaryIdentity"
+          >{{item.name}}　移除</view>
+        </view>
+        <view wx:else class="identity-selected-empty">还没有选择补充身份</view>
+      </view>
+      <scroll-view class="identity-result-scroll" scroll-y enhanced show-scrollbar="{{false}}">
+        <block wx:for="{{secondaryIdentityGroups}}" wx:key="plate" wx:for-item="group">
+          <view class="identity-group-title">{{group.plate}}</view>
+          <view class="identity-chip-list identity-group-list">
+            <view
+              class="identity-chip {{identity.selected ? 'selected' : ''}}"
+              wx:for="{{group.items}}"
+              wx:key="id"
+              wx:for-item="identity"
+              data-id="{{identity.id}}"
+              bindtap="toggleSecondaryIdentity"
+            >{{identity.name}}</view>
+          </view>
+        </block>
+        <view wx:if="{{!secondaryIdentityGroups.length}}" class="identity-search-empty">没有找到相关身份，试试其他关键词</view>
+      </scroll-view>
+      <view class="identity-drawer-safe">
+        <button class="identity-drawer-confirm" bindtap="closeSecondaryIdentityDrawer">完成</button>
+      </view>
+    </view>
+  </view>
 </view>
