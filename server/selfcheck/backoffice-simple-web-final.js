@@ -144,6 +144,17 @@ assert.ok(adminHtml.includes('仅内部处理 · 不向 A 展示'))
 assert.ok(adminHtml.includes('双方共享进度'))
 assert.ok(adminHtml.includes('coordinationOperatorHtml') || adminHtml.includes('operator_view') || adminHtml.includes('等待 B 确认'))
 
+// CloudBase Admin conversation workbench characterization contract.
+assert.ok(adminHtml.includes('data-p="service">客服工作台'))
+assert.ok(adminHtml.includes('data-p="chat">客服会话'))
+assert.ok(adminHtml.includes("memberApi('/admin/agent/conversations'"))
+assert.ok(adminHtml.includes("memberApi('/admin/agent/conversations/' + Number(id))"))
+assert.ok(adminHtml.includes("memberApi('/admin/agent/conversations/' + Number(id) + '/reply'"))
+assert.ok(adminHtml.includes('选择左侧会话后查看真实用户—AI聊天'))
+assert.ok(adminHtml.includes('aria-label="人工客服回复"'))
+assert.ok(adminHtml.includes('业务上下文</strong><small>仅展示脱敏编号与必要状态'))
+assert.ok(adminHtml.includes('客服账号仅处理客服会话、奔现工单和订单状态查询，不开放用户修改、导出、白名单导入等高权限操作。'))
+
 assert.ok(partnerHtml.includes('今天需要处理'))
 assert.ok(partnerHtml.includes('phone_masked') || partnerHtml.includes('已脱敏'))
 assert.ok(partnerHtml.includes('隐私提示'))
