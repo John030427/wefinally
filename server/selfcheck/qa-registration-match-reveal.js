@@ -14,6 +14,8 @@ const {
 } = require('../../miniprogram/cloudfunctions/api/lib/qaRegistrationReplayPolicy')
 const {
   seenStorageKey,
+  createRevealSessionState,
+  dismissForSession,
   shouldRevealLatestMatch
 } = require('../../miniprogram/utils/matchResultReveal')
 const {
@@ -92,6 +94,17 @@ assert.strictEqual(shouldRevealLatestMatch({
   seenMatchId: '99',
   now: new Date('2026-08-30T08:00:00+08:00')
 }), false)
+const initialRevealSession = createRevealSessionState()
+const dismissedRevealSession = dismissForSession(initialRevealSession, 99)
+assert.deepStrictEqual(initialRevealSession, { dismissedMatchIds: [] })
+assert.deepStrictEqual(dismissedRevealSession, { dismissedMatchIds: ['99'] })
+assert.deepStrictEqual(dismissForSession(dismissedRevealSession, '99'), dismissedRevealSession)
+assert.strictEqual(shouldRevealLatestMatch({
+  latest: { id: 99, matchDate: '2026-08-29' },
+  seenMatchId: '',
+  sessionDismissedMatchIds: dismissedRevealSession.dismissedMatchIds,
+  now: new Date('2026-08-30T08:00:00+08:00')
+}), false)
 assert.strictEqual(shouldRevealLatestMatch({
   latest: { id: 100, matchDate: '2026-08-31' },
   seenMatchId: '',
@@ -132,6 +145,7 @@ const authSource = source('miniprogram/cloudfunctions/api/handlers/auth.js')
 const formalSource = source('miniprogram/cloudfunctions/api/lib/formalMatching.js')
 const panelSource = source('miniprogram/components/qa-match-panel/qa-match-panel.wxml')
 const indexSource = source('miniprogram/pages/index/index.wxml')
+const indexJsSource = source('miniprogram/pages/index/index.js')
 assert.ok(routeSource.includes('POST /api/user/qa-registration-reset'))
 assert.ok(userSource.includes('canReplayRegistration(user)'))
 assert.ok(userSource.includes('qa_registration_replay_enabled: canReplayRegistration(user)'))
@@ -143,5 +157,13 @@ assert.ok(panelSource.includes('重新注册测试资料'))
 assert.ok(panelSource.includes('wx:if="{{resetVisible}}"'))
 assert.ok(indexSource.includes('<new-match-reveal'))
 assert.ok(indexSource.includes('bind:view="onMatchRevealView"'))
+const dismissHandler = indexJsSource.match(/onMatchRevealDismiss\(\)\s*\{([\s\S]*?)\n\s*\},/)
+assert.ok(dismissHandler)
+assert.ok(dismissHandler[1].includes('dismissForSession'))
+assert.ok(!dismissHandler[1].includes('markLatestMatchSeen'))
+const seenHandler = indexJsSource.match(/markLatestMatchSeen\(\)\s*\{([\s\S]*?)\n\s*\},/)
+assert.ok(seenHandler && seenHandler[1].includes('try {') && seenHandler[1].includes('catch'))
+const viewHandler = indexJsSource.match(/onMatchRevealView\(\)\s*\{([\s\S]*?)\n\s*\},/)
+assert.ok(viewHandler && viewHandler[1].includes('markLatestMatchSeen') && viewHandler[1].includes('goMatchDetail'))
 
 console.log('QA REGISTRATION MATCH REVEAL SELF-CHECK PASSED')

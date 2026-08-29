@@ -20,10 +20,24 @@ function localDateStamp(now = new Date()) {
   return Number(`${year}${month}${day}`)
 }
 
-function shouldRevealLatestMatch({ latest, seenMatchId, now = new Date() } = {}) {
+function createRevealSessionState() {
+  return { dismissedMatchIds: [] }
+}
+
+function dismissForSession(state = createRevealSessionState(), matchId) {
+  const id = String(matchId || '').trim()
+  const current = Array.isArray(state.dismissedMatchIds)
+    ? state.dismissedMatchIds.map(String)
+    : []
+  if (!id || current.includes(id)) return { dismissedMatchIds: current.slice() }
+  return { dismissedMatchIds: current.concat(id) }
+}
+
+function shouldRevealLatestMatch({ latest, seenMatchId, sessionDismissedMatchIds = [], now = new Date() } = {}) {
   if (!latest || (!latest.id && !latest.matchId)) return false
   const matchId = String(latest.id || latest.matchId)
   if (String(seenMatchId || '') === matchId) return false
+  if ((sessionDismissedMatchIds || []).map(String).includes(matchId)) return false
   const matchDay = dateStamp(latest.matchDate || latest.match_date)
   if (!matchDay) return false
   return matchDay <= localDateStamp(now)
@@ -31,5 +45,7 @@ function shouldRevealLatestMatch({ latest, seenMatchId, now = new Date() } = {})
 
 module.exports = {
   seenStorageKey,
+  createRevealSessionState,
+  dismissForSession,
   shouldRevealLatestMatch
 }

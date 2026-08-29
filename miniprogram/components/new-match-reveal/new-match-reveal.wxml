@@ -26,6 +26,6 @@
     </view>
 
     <button class="reveal-primary" bindtap="onView">立即查看</button>
-    <button class="reveal-secondary" bindtap="onDismiss">稍后再看</button>
+    <button class="reveal-secondary" bindtap="onDismiss">稍后再看（下次打开仍提醒）</button>
   </view>
 </view>

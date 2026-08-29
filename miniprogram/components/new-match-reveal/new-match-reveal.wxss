@@ -171,7 +171,7 @@
   height: 76rpx;
   line-height: 76rpx;
   margin-top: 12rpx;
-  color: #9a7f84;
+  color: #806f6f;
   background: transparent;
 }
 

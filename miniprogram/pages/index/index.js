@@ -2,7 +2,14 @@ const { get, post } = require('../../utils/request')
 const { API_PATHS, MATCH_SCHEDULE, GUANGDONG_110_DEFAULT } = require('../../utils/constants')
 const { formatDateOnly, getNextMatchTime, genderText, calcAge, getCompatibilityDisplayText } = require('../../utils/util')
 const { buildProfileReadiness, buildJourneyState } = require('../../utils/productExperience')
-const { seenStorageKey, shouldRevealLatestMatch } = require('../../utils/matchResultReveal')
+const {
+  seenStorageKey,
+  createRevealSessionState,
+  dismissForSession,
+  shouldRevealLatestMatch
+} = require('../../utils/matchResultReveal')
+
+let revealSessionState = createRevealSessionState()
 
 Page({
   data: {
@@ -17,12 +24,14 @@ Page({
     readiness: null,
     journeyState: null,
     matchRevealVisible: false,
-    matchRevealStorageKey: ''
+    matchRevealStorageKey: '',
+    sessionDismissedMatchIds: revealSessionState.dismissedMatchIds
   },
 
   onShow() {
     const tabBar = this.getTabBar && this.getTabBar()
     if (tabBar && typeof tabBar.syncForRoute === 'function') tabBar.syncForRoute('/pages/index/index')
+    this.setData({ sessionDismissedMatchIds: revealSessionState.dismissedMatchIds })
     this.checkAuthAndLoad()
   },
 
@@ -56,10 +65,16 @@ Page({
       const isVip = profile && (profile.isVip || profile.is_vip === 1)
       const latestMatch = this.normalizeLatestMatch(latest)
       const matchRevealStorageKey = seenStorageKey(profile)
-      const seenMatchId = matchRevealStorageKey ? wx.getStorageSync(matchRevealStorageKey) : ''
+      let seenMatchId = ''
+      try {
+        seenMatchId = matchRevealStorageKey ? wx.getStorageSync(matchRevealStorageKey) : ''
+      } catch (error) {
+        console.warn('match reveal seen state unavailable:', error && error.message ? error.message : error)
+      }
       const matchRevealVisible = shouldRevealLatestMatch({
         latest: latestMatch,
         seenMatchId,
+        sessionDismissedMatchIds: this.data.sessionDismissedMatchIds,
         now: new Date()
       })
 
@@ -134,8 +149,12 @@ Page({
 
   markLatestMatchSeen() {
     const { latestMatch, matchRevealStorageKey } = this.data
-    if (latestMatch && latestMatch.id && matchRevealStorageKey) {
-      wx.setStorageSync(matchRevealStorageKey, String(latestMatch.id))
+    try {
+      if (latestMatch && latestMatch.id && matchRevealStorageKey) {
+        wx.setStorageSync(matchRevealStorageKey, String(latestMatch.id))
+      }
+    } catch (error) {
+      console.warn('match reveal seen state was not persisted:', error && error.message ? error.message : error)
     }
     this.setData({ matchRevealVisible: false })
   },
@@ -146,7 +165,15 @@ Page({
   },
 
   onMatchRevealDismiss() {
-    this.markLatestMatchSeen()
+    const latest = this.data.latestMatch
+    revealSessionState = dismissForSession(
+      revealSessionState,
+      latest && latest.id
+    )
+    this.setData({
+      matchRevealVisible: false,
+      sessionDismissedMatchIds: revealSessionState.dismissedMatchIds
+    })
   },
 
   goRules() {
