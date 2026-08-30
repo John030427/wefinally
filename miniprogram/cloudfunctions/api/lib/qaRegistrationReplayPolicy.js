@@ -42,6 +42,9 @@ function createQaMatchRunId(userId, timestamp = new Date(), nonce = '') {
 }
 
 function qaRunKey(left = {}, right = {}) {
+  if (!canReplayRegistration(left) || !canReplayRegistration(right)) return ''
+  const cohort = cohortKey(left)
+  if (!cohort || cohort !== cohortKey(right)) return ''
   const participants = [left, right]
     .map((user) => ({ id: Number(user.id), runId: runId(user) }))
     .filter((item) => Number.isFinite(item.id) && item.id > 0 && item.runId)
@@ -51,6 +54,20 @@ function qaRunKey(left = {}, right = {}) {
     .update(participants.map((item) => `${item.id}:${item.runId}`).join('|'))
     .digest('hex')
     .slice(0, 24)}`
+}
+
+function shouldExcludeHistoricalClaims(claims, left = {}, right = {}) {
+  return (claims || []).some((claim) => shouldExcludeHistoricalPair(claim, left, right))
+}
+
+function shouldBlockUserForClaim(claim = {}, user = {}) {
+  if (!canReplayRegistration(user) || !cohortKey(user) || !runId(user)) return true
+  const claimAt = timestampOf(
+    claim.created_at || claim.create_time || claim.claimed_at || claim.matched_at || claim.updated_at || claim.update_time
+  )
+  const runAt = timestampOf(user.qa_match_run_started_at)
+  if (![claimAt, runAt].every(Number.isFinite)) return true
+  return !(runAt > claimAt)
 }
 
 function shouldExcludeHistoricalPair(claim = {}, left = {}, right = {}) {
@@ -153,6 +170,8 @@ module.exports = {
   canReplayRegistration,
   createQaMatchRunId,
   qaRunKey,
+  shouldBlockUserForClaim,
+  shouldExcludeHistoricalClaims,
   shouldExcludeHistoricalPair,
   buildReplayRequestPatch,
   buildReplayCompletionPatch,

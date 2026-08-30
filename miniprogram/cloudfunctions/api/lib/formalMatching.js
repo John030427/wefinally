@@ -6,7 +6,7 @@ const { canonicalPairKey, deliverPair, createCloudClaimStore, CLAIM_STATUS } = r
 const { semanticRerank, intentMatchGate } = require('./semanticMatchService')
 const { indexClaimsForMatching } = require('./matchCycleService')
 const { sharesCandidateCohort } = require('./matchCohortPolicy')
-const { qaRunKey, shouldExcludeHistoricalPair } = require('./qaRegistrationReplayPolicy')
+const { qaRunKey, shouldExcludeHistoricalClaims } = require('./qaRegistrationReplayPolicy')
 
 function semanticDetail(best, side, rank) {
   const detail = scoreDetailFor(best, side, rank)
@@ -42,7 +42,7 @@ function semanticDetail(best, side, rank) {
 function isHistoricalPair(user, partner, historicalClaimsByPair) {
   try {
     const claims = historicalClaimsByPair.get(canonicalPairKey(user.id, partner.id)) || []
-    return claims.some((claim) => shouldExcludeHistoricalPair(claim, user, partner))
+    return shouldExcludeHistoricalClaims(claims, user, partner)
   } catch (err) {
     return false
   }
@@ -139,6 +139,8 @@ async function executeFormalMatching(ctx = {}) {
       requestId,
       matchCycleId,
       qaMatchRunKey: currentQaRunKey,
+      qaUserRunId: currentQaRunKey ? user.qa_match_run_id : '',
+      qaPartnerRunId: currentQaRunKey ? partner.qa_match_run_id : '',
       deliveryData,
       userDoc: user,
       partnerDoc: partner,

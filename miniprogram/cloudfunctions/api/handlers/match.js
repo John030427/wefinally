@@ -14,13 +14,18 @@ const {
 const { presentAiMatchProfile } = require('../lib/aiMatchProfilePresentation')
 const { canonicalPairKey, deliverPair, createCloudClaimStore, CLAIM_STATUS } = require('../lib/matchClaim')
 const { shanghaiBusinessClock } = require('../lib/businessClock')
-const { userHasProductionClaimInCycle, indexClaimsForMatching } = require('../lib/matchCycleService')
+const { indexClaimsForMatching } = require('../lib/matchCycleService')
 const { semanticRerank, intentMatchGate } = require('../lib/semanticMatchService')
 const reportTask = require('./reportTask')
 const { isMatchOnlyFixture, canUseFixtureForMatch, canEnterFormalCandidatePool } = require('../lib/testFixturePolicy')
 const { fixtureSceneBadge } = require('../lib/syntheticPartnerJourney')
 const { createMatchTestRunHandlers } = require('../lib/matchTestRunService')
 const { sharesCandidateCohort } = require('../lib/matchCohortPolicy')
+const {
+  qaRunKey,
+  shouldBlockUserForClaim,
+  shouldExcludeHistoricalClaims
+} = require('../lib/qaRegistrationReplayPolicy')
 
 function parseJson(value) {
   if (!value) return null
@@ -596,20 +601,14 @@ async function start(data, wxContext) {
   }
   const clock = shanghaiBusinessClock(now())
   const allClaims = await list('match_claim', { status: CLAIM_STATUS }, 500)
-  if (clock.isMatchDay && clock.matchCycleId && userHasProductionClaimInCycle(user.id, allClaims, clock.matchCycleId)) {
-    return {
-      matched: 0,
-      users: 0,
-      evaluated_candidates: 0,
-      message: '本轮已成功匹配，请等待下一匹配窗口'
-    }
-  }
   const existingMatches = await list('user_match_log', { user_id: user.id }, 100)
-  const seenPartnerIds = {}
-  const { historicalPairKeys } = indexClaimsForMatching(allClaims, clock.matchCycleId || '')
+  const { historicalClaimsByPair } = indexClaimsForMatching(allClaims, clock.matchCycleId || '')
   existingMatches.forEach((row) => {
-    seenPartnerIds[Number(row.match_user_id)] = true
-    if (row.pair_key) historicalPairKeys.add(String(row.pair_key))
+    try {
+      const pairKey = String(row.pair_key || canonicalPairKey(user.id, row.match_user_id))
+      if (!historicalClaimsByPair.has(pairKey)) historicalClaimsByPair.set(pairKey, [])
+      historicalClaimsByPair.get(pairKey).push(Object.assign({}, row, { pair_key: pairKey }))
+    } catch (err) { /* malformed historical rows remain unavailable candidates */ }
   })
   const candidates = (await list('user', { status: 1 }, 100))
     .filter((item) => memberStatus(item) === MEMBER_STATUS.APPROVED)
@@ -627,19 +626,33 @@ async function start(data, wxContext) {
   const claims = allClaims
   const claimBlockedIds = []
   if (clock.isMatchDay && clock.matchCycleId) {
+    const usersById = new Map([[Number(user.id), user]])
+    candidates.forEach((candidate) => usersById.set(Number(candidate.id), candidate))
     claims.forEach((claim) => {
       if (String(claim.match_cycle_id || '') === clock.matchCycleId && !Number(claim.qa_cycle || 0)) {
-        claimBlockedIds.push(Number(claim.user_id), Number(claim.match_user_id))
+        ;[Number(claim.user_id), Number(claim.match_user_id)].forEach((id) => {
+          const claimedUser = usersById.get(id)
+          if (!claimedUser || shouldBlockUserForClaim(claim, claimedUser)) claimBlockedIds.push(id)
+        })
       }
     })
   }
-  const blockedIds = new Set(Object.keys(seenPartnerIds).map(Number).concat(claimBlockedIds))
+  if (claimBlockedIds.includes(Number(user.id))) {
+    return {
+      matched: 0,
+      users: 0,
+      evaluated_candidates: 0,
+      message: '本轮已成功匹配，请等待下一匹配窗口'
+    }
+  }
+  const blockedIds = new Set(claimBlockedIds)
   const ranked = rankCandidates(user, candidates, settingsByUserId, { blockedIds })
     .filter((item) => {
       try {
-        return !historicalPairKeys.has(canonicalPairKey(user.id, item.candidate.id))
+        const pairClaims = historicalClaimsByPair.get(canonicalPairKey(user.id, item.candidate.id)) || []
+        return !shouldExcludeHistoricalClaims(pairClaims, user, item.candidate)
       } catch (err) {
-        return true
+        return false
       }
     })
   const reranked = await semanticRerank(ranked, user, settingsByUserId)
@@ -667,12 +680,17 @@ async function start(data, wxContext) {
   for (let index = 0; index < eligible.length; index += 1) {
     const best = eligible[index]
     const partner = best.candidate
+    const pairKey = canonicalPairKey(user.id, partner.id)
+    const qaMatchRunKey = qaRunKey(user, partner)
     const claimInput = {
       userId: user.id,
       partnerId: partner.id,
-      requestId: String(data.request_id || `match:${user.id}:${Date.now()}`)
+      requestId: String(data.request_id || `match:${user.id}:${Date.now()}`),
+      matchCycleId: clock.matchCycleId || '',
+      qaMatchRunKey,
+      qaUserRunId: qaMatchRunKey ? user.qa_match_run_id : '',
+      qaPartnerRunId: qaMatchRunKey ? partner.qa_match_run_id : ''
     }
-    const pairKey = canonicalPairKey(user.id, partner.id)
     const abTestRunId = String(partner.ab_test_run_id || '')
     const algorithmRank = ranked.findIndex((item) => Number(item.candidate.id) === Number(partner.id)) + 1
     const detailJsonA = withSemanticRerankDetail(Object.assign(scoreDetailFor(best, 'a', algorithmRank), {
@@ -752,7 +770,8 @@ async function start(data, wxContext) {
       user_id: user.id,
       match_user_id: partner.id,
       status: 'matched',
-      action: 'claim_and_deliver'
+      action: 'claim_and_deliver',
+      ...(qaMatchRunKey ? { qa_match_run_key: qaMatchRunKey } : {})
     })
     const delivery = await deliverPair(Object.assign({}, claimInput, {
       logA,

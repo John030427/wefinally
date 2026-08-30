@@ -50,3 +50,6 @@ jobs:
 
       - name: Cloud match checks
         run: npm --prefix server run selfcheck:cloud-match
+
+      - name: Mini program UI contract checks
+        run: npm --prefix server run selfcheck:secondary-identity && npm --prefix server run selfcheck:custom-tab-bar

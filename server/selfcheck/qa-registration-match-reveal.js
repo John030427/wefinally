@@ -7,6 +7,8 @@ const {
   canReplayRegistration,
   createQaMatchRunId,
   qaRunKey,
+  shouldBlockUserForClaim,
+  shouldExcludeHistoricalClaims,
   shouldExcludeHistoricalPair,
   buildReplayRequestPatch,
   buildReplayCompletionPatch,
@@ -77,6 +79,18 @@ assert.strictEqual(shouldExcludeHistoricalPair({
 assert.strictEqual(shouldExcludeHistoricalPair(oldClaim, { ...qaA, qa_test_run_enabled: false }, qaB), true)
 assert.strictEqual(shouldExcludeHistoricalPair(oldClaim, qaA, { ...qaB, qa_match_run_id: '' }), true)
 assert.strictEqual(qaRunKey(qaA, qaB), qaRunKey(qaB, qaA))
+assert.strictEqual(qaRunKey({ ...qaA, qa_test_run_enabled: false }, qaB), '')
+assert.strictEqual(shouldExcludeHistoricalClaims([oldClaim], qaA, qaB), false)
+assert.strictEqual(shouldBlockUserForClaim(oldClaim, qaA), false)
+assert.strictEqual(shouldBlockUserForClaim({
+  ...oldClaim,
+  created_at: new Date('2026-08-22T00:00:00Z')
+}, qaA), true)
+assert.strictEqual(shouldBlockUserForClaim(oldClaim, { id: 30, account_mode: 'production' }), true)
+assert.strictEqual(shouldExcludeHistoricalClaims([oldClaim, {
+  ...oldClaim,
+  created_at: new Date('2026-08-22T00:00:00Z')
+}], qaA, qaB), true)
 assert.match(
   createQaMatchRunId(10, new Date('2026-08-21T00:00:00Z'), 'abc12345'),
   /^qarun_10_/
@@ -143,6 +157,7 @@ const routeSource = source('miniprogram/cloudfunctions/api/handlers/route.js')
 const userSource = source('miniprogram/cloudfunctions/api/handlers/user.js')
 const authSource = source('miniprogram/cloudfunctions/api/handlers/auth.js')
 const formalSource = source('miniprogram/cloudfunctions/api/lib/formalMatching.js')
+const matchHandlerSource = source('miniprogram/cloudfunctions/api/handlers/match.js')
 const panelSource = source('miniprogram/components/qa-match-panel/qa-match-panel.wxml')
 const indexSource = source('miniprogram/pages/index/index.wxml')
 const indexJsSource = source('miniprogram/pages/index/index.js')
@@ -153,6 +168,10 @@ assert.ok(userSource.includes("action: 'request_qa_registration_replay'"))
 assert.ok(userSource.includes("store.byDocId('user_match_setting', setting._id)"))
 assert.ok(authSource.includes('registration_replay_pending'))
 assert.ok(formalSource.includes('sharesCandidateCohort(user, candidate)'))
+assert.ok(matchHandlerSource.includes('shouldExcludeHistoricalClaims'))
+assert.ok(matchHandlerSource.includes('qaMatchRunKey'))
+assert.ok(matchHandlerSource.includes('qaUserRunId'))
+assert.ok(matchHandlerSource.includes('qaPartnerRunId'))
 assert.ok(panelSource.includes('重新注册测试资料'))
 assert.ok(panelSource.includes('wx:if="{{resetVisible}}"'))
 assert.ok(indexSource.includes('<new-match-reveal'))
