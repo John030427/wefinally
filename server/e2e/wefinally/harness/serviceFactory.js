@@ -10,8 +10,10 @@ const { currentUserFactory } = require('./context')
 const { updateProfileForUser, saveMatchSetting } = require('./profileService')
 const { createAiProvider } = require('./aiProvider')
 
+const DEFAULT_E2E_NOW = '2026-08-20T08:00:00.000Z'
+
 function futureDate(days, from) {
-  const value = new Date(from || Date.now())
+  const value = new Date(from || DEFAULT_E2E_NOW)
   value.setUTCDate(value.getUTCDate() + days)
   return value.toISOString().slice(0, 10)
 }
