@@ -8,7 +8,8 @@ const {
   loadCorpusForUserIds,
   backfillCorpus,
   RETRIEVAL_VERSION,
-  CHUNK_VERSION
+  CHUNK_VERSION,
+  makeDocumentId
 } = require('../../miniprogram/cloudfunctions/api/lib/matchRagCorpus')
 const collections = require('../../miniprogram/cloudfunctions/api/lib/collections')
 const { canBootstrapCollection } = require('../../miniprogram/cloudfunctions/api/lib/collectionBootstrapPolicy')
@@ -76,8 +77,8 @@ const userA = {
   income_range: '精确收入20000'
 }
 const settingA = {
-  self_view_text: '我重视真诚和责任，我在腾讯公司工作，住在深圳市南山区科技园5号，openid=secret-value，手机13800138000',
-  target_view_text: '希望对方稳重可靠，愿意沟通，月收入20000，微信号wx_secret'
+  self_view_text: '我重视真诚和责任，愿意坦诚沟通，openid=secret-value，手机13800138000',
+  target_view_text: '希望对方稳重可靠，愿意共同成长，微信号wx_secret'
 }
 const userB = {
   id: 2,
@@ -122,6 +123,38 @@ async function main() {
     projectCorpusDocuments(Object.assign({}, userA, { rag_eligible: false }), settingA, '2026-09-01T00:00:00.000Z').length,
     0
   )
+  for (const value of [false, 'false', 0, '0', 'no', ' NO ']) {
+    assert.strictEqual(
+      projectCorpusDocuments(Object.assign({}, userA, { metadata: { rag_allowed: value } }), settingA, '2026-09-01T00:00:00.000Z').length,
+      0
+    )
+  }
+  assert.strictEqual(
+    projectCorpusDocuments(Object.assign({}, userA, {
+      provenance: { source: { kind: 'benchmark', manifest: { dataset_version: 'speed-dating-native-v1' } } }
+    }), settingA, '2026-09-01T00:00:00.000Z').length,
+    0
+  )
+  assert.strictEqual(
+    projectCorpusDocuments(Object.assign({}, userA, {
+      provenance: { manifest: { dataset: { dataset_version: 'v1.6' } } }
+    }), settingA, '2026-09-01T00:00:00.000Z').length,
+    0
+  )
+  assert.strictEqual(
+    projectCorpusDocuments(Object.assign({}, userA, {
+      provenance: { type: 'external_benchmark', dataset: { name: 'mystery-set' } }
+    }), settingA, '2026-09-01T00:00:00.000Z').length,
+    0
+  )
+  const chineseSensitive = projectCorpusDocuments(userA, {
+    self_view_text: '我在字节跳动任职，工作内容稳定',
+    target_view_text: '月收入两万元，年薪约二十万，希望彼此尊重'
+  }, '2026-09-01T00:00:00.000Z')
+  assert.ok(!JSON.stringify(chineseSensitive).includes('字节跳动'))
+  assert.ok(!JSON.stringify(chineseSensitive).includes('两万元'))
+  assert.ok(!JSON.stringify(chineseSensitive).includes('二十万'))
+  assert.ok(!JSON.stringify(chineseSensitive).includes('任职'))
   assert.strictEqual(
     projectCorpusDocuments(userA, settingA, '2026-09-02T00:00:00.000Z')[0].source_profile_version,
     projected[0].source_profile_version
@@ -157,17 +190,86 @@ async function main() {
   assert.strictEqual(loaded['1'].some((row) => row.enabled === false), false)
   assert.ok(!JSON.stringify(loaded).match(/vector|embedding|openid/i))
 
+  const historicalRepository = createRepository([], {})
+  for (let index = 0; index < 25; index += 1) {
+    const evidenceKey = `city_plan:${index.toString(16).padStart(16, '0')}`
+    historicalRepository.rows.set(makeDocumentId(7, evidenceKey), {
+      _id: makeDocumentId(7, evidenceKey),
+      owner_user_id: 7,
+      evidence_key: evidenceKey,
+      category: 'city_plan',
+      sanitized_text: `历史区域${index}`,
+      tokens: [`历史区域${index}`],
+      content_hash: 'a'.repeat(16),
+      chunk_version: CHUNK_VERSION,
+      retrieval_version: RETRIEVAL_VERSION,
+      source_profile_version: 'b'.repeat(40),
+      enabled: true,
+      updated_at: '2026-09-01T00:00:00.000Z'
+    })
+  }
+  const historical = await loadCorpusForUserIds([7], historicalRepository)
+  assert.strictEqual(historical['7'].length, 25)
+  assert.strictEqual(await historicalRepository.disableChunks(7, []), 25)
+
   const dryRepository = createRepository([userA, userB], { 1: settingA, 2: settingB })
   const dryRun = await backfillCorpus({ dry_run: true, page_limit: 1 }, dryRepository)
-  assert.deepStrictEqual(dryRun, { scanned: 2, eligible: 2, written: 0, disabled: 0, dry_run: true, next_cursor: 2 })
+  assert.deepStrictEqual(dryRun, { scanned: 2, eligible: 2, written: 0, disabled: 0, dry_run: true, next_cursor: null })
   assert.strictEqual(dryRepository.writes.length, 0)
   assert.strictEqual(dryRepository.disables.length, 0)
 
   const backfillRepository = createRepository([userA, userB], { 1: settingA, 2: settingB })
   const filled = await backfillCorpus({ dry_run: false, page_limit: 1 }, backfillRepository)
-  assert.deepStrictEqual(filled, { scanned: 2, eligible: 2, written: 6, disabled: 0, dry_run: false, next_cursor: 2 })
+  assert.deepStrictEqual(filled, { scanned: 2, eligible: 2, written: 6, disabled: 0, dry_run: false, next_cursor: null })
   const rerun = await backfillCorpus({ dry_run: false, cursor: 0, page_limit: 1 }, backfillRepository)
-  assert.deepStrictEqual(rerun, { scanned: 2, eligible: 2, written: 0, disabled: 0, dry_run: false, next_cursor: 2 })
+  assert.deepStrictEqual(rerun, { scanned: 2, eligible: 2, written: 0, disabled: 0, dry_run: false, next_cursor: null })
+
+  const revokedUser = Object.assign({}, userB, { id: 3, status: 0, member_status: 'approved' })
+  const zeroDocumentUser = { id: 4, status: 1, memberStatus: 'approved' }
+  delete zeroDocumentUser.member_status
+  const qaUser = Object.assign({}, userB, { id: 5, account_mode: 'internal_qa' })
+  const stringStatusUser = Object.assign({}, userB, { id: 6, status: '1' })
+  const missingApprovalUser = Object.assign({}, userB, { id: 7 })
+  delete missingApprovalUser.member_status
+  const ineligibleRepository = createRepository(
+    [revokedUser, zeroDocumentUser, qaUser, stringStatusUser, missingApprovalUser],
+    { 3: settingB, 4: {}, 5: settingB, 6: settingB, 7: settingB }
+  )
+  for (const ownerUserId of [3, 4, 5, 6, 7]) {
+    const evidenceKey = `city_plan:${ownerUserId.toString(16).padStart(16, '0')}`
+    ineligibleRepository.rows.set(makeDocumentId(ownerUserId, evidenceKey), {
+      _id: makeDocumentId(ownerUserId, evidenceKey),
+      owner_user_id: ownerUserId,
+      evidence_key: evidenceKey,
+      category: 'city_plan',
+      sanitized_text: '旧语料',
+      tokens: ['旧语料'],
+      content_hash: 'c'.repeat(16),
+      chunk_version: CHUNK_VERSION,
+      retrieval_version: RETRIEVAL_VERSION,
+      source_profile_version: 'd'.repeat(40),
+      enabled: true,
+      updated_at: '2026-09-01T00:00:00.000Z'
+    })
+  }
+  const ineligible = await backfillCorpus({ dry_run: false, page_limit: 1 }, ineligibleRepository)
+  assert.strictEqual(ineligible.scanned, 5)
+  assert.strictEqual(ineligible.eligible, 0)
+  assert.strictEqual(ineligible.written, 0)
+  assert.strictEqual(ineligible.disabled, 5)
+  assert.strictEqual(ineligibleRepository.disables.length, 5)
+  assert.ok([...ineligibleRepository.rows.values()].every((row) => row.enabled === false))
+
+  const manyUsers = Array.from({ length: 21 }, (_, index) => Object.assign({}, userB, { id: 100 + index }))
+  const manySettings = {}
+  manyUsers.forEach((user) => { manySettings[String(user.id)] = settingB })
+  const paginationRepository = createRepository(manyUsers, manySettings)
+  const firstPage = await backfillCorpus({ dry_run: true, page_limit: 1 }, paginationRepository)
+  assert.strictEqual(firstPage.scanned, 20)
+  assert.strictEqual(firstPage.next_cursor, 119)
+  assert.strictEqual(firstPage.has_more, true)
+  const lastPage = await backfillCorpus({ dry_run: true, cursor: firstPage.next_cursor, page_limit: 1 }, paginationRepository)
+  assert.deepStrictEqual(lastPage, { scanned: 1, eligible: 1, written: 0, disabled: 0, dry_run: true, next_cursor: null })
 
   console.log('PASS sanitized sparse RAG corpus synchronization and backfill')
 }

@@ -86,11 +86,22 @@ async function listChunksByOwnerIds(userIds) {
     .map((id) => Number(id))
     .filter((id) => Number.isSafeInteger(id) && id > 0))]
   if (!ids.length) return []
-  const res = await withCollection('user_evidence_chunk', () => col('user_evidence_chunk')
-    .where({ owner_user_id: _.in(ids) })
-    .limit(Math.min(1000, Math.max(20, ids.length * 20)))
-    .get())
-  return res.data || []
+  const pageSize = 100
+  const rows = []
+  let offset = 0
+  while (true) {
+    const res = await withCollection('user_evidence_chunk', () => col('user_evidence_chunk')
+      .where({ owner_user_id: _.in(ids) })
+      .orderBy('_id', 'asc')
+      .skip(offset)
+      .limit(pageSize)
+      .get())
+    const page = (res && res.data) || []
+    rows.push(...page)
+    if (page.length < pageSize) break
+    offset += page.length
+  }
+  return rows
 }
 
 function corpusWriteData(document) {
