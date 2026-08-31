@@ -22,17 +22,20 @@ function createRepository(users, settings) {
   const rows = new Map()
   const writes = []
   const disables = []
+  const userPageRequests = []
   const orderedUsers = users.slice().sort((left, right) => Number(left.id) - Number(right.id))
   const settingsByUserId = Object.assign({}, settings)
   return {
     writes,
     disables,
+    userPageRequests,
     rows,
     async listUsersPage({ afterId = 0, limit = 20 } = {}) {
+      userPageRequests.push({ afterId: Number(afterId || 0), limit: Number(limit) || 20 })
       const cursor = Number(afterId || 0)
       return orderedUsers
         .filter((user) => Number(user.id) > cursor)
-        .slice(0, Math.min(20, Number(limit) || 20))
+        .slice(0, Math.min(21, Number(limit) || 20))
         .map(clone)
     },
     async findSetting(userId) {
@@ -147,6 +150,14 @@ async function main() {
     }), settingA, '2026-09-01T00:00:00.000Z').length,
     0
   )
+  assert.strictEqual(
+    projectCorpusDocuments(Object.assign({}, userA, { metadata: 'v1.6' }), settingA, '2026-09-01T00:00:00.000Z').length,
+    0
+  )
+  assert.strictEqual(
+    projectCorpusDocuments(Object.assign({}, userA, { metadata: ['speed-dating-native-v1'] }), settingA, '2026-09-01T00:00:00.000Z').length,
+    0
+  )
   const chineseSensitive = projectCorpusDocuments(userA, {
     self_view_text: '我在字节跳动任职，工作内容稳定',
     target_view_text: '月收入两万元，年薪约二十万，希望彼此尊重'
@@ -155,6 +166,44 @@ async function main() {
   assert.ok(!JSON.stringify(chineseSensitive).includes('两万元'))
   assert.ok(!JSON.stringify(chineseSensitive).includes('二十万'))
   assert.ok(!JSON.stringify(chineseSensitive).includes('任职'))
+  const safeConcepts = projectCorpusDocuments(userA, {
+    self_view_text: '工作生活平衡，也喜欢在路上旅行和室内运动',
+    target_view_text: '希望对方真诚沟通'
+  }, '2026-09-01T00:00:00.000Z')
+  const safeConceptJson = JSON.stringify(safeConcepts)
+  assert.ok(safeConceptJson.includes('工作生活平衡'))
+  assert.ok(safeConceptJson.includes('旅行'))
+  assert.ok(safeConceptJson.includes('运动'))
+  assert.ok(safeConcepts.every((row) => !row.sanitized_text.includes('在路上') && !row.sanitized_text.includes('室内')))
+  assert.ok(safeConcepts.every((row) => !JSON.stringify(row.tokens).match(/腾讯|字节跳动|两万|二十万|员工|任职/)))
+  for (const sensitiveText of ['我来自腾讯', '腾讯员工', '每月两万', '二十万']) {
+    const sensitive = projectCorpusDocuments(userA, { self_view_text: sensitiveText }, '2026-09-01T00:00:00.000Z')
+    assert.ok(!JSON.stringify(sensitive).includes('腾讯'))
+    assert.ok(!JSON.stringify(sensitive).match(/两万|二十万|员工/))
+  }
+  const controlled = projectCorpusDocuments(
+    Object.assign({}, userB, { city: '深圳市', baby_plan: '3-5年内' }),
+    {
+      self_view_text: '真诚沟通',
+      psych_profile_json: JSON.stringify({
+        conflict_style: '愿意沟通',
+        career_family: '事业与家庭平衡',
+        money_view: '每月两万'
+      })
+    },
+    '2026-09-01T00:00:00.000Z'
+  )
+  assert.strictEqual(controlled.find((row) => row.category === 'city_plan').sanitized_text, '深圳')
+  assert.strictEqual(controlled.find((row) => row.category === 'marriage_and_baby').sanitized_text, '3-5年内')
+  assert.ok(controlled.some((row) => row.category === 'life_plan' && row.sanitized_text === '事业家庭平衡'))
+  assert.ok(controlled.some((row) => row.category === 'relationship_style' && row.sanitized_text.includes('冲突沟通')))
+  assert.ok(!JSON.stringify(controlled).match(/每月两万|事业与家庭平衡|愿意沟通/))
+  const addressUser = Object.assign({}, userB, { city: '深圳市南山区科技园5号' })
+  const addressRows = projectCorpusDocuments(addressUser, settingB, '2026-09-01T00:00:00.000Z')
+  assert.strictEqual(addressRows.some((row) => row.category === 'city_plan'), false)
+  assert.ok(!JSON.stringify(addressRows).match(/南山区|科技园|5号/))
+  const nonCityRows = projectCorpusDocuments(Object.assign({}, userB, { city: '腾讯' }), settingB, '2026-09-01T00:00:00.000Z')
+  assert.strictEqual(nonCityRows.some((row) => row.category === 'city_plan'), false)
   assert.strictEqual(
     projectCorpusDocuments(userA, settingA, '2026-09-02T00:00:00.000Z')[0].source_profile_version,
     projected[0].source_profile_version
@@ -198,8 +247,8 @@ async function main() {
       owner_user_id: 7,
       evidence_key: evidenceKey,
       category: 'city_plan',
-      sanitized_text: `历史区域${index}`,
-      tokens: [`历史区域${index}`],
+      sanitized_text: '广州',
+      tokens: ['广州'],
       content_hash: 'a'.repeat(16),
       chunk_version: CHUNK_VERSION,
       retrieval_version: RETRIEVAL_VERSION,
@@ -270,6 +319,15 @@ async function main() {
   assert.strictEqual(firstPage.has_more, true)
   const lastPage = await backfillCorpus({ dry_run: true, cursor: firstPage.next_cursor, page_limit: 1 }, paginationRepository)
   assert.deepStrictEqual(lastPage, { scanned: 1, eligible: 1, written: 0, disabled: 0, dry_run: true, next_cursor: null })
+
+  const exactTwentyUsers = Array.from({ length: 20 }, (_, index) => Object.assign({}, userB, { id: 200 + index }))
+  const exactTwentySettings = {}
+  exactTwentyUsers.forEach((user) => { exactTwentySettings[String(user.id)] = settingB })
+  const exactTwentyRepository = createRepository(exactTwentyUsers, exactTwentySettings)
+  const exactTwenty = await backfillCorpus({ dry_run: true, page_limit: 1 }, exactTwentyRepository)
+  assert.deepStrictEqual(exactTwenty, { scanned: 20, eligible: 20, written: 0, disabled: 0, dry_run: true, next_cursor: null })
+  assert.strictEqual(exactTwentyRepository.userPageRequests[0].limit, 21)
+  assert.strictEqual(exactTwentyRepository.userPageRequests.length, 1)
 
   console.log('PASS sanitized sparse RAG corpus synchronization and backfill')
 }

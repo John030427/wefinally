@@ -65,7 +65,7 @@ async function listUsersPage(input = {}) {
   const cursor = Number.isSafeInteger(afterId) && afterId >= 0 ? afterId : 0
   const requestedLimit = Number(options.limit || 20)
   const limit = Number.isSafeInteger(requestedLimit) && requestedLimit > 0
-    ? Math.min(requestedLimit, 20)
+    ? Math.min(requestedLimit, 21)
     : 20
   const res = await withCollection('user', () => col('user')
     .where({ id: _.gt(cursor) })

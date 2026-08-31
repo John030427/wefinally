@@ -17,6 +17,18 @@ const CHUNK_VERSION = CHUNK_SCHEMA_VERSION
 const PAGE_SIZE = 20
 const MAX_PAGE_COUNT = 10
 const MAX_TOKEN_COUNT = 1200
+const SOURCE_FIELD_BY_CATEGORY = Object.freeze({
+  values_self: 'self_view_text',
+  values_target: 'target_view_text',
+  relationship_style: 'psych_profile_json',
+  life_plan: 'career_family',
+  city_plan: 'city',
+  marriage_and_baby: 'baby_plan',
+  appearance_self: 'appearance_description',
+  appearance_target: 'appearance_want',
+  other_requirements: 'other_requirements',
+  deal_breakers: 'deal_breakers'
+})
 const SAFE_SOURCE_FIELDS = new Set([
   'self_view_text',
   'target_view_text',
@@ -29,6 +41,126 @@ const SAFE_SOURCE_FIELDS = new Set([
   'other_requirements',
   'deal_breakers'
 ])
+const FREE_TEXT_CONCEPTS = Object.freeze({
+  self_view_text: [
+    { label: '真诚', terms: ['真诚', '坦诚'] },
+    { label: '责任', terms: ['责任', '负责'] },
+    { label: '尊重', terms: ['尊重'] },
+    { label: '边界', terms: ['边界'] },
+    { label: '稳定', terms: ['稳定', '稳重', '可靠', '踏实'] },
+    { label: '沟通', terms: ['沟通', '交流'] },
+    { label: '包容', terms: ['包容'] },
+    { label: '平等', terms: ['平等'] },
+    { label: '独立', terms: ['独立'] },
+    { label: '家庭', terms: ['家庭'] },
+    { label: '事业', terms: ['事业'] },
+    { label: '工作生活平衡', terms: ['工作生活平衡', '工作与生活平衡', '工作生活兼顾'] },
+    { label: '生活规划', terms: ['生活规划', '生活计划'] },
+    { label: '城市生活', terms: ['城市生活'] },
+    { label: '旅行', terms: ['旅行', '旅游'] },
+    { label: '运动', terms: ['运动', '健身', '锻炼'] },
+    { label: '作息', terms: ['作息'] },
+    { label: '温柔', terms: ['温柔'] }
+  ],
+  target_view_text: [
+    { label: '真诚', terms: ['真诚', '坦诚'] },
+    { label: '责任', terms: ['责任', '负责'] },
+    { label: '尊重', terms: ['尊重'] },
+    { label: '边界', terms: ['边界'] },
+    { label: '稳定', terms: ['稳定', '稳重', '可靠', '踏实'] },
+    { label: '沟通', terms: ['沟通', '交流'] },
+    { label: '包容', terms: ['包容'] },
+    { label: '平等', terms: ['平等'] },
+    { label: '家庭', terms: ['家庭'] },
+    { label: '生活规划', terms: ['生活规划', '生活计划'] },
+    { label: '工作生活平衡', terms: ['工作生活平衡', '工作与生活平衡', '工作生活兼顾'] },
+    { label: '旅行', terms: ['旅行', '旅游'] },
+    { label: '运动', terms: ['运动', '健身', '锻炼'] },
+    { label: '温柔', terms: ['温柔'] }
+  ],
+  appearance_description: [
+    { label: '自然', terms: ['自然'] },
+    { label: '清爽', terms: ['清爽'] },
+    { label: '干净', terms: ['干净'] },
+    { label: '气质', terms: ['气质'] },
+    { label: '阳光', terms: ['阳光'] },
+    { label: '成熟', terms: ['成熟'] },
+    { label: '温柔', terms: ['温柔'] },
+    { label: '文艺', terms: ['文艺'] },
+    { label: '健康', terms: ['健康'] },
+    { label: '运动', terms: ['运动', '健身'] }
+  ],
+  appearance_want: [
+    { label: '自然', terms: ['自然'] },
+    { label: '清爽', terms: ['清爽'] },
+    { label: '干净', terms: ['干净'] },
+    { label: '气质', terms: ['气质'] },
+    { label: '阳光', terms: ['阳光'] },
+    { label: '成熟', terms: ['成熟'] },
+    { label: '温柔', terms: ['温柔'] },
+    { label: '文艺', terms: ['文艺'] },
+    { label: '健康', terms: ['健康'] },
+    { label: '运动', terms: ['运动', '健身'] }
+  ],
+  other_requirements: [
+    { label: '真诚', terms: ['真诚', '坦诚'] },
+    { label: '尊重', terms: ['尊重'] },
+    { label: '边界', terms: ['边界'] },
+    { label: '稳定', terms: ['稳定', '稳重', '可靠'] },
+    { label: '沟通', terms: ['沟通', '交流'] },
+    { label: '包容', terms: ['包容'] },
+    { label: '家庭', terms: ['家庭'] },
+    { label: '生活规划', terms: ['生活规划', '生活计划'] },
+    { label: '工作生活平衡', terms: ['工作生活平衡', '工作与生活平衡', '工作生活兼顾'] },
+    { label: '旅行', terms: ['旅行', '旅游'] },
+    { label: '运动', terms: ['运动', '健身', '锻炼'] },
+    { label: '作息', terms: ['作息'] }
+  ],
+  deal_breakers: [
+    { label: '真诚', terms: ['真诚', '坦诚'] },
+    { label: '尊重', terms: ['尊重'] },
+    { label: '边界', terms: ['边界'] },
+    { label: '稳定', terms: ['稳定', '稳重', '可靠'] },
+    { label: '沟通', terms: ['沟通', '交流'] },
+    { label: '包容', terms: ['包容'] },
+    { label: '家庭', terms: ['家庭'] },
+    { label: '生活规划', terms: ['生活规划', '生活计划'] },
+    { label: '工作生活平衡', terms: ['工作生活平衡', '工作与生活平衡', '工作生活兼顾'] },
+    { label: '旅行', terms: ['旅行', '旅游'] },
+    { label: '运动', terms: ['运动', '健身', '锻炼'] },
+    { label: '作息', terms: ['作息'] }
+  ],
+  psych_profile_json: [
+    { label: '冲突沟通', terms: ['冲突', '沟通'] },
+    { label: '安全感', terms: ['安全感'] },
+    { label: '个人空间', terms: ['个人空间', '安全空间', '空间'] },
+    { label: '家庭边界', terms: ['家庭边界'] },
+    { label: '金钱观', terms: ['金钱观', '消费观', '理财观'] },
+    { label: '事业家庭平衡', terms: ['事业家庭平衡', '事业与家庭平衡', '工作生活平衡'] }
+  ]
+})
+const CONTROLLED_VALUE_ALIASES = Object.freeze({
+  career_family: [
+    { label: '事业家庭平衡', values: ['事业家庭平衡', '事业与家庭平衡', '事业和家庭平衡', '工作生活平衡'] },
+    { label: '事业优先', values: ['事业优先', '事业第一'] },
+    { label: '家庭优先', values: ['家庭优先', '家庭第一'] },
+    { label: '家庭事业并重', values: ['家庭事业并重', '事业家庭并重'] }
+  ],
+  baby_plan: [
+    { label: '计划要孩子', values: ['1年内', '一年内', '近期', '尽快', '准备要孩子', '想要孩子'] },
+    { label: '3-5年内', values: ['3-5年内', '3至5年内', '3到5年内', '三到五年内', '以后', '将来', '未来'] },
+    { label: '不要孩子', values: ['不考虑', '不想要孩子', '不要孩子', '暂不考虑'] },
+    { label: '顺其自然', values: ['顺其自然', '不确定', '待定'] }
+  ]
+})
+const BROAD_CITY_NAMES = new Set([
+  '北京', '上海', '广州', '深圳', '天津', '重庆', '杭州', '南京', '成都', '武汉', '西安',
+  '苏州', '郑州', '长沙', '济南', '青岛', '厦门', '福州', '合肥', '昆明', '南昌', '贵阳',
+  '南宁', '海口', '太原', '石家庄', '哈尔滨', '沈阳', '大连', '宁波', '无锡', '佛山', '东莞',
+  '珠海', '惠州', '中山', '汕头', '潮州', '揭阳', '湛江', '温州', '嘉兴', '金华', '台州',
+  '襄阳', '洛阳', '乌鲁木齐', '兰州', '银川', '西宁', '呼和浩特', '拉萨', '香港', '澳门'
+])
+const CITY_ADDRESS_MARKERS = Object.freeze(['省', '区', '县', '镇', '乡', '路', '街', '巷', '弄', '号', '室', '栋', '单元', '小区', '楼', '园区'])
 const FALSE_LIKE_VALUES = new Set(['', 'false', '0', 'no', 'n', 'off', 'disabled', 'deny', 'denied'])
 const TRUE_LIKE_VALUES = new Set(['true', '1', 'yes', 'y', 'on', 'enabled'])
 const SAFE_PROVENANCE_VALUES = new Set([
@@ -42,47 +174,6 @@ const SAFE_PROVENANCE_VALUES = new Set([
   'user-profile',
   'user_profile',
   'wefinally'
-])
-const SENSITIVE_CORPUS_MARKERS = Object.freeze([
-  // Employment and employer details are not a retrieval-safe field.
-  '任职',
-  '就职',
-  '供职',
-  '雇主',
-  '公司',
-  '单位',
-  '工作',
-  '上班',
-  // Keep all salary/income utterances out, including Chinese amount forms.
-  '收入',
-  '薪资',
-  '薪酬',
-  '工资',
-  '月薪',
-  '年薪',
-  '月入',
-  '年入',
-  '人民币',
-  '万元',
-  '万块',
-  '元/月',
-  '元／月',
-  // Exact residence/address details are not retrieval-safe either.
-  '住在',
-  '住址',
-  '地址',
-  '门牌',
-  '居住地',
-  '小区',
-  '路',
-  '街',
-  '巷',
-  '弄',
-  '室',
-  '栋',
-  '单元',
-  '门号',
-  '号'
 ])
 const SAFE_EVIDENCE_KEY = /^[a-z][a-z0-9_]*:[a-f0-9]{16,64}$/i
 const DOCUMENT_FIELDS = [
@@ -125,15 +216,52 @@ function normalizeTimestamp(timestamp) {
   return new Date().toISOString()
 }
 
-function redactCorpusText(value) {
-  return sanitizeSupplement(value).replace(/\s+/g, ' ').trim()
+function normalizeSafeInput(value) {
+  return sanitizeSupplement(value)
+    .normalize('NFKC')
+    .replace(/\s+/g, ' ')
+    .trim()
 }
 
-function hasSensitiveCorpusContent(value) {
-  const text = String(value === undefined || value === null ? '' : value)
-    .normalize('NFKC')
-    .toLowerCase()
-  return SENSITIVE_CORPUS_MARKERS.some((marker) => text.includes(marker))
+function normalizeControlledInput(value) {
+  return normalizeSafeInput(value)
+    .replace(/[‐‑‒–—−]/g, '-')
+    .replace(/\s+/g, '')
+}
+
+function extractApprovedConcepts(sourceField, value) {
+  const text = normalizeSafeInput(value)
+  const concepts = FREE_TEXT_CONCEPTS[sourceField]
+  if (!text || !concepts) return ''
+  const labels = concepts
+    .filter((concept) => concept.terms.some((term) => text.includes(term)))
+    .map((concept) => concept.label)
+  return [...new Set(labels)].join('；')
+}
+
+function normalizeControlledValue(sourceField, value) {
+  const text = normalizeControlledInput(value)
+  const aliases = CONTROLLED_VALUE_ALIASES[sourceField] || []
+  const match = aliases.find((item) => item.values.includes(text))
+  return match ? match.label : ''
+}
+
+function normalizeCityValue(value) {
+  const text = normalizeControlledInput(value)
+  if (!text || text.length < 2 || text.length > 12) return ''
+  if (!/^[\u4e00-\u9fff]+(?:市|自治区|特别行政区)?$/.test(text)) return ''
+  if (/[\d０-９]/.test(text) || CITY_ADDRESS_MARKERS.some((marker) => text.includes(marker))) return ''
+  const city = text.replace(/(?:市|自治区|特别行政区)$/, '')
+  return text.endsWith('市') || BROAD_CITY_NAMES.has(city) ? city : ''
+}
+
+function normalizeSourceField(sourceField, value) {
+  if (!SAFE_SOURCE_FIELDS.has(sourceField)) return ''
+  if (sourceField === 'city') return normalizeCityValue(value)
+  if (sourceField === 'baby_plan' || sourceField === 'career_family') {
+    return normalizeControlledValue(sourceField, value)
+  }
+  return extractApprovedConcepts(sourceField, value)
 }
 
 function normalizeSourceKey(value) {
@@ -170,25 +298,27 @@ function benchmarkExcluded(value) {
 }
 
 function metadataKey(key) {
-  return /(?:source|dataset|manifest|provenance|benchmark|evaluation|fixture|version|corpus|split|schema|origin)/.test(key)
+  return /(?:source|dataset|manifest|provenance|benchmark|evaluation|fixture|version|corpus|split|schema|origin|metadata)/.test(key)
 }
 
-function walkSourceMetadata(value, visitor, context = false, seen = new WeakSet()) {
+function walkSourceMetadata(value, visitor, context = false, seen = new WeakSet(), key = '') {
   if (value === null || value === undefined) return
-  if (typeof value === 'object') {
-    if (seen.has(value)) return
-    seen.add(value)
-    if (Array.isArray(value)) {
-      value.forEach((item) => walkSourceMetadata(item, visitor, context, seen))
-      return
-    }
-    Object.keys(value).forEach((rawKey) => {
-      const key = normalizeSourceKey(rawKey).replace(/-/g, '')
-      const childContext = context || metadataKey(key)
-      visitor(key, value[rawKey], childContext)
-      walkSourceMetadata(value[rawKey], visitor, childContext, seen)
-    })
+  if (typeof value !== 'object') {
+    visitor(key, value, context)
+    return
   }
+  if (seen.has(value)) return
+  seen.add(value)
+  if (Array.isArray(value)) {
+    value.forEach((item) => walkSourceMetadata(item, visitor, context, seen, key))
+    return
+  }
+  Object.keys(value).forEach((rawKey) => {
+    const childKey = normalizeSourceKey(rawKey).replace(/-/g, '')
+    const childContext = context || metadataKey(childKey)
+    visitor(childKey, value[rawKey], childContext)
+    walkSourceMetadata(value[rawKey], visitor, childContext, seen, childKey)
+  })
 }
 
 function provenanceIsExplicitlySafe(value) {
@@ -209,7 +339,7 @@ function provenanceIsExplicitlySafe(value) {
 }
 
 function makeEvidenceKey(ownerUserId, category, sourceField, sanitizedText, fallback) {
-  if (fallback && sanitizedText === redactCorpusText(fallback.sourceText)) return String(fallback.evidenceKey)
+  if (fallback && sanitizedText === normalizeSafeInput(fallback.sourceText)) return String(fallback.evidenceKey)
   const identity = `${ownerUserId}:${category}:${sourceField || ''}:${sanitizedText}`
   return `${category}:${contentHash(identity)}`
 }
@@ -279,13 +409,15 @@ function normalizeChunk(ownerUserId, rawChunk) {
   const sourceField = String(rawChunk.source_field || '')
   if (!SAFE_SOURCE_FIELDS.has(sourceField)) return null
   const originalText = String(rawChunk.sanitized_text || '').trim()
-  const sanitizedText = redactCorpusText(originalText)
-  if (!sanitizedText || hasSensitiveCorpusContent(originalText) || hasSensitiveCorpusContent(sanitizedText)) return null
-  const usesOriginalIdentity = sanitizedText === originalText
+  const sanitizedText = normalizeSourceField(sourceField, originalText)
+  if (!sanitizedText) return null
+  const usesOriginalIdentity = sanitizedText === normalizeSafeInput(originalText)
   const candidateEvidenceKey = usesOriginalIdentity && rawChunk.evidence_key
     ? String(rawChunk.evidence_key)
     : ''
-  const evidenceKey = candidateEvidenceKey && SAFE_EVIDENCE_KEY.test(candidateEvidenceKey)
+  const evidenceKey = candidateEvidenceKey
+    && SAFE_EVIDENCE_KEY.test(candidateEvidenceKey)
+    && candidateEvidenceKey.startsWith(`${category}:`)
     ? candidateEvidenceKey
     : makeEvidenceKey(ownerUserId, category, sourceField, sanitizedText)
   const safeContentHash = contentHash(sanitizedText)
@@ -399,13 +531,14 @@ function publicCorpusDocument(row) {
     || row.retrieval_version !== RETRIEVAL_VERSION) return null
   const category = String(row.category || '')
   const evidenceKey = String(row.evidence_key || '')
-  const sanitizedText = redactCorpusText(row.sanitized_text)
+  const sourceField = SOURCE_FIELD_BY_CATEGORY[category]
+  const rawText = String(row.sanitized_text || '')
+  const sanitizedText = normalizeSourceField(sourceField, rawText)
   if (!CHUNK_CATEGORIES.includes(category)
     || !SAFE_EVIDENCE_KEY.test(evidenceKey)
     || !evidenceKey.startsWith(`${category}:`)
-    || hasSensitiveCorpusContent(row.sanitized_text)
-    || hasSensitiveCorpusContent(sanitizedText)
-    || !sanitizedText) return null
+    || !sanitizedText
+    || sanitizedText !== rawText) return null
   const tokens = tokenizeSparse(sanitizedText).slice(0, MAX_TOKEN_COUNT)
   const sourceVersion = String(row.source_profile_version || '')
   const safeContentHash = contentHash(sanitizedText)
@@ -487,7 +620,10 @@ async function backfillCorpus(options = {}, repository) {
   let nextCursor = null
   let hasMore = false
   for (let page = 0; page < pageLimit; page += 1) {
-    const users = (await repo.listUsersPage({ afterId: cursor, limit: PAGE_SIZE })) || []
+    // Read one look-ahead row so an exactly full page can still terminate
+    // without an extra empty-page request. Only the first PAGE_SIZE users are
+    // processed; the extra row is a continuation signal.
+    const users = (await repo.listUsersPage({ afterId: cursor, limit: PAGE_SIZE + 1 })) || []
     if (!users.length) {
       nextCursor = null
       hasMore = false
@@ -498,6 +634,7 @@ async function backfillCorpus(options = {}, repository) {
       .sort((left, right) => (userIdForCursor(left) || Number.MAX_SAFE_INTEGER) - (userIdForCursor(right) || Number.MAX_SAFE_INTEGER))
       .filter((user) => (userIdForCursor(user) || 0) > cursor)
       .slice(0, PAGE_SIZE)
+    const hasLookahead = users.length > PAGE_SIZE
     if (!orderedUsers.length) {
       nextCursor = null
       hasMore = false
@@ -521,7 +658,7 @@ async function backfillCorpus(options = {}, repository) {
     }
     const pageCursor = userIdForCursor(orderedUsers[orderedUsers.length - 1])
     cursor = pageCursor
-    if (orderedUsers.length < PAGE_SIZE) {
+    if (!hasLookahead) {
       nextCursor = null
       hasMore = false
       break
