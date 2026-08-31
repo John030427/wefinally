@@ -7,6 +7,7 @@ const {
   retrieveSparseBidirectional
 } = require('../../miniprogram/cloudfunctions/api/lib/sparseMatchRetrieval')
 const {
+  KNOWN_MODES,
   resolveRagMode,
   applyRagMode
 } = require('../../miniprogram/cloudfunctions/api/lib/matchRagRuntime')
@@ -44,11 +45,20 @@ async function main() {
   assert.ok(scored[0].score > scored[1].score)
   assert.ok(scored.every((item) => !Object.prototype.hasOwnProperty.call(item, 'vector')))
 
+  const numericScores = scoreBm25(['a'], [
+    { id: 'short', tokens: ['a'] },
+    { id: 'long', tokens: ['a', 'x', 'x', 'x'] }
+  ])
+  // ln(1 + (2 - 2 + .5) / (2 + .5)) * 2.2 / (1 + 1.2 *
+  // (1 - .75 + .75 * (1 / 2.5))) rounded to six decimals.
+  assert.strictEqual(numericScores[0].score, 0.241631)
+
   assert.strictEqual(resolveRagMode({ MATCH_RAG_MODE: 'off' }), 'off')
   assert.strictEqual(resolveRagMode({ MATCH_RAG_MODE: 'SHADOW' }), 'shadow')
   assert.strictEqual(resolveRagMode({ MATCH_RAG_MODE: ' Active ' }), 'active')
   assert.strictEqual(resolveRagMode({ MATCH_RAG_MODE: 'unexpected' }), 'off')
   assert.strictEqual(resolveRagMode({}), 'off')
+  assert.strictEqual(typeof KNOWN_MODES.add, 'undefined')
 
   const pair = {
     userA: { id: 1, gender: 1, city: '广州', baby_plan: '3-5年内', appearance_description: '清爽' },
@@ -121,6 +131,117 @@ async function main() {
   assert.deepStrictEqual(applyRagMode('shadow', original, enriched).map((x) => x.candidate.id), [2, 3])
   assert.deepStrictEqual(applyRagMode('active', original, enriched).map((x) => x.candidate.id), [3, 2])
   assert.deepStrictEqual(applyRagMode('unexpected', original, enriched).map((x) => x.candidate.id), [2, 3])
+
+  const originalProtected = [
+    {
+      internalUserId: 2,
+      candidate: { id: 2, display_name: 'original-two' },
+      quality: { pass: true },
+      canonical_score: 80
+    },
+    {
+      internalUserId: 3,
+      candidate: { id: 3, display_name: 'original-three' },
+      quality: { pass: true },
+      canonical_score: 70
+    }
+  ]
+  const maliciousEnriched = [
+    {
+      // The public candidate id matches 3, but the internal id does not.
+      internalUserId: 999,
+      candidate: { id: 3, display_name: 'attacker-three' },
+      quality: { pass: false },
+      semantic_score: 100
+    },
+    {
+      // The internal id matches 2, but the candidate object was replaced.
+      internalUserId: 2,
+      candidate: { id: 999, display_name: 'attacker-two' },
+      quality: { pass: false },
+      semantic_score: 99
+    },
+    {
+      internalUserId: 3,
+      candidate: { id: 3, display_name: 'attacker-three' },
+      quality: { pass: false },
+      semantic_score: 98
+    }
+  ]
+  const protectedResult = applyRagMode('active', originalProtected, maliciousEnriched)
+  assert.deepStrictEqual(protectedResult.map((item) => item.candidate.id), [3, 2])
+  assert.strictEqual(protectedResult[0], originalProtected[1])
+  assert.deepStrictEqual(protectedResult[0].candidate, originalProtected[1].candidate)
+  assert.deepStrictEqual(protectedResult[0].quality, originalProtected[1].quality)
+  assert.strictEqual(protectedResult[0].semantic_score, undefined)
+
+  const categoryExcluded = await retrieveSparseBidirectional({
+    userA: { id: 1 },
+    settingsA: { target_view_text: '希望对方踏实可靠' },
+    userB: { id: 2 },
+    settingsB: {}
+  }, {
+    '1': [],
+    '2': [
+      corpusDocument(2, 'deal_breakers:b', 'deal_breakers', '踏实可靠')
+    ]
+  })
+  assert.deepStrictEqual(categoryExcluded.a_to_b.top_evidence, [])
+  assert.strictEqual(categoryExcluded.reason, 'sparse_retrieval_insufficient')
+
+  const failClosedCorpus = await retrieveSparseBidirectional({
+    userA: { id: 1 },
+    settingsA: { target_view_text: '希望对方踏实可靠' },
+    userB: { id: 2 },
+    settingsB: {}
+  }, {
+    '1': [],
+    '2': [
+      Object.assign(corpusDocument(2, 'values_self:disabled', 'values_self', '踏实可靠'), { enabled: false }),
+      Object.assign(corpusDocument(2, 'values_self:missing-version', 'values_self', '踏实可靠'), { retrieval_version: undefined }),
+      Object.assign(corpusDocument(2, 'values_self:wrong-version', 'values_self', '踏实可靠'), { retrieval_version: 'semantic_retrieval_v1' }),
+      Object.assign(corpusDocument(2, 'values_self:missing-owner', 'values_self', '踏实可靠'), { owner_user_id: undefined }),
+      Object.assign(corpusDocument(2, 'values_self:wrong-owner', 'values_self', '踏实可靠'), { owner_user_id: 1 }),
+      Object.assign(corpusDocument(2, 'values_self:not-enabled', 'values_self', '踏实可靠'), { enabled: undefined }),
+      Object.assign(corpusDocument(2, 'values_self:valid', 'values_self', '踏实可靠'), { enabled: true })
+    ]
+  })
+  assert.deepStrictEqual(failClosedCorpus.a_to_b.top_evidence.map((item) => item.evidence_key), ['values_self:valid'])
+  assert.strictEqual(failClosedCorpus.a_to_b.chunk_count, 1)
+
+  const oneWayInsufficient = await retrieveSparseBidirectional({
+    userA: { id: 1 },
+    settingsA: { target_view_text: '希望对方踏实可靠' },
+    userB: { id: 2 },
+    settingsB: { target_view_text: '希望对方热爱旅行' }
+  }, {
+    '1': [
+      corpusDocument(1, 'values_self:a', 'values_self', '我重视踏实可靠')
+    ],
+    '2': [
+      corpusDocument(2, 'values_self:b', 'values_self', '我为人稳重可靠')
+    ]
+  })
+  assert.ok(oneWayInsufficient.a_to_b.top_evidence.length > 0)
+  assert.deepStrictEqual(oneWayInsufficient.b_to_a.top_evidence, [])
+  assert.strictEqual(oneWayInsufficient.reason, 'sparse_retrieval_insufficient')
+  assert.strictEqual(oneWayInsufficient.mutual_score, 0)
+
+  const bothNoChildren = await retrieveSparseBidirectional({
+    userA: { id: 1, baby_plan: '丁克不要孩子' },
+    settingsA: { target_view_text: '希望对方丁克不要孩子' },
+    userB: { id: 2, baby_plan: '不要孩子' },
+    settingsB: { target_view_text: '希望对方不要孩子' }
+  }, {
+    '1': [
+      corpusDocument(1, 'marriage_and_baby:a', 'marriage_and_baby', '丁克不要孩子')
+    ],
+    '2': [
+      corpusDocument(2, 'marriage_and_baby:b', 'marriage_and_baby', '不要孩子')
+    ]
+  })
+  assert.deepStrictEqual(bothNoChildren.a_to_b.conflict_signals, [])
+  assert.deepStrictEqual(bothNoChildren.b_to_a.conflict_signals, [])
 
   console.log('PASS sparse bidirectional retrieval and strict RAG modes')
 }

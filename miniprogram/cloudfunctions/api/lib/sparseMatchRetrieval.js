@@ -95,7 +95,6 @@ function stripVectorFields(value, seen = new WeakSet()) {
 
 function documentForScoring(document) {
   return {
-    original: document,
     safe: stripVectorFields(document),
     tokens: tokensForDocument(document)
   }
@@ -155,6 +154,8 @@ function scoreBm25(queryTokens, documents, options = {}) {
 }
 
 function corpusRows(corpusByUserId, userId) {
+  const expectedOwnerId = validOwnerId(userId)
+  if (expectedOwnerId === null) return []
   if (!corpusByUserId) return []
   let rows
   if (corpusByUserId instanceof Map) {
@@ -165,10 +166,17 @@ function corpusRows(corpusByUserId, userId) {
   }
   if (rows && !Array.isArray(rows) && Array.isArray(rows.chunks)) rows = rows.chunks
   return (Array.isArray(rows) ? rows : [])
-    .filter((document) => document && typeof document === 'object' && document.enabled !== false)
-    .filter((document) => !document.retrieval_version || document.retrieval_version === RETRIEVAL_VERSION)
-    .filter((document) => !document.owner_user_id || String(document.owner_user_id) === String(userId))
+    .filter((document) => document && typeof document === 'object' && document.enabled === true)
+    .filter((document) => document.retrieval_version === RETRIEVAL_VERSION)
+    .filter((document) => validOwnerId(document.owner_user_id) === expectedOwnerId)
     .filter((document) => CHUNK_CATEGORIES.includes(String(document.category || '')))
+}
+
+function validOwnerId(value) {
+  const text = String(value === undefined || value === null ? '' : value).trim()
+  if (!/^[1-9]\d*$/.test(text)) return null
+  const number = Number(text)
+  return Number.isSafeInteger(number) ? number : null
 }
 
 function scoreToPercent(score) {
@@ -190,10 +198,12 @@ function conflictSignals(queryChunks, docChunks) {
   const babyDocument = docChunks.find((chunk) => chunk.category === 'marriage_and_baby')
   if (!babyQuery || !babyDocument) return signals
 
-  const wantsNoChildren = /丁克|不要孩子/.test(babyQuery.sanitized_text)
-  const documentWantsChildren = /要孩子|生育|生娃|3-5年内/.test(babyDocument.sanitized_text)
-  const wantsChildren = /要孩子|生育|生娃|3-5年内/.test(babyQuery.sanitized_text)
-  const documentWantsNoChildren = /丁克|不要孩子/.test(babyDocument.sanitized_text)
+  const queryPlan = classifyBabyPlan(babyQuery.sanitized_text)
+  const documentPlan = classifyBabyPlan(babyDocument.sanitized_text)
+  const wantsNoChildren = queryPlan.noChildren
+  const documentWantsChildren = documentPlan.wantsChildren
+  const wantsChildren = queryPlan.wantsChildren
+  const documentWantsNoChildren = documentPlan.noChildren
   if ((wantsNoChildren && documentWantsChildren) || (wantsChildren && documentWantsNoChildren)) {
     signals.push({
       code: 'marriage_and_baby_conflict',
@@ -201,6 +211,17 @@ function conflictSignals(queryChunks, docChunks) {
     })
   }
   return signals
+}
+
+function classifyBabyPlan(text) {
+  const value = String(text || '')
+  const negativePattern = /丁克|不要\s*(?:孩子|小孩|娃)|不想\s*(?:要\s*)?(?:孩子|小孩|娃)|不考虑\s*(?:要\s*)?(?:孩子|小孩|娃)|不生\s*(?:孩子|小孩|娃)?/g
+  const noChildren = negativePattern.test(value)
+  // Remove negative clauses before looking for positive terms. In particular,
+  // "不要孩子" must not match the positive substring "要孩子".
+  const positiveText = value.replace(negativePattern, '')
+  const wantsChildren = /要\s*(?:孩子|小孩|娃)|生育|生娃|3\s*-\s*5年内|尽快\s*(?:要|生)|计划\s*(?:要|生)/.test(positiveText)
+  return { noChildren, wantsChildren }
 }
 
 function retrieveOneWay(queryUser, querySettings, docUser, docSettings, corpusByUserId, options = {}) {
@@ -223,6 +244,7 @@ function retrieveOneWay(queryUser, querySettings, docUser, docSettings, corpusBy
     const eligibleDocuments = documents.filter((document) => allowedCategories.has(document.category))
     const ranked = scoreBm25(tokenizeSparse(query.sanitized_text), eligibleDocuments, config)
     for (const item of ranked.slice(0, topK)) {
+      if (!(item.score > 0)) continue
       const document = item.document || {}
       const rawScore = item.score
       hits.push({
@@ -278,13 +300,14 @@ async function retrieveSparseBidirectional(pair = {}, corpusByUserId = {}, optio
     options
   )
   const insufficient = !aToB.top_evidence.length || !bToA.top_evidence.length
+  const mutualScore = insufficient ? 0 : Math.round((aToB.score + bToA.score) / 2)
   return {
     retrieval_version: RETRIEVAL_VERSION,
     top_k: TOP_K,
     candidate_pool_limit: CANDIDATE_POOL_LIMIT,
     a_to_b: aToB,
     b_to_a: bToA,
-    mutual_score: Math.round((aToB.score + bToA.score) / 2),
+    mutual_score: mutualScore,
     ...(insufficient ? { reason: 'sparse_retrieval_insufficient' } : {})
   }
 }
