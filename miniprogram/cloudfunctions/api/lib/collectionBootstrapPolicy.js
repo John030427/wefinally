@@ -1,5 +1,6 @@
 const BOOTSTRAP_COLLECTIONS = new Set([
   'system_counters',
+  'user_evidence_chunk',
   'agent_session',
   'agent_message',
   'agent_run',

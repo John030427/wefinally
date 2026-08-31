@@ -1,6 +1,7 @@
 module.exports = {
   user: 'users',
   user_match_setting: 'user_match_settings',
+  user_evidence_chunk: 'user_evidence_chunks',
   user_match_log: 'user_match_logs',
   match_claim: 'match_claims',
   match_claim_audit: 'match_claim_audits',
