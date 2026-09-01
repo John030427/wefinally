@@ -32,10 +32,32 @@ function loadWorkerWithCloudStub() {
 
 function forbidden(value) {
   const text = JSON.stringify(value)
-  return /sanitized_text|prompt|response|openid|unionid|phone|mobile|secret|token|原始文本/i.test(text)
+  return /sanitized_text|prompt|response|openid|unionid|phone|mobile|wechat|secret|token|raw_text|original_text|原始文本|原始文本/i.test(text)
 }
 
 function fixtureProfiles() {
+  const psych = JSON.stringify({
+    marriage_pace: '稳定推进',
+    conflict_style: '及时沟通',
+    security_space: '亲密也独立',
+    family_boundary: '边界清晰',
+    money_view: '共同规划',
+    career_family: '动态平衡'
+  })
+  const settings = (userId) => ({
+    user_id: userId,
+    self_view_text: '真诚、责任、稳定、沟通、家庭、共同规划',
+    target_view_text: '真诚、责任、稳定、沟通、家庭、共同规划',
+    other_requirements: '尊重边界、共同规划生活、工作生活平衡',
+    psych_profile_json: psych,
+    like_baby_plan: '3-5年内',
+    age_min: 18,
+    age_max: 80,
+    height_min: 160,
+    height_max: 190,
+    min_education: '本科',
+    like_circle_ids: '1'
+  })
   return [
     {
       id: 101,
@@ -47,13 +69,12 @@ function fixtureProfiles() {
         birth_year: 1990,
         city: '广州',
         baby_plan: '3-5年内',
+        height_range: '170cm',
+        education: '本科',
+        identity_circle_ids: ['1'],
         appearance_description: '自然清爽'
       },
-      settings: {
-        self_view_text: '重视真诚、责任、稳定和沟通',
-        target_view_text: '希望对方真诚、稳定、愿意沟通',
-        other_requirements: '尊重边界，共同规划生活'
-      }
+      settings: settings(101)
     },
     {
       id: 102,
@@ -65,13 +86,12 @@ function fixtureProfiles() {
         birth_year: 1992,
         city: '广州',
         baby_plan: '3-5年内',
+        height_range: '170cm',
+        education: '本科',
+        identity_circle_ids: ['1'],
         appearance_description: '干净阳光'
       },
-      settings: {
-        self_view_text: '真诚负责，愿意稳定沟通',
-        target_view_text: '希望对方尊重边界，重视家庭',
-        other_requirements: '工作生活平衡，愿意共同规划'
-      }
+      settings: settings(102)
     }
   ]
 }
@@ -113,18 +133,20 @@ async function main() {
       worker_secret: WORKER_SECRET
     }
   })
+  ;[null, '', ' ', 'runFormalMatchBatch', 'unexpectedAction'].forEach((action) => {
+    assert.throws(
+      () => worker.mapWorkerEvent({ action }, WORKER_SECRET, () => 1730000000000),
+      (error) => error && error.message === 'INVALID_WORKER_ACTION'
+    )
+  })
+  const inheritedAction = Object.create({ action: 'unexpectedAction' })
   assert.deepStrictEqual(
-    worker.mapWorkerEvent({ action: 'runFormalMatchBatch' }, WORKER_SECRET, () => 1730000000000),
+    worker.mapWorkerEvent(inheritedAction, WORKER_SECRET, () => 1730000000000),
     defaultTimer,
-    'explicit formal action must retain the timer contract'
-  )
-
-  assert.throws(
-    () => worker.mapWorkerEvent({ action: 'unexpectedAction' }, WORKER_SECRET),
-    /未知 worker action/
+    'only an event without an own action property may use the timer route'
   )
   const lowerBound = worker.mapWorkerEvent(
-    { action: 'backfillRagCorpus', payload: { page_limit: 0 } },
+    { action: 'backfillRagCorpus', payload: { dry_run: true, page_limit: 0 } },
     WORKER_SECRET
   )
   assert.strictEqual(lowerBound.payload.page_limit, 1)
@@ -134,6 +156,7 @@ async function main() {
   const api = require('../../miniprogram/cloudfunctions/api/index.js')
   const db = require('../../miniprogram/cloudfunctions/api/lib/db')
   const corpus = require('../../miniprogram/cloudfunctions/api/lib/matchRagCorpus')
+  const deepseek = require('../../miniprogram/cloudfunctions/api/lib/deepseek')
   const originalListUsersPage = db.listUsersPage
   const originalFindSetting = db.findSetting
   const originalListChunks = db.listChunksByOwnerIds
@@ -148,6 +171,35 @@ async function main() {
     db.listChunksByOwnerIds = async () => []
     db.upsertChunk = async () => { throw new Error('backfill must not write in dry run') }
     db.disableChunks = async () => { throw new Error('backfill must not disable in dry run') }
+
+    for (const invalidDryRun of ['true', 1, null, '', {}, []]) {
+      const invalid = await api.main({
+        action: 'backfillRagCorpus',
+        payload: { worker_secret: WORKER_SECRET, dry_run: invalidDryRun, cursor: 0, page_limit: 1 }
+      })
+      assert.strictEqual(invalid.success, false)
+      assert.strictEqual(invalid.code, 400)
+      assert.strictEqual(invalid.error, 'INVALID_RAG_BACKFILL_REQUEST')
+      assert.strictEqual(forbidden(invalid), false)
+    }
+    for (const invalidCursor of ['0', true, null, {}, [], 1.5, -1]) {
+      const invalid = await api.main({
+        action: 'backfillRagCorpus',
+        payload: { worker_secret: WORKER_SECRET, dry_run: true, cursor: invalidCursor, page_limit: 1 }
+      })
+      assert.strictEqual(invalid.success, false)
+      assert.strictEqual(invalid.code, 400)
+      assert.strictEqual(invalid.error, 'INVALID_RAG_BACKFILL_REQUEST')
+    }
+    for (const invalidPageLimit of ['10', true, null, {}, [], 1.5, Infinity]) {
+      const invalid = await api.main({
+        action: 'backfillRagCorpus',
+        payload: { worker_secret: WORKER_SECRET, dry_run: true, cursor: 0, page_limit: invalidPageLimit }
+      })
+      assert.strictEqual(invalid.success, false)
+      assert.strictEqual(invalid.code, 400)
+      assert.strictEqual(invalid.error, 'INVALID_RAG_BACKFILL_REQUEST')
+    }
 
     const backfillResult = await api.main({
       action: 'backfillRagCorpus',
@@ -179,9 +231,12 @@ async function main() {
     })
     assert.strictEqual(smokeResult.success, true)
     assert.deepStrictEqual(Object.keys(smokeResult.data).sort(), [
+      'candidate_set_invariant',
       'corpus_version',
       'evidence_keys',
+      'input_candidate_refs',
       'model',
+      'output_candidate_refs',
       'provider',
       'rag_mode',
       'reason',
@@ -194,7 +249,97 @@ async function main() {
     assert(Array.isArray(smokeResult.data.evidence_keys))
     assert(smokeResult.data.evidence_keys.every((key) => /^[a-z][a-z0-9_]*:[a-f0-9]{16,64}$/i.test(key)))
     assert(smokeResult.data.evidence_keys.length > 0, 'compatible smoke must return evidence keys')
+    assert.deepStrictEqual(smokeResult.data.input_candidate_refs, ['candidate_102'])
+    assert.deepStrictEqual(smokeResult.data.output_candidate_refs, ['candidate_102'])
+    assert.strictEqual(smokeResult.data.candidate_set_invariant, true)
     assert.strictEqual(forbidden(smokeResult.data), false)
+
+    const asymmetricProfiles = fixtureProfiles()
+    asymmetricProfiles[1].settings.target_view_text = '需要独立空间、稳定节奏、清晰边界'
+    const asymmetric = await api.main({
+      action: 'smokeSparseRag',
+      payload: { worker_secret: WORKER_SECRET, fixture_only: true, profiles: asymmetricProfiles }
+    })
+    assert.strictEqual(asymmetric.success, true)
+    assert.deepStrictEqual(asymmetric.data.input_candidate_refs, ['candidate_102'])
+    assert.deepStrictEqual(asymmetric.data.output_candidate_refs, ['candidate_102'])
+    assert.strictEqual(asymmetric.data.candidate_set_invariant, true)
+    assert.strictEqual(forbidden(asymmetric.data), false)
+
+    const conflictProfiles = fixtureProfiles()
+    conflictProfiles[0].settings.must_baby_plan = '不考虑'
+    const conflict = await api.main({
+      action: 'smokeSparseRag',
+      payload: { worker_secret: WORKER_SECRET, fixture_only: true, profiles: conflictProfiles }
+    })
+    assert.strictEqual(conflict.success, true)
+    assert.deepStrictEqual(conflict.data.input_candidate_refs, ['candidate_102'])
+    assert.deepStrictEqual(conflict.data.output_candidate_refs, [])
+    assert.strictEqual(conflict.data.candidate_set_invariant, true)
+    assert.strictEqual(forbidden(conflict.data), false)
+
+    const insufficientProfiles = [
+      { id: 201, fixture_only: true, sanitized: true, profile: { id: 201, gender: 1 }, settings: {} },
+      { id: 202, fixture_only: true, sanitized: true, profile: { id: 202, gender: 2 }, settings: {} }
+    ]
+    const insufficient = await api.main({
+      action: 'smokeSparseRag',
+      payload: { worker_secret: WORKER_SECRET, fixture_only: true, profiles: insufficientProfiles }
+    })
+    assert.strictEqual(insufficient.success, true)
+    assert.deepStrictEqual(insufficient.data.input_candidate_refs, ['candidate_202'])
+    assert.deepStrictEqual(insufficient.data.output_candidate_refs, [])
+    assert.strictEqual(insufficient.data.candidate_set_invariant, true)
+    assert.strictEqual(insufficient.data.evidence_keys.length, 0)
+    assert.strictEqual(forbidden(insufficient.data), false)
+
+    const expiredProfiles = fixtureProfiles()
+    expiredProfiles[1].fixture_expires_at = '2020-01-01T00:00:00.000Z'
+    const expired = await api.main({
+      action: 'smokeSparseRag',
+      payload: { worker_secret: WORKER_SECRET, fixture_only: true, profiles: expiredProfiles }
+    })
+    assert.strictEqual(expired.success, false)
+    assert.strictEqual(expired.code, 400)
+    assert.strictEqual(expired.error, 'INVALID_RAG_SMOKE_REQUEST')
+    assert.strictEqual(forbidden(expired), false)
+
+    const previousAiProvider = process.env.AI_PROVIDER
+    const previousAiGroup = process.env.AI_GROUP
+    const previousAiModel = process.env.AI_MODEL
+    const previousRerank = deepseek.rerankMutualMatchCandidates
+    process.env.AI_PROVIDER = 'cloudbase'
+    process.env.AI_GROUP = 'cloudbase'
+    process.env.AI_MODEL = 'hy3'
+    deepseek.rerankMutualMatchCandidates = async () => ({
+      enabled: true,
+      provider: 'cloudbase',
+      model: 'hy3',
+      response: {
+        version: 'match_semantic_rerank_v1',
+        ranking: [{ candidate_ref: 'candidate_999', rank: 1 }]
+      }
+    })
+    try {
+      const providerFailure = await api.main({
+        action: 'smokeSparseRag',
+        payload: { worker_secret: WORKER_SECRET, fixture_only: true, profiles: fixtureProfiles(), rag_mode: 'active' }
+      })
+      assert.strictEqual(providerFailure.success, true)
+      assert.deepStrictEqual(providerFailure.data.input_candidate_refs, ['candidate_102'])
+      assert.deepStrictEqual(providerFailure.data.output_candidate_refs, ['candidate_102'])
+      assert.strictEqual(providerFailure.data.candidate_set_invariant, true)
+      assert.strictEqual(providerFailure.data.reason, 'invalid_result')
+      assert.strictEqual(forbidden(providerFailure.data), false)
+    } finally {
+      deepseek.rerankMutualMatchCandidates = previousRerank
+      if (previousAiProvider === undefined) delete process.env.AI_PROVIDER
+      else process.env.AI_PROVIDER = previousAiProvider
+      if (previousAiGroup === undefined) delete process.env.AI_GROUP
+      else process.env.AI_GROUP = previousAiGroup
+      if (previousAiModel === undefined) delete process.env.AI_MODEL
+      else process.env.AI_MODEL = previousAiModel
+    }
 
     const smokeDenied = await api.main({
       action: 'smokeSparseRag',
@@ -203,9 +348,23 @@ async function main() {
     assert.strictEqual(smokeDenied.success, false)
     assert.strictEqual(smokeDenied.code, 400)
 
-    const unknown = await api.main({ action: 'unknownWorkerAction', payload: { worker_secret: WORKER_SECRET } })
+    const unknown = await api.main({ action: 'unknownWorkerAction:secret-token', payload: { worker_secret: WORKER_SECRET } })
     assert.strictEqual(unknown.success, false)
-    assert.match(unknown.error, /Unknown action/)
+    assert.strictEqual(unknown.code, 400)
+    assert.strictEqual(unknown.error, 'UNKNOWN_ACTION')
+    assert.strictEqual(forbidden(unknown), false)
+    const malformedSmoke = await api.main({
+      action: 'smokeSparseRag',
+      payload: {
+        worker_secret: WORKER_SECRET,
+        fixture_only: true,
+        profiles: [{ id: 101, profile: { id: 101, secret: 'do-not-return' } }, { id: 102 }]
+      }
+    })
+    assert.strictEqual(malformedSmoke.success, false)
+    assert.strictEqual(malformedSmoke.code, 400)
+    assert.strictEqual(malformedSmoke.error, 'INVALID_RAG_SMOKE_REQUEST')
+    assert.strictEqual(forbidden(malformedSmoke), false)
   } finally {
     db.listUsersPage = originalListUsersPage
     db.findSetting = originalFindSetting

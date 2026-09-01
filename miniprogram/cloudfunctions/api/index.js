@@ -24,6 +24,8 @@ const {
 const { retrieveSparseBidirectional } = require('./lib/sparseMatchRetrieval')
 const { semanticRerank } = require('./lib/semanticMatchService')
 const { resolveRagMode } = require('./lib/matchRagRuntime')
+const { rankCandidates } = require('./lib/matchPolicy')
+const { canUseFixtureForMatch } = require('./lib/testFixturePolicy')
 const cloudbaseAi = require('./lib/cloudbaseAi')
 const db = require('./lib/db')
 
@@ -31,16 +33,52 @@ const ENV_ID = 'cloud1-d4gy8l52g08bba326'
 const MAX_RAG_BACKFILL_PAGES = 10
 const MAX_SMOKE_PROFILES = 10
 const SAFE_EVIDENCE_KEY = /^[a-z][a-z0-9_]*:[a-f0-9]{16,64}$/i
-const SAFE_SMOKE_KEY = /(?:sanitized[_ -]?text|evidence[_ -]?text|prompt|response|openid|unionid|phone|mobile|wechat|secret|token|password|raw[_ -]?text|original[_ -]?text)/i
-const SAFE_SMOKE_VALUE = /(?:1[3-9]\d{9}|(?:openid|unionid|session[_ -]?key|token)\s*[:=]|手机号|手机号码|微信号|联系方式|原始文本|raw\s+text)/i
+const SAFE_SMOKE_KEY = /(?:sanitized[_ -]?text|evidence[_ -]?text|prompt|response|openid|unionid|phone|mobile|wechat|secret|token|password|credential|api[_ -]?key|raw[_ -]?text|original[_ -]?text)/i
+const SAFE_SMOKE_VALUE = /(?:1[3-9]\d{9}|(?:openid|unionid|session[_ -]?key|token)\s*[:=]|手机号|手机号码|微信号|联系方式|原始文本|raw\s+text|密码|密钥)/i
+const SAFE_SMOKE_REASONS = new Set([
+  '',
+  'no_candidates',
+  'disabled',
+  'timeout',
+  'rate_limited',
+  'provider_auth',
+  'invalid_result',
+  'semantic_retrieval_unavailable',
+  'sparse_retrieval_insufficient',
+  'corpus_unavailable',
+  'corpus_invalid',
+  'provider_config_invalid',
+  'provider_error',
+  'fallback_deterministic',
+  'low_confidence'
+])
+const SAFE_PUBLIC_ERROR_CODES = new Set([
+  'INVALID_RAG_BACKFILL_REQUEST',
+  'INVALID_RAG_SMOKE_REQUEST'
+])
 const SMOKE_PROFILE_FIELDS = [
   'id',
   'gender',
   'birth_year',
   'city',
+  'city_name',
+  'province_code',
+  'province_name',
   'baby_plan',
+  'height_range',
+  'education',
+  'identity_circle_ids',
+  'circle_id',
   'appearance_description',
-  'appearance_want'
+  'appearance_want',
+  'appearance_tags',
+  'appearance_want_tags',
+  'marry_status',
+  'marriage_status',
+  'smoking_status',
+  'smoking',
+  'match_status',
+  'matched_partner_id'
 ]
 const SMOKE_SETTING_FIELDS = [
   'user_id',
@@ -50,18 +88,65 @@ const SMOKE_SETTING_FIELDS = [
   'other_requirements',
   'deal_breakers',
   'appearance_want',
-  'like_baby_plan'
+  'like_baby_plan',
+  'age_min',
+  'age_max',
+  'height_min',
+  'height_max',
+  'min_education',
+  'like_circle_ids',
+  'must_marry_status',
+  'required_marry_status',
+  'must_baby_plan',
+  'required_baby_plan',
+  'must_city',
+  'required_city',
+  'must_smoking_status',
+  'required_smoking_status',
+  'must_height_min',
+  'must_height_max',
+  'require_safe_account'
 ]
 
+function hasOwn(value, key) {
+  return Boolean(value && Object.prototype.hasOwnProperty.call(value, key))
+}
+
 function boundedPageLimit(value) {
-  const number = Number(value)
-  if (!Number.isFinite(number)) return 1
-  return Math.max(1, Math.min(MAX_RAG_BACKFILL_PAGES, Math.floor(number)))
+  if (value === undefined) return 1
+  if (typeof value !== 'number' || !Number.isFinite(value) || !Number.isInteger(value)) {
+    const error = new Error('INVALID_RAG_BACKFILL_REQUEST')
+    error.code = 400
+    error.publicCode = 'INVALID_RAG_BACKFILL_REQUEST'
+    throw error
+  }
+  return Math.max(1, Math.min(MAX_RAG_BACKFILL_PAGES, value))
 }
 
 function boundedCursor(value) {
-  const number = Number(value)
-  return Number.isSafeInteger(number) && number >= 0 ? number : 0
+  if (value === undefined) return 0
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) {
+    const error = new Error('INVALID_RAG_BACKFILL_REQUEST')
+    error.code = 400
+    error.publicCode = 'INVALID_RAG_BACKFILL_REQUEST'
+    throw error
+  }
+  return value
+}
+
+function normalizedBackfillPayload(payload) {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)
+    || !hasOwn(payload, 'dry_run') || typeof payload.dry_run !== 'boolean') {
+    const error = new Error('INVALID_RAG_BACKFILL_REQUEST')
+    error.code = 400
+    error.publicCode = 'INVALID_RAG_BACKFILL_REQUEST'
+    throw error
+  }
+  return {
+    dry_run: payload.dry_run,
+    cursor: boundedCursor(payload.cursor),
+    page_limit: boundedPageLimit(payload.page_limit)
+  }
 }
 
 function ragBackfillRepository() {
@@ -75,9 +160,10 @@ function ragBackfillRepository() {
   }
 }
 
-function smokeError(message) {
+function smokeError(message, publicCode = 'INVALID_RAG_SMOKE_REQUEST') {
   const error = new Error(message)
   error.code = 400
+  error.publicCode = publicCode
   return error
 }
 
@@ -121,9 +207,13 @@ function normalizeSmokeProfile(item, fixtureEnvelope = false) {
     || item.fixtureOnly === true
     || item.profile_origin === 'synthetic_fixture'
     || Number(item.is_test_fixture || 0) === 1)
+  const explicitlyNonFixture = item && (item.fixture_only === false
+    || item.fixtureOnly === false
+    || (item.profile_origin !== undefined && item.profile_origin !== 'synthetic_fixture'))
   if (!item || typeof item !== 'object' || Array.isArray(item)
     || (!fixtureMarked && !fixtureEnvelope)
-    || item.sanitized === false) {
+    || explicitlyNonFixture
+    || item.sanitized !== true) {
     throw smokeError('smoke 仅接受明确标记的 fixture-only sanitized profiles')
   }
   assertSafeSmokeInput(item)
@@ -141,7 +231,22 @@ function normalizeSmokeProfile(item, fixtureEnvelope = false) {
   user.id = id
   const settings = copySmokeFields(rawSettings, SMOKE_SETTING_FIELDS)
   settings.user_id = id
-  return { id, user, settings }
+  const sourceOrigin = source.profile_origin
+  if (sourceOrigin !== undefined && sourceOrigin !== 'synthetic_fixture') {
+    throw smokeError('smoke 仅接受 fixture profile，不接受真实用户画像')
+  }
+  const fixtureExpiresAt = item.fixture_expires_at || source.fixture_expires_at || null
+  if (fixtureExpiresAt !== null
+    && (typeof fixtureExpiresAt !== 'string' || !Number.isFinite(new Date(fixtureExpiresAt).getTime()))) {
+    throw smokeError('smoke fixture 有效期无效')
+  }
+  const fixture = Object.assign({}, user, {
+    profile_origin: 'synthetic_fixture',
+    is_test_fixture: 1,
+    fixture_access_mode: 'public_test_pool',
+    fixture_expires_at: fixtureExpiresAt
+  })
+  return { id, user, settings, fixture }
 }
 
 function scoreForSmoke(value) {
@@ -175,6 +280,31 @@ function retrievalScoreForSmoke(retrievals) {
   }
 }
 
+function candidateRefForSmoke(user) {
+  return `candidate_${String(user && user.id || '')}`
+}
+
+function sameCandidateSet(left, right) {
+  const a = [...new Set(Array.isArray(left) ? left : [])].sort()
+  const b = [...new Set(Array.isArray(right) ? right : [])].sort()
+  return a.length === b.length && a.every((value, index) => value === b[index])
+}
+
+function boundedPublicErrorCode(err, action, numericCode) {
+  const declared = String(err && err.publicCode || '')
+  if (SAFE_PUBLIC_ERROR_CODES.has(declared)) return declared
+  if (numericCode === 403) return 'WORKER_AUTH_FAILED'
+  if (action === 'backfillRagCorpus') return 'RAG_BACKFILL_FAILED'
+  if (action === 'smokeSparseRag') return 'RAG_SMOKE_FAILED'
+  return 'SERVER_ERROR'
+}
+
+function safeSmokeReason(value) {
+  const reason = String(value || '').trim()
+  if (reason === 'invalid_response') return 'invalid_result'
+  return SAFE_SMOKE_REASONS.has(reason) ? reason : 'fallback_deterministic'
+}
+
 async function smokeSparseRag(input = {}) {
   const payload = input && typeof input === 'object' ? input : {}
   const fixtureEnvelope = payload.fixture_only === true || payload.fixtureOnly === true
@@ -186,6 +316,14 @@ async function smokeSparseRag(input = {}) {
   const uniqueIds = new Set(profiles.map((item) => String(item.id)))
   if (uniqueIds.size !== profiles.length) throw smokeError('smoke profile id 必须唯一')
 
+  const fixtureNow = new Date('2026-09-01T00:00:00.000Z')
+  const fixtureViewer = profiles[0].fixture
+  profiles.forEach((profile) => {
+    if (!canUseFixtureForMatch(fixtureViewer, profile.fixture, fixtureNow)) {
+      throw smokeError('smoke fixture 当前不可用于匹配')
+    }
+  })
+
   const corpus = {}
   const settingsByUserId = {}
   profiles.forEach((item) => {
@@ -194,19 +332,21 @@ async function smokeSparseRag(input = {}) {
   })
   const viewer = profiles[0]
   const candidates = profiles.slice(1)
-  const retrievals = await Promise.all(candidates.map((candidate) => retrieveSparseBidirectional({
-    userA: viewer.user,
-    settingsA: viewer.settings,
-    userB: candidate.user,
-    settingsB: candidate.settings
-  }, corpus)))
-  const ranked = candidates.map((candidate) => ({
-    candidate: candidate.user,
-    quality: { pass: true, reasons: [] },
-    mutualScore: 0,
-    viewSimilarity: 0,
-    scoreA: { normalizedTotal: 0, completeness: 0 },
-    scoreB: { normalizedTotal: 0, completeness: 0 }
+  const ranked = rankCandidates(viewer.user, candidates.map((candidate) => candidate.user), settingsByUserId)
+  const deterministicCandidateRefs = ranked
+    .filter((item) => item && item.quality && item.quality.pass === true)
+    .map((item) => candidateRefForSmoke(item.candidate))
+  const eligibleById = new Map(ranked
+    .filter((item) => item && item.quality && item.quality.pass === true)
+    .map((item) => [String(item.candidate.id), item.candidate]))
+  const retrievals = await Promise.all([...eligibleById.values()].map((candidate) => {
+    const candidateProfile = profiles.find((profile) => String(profile.id) === String(candidate.id))
+    return retrieveSparseBidirectional({
+      userA: viewer.user,
+      settingsA: viewer.settings,
+      userB: candidate,
+      settingsB: candidateProfile ? candidateProfile.settings : {}
+    }, corpus)
   }))
   const requestedMode = payload.rag_mode || payload.ragMode || process.env.MATCH_RAG_MODE
   const mode = resolveRagMode({ MATCH_RAG_MODE: requestedMode })
@@ -214,23 +354,33 @@ async function smokeSparseRag(input = {}) {
     ragMode: mode,
     loadCorpus: async () => corpus
   })
-  const firstRanked = result && result.ranked && result.ranked[0]
+  const rankedResult = result && Array.isArray(result.ranked) ? result.ranked : []
+  const firstRanked = rankedResult.find((item) => item && item.quality && item.quality.pass === true)
+    || rankedResult[0]
   const retrieval = firstRanked && firstRanked.retrieval
   const effectiveRetrievals = retrieval ? [retrieval] : retrievals
   const firstRetrieval = effectiveRetrievals[0] || {}
   const metadata = result && result.rag && typeof result.rag === 'object' ? result.rag : {}
   const reason = String(metadata.reason || firstRetrieval.reason || '').trim()
+  const outputCandidateRefs = rankedResult
+    .filter((item) => item && item.quality && item.quality.pass === true)
+    .map((item) => candidateRefForSmoke(item.candidate))
+    .filter((ref) => deterministicCandidateRefs.includes(ref))
+  const candidateSetInvariant = sameCandidateSet(outputCandidateRefs, deterministicCandidateRefs)
   return {
     rag_mode: mode,
     retrieval_version: RETRIEVAL_VERSION,
     corpus_version: CHUNK_VERSION,
     provider: mode === 'off' ? '' : String(metadata.provider || '').slice(0, 40),
     model: mode === 'off' ? '' : String(metadata.model || '').slice(0, 80),
-    reason: /^[a-z0-9_]*$/.test(reason) ? reason : 'fallback_deterministic',
+    reason: safeSmokeReason(reason),
     score: Object.assign({}, retrievalScoreForSmoke(effectiveRetrievals), {
       final: scoreForSmoke(firstRanked && firstRanked.canonical_score)
     }),
-    evidence_keys: evidenceKeysForSmoke(effectiveRetrievals)
+    evidence_keys: evidenceKeysForSmoke(effectiveRetrievals),
+    input_candidate_refs: candidates.map((candidate) => candidateRefForSmoke(candidate.user)),
+    output_candidate_refs: outputCandidateRefs,
+    candidate_set_invariant: candidateSetInvariant
   }
 }
 
@@ -238,9 +388,11 @@ exports.main = async (event = {}) => {
   if (isHttpEvent(event)) {
     return handleHttp(event)
   }
-  const action = event.action
-  const payload = event.payload || {}
+  let action
+  let payload = {}
   try {
+    action = event && typeof event === 'object' ? event.action : undefined
+    payload = event && typeof event === 'object' ? (event.payload || {}) : {}
     switch (action) {
       case 'ping':
         return {
@@ -314,13 +466,10 @@ exports.main = async (event = {}) => {
         }
       case 'backfillRagCorpus': {
         assertInternalWorkerSecret(payload.worker_secret)
+        const backfillPayload = normalizedBackfillPayload(payload)
         return {
           success: true,
-          data: await backfillCorpus({
-            dry_run: payload.dry_run === true || payload.dryRun === true,
-            cursor: boundedCursor(payload.cursor !== undefined ? payload.cursor : (payload.after_id !== undefined ? payload.after_id : payload.afterId)),
-            page_limit: boundedPageLimit(payload.page_limit !== undefined ? payload.page_limit : (payload.pageLimit !== undefined ? payload.pageLimit : payload.maxPages))
-          }, ragBackfillRepository())
+          data: await backfillCorpus(backfillPayload, ragBackfillRepository())
         }
       }
       case 'smokeSparseRag':
@@ -329,14 +478,18 @@ exports.main = async (event = {}) => {
       default:
         return {
           success: false,
-          error: `Unknown action: ${action}`
+          code: 400,
+          error: 'UNKNOWN_ACTION'
         }
     }
   } catch (err) {
+    const numericCode = Number(err && err.code)
+    const code = numericCode === 403 ? 403 : (numericCode === 400 ? 400 : 500)
+    const error = boundedPublicErrorCode(err, action, code)
     return {
       success: false,
-      code: err && err.code,
-      error: (err && err.message) || 'server error'
+      code,
+      error
     }
   }
 }

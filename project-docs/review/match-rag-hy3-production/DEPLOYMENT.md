@@ -21,10 +21,12 @@ Required indexes on `user_evidence_chunks`:
 ]
 ```
 
-The source page size is fixed at 20 users. Each invocation accepts at most 10
-pages (`page_limit` is clamped to `1..10`) and continues with the returned
-`next_cursor`. Backfill is idempotent: unchanged chunks are not rewritten and
-removed chunks are disabled.
+The API's external source page size is fixed at 20 users; callers cannot
+override it. The repository may read at most 21 rows internally (20 rows to
+process plus one lookahead row to detect continuation). Each invocation
+accepts at most 10 processing pages (`page_limit` is clamped to `1..10`) and
+continues with the returned `next_cursor`. Backfill is idempotent: unchanged
+chunks are not rewritten and removed chunks are disabled.
 
 ## Function configuration contract
 
@@ -63,8 +65,11 @@ Dry run, first page:
 
 Real backfill uses the same payload with `dry_run: false`; repeat with each
 returned `next_cursor` until it is `null`. Never use a page size other than the
-server-enforced source page of 20. Every invocation must report only counts,
-versions, duration, cursor, and bounded error codes.
+server-enforced source page of 20. `dry_run` must be a JSON boolean;
+`cursor` must be a non-negative safe integer and `page_limit` must be an
+integer (the server clamps its numeric value to `1..10`). Invalid types are
+rejected before any database read or write. Every invocation must report only
+counts, versions, duration, cursor, and bounded error codes.
 
 ## Shadow smoke contract
 

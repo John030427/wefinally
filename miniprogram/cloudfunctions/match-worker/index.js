@@ -19,14 +19,19 @@ function validSecret(value) {
 }
 
 function pageLimit(value) {
-  const number = Number(value)
-  if (!Number.isFinite(number)) return 1
-  return Math.max(1, Math.min(MAX_PAGE_COUNT, Math.floor(number)))
+  if (value === undefined) return 1
+  if (typeof value !== 'number' || !Number.isFinite(value) || !Number.isInteger(value)) {
+    throw workerError('INVALID_RAG_BACKFILL_PAYLOAD')
+  }
+  return Math.max(1, Math.min(MAX_PAGE_COUNT, value))
 }
 
 function cursor(value) {
-  const number = Number(value)
-  return Number.isSafeInteger(number) && number >= 0 ? number : 0
+  if (value === undefined) return 0
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) {
+    throw workerError('INVALID_RAG_BACKFILL_PAYLOAD')
+  }
+  return value
 }
 
 function payloadOf(event) {
@@ -56,8 +61,9 @@ function mapWorkerEvent(event = {}, configuredSecret, now = () => Date.now()) {
   const input = event && typeof event === 'object' ? event : {}
   const action = input.action
   const source = payloadOf(input)
+  const hasOwnAction = Object.prototype.hasOwnProperty.call(input, 'action')
 
-  if (action === undefined || action === null || action === '' || action === ACTION_FORMAL) {
+  if (!hasOwnAction) {
     const timestamp = typeof now === 'function' ? now() : now
     return {
       action: ACTION_FORMAL,
@@ -70,12 +76,16 @@ function mapWorkerEvent(event = {}, configuredSecret, now = () => Date.now()) {
   }
 
   if (action === ACTION_BACKFILL) {
+    if (!Object.prototype.hasOwnProperty.call(source, 'dry_run')
+      || typeof source.dry_run !== 'boolean') {
+      throw workerError('INVALID_RAG_BACKFILL_PAYLOAD')
+    }
     return {
       action: ACTION_BACKFILL,
       payload: {
-        dry_run: source.dry_run === true || source.dryRun === true,
-        cursor: cursor(source.cursor !== undefined ? source.cursor : (source.after_id !== undefined ? source.after_id : source.afterId)),
-        page_limit: pageLimit(source.page_limit !== undefined ? source.page_limit : (source.pageLimit !== undefined ? source.pageLimit : source.maxPages)),
+        dry_run: source.dry_run,
+        cursor: cursor(source.cursor),
+        page_limit: pageLimit(source.page_limit),
         worker_secret: secret
       }
     }
@@ -92,7 +102,7 @@ function mapWorkerEvent(event = {}, configuredSecret, now = () => Date.now()) {
     return { action: ACTION_SMOKE, payload }
   }
 
-  throw workerError('未知 worker action')
+  throw workerError('INVALID_WORKER_ACTION')
 }
 
 exports.main = async (event = {}) => {
