@@ -139,11 +139,17 @@ async function main() {
       (error) => error && error.message === 'INVALID_WORKER_ACTION'
     )
   })
-  const inheritedAction = Object.create({ action: 'unexpectedAction' })
+  ;[null, 'not-an-event', 7, [], Object.create({ action: 'unexpectedAction' })].forEach((event) => {
+    assert.throws(
+      () => worker.mapWorkerEvent(event, WORKER_SECRET, () => 1730000000000),
+      (error) => error && error.message === 'INVALID_WORKER_EVENT'
+    )
+  })
+  const nullPrototypeEvent = Object.create(null)
   assert.deepStrictEqual(
-    worker.mapWorkerEvent(inheritedAction, WORKER_SECRET, () => 1730000000000),
+    worker.mapWorkerEvent(nullPrototypeEvent, WORKER_SECRET, () => 1730000000000),
     defaultTimer,
-    'only an event without an own action property may use the timer route'
+    'only a plain event without an own action property may use the timer route'
   )
   const lowerBound = worker.mapWorkerEvent(
     { action: 'backfillRagCorpus', payload: { dry_run: true, page_limit: 0 } },
@@ -153,6 +159,11 @@ async function main() {
 
   const previousSecret = process.env.MATCH_WORKER_SECRET
   process.env.MATCH_WORKER_SECRET = WORKER_SECRET
+  await assert.rejects(
+    () => worker.main(null),
+    (error) => error && error.message === 'INVALID_WORKER_EVENT'
+  )
+  assert.strictEqual(calls.length, 0, 'invalid event must not invoke the API')
   const api = require('../../miniprogram/cloudfunctions/api/index.js')
   const db = require('../../miniprogram/cloudfunctions/api/lib/db')
   const corpus = require('../../miniprogram/cloudfunctions/api/lib/matchRagCorpus')
@@ -236,7 +247,10 @@ async function main() {
       'evidence_keys',
       'input_candidate_refs',
       'model',
+      'output_candidate_ref_count',
       'output_candidate_refs',
+      'output_candidate_refs_truncated',
+      'output_invalid_candidate_ref_count',
       'provider',
       'rag_mode',
       'reason',
@@ -249,9 +263,12 @@ async function main() {
     assert(Array.isArray(smokeResult.data.evidence_keys))
     assert(smokeResult.data.evidence_keys.every((key) => /^[a-z][a-z0-9_]*:[a-f0-9]{16,64}$/i.test(key)))
     assert(smokeResult.data.evidence_keys.length > 0, 'compatible smoke must return evidence keys')
-    assert.deepStrictEqual(smokeResult.data.input_candidate_refs, ['candidate_102'])
-    assert.deepStrictEqual(smokeResult.data.output_candidate_refs, ['candidate_102'])
+    assert.deepStrictEqual(smokeResult.data.input_candidate_refs, ['candidate_1'])
+    assert.deepStrictEqual(smokeResult.data.output_candidate_refs, ['candidate_1'])
     assert.strictEqual(smokeResult.data.candidate_set_invariant, true)
+    assert.strictEqual(smokeResult.data.output_candidate_ref_count, 1)
+    assert.strictEqual(smokeResult.data.output_invalid_candidate_ref_count, 0)
+    assert.strictEqual(smokeResult.data.output_candidate_refs_truncated, false)
     assert.strictEqual(forbidden(smokeResult.data), false)
 
     const asymmetricProfiles = fixtureProfiles()
@@ -261,8 +278,8 @@ async function main() {
       payload: { worker_secret: WORKER_SECRET, fixture_only: true, profiles: asymmetricProfiles }
     })
     assert.strictEqual(asymmetric.success, true)
-    assert.deepStrictEqual(asymmetric.data.input_candidate_refs, ['candidate_102'])
-    assert.deepStrictEqual(asymmetric.data.output_candidate_refs, ['candidate_102'])
+    assert.deepStrictEqual(asymmetric.data.input_candidate_refs, ['candidate_1'])
+    assert.deepStrictEqual(asymmetric.data.output_candidate_refs, ['candidate_1'])
     assert.strictEqual(asymmetric.data.candidate_set_invariant, true)
     assert.strictEqual(forbidden(asymmetric.data), false)
 
@@ -273,7 +290,7 @@ async function main() {
       payload: { worker_secret: WORKER_SECRET, fixture_only: true, profiles: conflictProfiles }
     })
     assert.strictEqual(conflict.success, true)
-    assert.deepStrictEqual(conflict.data.input_candidate_refs, ['candidate_102'])
+    assert.deepStrictEqual(conflict.data.input_candidate_refs, [])
     assert.deepStrictEqual(conflict.data.output_candidate_refs, [])
     assert.strictEqual(conflict.data.candidate_set_invariant, true)
     assert.strictEqual(forbidden(conflict.data), false)
@@ -287,7 +304,7 @@ async function main() {
       payload: { worker_secret: WORKER_SECRET, fixture_only: true, profiles: insufficientProfiles }
     })
     assert.strictEqual(insufficient.success, true)
-    assert.deepStrictEqual(insufficient.data.input_candidate_refs, ['candidate_202'])
+    assert.deepStrictEqual(insufficient.data.input_candidate_refs, [])
     assert.deepStrictEqual(insufficient.data.output_candidate_refs, [])
     assert.strictEqual(insufficient.data.candidate_set_invariant, true)
     assert.strictEqual(insufficient.data.evidence_keys.length, 0)
@@ -311,26 +328,34 @@ async function main() {
     process.env.AI_PROVIDER = 'cloudbase'
     process.env.AI_GROUP = 'cloudbase'
     process.env.AI_MODEL = 'hy3'
-    deepseek.rerankMutualMatchCandidates = async () => ({
-      enabled: true,
-      provider: 'cloudbase',
-      model: 'hy3',
-      response: {
-        version: 'match_semantic_rerank_v1',
-        ranking: [{ candidate_ref: 'candidate_999', rank: 1 }]
-      }
-    })
     try {
-      const providerFailure = await api.main({
-        action: 'smokeSparseRag',
-        payload: { worker_secret: WORKER_SECRET, fixture_only: true, profiles: fixtureProfiles(), rag_mode: 'active' }
-      })
-      assert.strictEqual(providerFailure.success, true)
-      assert.deepStrictEqual(providerFailure.data.input_candidate_refs, ['candidate_102'])
-      assert.deepStrictEqual(providerFailure.data.output_candidate_refs, ['candidate_102'])
-      assert.strictEqual(providerFailure.data.candidate_set_invariant, true)
-      assert.strictEqual(providerFailure.data.reason, 'invalid_result')
-      assert.strictEqual(forbidden(providerFailure.data), false)
+      for (const testCase of [
+        { refs: ['candidate_999'], expected: ['candidate_999'] },
+        { refs: ['candidate_1', 'candidate_1'], expected: ['candidate_1', 'candidate_1'] },
+        { refs: [], expected: [] },
+        { refs: ['openid-secret'], expected: ['invalid_ref'] },
+        { refs: [' candidate_1 '], expected: ['invalid_ref'] }
+      ]) {
+        deepseek.rerankMutualMatchCandidates = async () => ({
+          enabled: true,
+          provider: 'cloudbase',
+          model: 'hy3',
+          response: {
+            version: 'match_semantic_rerank_v1',
+            ranking: testCase.refs.map((ref) => ({ candidate_ref: ref, rank: 1 }))
+          }
+        })
+        const providerFailure = await api.main({
+          action: 'smokeSparseRag',
+          payload: { worker_secret: WORKER_SECRET, fixture_only: true, profiles: fixtureProfiles(), rag_mode: 'active' }
+        })
+        assert.strictEqual(providerFailure.success, true)
+        assert.deepStrictEqual(providerFailure.data.input_candidate_refs, ['candidate_1'])
+        assert.deepStrictEqual(providerFailure.data.output_candidate_refs, testCase.expected)
+        assert.strictEqual(providerFailure.data.candidate_set_invariant, false)
+        assert.strictEqual(providerFailure.data.reason, 'invalid_result')
+        assert.strictEqual(forbidden(providerFailure.data), false)
+      }
     } finally {
       deepseek.rerankMutualMatchCandidates = previousRerank
       if (previousAiProvider === undefined) delete process.env.AI_PROVIDER

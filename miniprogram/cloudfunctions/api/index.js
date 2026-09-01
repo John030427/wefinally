@@ -23,6 +23,7 @@ const {
 } = require('./lib/matchRagCorpus')
 const { retrieveSparseBidirectional } = require('./lib/sparseMatchRetrieval')
 const { semanticRerank } = require('./lib/semanticMatchService')
+const deepseek = require('./lib/deepseek')
 const { resolveRagMode } = require('./lib/matchRagRuntime')
 const { rankCandidates } = require('./lib/matchPolicy')
 const { canUseFixtureForMatch } = require('./lib/testFixturePolicy')
@@ -32,7 +33,9 @@ const db = require('./lib/db')
 const ENV_ID = 'cloud1-d4gy8l52g08bba326'
 const MAX_RAG_BACKFILL_PAGES = 10
 const MAX_SMOKE_PROFILES = 10
+const MAX_SMOKE_REF_OUTPUT = 50
 const SAFE_EVIDENCE_KEY = /^[a-z][a-z0-9_]*:[a-f0-9]{16,64}$/i
+const SAFE_SEMANTIC_REF = /^candidate_[1-9]\d{0,2}$/
 const SAFE_SMOKE_KEY = /(?:sanitized[_ -]?text|evidence[_ -]?text|prompt|response|openid|unionid|phone|mobile|wechat|secret|token|password|credential|api[_ -]?key|raw[_ -]?text|original[_ -]?text)/i
 const SAFE_SMOKE_VALUE = /(?:1[3-9]\d{9}|(?:openid|unionid|session[_ -]?key|token)\s*[:=]|手机号|手机号码|微信号|联系方式|原始文本|raw\s+text|密码|密钥)/i
 const SAFE_SMOKE_REASONS = new Set([
@@ -280,14 +283,34 @@ function retrievalScoreForSmoke(retrievals) {
   }
 }
 
-function candidateRefForSmoke(user) {
-  return `candidate_${String(user && user.id || '')}`
+function candidateRefForSmoke(index) {
+  return `candidate_${Number(index) + 1}`
 }
 
-function sameCandidateSet(left, right) {
-  const a = [...new Set(Array.isArray(left) ? left : [])].sort()
-  const b = [...new Set(Array.isArray(right) ? right : [])].sort()
-  return a.length === b.length && a.every((value, index) => value === b[index])
+function normalizedSemanticRef(value) {
+  if (typeof value !== 'string') return ''
+  return SAFE_SEMANTIC_REF.test(value) ? value : ''
+}
+
+function projectSemanticRefs(refs) {
+  const source = Array.isArray(refs) ? refs : []
+  return source.slice(0, MAX_SMOKE_REF_OUTPUT).map((value) => normalizedSemanticRef(value) || 'invalid_ref')
+}
+
+function sameCandidateMultiset(rawRefs, deterministicRefs) {
+  if (!Array.isArray(rawRefs) || !Array.isArray(deterministicRefs)
+    || rawRefs.length !== deterministicRefs.length) return false
+  const normalized = rawRefs.map(normalizedSemanticRef)
+  if (normalized.some((ref) => !ref)) return false
+  const counts = new Map()
+  normalized.forEach((ref) => counts.set(ref, (counts.get(ref) || 0) + 1))
+  const expected = new Map()
+  deterministicRefs.forEach((ref) => expected.set(ref, (expected.get(ref) || 0) + 1))
+  if (counts.size !== expected.size) return false
+  for (const [ref, count] of counts) {
+    if (expected.get(ref) !== count) return false
+  }
+  return true
 }
 
 function boundedPublicErrorCode(err, action, numericCode) {
@@ -333,9 +356,10 @@ async function smokeSparseRag(input = {}) {
   const viewer = profiles[0]
   const candidates = profiles.slice(1)
   const ranked = rankCandidates(viewer.user, candidates.map((candidate) => candidate.user), settingsByUserId)
-  const deterministicCandidateRefs = ranked
+  const deterministicEligible = ranked
     .filter((item) => item && item.quality && item.quality.pass === true)
-    .map((item) => candidateRefForSmoke(item.candidate))
+  const deterministicCandidateRefs = deterministicEligible
+    .map((item, index) => candidateRefForSmoke(index))
   const eligibleById = new Map(ranked
     .filter((item) => item && item.quality && item.quality.pass === true)
     .map((item) => [String(item.candidate.id), item.candidate]))
@@ -350,10 +374,28 @@ async function smokeSparseRag(input = {}) {
   }))
   const requestedMode = payload.rag_mode || payload.ragMode || process.env.MATCH_RAG_MODE
   const mode = resolveRagMode({ MATCH_RAG_MODE: requestedMode })
-  const result = await semanticRerank(ranked, viewer.user, settingsByUserId, {
+  let rawSemanticRefs = null
+  const semanticOptions = {
     ragMode: mode,
     loadCorpus: async () => corpus
-  })
+  }
+  if (mode !== 'off') {
+    semanticOptions.rerank = async (request) => {
+      const remote = await deepseek.rerankMutualMatchCandidates(request)
+      if (remote && remote.response !== null && remote.response !== undefined) {
+        const ranking = remote.response && Array.isArray(remote.response.ranking)
+          ? remote.response.ranking
+          : []
+        rawSemanticRefs = ranking.map((item) => (
+          item && typeof item === 'object' && hasOwn(item, 'candidate_ref')
+            ? item.candidate_ref
+            : null
+        ))
+      }
+      return remote
+    }
+  }
+  const result = await semanticRerank(ranked, viewer.user, settingsByUserId, semanticOptions)
   const rankedResult = result && Array.isArray(result.ranked) ? result.ranked : []
   const firstRanked = rankedResult.find((item) => item && item.quality && item.quality.pass === true)
     || rankedResult[0]
@@ -362,25 +404,29 @@ async function smokeSparseRag(input = {}) {
   const firstRetrieval = effectiveRetrievals[0] || {}
   const metadata = result && result.rag && typeof result.rag === 'object' ? result.rag : {}
   const reason = String(metadata.reason || firstRetrieval.reason || '').trim()
-  const outputCandidateRefs = rankedResult
-    .filter((item) => item && item.quality && item.quality.pass === true)
-    .map((item) => candidateRefForSmoke(item.candidate))
-    .filter((ref) => deterministicCandidateRefs.includes(ref))
-  const candidateSetInvariant = sameCandidateSet(outputCandidateRefs, deterministicCandidateRefs)
+  const semanticOutputRefs = rawSemanticRefs === null ? deterministicCandidateRefs : rawSemanticRefs
+  const outputCandidateRefs = projectSemanticRefs(semanticOutputRefs)
+  const candidateSetInvariant = rawSemanticRefs === null
+    ? true
+    : sameCandidateMultiset(rawSemanticRefs, deterministicCandidateRefs)
   return {
     rag_mode: mode,
     retrieval_version: RETRIEVAL_VERSION,
     corpus_version: CHUNK_VERSION,
     provider: mode === 'off' ? '' : String(metadata.provider || '').slice(0, 40),
     model: mode === 'off' ? '' : String(metadata.model || '').slice(0, 80),
-    reason: safeSmokeReason(reason),
+    reason: candidateSetInvariant ? safeSmokeReason(reason) : 'invalid_result',
     score: Object.assign({}, retrievalScoreForSmoke(effectiveRetrievals), {
       final: scoreForSmoke(firstRanked && firstRanked.canonical_score)
     }),
     evidence_keys: evidenceKeysForSmoke(effectiveRetrievals),
-    input_candidate_refs: candidates.map((candidate) => candidateRefForSmoke(candidate.user)),
+    input_candidate_refs: deterministicCandidateRefs,
     output_candidate_refs: outputCandidateRefs,
-    candidate_set_invariant: candidateSetInvariant
+    candidate_set_invariant: candidateSetInvariant,
+    output_candidate_ref_count: semanticOutputRefs.length,
+    output_invalid_candidate_ref_count: semanticOutputRefs
+      .filter((value) => !normalizedSemanticRef(value)).length,
+    output_candidate_refs_truncated: semanticOutputRefs.length > MAX_SMOKE_REF_OUTPUT
   }
 }
 

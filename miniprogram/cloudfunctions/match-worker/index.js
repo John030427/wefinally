@@ -12,6 +12,12 @@ function workerError(message) {
   return error
 }
 
+function isPlainObject(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  const prototype = Object.getPrototypeOf(value)
+  return prototype === Object.prototype || prototype === null
+}
+
 function validSecret(value) {
   const secret = String(value || '')
   if (secret.length < 24) throw workerError('MATCH_WORKER_SECRET 未配置')
@@ -56,9 +62,10 @@ function boundedProfiles(value) {
  * This function is deliberately pure: no CloudBase calls, clocks, or secrets
  * are read from global state. Unknown explicit actions fail closed.
  */
-function mapWorkerEvent(event = {}, configuredSecret, now = () => Date.now()) {
+function mapWorkerEvent(event, configuredSecret, now = () => Date.now()) {
   const secret = validSecret(configuredSecret)
-  const input = event && typeof event === 'object' ? event : {}
+  if (!isPlainObject(event)) throw workerError('INVALID_WORKER_EVENT')
+  const input = event
   const action = input.action
   const source = payloadOf(input)
   const hasOwnAction = Object.prototype.hasOwnProperty.call(input, 'action')
