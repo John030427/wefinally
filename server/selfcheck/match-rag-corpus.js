@@ -204,6 +204,12 @@ async function main() {
   assert.ok(!JSON.stringify(addressRows).match(/南山区|科技园|5号/))
   const nonCityRows = projectCorpusDocuments(Object.assign({}, userB, { city: '腾讯' }), settingB, '2026-09-01T00:00:00.000Z')
   assert.strictEqual(nonCityRows.some((row) => row.category === 'city_plan'), false)
+  for (const city of ['腾讯市', '南山科技园市']) {
+    const forgedCityRows = projectCorpusDocuments(Object.assign({}, userB, { city }), settingB, '2026-09-01T00:00:00.000Z')
+    assert.strictEqual(forgedCityRows.some((row) => row.category === 'city_plan'), false)
+    assert.ok(!JSON.stringify(forgedCityRows).includes(city))
+    assert.ok(forgedCityRows.every((row) => !row.tokens.some((token) => token.includes(city.replace(/市$/, '')))))
+  }
   assert.strictEqual(
     projectCorpusDocuments(userA, settingA, '2026-09-02T00:00:00.000Z')[0].source_profile_version,
     projected[0].source_profile_version

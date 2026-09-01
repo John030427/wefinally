@@ -160,6 +160,60 @@ const BROAD_CITY_NAMES = new Set([
   '珠海', '惠州', '中山', '汕头', '潮州', '揭阳', '湛江', '温州', '嘉兴', '金华', '台州',
   '襄阳', '洛阳', '乌鲁木齐', '兰州', '银川', '西宁', '呼和浩特', '拉萨', '香港', '澳门'
 ])
+const BROAD_CITY_ALIASES = Object.freeze({
+  '北京市': '北京',
+  '上海市': '上海',
+  '广州市': '广州',
+  '深圳市': '深圳',
+  '天津市': '天津',
+  '重庆市': '重庆',
+  '杭州市': '杭州',
+  '南京市': '南京',
+  '成都市': '成都',
+  '武汉市': '武汉',
+  '西安市': '西安',
+  '苏州市': '苏州',
+  '郑州市': '郑州',
+  '长沙市': '长沙',
+  '济南市': '济南',
+  '青岛市': '青岛',
+  '厦门市': '厦门',
+  '福州市': '福州',
+  '合肥市': '合肥',
+  '昆明市': '昆明',
+  '南昌市': '南昌',
+  '贵阳市': '贵阳',
+  '南宁市': '南宁',
+  '海口市': '海口',
+  '太原市': '太原',
+  '石家庄市': '石家庄',
+  '哈尔滨市': '哈尔滨',
+  '沈阳市': '沈阳',
+  '大连市': '大连',
+  '宁波市': '宁波',
+  '无锡市': '无锡',
+  '佛山市': '佛山',
+  '东莞市': '东莞',
+  '珠海市': '珠海',
+  '惠州市': '惠州',
+  '中山市': '中山',
+  '汕头市': '汕头',
+  '潮州市': '潮州',
+  '揭阳市': '揭阳',
+  '湛江市': '湛江',
+  '温州市': '温州',
+  '嘉兴市': '嘉兴',
+  '金华市': '金华',
+  '台州市': '台州',
+  '襄阳市': '襄阳',
+  '洛阳市': '洛阳',
+  '乌鲁木齐市': '乌鲁木齐',
+  '兰州市': '兰州',
+  '银川市': '银川',
+  '西宁市': '西宁',
+  '呼和浩特市': '呼和浩特',
+  '拉萨市': '拉萨'
+})
 const CITY_ADDRESS_MARKERS = Object.freeze(['省', '区', '县', '镇', '乡', '路', '街', '巷', '弄', '号', '室', '栋', '单元', '小区', '楼', '园区'])
 const FALSE_LIKE_VALUES = new Set(['', 'false', '0', 'no', 'n', 'off', 'disabled', 'deny', 'denied'])
 const TRUE_LIKE_VALUES = new Set(['true', '1', 'yes', 'y', 'on', 'enabled'])
@@ -251,8 +305,8 @@ function normalizeCityValue(value) {
   if (!text || text.length < 2 || text.length > 12) return ''
   if (!/^[\u4e00-\u9fff]+(?:市|自治区|特别行政区)?$/.test(text)) return ''
   if (/[\d０-９]/.test(text) || CITY_ADDRESS_MARKERS.some((marker) => text.includes(marker))) return ''
-  const city = text.replace(/(?:市|自治区|特别行政区)$/, '')
-  return text.endsWith('市') || BROAD_CITY_NAMES.has(city) ? city : ''
+  if (Object.prototype.hasOwnProperty.call(BROAD_CITY_ALIASES, text)) return BROAD_CITY_ALIASES[text]
+  return BROAD_CITY_NAMES.has(text) ? text : ''
 }
 
 function normalizeSourceField(sourceField, value) {
