@@ -81,6 +81,11 @@ function buildGenerateTextRequest(options, config) {
   }
 }
 
+function buildGenerateTextOptions(config) {
+  const timeout = Number(config && config.timeoutMs)
+  return Number.isFinite(timeout) && timeout > 0 ? { timeout } : {}
+}
+
 async function generateText(options) {
   const opts = options || {}
   const config = opts.config || getAiRuntimeConfig(opts.env)
@@ -99,7 +104,7 @@ async function generateText(options) {
   const request = buildGenerateTextRequest(opts, config)
   let result
   try {
-    result = await model.generateText(request)
+    result = await model.generateText(request, buildGenerateTextOptions(config))
   } catch (err) {
     const error = err instanceof Error ? err : new Error(String(err))
     error.code = error.code || 'provider_request_error'
@@ -135,6 +140,7 @@ module.exports = {
   PRODUCTION_MODEL,
   getAiRuntimeConfig,
   buildGenerateTextRequest,
+  buildGenerateTextOptions,
   generateText,
   smokeTest,
   resetAppForTests() {

@@ -122,6 +122,10 @@ async function main() {
   assert.strictEqual(cloudbaseRequest.temperature, 0)
   assert.strictEqual('responseFormat' in cloudbaseRequest, false)
   assert.strictEqual('response_format' in cloudbaseRequest, false)
+  assert.deepStrictEqual(
+    cloudbaseAi.buildGenerateTextOptions({ timeoutMs: 12000 }),
+    { timeout: 12000 }
+  )
 
   // AI PROVIDER TEST 18 the dedicated rerank config must carry the unified
   // CloudBase enabled state into generateText.
