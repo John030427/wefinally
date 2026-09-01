@@ -4,7 +4,7 @@ const { STORAGE_KEYS } = require('../../utils/constants')
 function sharePath(assets) {
   const referral = String((assets && (assets.attribution_token || assets.promote_code)) || '').trim()
   return referral
-    ? `/pages/register/register?promote_code=${encodeURIComponent(referral)}`
+    ? `/pages/member-application/member-application?promote_code=${encodeURIComponent(referral)}`
     : '/pages/register/register'
 }
 

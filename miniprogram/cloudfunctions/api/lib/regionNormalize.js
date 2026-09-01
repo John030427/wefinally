@@ -88,6 +88,8 @@ function normalizeCityLabel(value) {
 function resolveRegion(input = {}) {
   const provinceCode = String(input.province_code || input.provinceCode || '').trim()
   const cityCode = String(input.city_code || input.cityCode || '').trim()
+  const declaredProvinceName = String(input.province_name || input.provinceName || '').trim()
+  const declaredCityName = normalizeCityLabel(input.city_name || input.cityName || input.city)
   const legacyCity = normalizeCityLabel(input.city || input.city_name || input.cityName)
 
   if (provinceCode && cityCode) {
@@ -105,6 +107,23 @@ function resolveRegion(input = {}) {
         normalized: true,
         source: 'codes'
       }
+    }
+  }
+
+  const declaredCodesValid = /^\d{2}0000$/.test(provinceCode)
+    && /^\d{4}00$/.test(cityCode)
+    && provinceCode.slice(0, 2) === cityCode.slice(0, 2)
+  if (declaredCodesValid && declaredProvinceName && declaredCityName) {
+    return {
+      country_code: 'CN',
+      country_name: '中国',
+      province_code: provinceCode,
+      province_name: declaredProvinceName,
+      city_code: cityCode,
+      city_name: declaredCityName,
+      city: declaredCityName,
+      normalized: true,
+      source: 'declared_codes'
     }
   }
 

@@ -52,4 +52,16 @@ const unmapped = resolveRegion({ city: '火星市' })
 assert.strictEqual(unmapped.normalized, false)
 assert.strictEqual(unmapped.city, '火星')
 
+const nativeRegion = resolveRegion({
+  province_code: '130000',
+  province_name: '河北省',
+  city_code: '130100',
+  city_name: '石家庄市'
+})
+assert.strictEqual(nativeRegion.province_code, '130000')
+assert.strictEqual(nativeRegion.province_name, '河北省')
+assert.strictEqual(nativeRegion.city_code, '130100')
+assert.strictEqual(nativeRegion.city_name, '石家庄')
+assert.strictEqual(nativeRegion.source, 'declared_codes')
+
 console.log('PASS user identity + province/city normalize')

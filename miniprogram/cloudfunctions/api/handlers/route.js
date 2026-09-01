@@ -59,6 +59,7 @@ function route(method, path) {
     'POST /api/user/divorce-review': user.submitDivorceReview,
     'GET /api/member/application': member.status,
     'POST /api/member/application/submit': member.submit,
+    'POST /api/member/application/referral': member.bindReferral,
     'GET /api/match/setting': match.getSetting,
     'POST /api/match/setting': match.saveSetting,
     'POST /api/match/intent/confirm': match.confirmIntent,

@@ -464,6 +464,16 @@ async function removeByDoc(name, doc) {
 function transactionAdapter(rawTransaction) {
   const collection = (name) => rawTransaction.collection(collections[name] || name)
 
+  async function txFirst(name, query) {
+    const result = await collection(name).where(query || {}).limit(1).get()
+    return result.data && result.data[0] ? result.data[0] : null
+  }
+
+  async function txList(name, query, limit) {
+    const result = await collection(name).where(query || {}).limit(limit || 100).get()
+    return result.data || []
+  }
+
   async function txByDocId(name, documentId) {
     return documentOrNull(() => collection(name).doc(String(documentId)).get())
   }
@@ -522,6 +532,8 @@ function transactionAdapter(rawTransaction) {
 
   return {
     now,
+    first: txFirst,
+    list: txList,
     byDocId: txByDocId,
     byId: txById,
     nextCounter: txNextCounter,

@@ -10,7 +10,7 @@ const { debounceMiddleware } = require('../middleware/guard');
 
 const { PARTNER_STATUS, USER_STATUS } = require('../config/constants');
 const { nextMemberStatus } = require('../utils/memberPolicy');
-const { createReferralToken } = require('../../../miniprogram/cloudfunctions/api/lib/partnerReferralPolicy');
+const { createReferralToken, createReferralScene } = require('../../../miniprogram/cloudfunctions/api/lib/partnerReferralPolicy');
 const { formatPartnerForAdmin, formatPartnerUser, formatPartnerOrder } = require('../utils/apiFormat');
 const { sanitizePartnerApplication } = require('../utils/privacyMask');
 const { assertPartnerApplicationScope } = require('../utils/partnerScopePolicy');
@@ -438,16 +438,20 @@ router.get('/promote-tools', async (req, res, next) => {
 
     const code = partner[0].promote_code;
     let referral = code;
+    let referralScene = '';
     if (process.env.PARTNER_REFERRAL_SECRET) {
-      try { referral = createReferralToken(req.auth.id); } catch (err) { referral = code; }
+      try {
+        referral = createReferralToken(req.auth.id);
+        referralScene = createReferralScene(req.auth.id);
+      } catch (err) { referral = code; }
     }
 
     return success(res, {
 
       promote_code: code,
       attribution_token: referral === code ? '' : referral,
-      mini_program_path: `/pages/register/register?promote_code=${encodeURIComponent(referral)}`,
-      scene: referral,
+      mini_program_path: `/pages/member-application/member-application?promote_code=${encodeURIComponent(referral)}`,
+      scene: referralScene,
 
       share_title: 'WeFinally · 遇见对的人',
 

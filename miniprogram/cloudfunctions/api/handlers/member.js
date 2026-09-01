@@ -6,6 +6,8 @@ const {
   missingApplicationFields,
   nextMemberStatus
 } = require('../lib/memberPolicy')
+const { referralInput } = require('../lib/partnerReferralPolicy')
+const { ensureReferralAttribution } = require('../lib/partnerReferralAttributionPolicy')
 
 function defaultDeps() {
   const db = require('../lib/db')
@@ -16,6 +18,7 @@ function defaultDeps() {
     byId: db.byId,
     addWithId: db.addWithId,
     updateByDoc: db.updateByDoc,
+    transaction: db.transaction,
     now: db.now
   }
 }
@@ -119,8 +122,142 @@ function createMemberHandlers(overrides = {}) {
       reapply_remaining_days: submit.remainingDays,
       reapply_cooldown_days: REAPPLY_COOLDOWN_DAYS,
       review_note: latest ? (latest.review_note || '') : '',
+      invitation_bound: Number(user.promote_partner_id || 0) > 0,
       application: latest
     }
+  }
+
+  async function bindReferral(data, wxContext) {
+    const rawReferral = String(data.referral || data.promote_code || '').trim()
+    if (!rawReferral) throw new Error('请输入邀请码')
+
+    let parsed
+    try {
+      parsed = referralInput(rawReferral)
+    } catch (err) {
+      throw new Error(err.message || '邀请凭证无效或已过期')
+    }
+
+    const user = await dep('currentUser')(wxContext)
+    const execute = async (store) => {
+      const current = await store.byId('user', user.id) || user
+      const currentStatus = memberStatus(current)
+      if (![MEMBER_STATUS.PENDING_REVIEW, MEMBER_STATUS.APPROVED].includes(currentStatus)) {
+        throw new Error('仅等待审核期间可以补充邀请')
+      }
+
+      const partner = parsed.partnerId
+        ? await store.first('partner', { id: Number(parsed.partnerId), status: 1 })
+        : await store.first('partner', { promote_code: String(parsed.code || '').toUpperCase(), status: 1 })
+      if (!partner) throw new Error('邀请码无效或合伙人未激活')
+
+      const boundPartnerId = Number(current.promote_partner_id || 0)
+      const existingAttribution = await store.first('partner_referral_attribution', { user_id: Number(current.id) })
+      const applications = await store.list('member_application', { user_id: Number(current.id) }, 100)
+      const application = latestApplication(applications)
+      const requestedPartnerId = Number(partner.id)
+      if (
+        currentStatus === MEMBER_STATUS.APPROVED
+        && application && application.status === MEMBER_STATUS.APPROVED
+        && existingAttribution && existingAttribution.source_type === 'signed_token'
+        && Number(existingAttribution.partner_id) === requestedPartnerId
+        && boundPartnerId === requestedPartnerId
+        && Number(application.assigned_partner_id || 0) === requestedPartnerId
+      ) {
+        return {
+          member_status: MEMBER_STATUS.APPROVED,
+          partner_id: requestedPartnerId,
+          promote_code: String(partner.promote_code || '').trim().toUpperCase(),
+          source_type: existingAttribution.source_type,
+          auto_approved: true,
+          idempotent: true
+        }
+      }
+      if (!application || application.status !== MEMBER_STATUS.PENDING_REVIEW) {
+        throw new Error('当前没有可更新的待审核申请')
+      }
+
+      const lockedPartnerIds = [
+        boundPartnerId,
+        Number(existingAttribution && existingAttribution.partner_id || 0),
+        Number(application.assigned_partner_id || 0),
+        Number(application.inviter_partner_id || 0)
+      ].filter(Boolean)
+      if (lockedPartnerIds.some((partnerId) => partnerId !== requestedPartnerId)) {
+        throw new Error('邀请关系已绑定，不能更换合伙人')
+      }
+
+      const alreadyBound = Boolean(
+        existingAttribution
+        && boundPartnerId === requestedPartnerId
+        && Number(application.assigned_partner_id || 0) === requestedPartnerId
+        && Number(application.inviter_partner_id || 0) === requestedPartnerId
+      )
+      if (alreadyBound && existingAttribution.source_type !== 'signed_token') {
+        return {
+          member_status: MEMBER_STATUS.PENDING_REVIEW,
+          partner_id: requestedPartnerId,
+          promote_code: String(partner.promote_code || '').trim().toUpperCase(),
+          source_type: existingAttribution.source_type,
+          auto_approved: false,
+          idempotent: true
+        }
+      }
+
+      if (parsed.version) {
+        const setting = await store.first('user_match_setting', { user_id: Number(current.id) }) || {}
+        const missing = missingApplicationFields(current, setting)
+        if (missing.length) throw new Error(`请先补充：${missing.join('、')}`)
+      }
+
+      const attribution = await ensureReferralAttribution(current, partner, rawReferral, {
+        first: store.first,
+        addWithId: store.addWithId,
+        now: store.now
+      })
+      const signed = attribution.source_type === 'signed_token'
+      const nextStatus = signed ? MEMBER_STATUS.APPROVED : MEMBER_STATUS.PENDING_REVIEW
+      const timestamp = store.now()
+      const promoteCode = String(partner.promote_code || '').trim().toUpperCase()
+
+      await store.updateByDoc('member_application', application, {
+        inviter_partner_id: Number(partner.id),
+        assigned_partner_id: Number(partner.id),
+        status: nextStatus,
+        review_note: signed ? '已确认合伙人签名微信邀请' : (application.review_note || ''),
+        reviewed_by_role: signed ? 'partner_referral_auto' : (application.reviewed_by_role || ''),
+        reviewed_by_id: signed ? Number(partner.id) : Number(application.reviewed_by_id || 0),
+        reviewed_at: signed ? timestamp : (application.reviewed_at || null)
+      })
+      await store.updateByDoc('user', current, {
+        promote_partner_id: Number(partner.id),
+        promote_code: promoteCode,
+        member_status: nextStatus,
+        member_status_updated_at: timestamp
+      })
+      await store.addWithId('partner_user_audit_log', {
+        application_id: Number(application.id),
+        partner_id: Number(partner.id),
+        user_id: Number(current.id),
+        actor_role: signed ? 'partner_referral_auto' : 'user',
+        actor_id: signed ? Number(partner.id) : Number(current.id),
+        action: signed ? 'auto_approve' : 'bind_referral',
+        from_status: MEMBER_STATUS.PENDING_REVIEW,
+        to_status: nextStatus,
+        reason: signed ? 'signed_partner_referral_after_submit' : 'public_promote_code_after_submit'
+      }, 'member_audit')
+
+      return {
+        member_status: nextStatus,
+        partner_id: Number(partner.id),
+        promote_code: promoteCode,
+        source_type: attribution.source_type,
+        auto_approved: signed,
+        idempotent: Boolean(existingAttribution || boundPartnerId)
+      }
+    }
+
+    return dep('transaction')(execute)
   }
 
   async function submit(data, wxContext) {
@@ -180,7 +317,7 @@ function createMemberHandlers(overrides = {}) {
     return application
   }
 
-  return { status, submit }
+  return { status, submit, bindReferral }
 }
 
 const handlers = createMemberHandlers()
@@ -188,6 +325,7 @@ const handlers = createMemberHandlers()
 module.exports = {
   status: handlers.status,
   submit: handlers.submit,
+  bindReferral: handlers.bindReferral,
   createMemberHandlers,
   latestApplication,
   signedReferralAttribution,

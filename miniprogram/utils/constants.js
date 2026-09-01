@@ -60,7 +60,8 @@ const API_PATHS = {
   DIVORCE_REVIEW: '/api/user/divorce-review',
   DIVORCE_REVIEW_STATUS: '/api/user/divorce-review/status',
   MEMBER_APPLICATION: '/api/member/application',
-  MEMBER_APPLICATION_SUBMIT: '/api/member/application/submit'
+  MEMBER_APPLICATION_SUBMIT: '/api/member/application/submit',
+  MEMBER_APPLICATION_REFERRAL: '/api/member/application/referral'
 }
 
 const GENDER_OPTIONS = ['男', '女']

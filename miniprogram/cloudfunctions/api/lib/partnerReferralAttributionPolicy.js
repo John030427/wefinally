@@ -1,5 +1,5 @@
 function referralSource(value) {
-  return String(value || '').trim().toLowerCase().startsWith('wf1.')
+  return /^(?:wf1|w1)\./i.test(String(value || '').trim())
     ? 'signed_token'
     : 'promote_code'
 }

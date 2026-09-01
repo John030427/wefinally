@@ -339,36 +339,22 @@ Page({
     this.refreshSecondaryIdentityOptions(this.data.form.circleId, next)
   },
 
-  onProvinceChange(e) {
-    const index = Number(e.detail.value)
-    const province = this.data.provinceOptions[index]
-    if (!province) return
-    const cities = listCities(province.province_code)
-    this.setData({
-      'form.provinceIndex': index,
-      'form.provinceCode': province.province_code,
-      'form.provinceName': province.province_name,
-      'form.city': '',
-      'form.cityCode': '',
-      'form.cityIndex': -1,
-      cityOptions: cities.map((item) => item.city_name)
-    })
-  },
-
-  onCityChange(e) {
-    const index = Number(e.detail.value)
-    const cityName = this.data.cityOptions[index]
-    if (!cityName) return
+  onWorkRegionChange(e) {
+    const values = (e.detail && e.detail.value) || []
+    const codes = (e.detail && e.detail.code) || []
+    if (!values[0] || !values[1]) return
     const region = resolveRegion({
-      province_code: this.data.form.provinceCode,
-      city: cityName
+      province_code: codes[0],
+      city_code: codes[1],
+      city: values[1]
     })
     this.setData({
-      'form.cityIndex': index,
-      'form.city': region.city_name || cityName,
-      'form.cityCode': region.city_code || '',
-      'form.provinceCode': region.province_code || this.data.form.provinceCode,
-      'form.provinceName': region.province_name || this.data.form.provinceName
+      'form.provinceIndex': PROVINCE_OPTIONS.findIndex((item) => item.province_code === region.province_code),
+      'form.provinceCode': region.province_code || String(codes[0] || ''),
+      'form.provinceName': region.province_name || values[0],
+      'form.cityIndex': -1,
+      'form.city': region.city_name || String(values[1]).replace(/市$/, ''),
+      'form.cityCode': region.city_code || String(codes[1] || '')
     })
   },
 
