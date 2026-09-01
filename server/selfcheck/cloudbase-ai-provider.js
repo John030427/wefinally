@@ -126,6 +126,10 @@ async function main() {
     cloudbaseAi.buildGenerateTextOptions({ timeoutMs: 12000 }),
     { timeout: 12000 }
   )
+  await assert.rejects(
+    () => cloudbaseAi.withProviderTimeout(new Promise((resolve) => setTimeout(resolve, 25)), 1),
+    (error) => error && error.code === 'ETIMEDOUT'
+  )
 
   // AI PROVIDER TEST 18 the dedicated rerank config must carry the unified
   // CloudBase enabled state into generateText.

@@ -86,6 +86,22 @@ function buildGenerateTextOptions(config) {
   return Number.isFinite(timeout) && timeout > 0 ? { timeout } : {}
 }
 
+function withProviderTimeout(promise, timeoutMs) {
+  const timeout = Number(timeoutMs)
+  if (!Number.isFinite(timeout) || timeout <= 0) return promise
+  let timer = null
+  const deadline = new Promise((resolve, reject) => {
+    timer = setTimeout(() => {
+      const error = new Error('cloudbase provider timeout')
+      error.code = 'ETIMEDOUT'
+      reject(error)
+    }, timeout)
+  })
+  return Promise.race([promise, deadline]).finally(() => {
+    if (timer) clearTimeout(timer)
+  })
+}
+
 async function generateText(options) {
   const opts = options || {}
   const config = opts.config || getAiRuntimeConfig(opts.env)
@@ -104,7 +120,10 @@ async function generateText(options) {
   const request = buildGenerateTextRequest(opts, config)
   let result
   try {
-    result = await model.generateText(request, buildGenerateTextOptions(config))
+    result = await withProviderTimeout(
+      model.generateText(request, buildGenerateTextOptions(config)),
+      config.timeoutMs
+    )
   } catch (err) {
     const error = err instanceof Error ? err : new Error(String(err))
     error.code = error.code || 'provider_request_error'
@@ -141,6 +160,7 @@ module.exports = {
   getAiRuntimeConfig,
   buildGenerateTextRequest,
   buildGenerateTextOptions,
+  withProviderTimeout,
   generateText,
   smokeTest,
   resetAppForTests() {
