@@ -72,6 +72,13 @@ function classifySemanticRerankError(error) {
   return 'provider_error'
 }
 
+function safeProviderErrorCode(error) {
+  const code = String(error && (error.code || error.class) || '').trim().toLowerCase()
+  if (!code) return 'unknown'
+  if (/(?:secret|token|password|credential|api[_-]?key)/i.test(code)) return 'redacted'
+  return /^[a-z0-9._-]{1,64}$/.test(code) ? code : 'unknown'
+}
+
 function boundedReason(value) {
   const reason = String(value || '')
   return BOUNDED_REASONS.has(reason) ? reason : 'fallback_deterministic'
@@ -502,7 +509,9 @@ async function semanticRerank(ranked, user, settingsByUserId, options = {}) {
       model: safeRagModel(remote.model)
     })
   } catch (error) {
-    return degradedResult(classifySemanticRerankError(error), deterministic, mode, {
+    const reason = classifySemanticRerankError(error)
+    console.error(`[rag-provider] reason=${reason} code=${safeProviderErrorCode(error)}`)
+    return degradedResult(reason, deterministic, mode, {
       provider: '',
       model: ''
     })
@@ -525,6 +534,7 @@ module.exports = {
   semanticRerank,
   intentMatchGate,
   classifySemanticRerankError,
+  safeProviderErrorCode,
   withFinalScores,
   attachBilateralFit,
   aiProfileOf,
