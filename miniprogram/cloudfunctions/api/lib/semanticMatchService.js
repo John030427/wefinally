@@ -104,12 +104,15 @@ function ragProviderConfig(env = process.env) {
       || source.LLM_MODEL
       || RAG_MODEL
   ).trim().toLowerCase()
+  const group = String(source.AI_GROUP || RAG_PROVIDER).trim().toLowerCase()
   const configuredRagModel = String(source.MATCH_RAG_MODEL || '').trim().toLowerCase()
   return {
     provider,
     model,
+    group,
     valid: provider === RAG_PROVIDER
       && model === RAG_MODEL
+      && group === RAG_PROVIDER
       && (!configuredRagModel || configuredRagModel === RAG_MODEL)
   }
 }

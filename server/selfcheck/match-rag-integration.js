@@ -259,7 +259,7 @@ async function main() {
   assert.deepStrictEqual(loadedOwnerIds, [1, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19])
 
   const previousEnv = {}
-  ;['AI_PROVIDER', 'AI_MODEL', 'LLM_MODEL', 'DEEPSEEK_MATCH_RERANK_MODEL'].forEach((key) => {
+  ;['AI_PROVIDER', 'AI_GROUP', 'AI_MODEL', 'LLM_MODEL', 'DEEPSEEK_MATCH_RERANK_MODEL'].forEach((key) => {
     previousEnv[key] = process.env[key]
   })
   const previousDefaultRerank = deepseek.rerankMutualMatchCandidates
@@ -284,6 +284,35 @@ async function main() {
     assert.strictEqual(invalidConfigCalled, false)
   } finally {
     deepseek.rerankMutualMatchCandidates = previousDefaultRerank
+    Object.entries(previousEnv).forEach(([key, value]) => {
+      if (value === undefined) delete process.env[key]
+      else process.env[key] = value
+    })
+  }
+
+  const previousGroupRerank = deepseek.rerankMutualMatchCandidates
+  let invalidGroupCalled = false
+  process.env.AI_PROVIDER = 'cloudbase'
+  process.env.AI_GROUP = 'luna'
+  process.env.AI_MODEL = 'hy3'
+  process.env.LLM_MODEL = 'hy3'
+  delete process.env.DEEPSEEK_MATCH_RERANK_MODEL
+  deepseek.rerankMutualMatchCandidates = async () => {
+    invalidGroupCalled = true
+    return { enabled: false, response: null, provider: 'cloudbase', model: 'hy3' }
+  }
+  try {
+    const invalidGroup = await semanticRerank(ranked, viewer, settingsByUserId, {
+      ragMode: 'shadow',
+      loadCorpus: async () => corpus
+    })
+    assert.strictEqual(invalidGroup.degraded, true)
+    assert.strictEqual(invalidGroup.rag.reason, 'provider_config_invalid')
+    assert.strictEqual(invalidGroup.rag.provider, 'cloudbase')
+    assert.strictEqual(invalidGroup.rag.model, 'hy3')
+    assert.strictEqual(invalidGroupCalled, false)
+  } finally {
+    deepseek.rerankMutualMatchCandidates = previousGroupRerank
     Object.entries(previousEnv).forEach(([key, value]) => {
       if (value === undefined) delete process.env[key]
       else process.env[key] = value
