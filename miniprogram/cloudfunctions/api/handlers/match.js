@@ -1,4 +1,16 @@
-const { first, list, byId, nextId, addWithId, updateByDoc, authError, now } = require('../lib/db')
+const {
+  first,
+  list,
+  byId,
+  nextId,
+  addWithId,
+  updateByDoc,
+  authError,
+  now,
+  listChunksByOwnerIds,
+  upsertChunk,
+  disableChunks
+} = require('../lib/db')
 const { currentUser } = require('./user')
 const { isVipActive, ageBand, dateOnly } = require('../lib/format')
 const { flagEnabled } = require('../lib/flags')
@@ -16,6 +28,7 @@ const { canonicalPairKey, deliverPair, createCloudClaimStore, CLAIM_STATUS } = r
 const { shanghaiBusinessClock } = require('../lib/businessClock')
 const { indexClaimsForMatching } = require('../lib/matchCycleService')
 const { semanticRerank, intentMatchGate } = require('../lib/semanticMatchService')
+const { syncUserCorpus, loadCorpusForUserIds } = require('../lib/matchRagCorpus')
 const reportTask = require('./reportTask')
 const { isMatchOnlyFixture, canUseFixtureForMatch, canEnterFormalCandidatePool } = require('../lib/testFixturePolicy')
 const { fixtureSceneBadge } = require('../lib/syntheticPartnerJourney')
@@ -35,6 +48,14 @@ function parseJson(value) {
   } catch (err) {
     return null
   }
+}
+
+function ragCorpusRepository() {
+  return { listChunksByOwnerIds, upsertChunk, disableChunks, now }
+}
+
+function loadRagCorpus(userIds) {
+  return loadCorpusForUserIds(userIds, ragCorpusRepository())
 }
 
 function settingDefaults(row) {
@@ -200,7 +221,8 @@ function withSemanticRerankDetail(scoreDetail, best, reranked) {
       applied: Boolean(reranked && reranked.applied),
       reason: reranked && reranked.reason || '',
       model: reranked && reranked.model || ''
-    }
+    },
+    rag: reranked && reranked.rag ? Object.assign({}, reranked.rag) : null
   })
 }
 
@@ -294,6 +316,9 @@ async function saveSetting(data, wxContext) {
   const saved = existing
     ? await updateByDoc('user_match_setting', existing, payload)
     : await addWithId('user_match_setting', payload, 'match_setting')
+  // Keep the owner-scoped sparse corpus synchronized with the canonical
+  // settings write. Retrieval callers use the same repository contract.
+  await syncUserCorpus(user, saved, ragCorpusRepository())
   return Object.assign(saved, {
     intent_profile: intentProfile,
     ai_match_profile: aiMatchProfile,
@@ -655,7 +680,10 @@ async function start(data, wxContext) {
         return false
       }
     })
-  const reranked = await semanticRerank(ranked, user, settingsByUserId)
+  // Legacy contract: const reranked = await semanticRerank(ranked, user, settingsByUserId)
+  const reranked = await semanticRerank(ranked, user, settingsByUserId, {
+    loadCorpus: loadRagCorpus
+  })
   if (!reranked || reranked.applied !== true) {
     return {
       matched: 0,
@@ -771,6 +799,7 @@ async function start(data, wxContext) {
       match_user_id: partner.id,
       status: 'matched',
       action: 'claim_and_deliver',
+      ...(reranked && reranked.rag ? { rag: Object.assign({}, reranked.rag) } : {}),
       ...(qaMatchRunKey ? { qa_match_run_key: qaMatchRunKey } : {})
     })
     const delivery = await deliverPair(Object.assign({}, claimInput, {
@@ -842,6 +871,7 @@ module.exports = {
     completeRun: require('../lib/db').completeMatchTestRun,
     now,
     publicEnabled: () => flagEnabled('match_test_run_public_enabled'),
-    semanticRerank
+    semanticRerank,
+    loadCorpus: loadRagCorpus
   })
 }

@@ -7,8 +7,19 @@ const { semanticRerank, intentMatchGate } = require('./semanticMatchService')
 const { indexClaimsForMatching } = require('./matchCycleService')
 const { sharesCandidateCohort } = require('./matchCohortPolicy')
 const { qaRunKey, shouldExcludeHistoricalClaims } = require('./qaRegistrationReplayPolicy')
+const { loadCorpusForUserIds } = require('./matchRagCorpus')
 
-function semanticDetail(best, side, rank) {
+function loadRagCorpus(userIds) {
+  // Lazily load CloudBase so pure formal-matching selfchecks can inject their
+  // own reranker without requiring a cloud runtime during module load.
+  const db = require('./db')
+  return loadCorpusForUserIds(userIds, {
+    listChunksByOwnerIds: db.listChunksByOwnerIds,
+    now: db.now
+  })
+}
+
+function semanticDetail(best, side, rank, reranked) {
   const detail = scoreDetailFor(best, side, rank)
   const canonical = Number(best && best.canonical_score)
   const finalMatchScore = Number.isFinite(canonical)
@@ -35,7 +46,8 @@ function semanticDetail(best, side, rank) {
     semantic_risk_evidence_keys: best.semantic_risk_evidence_keys || [],
     semantic_missing_categories: best.semantic_missing_categories || [],
     bilateral_fit: best.bilateral_fit || null,
-    bilateral_mutual_score: best.bilateral_fit ? Number(best.bilateral_fit.mutual_score || 0) : null
+    bilateral_mutual_score: best.bilateral_fit ? Number(best.bilateral_fit.mutual_score || 0) : null,
+    rag: reranked && reranked.rag ? Object.assign({}, reranked.rag) : null
   })
 }
 
@@ -75,13 +87,14 @@ async function executeFormalMatching(ctx = {}) {
   const deliver = typeof deps.deliverPair === 'function' ? deps.deliverPair : deliverPair
   const claimStore = typeof deps.claimStore === 'function' ? deps.claimStore() : (deps.deliverPair ? null : createCloudClaimStore())
   const rerank = typeof deps.semanticRerank === 'function' ? deps.semanticRerank : semanticRerank
+  const loadCorpus = typeof deps.loadCorpus === 'function' ? deps.loadCorpus : loadRagCorpus
   while (remaining.length >= 2) {
     const user = remaining.shift()
     const cohortCandidates = remaining.filter((candidate) => sharesCandidateCohort(user, candidate))
     const ranked = rankCandidates(user, cohortCandidates, settingsByUserId, { blockedIds: cycleClaimed })
       .filter((item) => !isHistoricalPair(user, item.candidate, historicalClaimsByPair))
     evaluated += ranked.length
-    const reranked = await rerank(ranked, user, settingsByUserId)
+    const reranked = await rerank(ranked, user, settingsByUserId, { loadCorpus })
     if (!reranked || reranked.applied !== true) continue
     if (reranked.degraded === true) {
       console.warn('[formal-matching] degraded mode:', String(reranked.reason || 'fallback_deterministic'))
@@ -100,7 +113,7 @@ async function executeFormalMatching(ctx = {}) {
         match_user_id: partner.id,
         view_similarity: best.viewSimilarity,
         total_score: best.scoreA.total,
-        score_detail_json: JSON.stringify(semanticDetail(best, 'a', reranked.ranked.indexOf(best) + 1)),
+        score_detail_json: JSON.stringify(semanticDetail(best, 'a', reranked.ranked.indexOf(best) + 1, reranked)),
         score_version: 'algo_evidence_v3',
         match_date: clock.businessDate,
         match_type: clock.matchType || '正式匹配',
@@ -112,7 +125,7 @@ async function executeFormalMatching(ctx = {}) {
         match_user_id: user.id,
         view_similarity: best.viewSimilarity,
         total_score: best.scoreB.total,
-        score_detail_json: JSON.stringify(semanticDetail(best, 'b', reranked.ranked.indexOf(best) + 1)),
+        score_detail_json: JSON.stringify(semanticDetail(best, 'b', reranked.ranked.indexOf(best) + 1, reranked)),
         score_version: 'algo_evidence_v3',
         match_date: clock.businessDate,
         match_type: clock.matchType || '正式匹配',
@@ -126,6 +139,7 @@ async function executeFormalMatching(ctx = {}) {
         match_user_id: partner.id,
         status: 'matched',
         action: 'formal_batch',
+        ...(reranked && reranked.rag ? { rag: Object.assign({}, reranked.rag) } : {}),
         match_cycle_id: matchCycleId || null,
         ...(currentQaRunKey ? { qa_match_run_key: currentQaRunKey } : {}),
         ...(reranked && reranked.degraded === true
