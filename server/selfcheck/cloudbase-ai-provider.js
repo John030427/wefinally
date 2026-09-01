@@ -107,7 +107,22 @@ async function main() {
   const rerankCfg = cloudbaseAi.getAiRuntimeConfig({ AI_PROVIDER: 'cloudbase' })
   assert.strictEqual(rerankCfg.provider, 'cloudbase')
 
-  console.log('cloudbase-ai-provider selfcheck passed (AI PROVIDER TEST 01-16)')
+  // AI PROVIDER TEST 17 CloudBase generateText contract does not accept the
+  // OpenAI-only response_format/responseFormat option. JSON is still enforced
+  // by the prompt and the existing strict local response validators.
+  const cloudbaseRequest = cloudbaseAi.buildGenerateTextRequest({
+    messages: [{ role: 'user', content: 'JSON only' }],
+    responseFormat: { type: 'json_object' },
+    maxTokens: 32,
+    temperature: 0
+  }, { model: 'hy3' })
+  assert.strictEqual(cloudbaseRequest.model, 'hy3')
+  assert.strictEqual(cloudbaseRequest.maxTokens, 32)
+  assert.strictEqual(cloudbaseRequest.temperature, 0)
+  assert.strictEqual('responseFormat' in cloudbaseRequest, false)
+  assert.strictEqual('response_format' in cloudbaseRequest, false)
+
+  console.log('cloudbase-ai-provider selfcheck passed (AI PROVIDER TEST 01-17)')
 }
 
 main().catch((err) => {

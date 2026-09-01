@@ -71,6 +71,16 @@ function buildMetadata(config, startedAt, success, extra) {
   }, extra || {})
 }
 
+function buildGenerateTextRequest(options, config) {
+  const opts = options || {}
+  return {
+    model: config.model,
+    messages: opts.messages || [],
+    maxTokens: opts.maxTokens || opts.max_tokens || 900,
+    temperature: opts.temperature !== undefined ? opts.temperature : 0.2
+  }
+}
+
 async function generateText(options) {
   const opts = options || {}
   const config = opts.config || getAiRuntimeConfig(opts.env)
@@ -82,15 +92,11 @@ async function generateText(options) {
   }
   const ai = getApp(opts.env).ai()
   const model = ai.createModel(config.group || PRODUCTION_GROUP)
-  const request = {
-    model: config.model,
-    messages: opts.messages || [],
-    maxTokens: opts.maxTokens || opts.max_tokens || 900,
-    temperature: opts.temperature !== undefined ? opts.temperature : 0.2
-  }
-  if (opts.responseFormat || opts.response_format) {
-    request.responseFormat = opts.responseFormat || opts.response_format
-  }
+  // CloudBase's Node SDK contract accepts only the documented base chat
+  // fields. responseFormat/response_format is an OpenAI-compatible option and
+  // causes HY3 calls to fail before generation. Structured callers continue
+  // to require JSON in their prompts and validate the parsed result locally.
+  const request = buildGenerateTextRequest(opts, config)
   let result
   try {
     result = await model.generateText(request)
@@ -128,6 +134,7 @@ module.exports = {
   PRODUCTION_GROUP,
   PRODUCTION_MODEL,
   getAiRuntimeConfig,
+  buildGenerateTextRequest,
   generateText,
   smokeTest,
   resetAppForTests() {
