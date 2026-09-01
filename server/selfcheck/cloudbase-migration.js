@@ -65,7 +65,9 @@ ok('cloud id generator uses valid counters collection name', cloudDbJs.includes(
 ok('cloud id generator falls back when counters collection is missing', cloudDbJs.includes('fallback id for') && cloudDbJs.includes('Date.now() * 1000'));
 ok('cloud manual match is guarded by demo flag', cloudMatchJs.includes('cloud_demo_match_enabled') && cloudMatchJs.includes('测试匹配未开启'));
 ok('cloud demo match can seed a candidate under demo flag', cloudMatchJs.includes('dev_seed_current_user_candidates') && cloudMatchJs.includes('cloud_demo_candidate_'));
-ok('cloud manual match avoids repeated partners', cloudMatchJs.includes('seenPartnerIds') && cloudMatchJs.includes('暂无新的可用候选'));
+ok('cloud manual match avoids repeated partners', cloudMatchJs.includes('shouldExcludeHistoricalClaims')
+  && cloudMatchJs.includes('historicalClaimsByPair')
+  && read('miniprogram/cloudfunctions/api/lib/matchClaim.js').includes('findHistoricalPair'));
 ok('cloud manual match uses bilateral ranking policy', matchStartBody.includes('rankCandidates') && matchStartBody.includes('quality.pass'));
 ok('cloud manual match does not persist a fixed demo score', !matchStartBody.includes('total_score: 88') && !matchStartBody.includes('view_similarity: 88'));
 ok('cloud manual match refuses quality fallback', matchStartBody.includes('本轮暂无通过严格质量门槛的匹配'));

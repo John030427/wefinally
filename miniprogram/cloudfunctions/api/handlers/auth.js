@@ -15,6 +15,13 @@ async function wxLogin(data, wxContext) {
       needRegister: true
     }
   }
+  if (Number(user.registration_replay_pending || 0) === 1) {
+    return {
+      openid,
+      needRegister: true,
+      registrationReplay: true
+    }
+  }
   user.isVip = isVipActive(user)
   return {
     openid,

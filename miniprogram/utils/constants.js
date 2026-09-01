@@ -13,6 +13,7 @@ const STORAGE_KEYS = {
 const API_PATHS = {
   WX_LOGIN: '/api/auth/wx-login',
   REGISTER: '/api/user/register',
+  QA_REGISTRATION_RESET: '/api/user/qa-registration-reset',
   USER_PROFILE: '/api/user/profile',
   USER_PROFILE_UPDATE: '/api/user/profile',
   MATCH_SETTING: '/api/match/setting',

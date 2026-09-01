@@ -5,6 +5,10 @@
   </view>
   <view class="qa-panel-hint">仅测试账号可见，正式用户不会看到此区域</view>
 
+  <button class="qa-reset-link" wx:if="{{resetVisible}}" bindtap="onResetRegistration" disabled="{{running}}">
+    重新注册测试资料
+  </button>
+
   <view class="qa-scenario-block" wx:if="{{scenarioPickerVisible}}">
     <view class="qa-scenario-label">测试场景</view>
     <radio-group class="qa-scenario-group" bindchange="onScenarioChange">

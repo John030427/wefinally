@@ -42,6 +42,37 @@ function setting(userId) {
   }
 }
 
+function qaUser(id, gender, runStartedAt) {
+  return {
+    ...user(id, gender, gender === 1 ? 1992 : 1995, gender === 1 ? '175-180cm' : '160-165cm'),
+    qa_test_run_enabled: true,
+    qa_match_cohort: 'qa-real-device-registration-v1',
+    qa_match_run_id: `qarun_${id}_${new Date(runStartedAt).getTime()}`,
+    qa_match_run_started_at: new Date(runStartedAt)
+  }
+}
+
+async function runHistoricalScenario(scenarioUsers, claims) {
+  let deliveryInput = null
+  const result = await executeFormalMatching({
+    clock: { businessDate: '2026-08-28', matchType: '周五', matchCycleId: '2026-08-28-FRI' },
+    deps: {
+      list: async (name) => {
+        if (name === 'user') return scenarioUsers
+        if (name === 'match_claim') return claims
+        if (name === 'user_match_setting') return scenarioUsers.map((row) => setting(row.id))
+        return []
+      },
+      semanticRerank: async (ranked) => ({ applied: true, ranked }),
+      deliverPair: async (input) => {
+        deliveryInput = input
+        return { delivered: true }
+      }
+    }
+  })
+  return { result, deliveryInput }
+}
+
 async function main() {
   const syntheticConflict = {
     ...user(3, 2, 1994, '160-165cm'),
@@ -138,6 +169,41 @@ async function main() {
   assert.strictEqual(fixtureOnly.users_considered, 1)
   assert.strictEqual(fixtureOnlySemanticCalls, 0)
   assert.strictEqual(fixtureOnlyDeliveryCalls, 0)
+
+  const oldQaClaim = {
+    status: 'claimed',
+    pair_key: '21-22',
+    user_id: 21,
+    match_user_id: 22,
+    match_cycle_id: '2026-08-20-WED',
+    create_time: new Date('2026-08-20T12:00:00.000Z')
+  }
+  const replayedQaUsers = [
+    qaUser(21, 1, '2026-08-21T08:00:00.000Z'),
+    qaUser(22, 2, '2026-08-21T08:05:00.000Z')
+  ]
+  const replayedQa = await runHistoricalScenario(replayedQaUsers, [oldQaClaim])
+  assert.strictEqual(replayedQa.result.matched_count, 1)
+  assert.match(replayedQa.deliveryInput.qaMatchRunKey, /^qarunpair_[a-f0-9]{24}$/)
+  assert.strictEqual(replayedQa.deliveryInput.deliveryData.audit.qa_match_run_key, replayedQa.deliveryInput.qaMatchRunKey)
+
+  const currentQaClaim = {
+    ...oldQaClaim,
+    create_time: new Date('2026-08-22T12:00:00.000Z')
+  }
+  const blockedQa = await runHistoricalScenario(replayedQaUsers, [currentQaClaim])
+  assert.strictEqual(blockedQa.result.matched_count, 0)
+  assert.strictEqual(blockedQa.deliveryInput, null)
+
+  const productionUsers = [user(31, 1, 1992, '175-180cm'), user(32, 2, 1995, '160-165cm')]
+  const blockedProduction = await runHistoricalScenario(productionUsers, [{
+    ...oldQaClaim,
+    pair_key: '31-32',
+    user_id: 31,
+    match_user_id: 32
+  }])
+  assert.strictEqual(blockedProduction.result.matched_count, 0)
+  assert.strictEqual(blockedProduction.deliveryInput, null)
   console.log('PASS formal matching reranks then atomically prepares delivery and report task')
 }
 

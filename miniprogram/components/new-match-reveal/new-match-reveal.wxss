@@ -1,0 +1,202 @@
+.reveal-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.reveal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(58, 46, 46, 0.58);
+  backdrop-filter: blur(8rpx);
+  animation: reveal-fade 360ms ease-out both;
+}
+
+.reveal-glow {
+  position: absolute;
+  width: 420rpx;
+  height: 420rpx;
+  border-radius: 50%;
+  background: rgba(232, 99, 127, 0.2);
+  filter: blur(40rpx);
+  animation: glow-breathe 2400ms ease-in-out infinite alternate;
+}
+
+.glow-left {
+  left: -180rpx;
+  top: 18%;
+}
+
+.glow-right {
+  right: -220rpx;
+  top: 4%;
+  animation-delay: 420ms;
+}
+
+.reveal-sheet {
+  position: relative;
+  z-index: 2;
+  box-sizing: border-box;
+  width: 100%;
+  padding: 60rpx 48rpx calc(36rpx + env(safe-area-inset-bottom));
+  border-radius: 48rpx 48rpx 0 0;
+  background: linear-gradient(160deg, #fff 0%, #faf6f4 58%, #f9dee4 150%);
+  box-shadow: 0 -24rpx 80rpx rgba(58, 46, 46, 0.18);
+  text-align: center;
+  animation: reveal-rise 620ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.reveal-mark {
+  position: relative;
+  width: 160rpx;
+  height: 160rpx;
+  margin: 0 auto 30rpx;
+}
+
+.mark-ring {
+  position: absolute;
+  inset: 0;
+  border: 2rpx solid rgba(232, 99, 127, 0.34);
+  border-radius: 50%;
+  animation: ring-open 1100ms ease-out both;
+}
+
+.ring-two {
+  inset: 18rpx;
+  animation-delay: 140ms;
+}
+
+.mark-core {
+  position: absolute;
+  inset: 42rpx;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #e8637f, #d14d6b);
+  box-shadow: 0 18rpx 38rpx rgba(209, 77, 107, 0.3);
+  animation: core-arrive 720ms 180ms cubic-bezier(0.2, 0.9, 0.25, 1.2) both;
+}
+
+.mark-line {
+  position: absolute;
+  top: 26rpx;
+  width: 24rpx;
+  height: 6rpx;
+  border-radius: 6rpx;
+  background: #fff;
+}
+
+.line-left {
+  left: 12rpx;
+  transform: rotate(45deg);
+}
+
+.line-right {
+  right: 12rpx;
+  transform: rotate(-45deg);
+}
+
+.reveal-kicker {
+  color: #d14d6b;
+  font-size: 20rpx;
+  font-weight: 700;
+  letter-spacing: 5rpx;
+}
+
+.reveal-title {
+  margin-top: 18rpx;
+  color: #3a2e2e;
+  font-size: 46rpx;
+  font-weight: 700;
+  line-height: 1.24;
+}
+
+.reveal-copy {
+  max-width: 580rpx;
+  margin: 20rpx auto 0;
+  color: #806f6f;
+  font-size: 26rpx;
+  line-height: 1.7;
+}
+
+.reveal-summary {
+  margin: 36rpx 0 34rpx;
+  padding: 28rpx 30rpx;
+  border: 2rpx solid rgba(232, 99, 127, 0.16);
+  border-radius: 24rpx;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.summary-primary {
+  color: #3a2e2e;
+  font-size: 30rpx;
+  font-weight: 600;
+}
+
+.summary-meta {
+  display: flex;
+  justify-content: center;
+  gap: 24rpx;
+  margin-top: 12rpx;
+  color: #9a7f84;
+  font-size: 22rpx;
+}
+
+.reveal-primary,
+.reveal-secondary {
+  width: 100%;
+  margin: 0;
+  border: 0;
+  border-radius: 48rpx;
+  font-size: 28rpx;
+  font-weight: 600;
+}
+
+.reveal-primary::after,
+.reveal-secondary::after {
+  border: 0;
+}
+
+.reveal-primary {
+  height: 92rpx;
+  line-height: 92rpx;
+  color: #fff;
+  background: linear-gradient(135deg, #e8637f, #d14d6b);
+  box-shadow: 0 16rpx 34rpx rgba(209, 77, 107, 0.24);
+}
+
+.reveal-secondary {
+  height: 76rpx;
+  line-height: 76rpx;
+  margin-top: 12rpx;
+  color: #806f6f;
+  background: transparent;
+}
+
+@keyframes reveal-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes reveal-rise {
+  from { opacity: 0; transform: translateY(110%); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes ring-open {
+  from { opacity: 0; transform: scale(0.45); }
+  55% { opacity: 1; }
+  to { opacity: 0.55; transform: scale(1); }
+}
+
+@keyframes core-arrive {
+  from { opacity: 0; transform: scale(0.2) rotate(-30deg); }
+  to { opacity: 1; transform: scale(1) rotate(0); }
+}
+
+@keyframes glow-breathe {
+  from { opacity: 0.45; transform: scale(0.88); }
+  to { opacity: 1; transform: scale(1.12); }
+}

@@ -5,12 +5,19 @@ const {
   validateSemanticRerankResponse,
   mergeSemanticRerank
 } = require('../../miniprogram/cloudfunctions/api/lib/matchSemanticRerank')
-const { classifySemanticRerankError } = require('../../miniprogram/cloudfunctions/api/lib/semanticMatchService')
+const {
+  classifySemanticRerankError,
+  safeProviderErrorCode
+} = require('../../miniprogram/cloudfunctions/api/lib/semanticMatchService')
 
 assert.strictEqual(classifySemanticRerankError(new Error('DeepSeek match rerank JSON invalid')), 'invalid_json')
 assert.strictEqual(classifySemanticRerankError(new Error('request timeout')), 'timeout')
 assert.strictEqual(classifySemanticRerankError(new Error('HTTP 429')), 'rate_limited')
 assert.strictEqual(classifySemanticRerankError(new Error('secret internal upstream detail')), 'provider_error')
+assert.strictEqual(safeProviderErrorCode({ code: 'provider_request_error' }), 'provider_request_error')
+assert.strictEqual(safeProviderErrorCode({ code: 'InvalidParameter.ResponseFormat' }), 'invalidparameter.responseformat')
+assert.strictEqual(safeProviderErrorCode({ code: 'token-secret-value' }), 'redacted')
+assert.strictEqual(safeProviderErrorCode({ code: 'unsafe value with spaces' }), 'unknown')
 
 const ranked = [
   {

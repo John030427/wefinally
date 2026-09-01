@@ -16,6 +16,11 @@ const {
   resolveRegion
 } = require('../../utils/constants')
 const { parsePromoteCode, normalizePromoteCode } = require('../../utils/util')
+const {
+  buildSecondaryIdentityGroups,
+  buildSelectedSecondaryIdentities,
+  toggleSecondaryIdentitySelection
+} = require('../../utils/secondaryIdentityPicker')
 
 Page({
   data: {
@@ -31,7 +36,10 @@ Page({
     provinceOptions: PROVINCE_OPTIONS,
     provinceNames: PROVINCE_OPTIONS.map((item) => item.province_name),
     cityOptions: CITY_OPTIONS,
-    secondaryIdentityOptions: [],
+    secondaryIdentityDrawerVisible: false,
+    secondaryIdentityQuery: '',
+    secondaryIdentityGroups: [],
+    selectedSecondaryIdentities: [],
     circleOptions: [],
     circleNames: [],
     circleGroups: [],
@@ -283,32 +291,50 @@ Page({
 
   refreshSecondaryIdentityOptions(primaryId, selectedIds) {
     const primary = Number(primaryId != null ? primaryId : this.data.form.circleId)
-    const selected = new Set((selectedIds || this.data.form.secondaryCircleIds || []).map(Number))
-    const options = (this.data.circleOptions || [])
-      .filter((item) => Number(item.id) !== primary && Number(item.id) !== 0)
-      .slice(0, 40)
-      .map((item) => ({
-        id: item.id,
-        name: item.name || item.circle_name,
-        selected: selected.has(Number(item.id))
-      }))
-    this.setData({ secondaryIdentityOptions: options })
+    const selected = selectedIds || this.data.form.secondaryCircleIds || []
+    this.setData({
+      secondaryIdentityGroups: buildSecondaryIdentityGroups(
+        this.data.circleOptions,
+        primary,
+        selected,
+        this.data.secondaryIdentityQuery
+      ),
+      selectedSecondaryIdentities: buildSelectedSecondaryIdentities(this.data.circleOptions, selected)
+    })
+  },
+
+  openSecondaryIdentityDrawer() {
+    this.setData({
+      secondaryIdentityDrawerVisible: true,
+      secondaryIdentityQuery: ''
+    })
+    this.refreshSecondaryIdentityOptions(this.data.form.circleId, this.data.form.secondaryCircleIds)
+  },
+
+  closeSecondaryIdentityDrawer() {
+    this.setData({ secondaryIdentityDrawerVisible: false })
+  },
+
+  noop() {},
+
+  onSecondaryIdentitySearch(e) {
+    this.setData({ secondaryIdentityQuery: e.detail.value || '' })
+    this.refreshSecondaryIdentityOptions(this.data.form.circleId, this.data.form.secondaryCircleIds)
   },
 
   toggleSecondaryIdentity(e) {
     const id = Number(e.currentTarget.dataset.id)
     if (!Number.isFinite(id)) return
-    const current = (this.data.form.secondaryCircleIds || []).map(Number)
-    let next
-    if (current.includes(id)) {
-      next = current.filter((item) => item !== id)
-    } else {
-      if (current.length >= Math.max(0, MAX_IDENTITY_TAGS - 1)) {
-        wx.showToast({ title: `其他身份最多${MAX_IDENTITY_TAGS - 1}个`, icon: 'none' })
-        return
-      }
-      next = current.concat(id)
+    const result = toggleSecondaryIdentitySelection(
+      this.data.form.secondaryCircleIds,
+      id,
+      Math.max(0, MAX_IDENTITY_TAGS - 1)
+    )
+    if (result.limitReached) {
+      wx.showToast({ title: `其他身份最多${MAX_IDENTITY_TAGS - 1}个`, icon: 'none' })
+      return
     }
+    const next = result.selectedIds
     this.setData({ 'form.secondaryCircleIds': next })
     this.refreshSecondaryIdentityOptions(this.data.form.circleId, next)
   },

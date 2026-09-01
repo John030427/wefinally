@@ -59,6 +59,103 @@ async function list(name, query, limit) {
   return res.data || []
 }
 
+async function listUsersPage(input = {}) {
+  const options = input && typeof input === 'object' ? input : {}
+  const afterId = Number(options.afterId || options.after_id || 0)
+  const cursor = Number.isSafeInteger(afterId) && afterId >= 0 ? afterId : 0
+  const requestedLimit = Number(options.limit || 20)
+  const limit = Number.isSafeInteger(requestedLimit) && requestedLimit > 0
+    ? Math.min(requestedLimit, 21)
+    : 20
+  const res = await withCollection('user', () => col('user')
+    .where({ id: _.gt(cursor) })
+    .orderBy('id', 'asc')
+    .limit(limit)
+    .get())
+  return res.data || []
+}
+
+async function findSetting(userId) {
+  const ownerId = Number(userId)
+  if (!Number.isSafeInteger(ownerId) || ownerId <= 0) return null
+  return first('user_match_setting', { user_id: ownerId })
+}
+
+async function listChunksByOwnerIds(userIds) {
+  const ids = [...new Set((Array.isArray(userIds) ? userIds : [userIds])
+    .map((id) => Number(id))
+    .filter((id) => Number.isSafeInteger(id) && id > 0))]
+  if (!ids.length) return []
+  const pageSize = 100
+  const rows = []
+  let offset = 0
+  while (true) {
+    const res = await withCollection('user_evidence_chunk', () => col('user_evidence_chunk')
+      .where({ owner_user_id: _.in(ids) })
+      .orderBy('_id', 'asc')
+      .skip(offset)
+      .limit(pageSize)
+      .get())
+    const page = (res && res.data) || []
+    rows.push(...page)
+    if (page.length < pageSize) break
+    offset += page.length
+  }
+  return rows
+}
+
+function corpusWriteData(document) {
+  if (!document || typeof document !== 'object' || !document._id) {
+    throw new Error('RAG 语料文档无效')
+  }
+  const documentId = String(document._id)
+  if (!/^rag_chunk_[a-f0-9]{32}$/i.test(documentId)) throw new Error('RAG 语料文档 ID 无效')
+  const fields = [
+    'owner_user_id',
+    'evidence_key',
+    'category',
+    'sanitized_text',
+    'tokens',
+    'content_hash',
+    'chunk_version',
+    'retrieval_version',
+    'source_profile_version',
+    'enabled',
+    'updated_at'
+  ]
+  const data = {}
+  fields.forEach((field) => {
+    if (document[field] !== undefined) data[field] = document[field]
+  })
+  delete data.vector
+  delete data.embedding
+  return { documentId, data }
+}
+
+async function upsertChunk(document) {
+  const { documentId, data } = corpusWriteData(document)
+  await withCollection('user_evidence_chunk', () => col('user_evidence_chunk').doc(documentId).set({ data }))
+  return Object.assign({}, data, { _id: documentId })
+}
+
+async function disableChunks(ownerUserId, activeEvidenceKeys) {
+  const ownerId = Number(ownerUserId)
+  if (!Number.isSafeInteger(ownerId) || ownerId <= 0) return 0
+  const active = new Set((Array.isArray(activeEvidenceKeys) ? activeEvidenceKeys : [])
+    .map((key) => String(key)))
+  const rows = await listChunksByOwnerIds([ownerId])
+  let disabled = 0
+  for (const row of rows) {
+    if (!row || row.enabled !== true || active.has(String(row.evidence_key || '')) || !row._id) continue
+    const result = await withCollection('user_evidence_chunk', () => col('user_evidence_chunk').doc(String(row._id)).update({
+      data: { enabled: false, updated_at: now() }
+    }))
+    const count = Number(result && result.stats && result.stats.updated || 0)
+    if (count > 0) disabled += count
+  }
+  return disabled
+}
+
 async function byId(name, id) {
   const n = Number(id)
   if (!Number.isNaN(n)) {
@@ -1052,6 +1149,11 @@ module.exports = {
   now,
   first,
   list,
+  listUsersPage,
+  findSetting,
+  listChunksByOwnerIds,
+  upsertChunk,
+  disableChunks,
   byId,
   nextId,
   addWithId,

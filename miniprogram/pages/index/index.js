@@ -2,6 +2,14 @@ const { get, post } = require('../../utils/request')
 const { API_PATHS, MATCH_SCHEDULE, GUANGDONG_110_DEFAULT } = require('../../utils/constants')
 const { formatDateOnly, getNextMatchTime, genderText, calcAge, getCompatibilityDisplayText } = require('../../utils/util')
 const { buildProfileReadiness, buildJourneyState } = require('../../utils/productExperience')
+const {
+  seenStorageKey,
+  createRevealSessionState,
+  dismissForSession,
+  shouldRevealLatestMatch
+} = require('../../utils/matchResultReveal')
+
+let revealSessionState = createRevealSessionState()
 
 Page({
   data: {
@@ -14,10 +22,16 @@ Page({
     latestMatch: null,
     hasLatest: false,
     readiness: null,
-    journeyState: null
+    journeyState: null,
+    matchRevealVisible: false,
+    matchRevealStorageKey: '',
+    sessionDismissedMatchIds: revealSessionState.dismissedMatchIds
   },
 
   onShow() {
+    const tabBar = this.getTabBar && this.getTabBar()
+    if (tabBar && typeof tabBar.syncForRoute === 'function') tabBar.syncForRoute('/pages/index/index')
+    this.setData({ sessionDismissedMatchIds: revealSessionState.dismissedMatchIds })
     this.checkAuthAndLoad()
   },
 
@@ -50,6 +64,19 @@ Page({
 
       const isVip = profile && (profile.isVip || profile.is_vip === 1)
       const latestMatch = this.normalizeLatestMatch(latest)
+      const matchRevealStorageKey = seenStorageKey(profile)
+      let seenMatchId = ''
+      try {
+        seenMatchId = matchRevealStorageKey ? wx.getStorageSync(matchRevealStorageKey) : ''
+      } catch (error) {
+        console.warn('match reveal seen state unavailable:', error && error.message ? error.message : error)
+      }
+      const matchRevealVisible = shouldRevealLatestMatch({
+        latest: latestMatch,
+        seenMatchId,
+        sessionDismissedMatchIds: this.data.sessionDismissedMatchIds,
+        now: new Date()
+      })
 
       const readiness = buildProfileReadiness(profile)
       const journeyState = buildJourneyState({
@@ -68,7 +95,9 @@ Page({
         latestMatch,
         hasLatest: !!latestMatch,
         readiness,
-        journeyState
+        journeyState,
+        matchRevealVisible,
+        matchRevealStorageKey
       })
     } catch (err) {
       this.setData({
@@ -116,6 +145,35 @@ Page({
     const { latestMatch } = this.data
     if (!latestMatch || !latestMatch.id) return
     wx.navigateTo({ url: `/pages/match-detail/match-detail?id=${latestMatch.id}` })
+  },
+
+  markLatestMatchSeen() {
+    const { latestMatch, matchRevealStorageKey } = this.data
+    try {
+      if (latestMatch && latestMatch.id && matchRevealStorageKey) {
+        wx.setStorageSync(matchRevealStorageKey, String(latestMatch.id))
+      }
+    } catch (error) {
+      console.warn('match reveal seen state was not persisted:', error && error.message ? error.message : error)
+    }
+    this.setData({ matchRevealVisible: false })
+  },
+
+  onMatchRevealView() {
+    this.markLatestMatchSeen()
+    this.goMatchDetail()
+  },
+
+  onMatchRevealDismiss() {
+    const latest = this.data.latestMatch
+    revealSessionState = dismissForSession(
+      revealSessionState,
+      latest && latest.id
+    )
+    this.setData({
+      matchRevealVisible: false,
+      sessionDismissedMatchIds: revealSessionState.dismissedMatchIds
+    })
   },
 
   goRules() {

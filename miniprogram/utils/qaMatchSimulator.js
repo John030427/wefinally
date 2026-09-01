@@ -22,6 +22,13 @@ function qaEnabledFromProfile(profile) {
   return !!(profile && (profile.qa_test_run_enabled === true || profile.qa_test_run_enabled === 1))
 }
 
+function registrationReplayEnabledFromProfile(profile) {
+  return !!(profile && (
+    profile.qa_registration_replay_enabled === true
+    || profile.qa_registration_replay_enabled === 1
+  ))
+}
+
 async function refreshQaAccess(options = {}) {
   const app = getApp()
   const force = options.force === true
@@ -39,6 +46,7 @@ async function refreshQaAccess(options = {}) {
   }
   return {
     enabled: qaEnabledFromProfile(profile),
+    registrationReplayEnabled: registrationReplayEnabledFromProfile(profile),
     profile
   }
 }
@@ -48,5 +56,6 @@ module.exports = {
   buildRequestId,
   sleep,
   refreshQaAccess,
-  qaEnabledFromProfile
+  qaEnabledFromProfile,
+  registrationReplayEnabledFromProfile
 }

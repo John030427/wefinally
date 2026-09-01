@@ -44,15 +44,21 @@ function isClaimInCycle(row, cycleId) {
 function indexClaimsForMatching(claims, productionCycleId) {
   const cycleClaimed = new Set()
   const historicalPairKeys = new Set()
+  const historicalClaimsByPair = new Map()
   for (const row of claims || []) {
-    if (row.pair_key) historicalPairKeys.add(String(row.pair_key))
+    if (row.pair_key) {
+      const pairKey = String(row.pair_key)
+      historicalPairKeys.add(pairKey)
+      if (!historicalClaimsByPair.has(pairKey)) historicalClaimsByPair.set(pairKey, [])
+      historicalClaimsByPair.get(pairKey).push(row)
+    }
     if (!isProductionClaim(row)) continue
     if (productionCycleId && isClaimInCycle(row, productionCycleId)) {
       cycleClaimed.add(Number(row.user_id))
       cycleClaimed.add(Number(row.match_user_id))
     }
   }
-  return { cycleClaimed, historicalPairKeys }
+  return { cycleClaimed, historicalPairKeys, historicalClaimsByPair }
 }
 
 function userHasProductionClaimInCycle(userId, claims, cycleId) {

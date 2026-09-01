@@ -30,6 +30,8 @@ Page({
   },
 
   onShow() {
+    const tabBar = this.getTabBar && this.getTabBar()
+    if (tabBar && typeof tabBar.syncForRoute === 'function') tabBar.syncForRoute('/pages/profile/profile')
     this.loadProfile()
     this.loadPartnerStatus()
   },

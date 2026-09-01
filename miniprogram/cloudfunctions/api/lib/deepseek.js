@@ -173,6 +173,7 @@ function rerankConfig() {
   return {
     provider: runtime.provider,
     group: runtime.group,
+    enabled: runtime.enabled,
     model: String(envValue(['DEEPSEEK_MATCH_RERANK_MODEL', 'AI_MODEL', 'LLM_MODEL']) || runtime.model),
     timeoutMs: Number(envValue(['DEEPSEEK_MATCH_RERANK_TIMEOUT_MS']) || runtime.timeoutMs || 12000)
   }

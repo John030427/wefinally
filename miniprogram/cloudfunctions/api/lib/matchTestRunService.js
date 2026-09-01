@@ -65,6 +65,7 @@ function semanticDetail(best, side, algorithmRank, reranked) {
     semantic_strength_evidence_keys: best.semantic_strength_evidence_keys || [],
     semantic_risk_evidence_keys: best.semantic_risk_evidence_keys || [],
     semantic_missing_categories: best.semantic_missing_categories || [],
+    rag: reranked && reranked.rag ? Object.assign({}, reranked.rag) : null,
     ai_rerank: {
       applied: reranked.applied === true,
       reason: reranked.reason || '',
@@ -121,7 +122,7 @@ function createMatchTestRunHandlers(deps) {
     const claimedRun = claim.batch
     const fixtureJourney = normalizeJourneyInput(claimedRun.fixture_journey || data.fixture_journey || 'coordinate')
     try {
-      if (!canUseMatching({ member_status: memberStatus(user), vipActive: isVipActive(user) })) {
+      if (!canUseMatching({ member_status: memberStatus(user), vipActive: isVipActive(user, deps.now()) })) {
         return publicRun(await deps.completeRun(claimedRun, { patch: {
           status: 'blocked', reason_code: 'not_eligible', message: '资料或会员资格不满足测试匹配条件'
         } }))
@@ -143,7 +144,9 @@ function createMatchTestRunHandlers(deps) {
       const settingsByUserId = {}
       ;(settings || []).forEach((row) => { settingsByUserId[String(row.user_id)] = row })
       const ranked = rankCandidates(user, candidates, settingsByUserId)
-      const reranked = await deps.semanticRerank(ranked, user, settingsByUserId)
+      const reranked = await deps.semanticRerank(ranked, user, settingsByUserId, {
+        loadCorpus: deps.loadCorpus
+      })
       if (!reranked || reranked.applied !== true) {
         return publicRun(await deps.completeRun(claimedRun, { patch: {
           status: 'failed',

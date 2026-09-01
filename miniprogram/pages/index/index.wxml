@@ -130,3 +130,10 @@
     </view>
   </block>
 </view>
+
+<new-match-reveal
+  visible="{{matchRevealVisible}}"
+  match="{{latestMatch}}"
+  bind:view="onMatchRevealView"
+  bind:dismiss="onMatchRevealDismiss"
+/>
