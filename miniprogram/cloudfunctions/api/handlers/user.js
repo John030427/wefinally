@@ -1,4 +1,17 @@
-const { col, first, byId, addWithId, updateByDoc, transaction, ensureUserSupportCode, authError, now } = require('../lib/db')
+const {
+  col,
+  first,
+  byId,
+  addWithId,
+  updateByDoc,
+  transaction,
+  ensureUserSupportCode,
+  authError,
+  now,
+  listChunksByOwnerIds,
+  upsertChunk,
+  disableChunks
+} = require('../lib/db')
 const { tokenFor } = require('./auth')
 const { isVipActive } = require('../lib/format')
 const { ensureReferralAttribution } = require('../lib/partnerReferralAttributionPolicy')
@@ -28,6 +41,47 @@ const {
   legacyTagsFromUser,
   summarizeIdentities
 } = require('../lib/userIdentityTags')
+const {
+  projectCorpusDocuments,
+  isEligibleUser,
+  syncUserCorpus
+} = require('../lib/matchRagCorpus')
+
+function ragCorpusRepository() {
+  return { listChunksByOwnerIds, upsertChunk, disableChunks, now }
+}
+
+async function markCorpusSyncState(user, stale, reason, timestamp) {
+  if (!user || !user._id) return
+  try {
+    await updateByDoc('user', user, stale ? {
+      rag_corpus_stale: 1,
+      rag_corpus_sync_reason: reason || 'corpus_unavailable',
+      rag_corpus_sync_failed_at: timestamp
+    } : {
+      rag_corpus_stale: 0,
+      rag_corpus_sync_reason: '',
+      rag_corpus_synced_at: timestamp
+    })
+  } catch (error) {
+    // Reconciliation backfill remains the durable retry path.
+  }
+}
+
+async function syncCorpusBestEffort(user, settingOverride) {
+  const timestamp = now()
+  try {
+    const setting = settingOverride || await first('user_match_setting', { user_id: user.id }) || {}
+    const documents = projectCorpusDocuments(user, setting, timestamp)
+    const forceDisable = !isEligibleUser(user, setting, documents)
+    await syncUserCorpus(user, setting, ragCorpusRepository(), { forceDisable })
+    await markCorpusSyncState(user, false, '', timestamp)
+    return { synced: true, reason: '' }
+  } catch (error) {
+    await markCorpusSyncState(user, true, 'corpus_unavailable', timestamp)
+    return { synced: false, reason: 'corpus_unavailable' }
+  }
+}
 
 async function currentUser(wxContext) {
   const openid = wxContext.OPENID
@@ -383,6 +437,8 @@ async function updateProfile(data, wxContext) {
     console.warn('ai profile stale mark skipped:', error.message || error)
   }
 
+  await syncCorpusBestEffort(Object.assign({}, user, updated, patch))
+
   return profilePayload(updated)
 }
 
@@ -405,7 +461,7 @@ async function cancel(data, wxContext) {
   const user = await currentUser(wxContext)
   const cancelledAt = now()
   const deleteAfter = new Date(cancelledAt.getTime() + 15 * 24 * 60 * 60 * 1000)
-  await updateByDoc('user', user, { status: 3, cancel_time: cancelledAt })
+  const cancelledUser = await updateByDoc('user', user, { status: 3, cancel_time: cancelledAt })
   const taskRedaction = {
     status: 'cancelled',
     reports: null,
@@ -432,6 +488,7 @@ async function cancel(data, wxContext) {
       update_time: cancelledAt
     } })
   ])
+  await syncCorpusBestEffort(Object.assign({}, user, cancelledUser, { status: 3, cancel_time: cancelledAt }))
   return { submitted: true }
 }
 
@@ -447,6 +504,7 @@ async function claimFree(data, wxContext) {
     free_source: wl.source || 'activation',
     status: 1
   })
+  await syncCorpusBestEffort(Object.assign({}, user, updated, { status: 1 }))
   return profilePayload(updated)
 }
 

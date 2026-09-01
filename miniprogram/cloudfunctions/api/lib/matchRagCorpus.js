@@ -741,6 +741,7 @@ module.exports = {
   projectCorpusDocuments,
   syncUserCorpus,
   loadCorpusForUserIds,
+  isEligibleUser,
   backfillCorpus,
   sourceProfileVersion,
   makeDocumentId,

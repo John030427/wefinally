@@ -321,6 +321,15 @@ async function main() {
     assert.strictEqual(expired.error, 'INVALID_RAG_SMOKE_REQUEST')
     assert.strictEqual(forbidden(expired), false)
 
+    const runtimeExpiredProfiles = fixtureProfiles()
+    runtimeExpiredProfiles[1].fixture_expires_at = new Date(Date.now() - 60000).toISOString()
+    const runtimeExpired = await api.main({
+      action: 'smokeSparseRag',
+      payload: { worker_secret: WORKER_SECRET, fixture_only: true, profiles: runtimeExpiredProfiles }
+    })
+    assert.strictEqual(runtimeExpired.success, false, 'smoke fixture expiry must use the runtime clock')
+    assert.strictEqual(runtimeExpired.error, 'INVALID_RAG_SMOKE_REQUEST')
+
     const previousAiProvider = process.env.AI_PROVIDER
     const previousAiGroup = process.env.AI_GROUP
     const previousAiModel = process.env.AI_MODEL

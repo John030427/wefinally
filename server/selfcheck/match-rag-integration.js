@@ -282,6 +282,18 @@ async function main() {
     assert.strictEqual(invalidConfig.rag.provider, 'cloudbase')
     assert.strictEqual(invalidConfig.rag.model, 'hy3')
     assert.strictEqual(invalidConfigCalled, false)
+    let injectedInvalidConfigCalled = false
+    const injectedInvalidConfig = await semanticRerank(ranked, viewer, settingsByUserId, {
+      ragMode: 'shadow',
+      loadCorpus: async () => corpus,
+      rerank: async () => {
+        injectedInvalidConfigCalled = true
+        return { enabled: false, response: null, provider: 'deepseek', model: 'luna' }
+      }
+    })
+    assert.strictEqual(injectedInvalidConfig.degraded, true)
+    assert.strictEqual(injectedInvalidConfig.rag.reason, 'provider_config_invalid')
+    assert.strictEqual(injectedInvalidConfigCalled, false, 'injected adapters must not bypass production HY3 config')
   } finally {
     deepseek.rerankMutualMatchCandidates = previousDefaultRerank
     Object.entries(previousEnv).forEach(([key, value]) => {
@@ -289,6 +301,19 @@ async function main() {
       else process.env[key] = value
     })
   }
+
+  const userHandlerSource = require('fs').readFileSync(
+    require.resolve('../../miniprogram/cloudfunctions/api/handlers/user'),
+    'utf8'
+  )
+  assert(userHandlerSource.includes('syncUserCorpus'), 'profile writes must synchronize the sparse corpus')
+  assert(userHandlerSource.includes('rag_corpus_stale'), 'sync failures must leave an observable reconciliation marker')
+  ;['updateProfile', 'cancel', 'claimFree'].forEach((handlerName) => {
+    const start = userHandlerSource.indexOf(`async function ${handlerName}`)
+    const end = userHandlerSource.indexOf('\nasync function ', start + 1)
+    const body = userHandlerSource.slice(start, end < 0 ? undefined : end)
+    assert(body.includes('syncCorpusBestEffort'), `${handlerName} must synchronize or tombstone corpus state`)
+  })
 
   const previousGroupRerank = deepseek.rerankMutualMatchCandidates
   let invalidGroupCalled = false

@@ -333,7 +333,7 @@ async function smokeSparseRag(input = {}) {
   const uniqueIds = new Set(profiles.map((item) => String(item.id)))
   if (uniqueIds.size !== profiles.length) throw smokeError('smoke profile id 必须唯一')
 
-  const fixtureNow = new Date('2026-09-01T00:00:00.000Z')
+  const fixtureNow = new Date()
   const fixtureViewer = profiles[0].fixture
   profiles.forEach((profile) => {
     if (!canUseFixtureForMatch(fixtureViewer, profile.fixture, fixtureNow)) {
@@ -344,7 +344,7 @@ async function smokeSparseRag(input = {}) {
   const corpus = {}
   const settingsByUserId = {}
   profiles.forEach((item) => {
-    corpus[String(item.id)] = projectCorpusDocuments(item.user, item.settings, '2026-09-01T00:00:00.000Z')
+    corpus[String(item.id)] = projectCorpusDocuments(item.user, item.settings, fixtureNow)
     settingsByUserId[String(item.id)] = item.settings
   })
   const viewer = profiles[0]

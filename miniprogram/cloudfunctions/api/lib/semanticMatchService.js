@@ -456,7 +456,7 @@ async function semanticRerank(ranked, user, settingsByUserId, options = {}) {
   // The matching RAG contract is intentionally pinned to the CloudBase HY3
   // deployment. Other application AI settings must never silently reroute
   // this path to a different provider or model.
-  if (typeof runOptions.rerank !== 'function' && !ragProviderConfig().valid) {
+  if (!ragProviderConfig().valid) {
     return degradedResult('provider_config_invalid', deterministic, mode, {
       provider: RAG_PROVIDER,
       model: RAG_MODEL
