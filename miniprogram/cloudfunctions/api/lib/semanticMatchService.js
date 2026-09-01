@@ -5,7 +5,6 @@ const {
   normalizedMutualScore
 } = require('./matchSemanticRerank')
 const deepseek = require('./deepseek')
-const { compileIntentProfile } = require('./intentProfile')
 const {
   retrieveSparseBidirectional,
   RETRIEVAL_VERSION
@@ -32,6 +31,7 @@ const BOUNDED_REASONS = new Set([
   'sparse_retrieval_insufficient',
   'corpus_unavailable',
   'corpus_invalid',
+  'provider_config_invalid',
   'provider_error',
   'fallback_deterministic',
   'low_confidence'
@@ -44,12 +44,6 @@ function parseJson(value) {
 }
 function aiProfileOf(setting) {
   return parseJson(setting && setting.ai_match_profile_json)
-}
-
-function intentFor(user, setting) {
-  return parseJson(setting && setting.intent_profile_json) || compileIntentProfile(Object.assign({}, user || {}, setting || {}, {
-    mode: 'automatic'
-  }))
 }
 
 function classifySemanticRerankError(error) {
@@ -90,11 +84,41 @@ function safeRuntimeValue(value, maxLength) {
   return text
 }
 
+function safeRagProvider(value) {
+  const provider = safeRuntimeValue(value, 40).toLowerCase()
+  return provider === RAG_PROVIDER ? RAG_PROVIDER : ''
+}
+
+function safeRagModel(value) {
+  const model = safeRuntimeValue(value, 80).toLowerCase()
+  return model === RAG_MODEL ? RAG_MODEL : ''
+}
+
+function ragProviderConfig(env = process.env) {
+  const source = env && typeof env === 'object' ? env : {}
+  const provider = String(source.AI_PROVIDER === undefined ? RAG_PROVIDER : source.AI_PROVIDER)
+    .trim().toLowerCase()
+  const model = String(
+    source.DEEPSEEK_MATCH_RERANK_MODEL
+      || source.AI_MODEL
+      || source.LLM_MODEL
+      || RAG_MODEL
+  ).trim().toLowerCase()
+  const configuredRagModel = String(source.MATCH_RAG_MODEL || '').trim().toLowerCase()
+  return {
+    provider,
+    model,
+    valid: provider === RAG_PROVIDER
+      && model === RAG_MODEL
+      && (!configuredRagModel || configuredRagModel === RAG_MODEL)
+  }
+}
+
 function ragMetadata(mode, input = {}) {
   const resolvedMode = resolveRagMode({ MATCH_RAG_MODE: mode })
   const isRagMode = resolvedMode === 'shadow' || resolvedMode === 'active'
-  const provider = isRagMode ? safeRuntimeValue(input.provider, 40) : ''
-  const model = isRagMode ? safeRuntimeValue(input.model, 80) : ''
+  const provider = isRagMode ? safeRagProvider(input.provider) : ''
+  const model = isRagMode ? safeRagModel(input.model) : ''
   return {
     rag_mode: resolvedMode,
     retrieval_version: isRagMode ? RETRIEVAL_VERSION : '',
@@ -228,8 +252,9 @@ function retrievalInsufficient(retrieval) {
 
 async function attachRetrieval(eligible, user, settingsByUserId, options = {}) {
   if (typeof options.loadCorpus !== 'function') throw ragError('corpus_unavailable')
+  const cappedEligible = (Array.isArray(eligible) ? eligible : []).slice(0, 10)
   const ids = [user && user.id]
-    .concat((Array.isArray(eligible) ? eligible : []).map((item) => item && item.candidate && item.candidate.id))
+    .concat(cappedEligible.map((item) => item && item.candidate && item.candidate.id))
     .map((id) => Number(id))
     .filter((id, index, all) => Number.isSafeInteger(id) && id > 0 && all.indexOf(id) === index)
   if (!ids.length) throw ragError('corpus_invalid')
@@ -237,7 +262,7 @@ async function attachRetrieval(eligible, user, settingsByUserId, options = {}) {
   if (!corpus || typeof corpus !== 'object' || Array.isArray(corpus)) throw ragError('corpus_invalid')
 
   const enriched = []
-  for (const item of (Array.isArray(eligible) ? eligible : []).slice(0, 10)) {
+  for (const item of cappedEligible) {
     const partner = item && item.candidate
     if (!partner || !Number.isSafeInteger(Number(partner.id)) || Number(partner.id) <= 0) {
       throw ragError('corpus_invalid')
@@ -359,13 +384,10 @@ function promptEvidenceFor(item) {
   }
 }
 
-function buildSafeRerankRequest(items, user, settingsByUserId) {
-  const settings = settingsByUserId || {}
-  const currentSetting = settings[String(user && user.id)] || {}
+function buildSafeRerankRequest(items) {
   const request = buildSemanticRerankRequest({
     topK: 10,
     candidates: items.map((item) => {
-      const partnerSetting = settings[String(item.candidate.id)] || {}
       return {
         internalUserId: item.candidate.id,
         quality: item.quality,
@@ -374,20 +396,22 @@ function buildSafeRerankRequest(items, user, settingsByUserId) {
         scoreA: item.scoreA,
         scoreB: item.scoreB,
         retrieval: item.retrieval,
-        allowedEvidenceKeys: item.allowedEvidenceKeys,
-        intentA: intentFor(user, currentSetting),
-        intentB: intentFor(item.candidate, partnerSetting),
-        supplementA: currentSetting.other_requirements,
-        supplementB: partnerSetting.other_requirements
+        allowedEvidenceKeys: item.allowedEvidenceKeys
       }
     })
   })
 
   // The legacy builder accepts source excerpts for older semantic retrieval.
   // Sparse RAG must expose only allowlisted keys, categories, and scores.
-  request.candidates = request.candidates.map((candidate, index) => Object.assign({}, candidate, {
-    retrieved_evidence: promptEvidenceFor(items[index])
-  }))
+  request.candidates = request.candidates.map((candidate, index) => {
+    const safeCandidate = Object.assign({}, candidate)
+    delete safeCandidate.intent_a
+    delete safeCandidate.intent_b
+    delete safeCandidate.supplement_a
+    delete safeCandidate.supplement_b
+    safeCandidate.retrieved_evidence = promptEvidenceFor(items[index])
+    return safeCandidate
+  })
   return request
 }
 
@@ -426,27 +450,41 @@ async function semanticRerank(ranked, user, settingsByUserId, options = {}) {
     return resultWithMetadata(deterministic, mode)
   }
 
+  // The matching RAG contract is intentionally pinned to the CloudBase HY3
+  // deployment. Other application AI settings must never silently reroute
+  // this path to a different provider or model.
+  if (typeof runOptions.rerank !== 'function' && !ragProviderConfig().valid) {
+    return degradedResult('provider_config_invalid', deterministic, mode, {
+      provider: RAG_PROVIDER,
+      model: RAG_MODEL
+    })
+  }
+
   try {
     const withRetrieval = await attachRetrieval(eligible, user, settings, runOptions)
     const byId = new Map(withRetrieval.map((item) => [candidateIdentity(item), item]))
     const rankedWithRetrieval = withBilateral.map((item) => byId.get(candidateIdentity(item)) || item)
-    const request = buildSafeRerankRequest(withRetrieval, user, settings)
+    const request = buildSafeRerankRequest(withRetrieval)
     const rerank = typeof runOptions.rerank === 'function'
       ? runOptions.rerank
       : deepseek.rerankMutualMatchCandidates
-    const remote = await rerank(request)
+    // Keep the validator's private candidate map local. The provider receives
+    // only the JSON-serializable allowlisted payload, never hidden internal
+    // identifiers attached by the legacy request builder.
+    const providerRequest = JSON.parse(JSON.stringify(request))
+    const remote = await rerank(providerRequest)
     if (!remote || !remote.enabled || !remote.response) {
       return degradedResult('disabled', deterministic, mode, {
-        provider: remote && remote.provider || '',
-        model: remote && remote.model || ''
+        provider: RAG_PROVIDER,
+        model: RAG_MODEL
       })
     }
     const validated = validateSemanticRerankResponse(remote.response, request)
     const merged = mergeSemanticRerank(rankedWithRetrieval, validated, { minConfidence: 0.65, maxWeight: 0.2 })
     if (!merged.applied) {
       return degradedResult(merged.reason || 'low_confidence', deterministic, mode, {
-        provider: remote.provider || RAG_PROVIDER,
-        model: remote.model || RAG_MODEL
+        provider: safeRagProvider(remote.provider),
+        model: safeRagModel(remote.model)
       })
     }
     const scored = withFinalScores(merged.ranked)
@@ -457,8 +495,8 @@ async function semanticRerank(ranked, user, settingsByUserId, options = {}) {
     return resultWithMetadata(projected, mode, {
       degraded: false,
       reason: '',
-      provider: remote.provider || RAG_PROVIDER,
-      model: remote.model || RAG_MODEL
+      provider: safeRagProvider(remote.provider),
+      model: safeRagModel(remote.model)
     })
   } catch (error) {
     return degradedResult(classifySemanticRerankError(error), deterministic, mode, {

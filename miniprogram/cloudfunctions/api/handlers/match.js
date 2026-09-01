@@ -58,6 +58,16 @@ function loadRagCorpus(userIds) {
   return loadCorpusForUserIds(userIds, ragCorpusRepository())
 }
 
+function classifyRagSyncError(error) {
+  const message = String(error && error.message || '').toLowerCase()
+  const code = String(error && (error.code || error.class) || '').toLowerCase()
+  if ((code.includes('invalid') || code.includes('schema'))
+    || message.includes('无效') || message.includes('invalid') || message.includes('schema')) {
+    return 'corpus_invalid'
+  }
+  return 'corpus_unavailable'
+}
+
 function settingDefaults(row) {
   return row || {
     age_min: null,
@@ -317,12 +327,20 @@ async function saveSetting(data, wxContext) {
     ? await updateByDoc('user_match_setting', existing, payload)
     : await addWithId('user_match_setting', payload, 'match_setting')
   // Keep the owner-scoped sparse corpus synchronized with the canonical
-  // settings write. Retrieval callers use the same repository contract.
-  await syncUserCorpus(user, saved, ragCorpusRepository())
+  // settings write. Retrieval callers use the same repository contract. A
+  // missing corpus collection must not turn a successful settings save into a
+  // failed user request, and the returned diagnostic is deliberately bounded.
+  let ragSync = { synced: true, reason: '' }
+  try {
+    await syncUserCorpus(user, saved, ragCorpusRepository())
+  } catch (error) {
+    ragSync = { synced: false, reason: classifyRagSyncError(error) }
+  }
   return Object.assign(saved, {
     intent_profile: intentProfile,
     ai_match_profile: aiMatchProfile,
-    intent_confirmation_required: intentProfile.requires_confirmation && !alreadyConfirmed
+    intent_confirmation_required: intentProfile.requires_confirmation && !alreadyConfirmed,
+    rag_sync: ragSync
   })
 }
 
