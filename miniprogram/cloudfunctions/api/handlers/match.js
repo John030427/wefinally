@@ -272,34 +272,7 @@ async function saveSetting(data, wxContext) {
   const user = await currentUser(wxContext)
   const existing = await first('user_match_setting', { user_id: user.id })
   const normalized = normalizeMatchSettingInput(data)
-  const intentProfile = compileIntentProfile(Object.assign({}, user, normalized, {
-    mode: normalizeMode()
-  }))
-  const intentProfileJson = JSON.stringify(intentProfile)
-  const alreadyConfirmed = Boolean(
-    existing && existing.intent_profile_confirmed_at && existing.intent_profile_json === intentProfileJson
-  )
-  const profileSource = Object.assign({}, user, normalized, {
-    identity_tags: user.identity_tags,
-    secondary_circle_ids: user.secondary_circle_ids
-  })
-  let aiMatchProfile = null
-  const existingAi = existing && existing.ai_match_profile_json
-    ? (typeof existing.ai_match_profile_json === 'string'
-      ? (() => { try { return JSON.parse(existing.ai_match_profile_json) } catch (e) { return null } })()
-      : existing.ai_match_profile_json)
-    : null
-  if (!existingAi || shouldInvalidateAiMatchProfile(existingAi, profileSource)) {
-    aiMatchProfile = compileAiMatchProfile(profileSource, {
-      intent: intentProfile,
-      profile_version: Number(existing && existing.profile_version || 0) + 1,
-      confirmed_by_user: alreadyConfirmed,
-      corrections: (existingAi && existingAi.corrections) || (existing && existing.ai_profile_corrections) || []
-    })
-  } else {
-    aiMatchProfile = existingAi
-  }
-  const payload = {
+  const canonicalPayload = {
     user_id: user.id,
     age_min: normalized.age_min,
     age_max: normalized.age_max,
@@ -314,20 +287,62 @@ async function saveSetting(data, wxContext) {
     self_view_text: normalized.self_view_text,
     target_view_text: normalized.target_view_text,
     other_requirements: normalized.other_requirements,
-    intent_profile_json: intentProfileJson,
-    intent_profile_confirmed_at: alreadyConfirmed ? existing.intent_profile_confirmed_at : null,
     psych_profile_json: data.psych_profile_json || data.psych_profile || null,
-    ai_match_profile_json: aiMatchProfile,
-    ai_match_profile_version: Number(aiMatchProfile.profile_version || 1),
-    ai_match_profile_source_version: aiMatchProfile.source_profile_version || sourceFingerprint(profileSource),
-    ai_match_profile_status: 'ready',
-    ai_match_profile_generated_at: aiMatchProfile.generated_at || now(),
-    profile_version: Number(aiMatchProfile.profile_version || 1),
     last_edit_time: memberStatus(user) === MEMBER_STATUS.APPROVED ? now() : null
   }
-  const saved = existing
-    ? await updateByDoc('user_match_setting', existing, payload)
-    : await addWithId('user_match_setting', payload, 'match_setting')
+  let saved = existing
+    ? await updateByDoc('user_match_setting', existing, canonicalPayload)
+    : await addWithId('user_match_setting', canonicalPayload, 'match_setting')
+
+  let intentProfile = null
+  let aiMatchProfile = null
+  let derivedProfileDegraded = false
+  let intentAlreadyConfirmed = false
+  try {
+    intentProfile = compileIntentProfile(Object.assign({}, user, normalized, {
+      mode: normalizeMode()
+    }))
+    const intentProfileJson = JSON.stringify(intentProfile)
+    intentAlreadyConfirmed = Boolean(
+      existing && existing.intent_profile_confirmed_at && existing.intent_profile_json === intentProfileJson
+    )
+    const profileSource = Object.assign({}, user, normalized, {
+      identity_tags: user.identity_tags,
+      secondary_circle_ids: user.secondary_circle_ids
+    })
+    const existingAi = existing && existing.ai_match_profile_json
+      ? (typeof existing.ai_match_profile_json === 'string'
+        ? (() => { try { return JSON.parse(existing.ai_match_profile_json) } catch (e) { return null } })()
+        : existing.ai_match_profile_json)
+      : null
+    aiMatchProfile = (!existingAi || shouldInvalidateAiMatchProfile(existingAi, profileSource))
+      ? compileAiMatchProfile(profileSource, {
+        intent: intentProfile,
+        profile_version: Number(existing && existing.profile_version || 0) + 1,
+        confirmed_by_user: intentAlreadyConfirmed,
+        corrections: (existingAi && existingAi.corrections) || (existing && existing.ai_profile_corrections) || []
+      })
+      : existingAi
+    saved = await updateByDoc('user_match_setting', saved, {
+      intent_profile_json: intentProfileJson,
+      intent_profile_confirmed_at: intentAlreadyConfirmed ? existing.intent_profile_confirmed_at : null,
+      ai_match_profile_json: aiMatchProfile,
+      ai_match_profile_version: Number(aiMatchProfile.profile_version || 1),
+      ai_match_profile_source_version: aiMatchProfile.source_profile_version || sourceFingerprint(profileSource),
+      ai_match_profile_status: 'ready',
+      ai_match_profile_generated_at: aiMatchProfile.generated_at || now(),
+      profile_version: Number(aiMatchProfile.profile_version || 1)
+    })
+  } catch (error) {
+    derivedProfileDegraded = true
+    console.error(`[match-setting] derived profile degraded code=${String(error && error.code || 'unknown').slice(0, 64)}`)
+    try {
+      saved = await updateByDoc('user_match_setting', saved, {
+        ai_match_profile_status: 'degraded',
+        ai_match_profile_error: 'derived_profile_unavailable'
+      })
+    } catch (markError) { /* canonical settings are already durable */ }
+  }
   // Keep the owner-scoped sparse corpus synchronized with the canonical
   // settings write. Retrieval callers use the same repository contract. A
   // missing corpus collection must not turn a successful settings save into a
@@ -341,7 +356,8 @@ async function saveSetting(data, wxContext) {
   return Object.assign(saved, {
     intent_profile: intentProfile,
     ai_match_profile: aiMatchProfile,
-    intent_confirmation_required: intentProfile.requires_confirmation && !alreadyConfirmed,
+    intent_confirmation_required: Boolean(intentProfile && intentProfile.requires_confirmation && !intentAlreadyConfirmed),
+    derived_profile_degraded: derivedProfileDegraded,
     rag_sync: ragSync
   })
 }
