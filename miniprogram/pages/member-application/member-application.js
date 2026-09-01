@@ -1,5 +1,7 @@
 const { get, post } = require('../../utils/request')
 const { API_PATHS } = require('../../utils/constants')
+const { STORAGE_KEYS } = require('../../utils/constants')
+const { parsePromoteCode, normalizePromoteCode } = require('../../utils/util')
 
 const STATUS_TEXT = {
   pending_profile: '资料待完善',
@@ -13,12 +15,34 @@ const STATUS_TEXT = {
 Page({
   data: {
     loading: true,
+    redirectingToLogin: false,
     submitting: false,
+    bindingReferral: false,
+    referralInput: '',
+    referralMessage: '',
     detail: null,
     statusText: ''
   },
 
+  onLoad(options) {
+    const app = getApp()
+    const linkReferral = parsePromoteCode(
+      (options && options.scene) || app.globalData.launchScene,
+      { ...app.globalData.launchQuery, ...options }
+    )
+    const referral = normalizePromoteCode(linkReferral || wx.getStorageSync(STORAGE_KEYS.PROMOTE_CODE))
+    if (referral) {
+      wx.setStorageSync(STORAGE_KEYS.PROMOTE_CODE, referral)
+      this.setData({ referralInput: referral, referralMessage: '已从微信邀请链接带入，请确认接受邀请' })
+    }
+    if (!wx.getStorageSync(STORAGE_KEYS.TOKEN)) {
+      this.setData({ redirectingToLogin: true })
+      wx.redirectTo({ url: '/pages/login/login' })
+    }
+  },
+
   onShow() {
+    if (this.data.redirectingToLogin || !wx.getStorageSync(STORAGE_KEYS.TOKEN)) return
     this.loadStatus()
   },
 
@@ -51,6 +75,46 @@ Page({
 
   goService() {
     wx.navigateTo({ url: '/pages/chat/chat' })
+  },
+
+  onReferralInput(e) {
+    this.setData({ referralInput: e.detail.value || '', referralMessage: '' })
+  },
+
+  async bindReferral() {
+    if (this.data.bindingReferral) return
+    const referral = normalizePromoteCode(this.data.referralInput)
+    if (!referral) {
+      wx.showToast({ title: '请输入邀请码', icon: 'none' })
+      return
+    }
+    this.setData({ bindingReferral: true, referralMessage: '' })
+    try {
+      const result = await post(API_PATHS.MEMBER_APPLICATION_REFERRAL, { referral }, {
+        showLoading: true,
+        loadingText: '确认邀请中...',
+        showError: false
+      })
+      wx.removeStorageSync(STORAGE_KEYS.PROMOTE_CODE)
+      if (result.auto_approved) {
+        wx.showModal({
+          title: '邀请已确认',
+          content: '你的正式会员审核已通过，可以进入首页继续使用。',
+          showCancel: false,
+          success: () => wx.switchTab({ url: '/pages/index/index' })
+        })
+        return
+      }
+      this.setData({
+        referralInput: result.promote_code || referral,
+        referralMessage: '邀请关系已绑定，请等待该合伙人审核'
+      })
+      await this.loadStatus()
+    } catch (err) {
+      this.setData({ referralMessage: err.message || '邀请确认失败，请检查邀请码' })
+    } finally {
+      this.setData({ bindingReferral: false })
+    }
   },
 
   async resubmit() {

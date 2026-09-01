@@ -3,11 +3,19 @@
     <text class="qa-panel-badge">内部 QA</text>
     <text class="qa-panel-title">{{title}}</text>
   </view>
-  <view class="qa-panel-hint">仅测试账号可见，正式用户不会看到此区域</view>
+  <view class="qa-panel-hint">此处匹配内置合成测试对象，不会触发两台真机账号互配</view>
 
   <button class="qa-reset-link" wx:if="{{resetVisible}}" bindtap="onResetRegistration" disabled="{{running}}">
     重新注册测试资料
   </button>
+
+  <view class="qa-real-device-block">
+    <view class="qa-scenario-label">两台真实微信账号</view>
+    <view class="qa-panel-hint">自动检查资料并加入隔离测试组；两台手机都点击后才会互配</view>
+    <button class="qa-btn qa-btn-real" bindtap="onRealDeviceMatch" disabled="{{running}}">
+      两台真机互配测试
+    </button>
+  </view>
 
   <view class="qa-scenario-block" wx:if="{{scenarioPickerVisible}}">
     <view class="qa-scenario-label">测试场景</view>
@@ -23,13 +31,13 @@
     </radio-group>
   </view>
 
-  <view class="qa-actions">
+  <view class="qa-actions qa-synthetic-actions">
     <button
       class="qa-btn qa-btn-outline"
       bindtap="onToggleScenario"
       disabled="{{running || scenarioPickerVisible}}"
     >
-      测试下一轮匹配
+      测试合成对象匹配
     </button>
     <button
       class="qa-btn qa-btn-primary"

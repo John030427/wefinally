@@ -64,12 +64,6 @@
           <text class="summary-dot caution"></text><text>{{item}}</text>
         </view>
       </view>
-      <view class="summary-group limitation">
-        <view class="summary-label">数据限制</view>
-        <view class="summary-line" wx:for="{{matchSummary.limitations}}" wx:key="*this">
-          <text class="summary-dot"></text><text>{{item}}</text>
-        </view>
-      </view>
     </view>
 
     <view class="report-card card" wx:if="{{!detail.locked}}">
@@ -109,8 +103,6 @@
           <view wx:for="{{detail.aiReport.communication_suggestions}}" wx:key="*this" class="report-item">{{item}}</view>
           <view wx:if="{{detail.aiReport.first_date_suggestions.length}}" class="report-section-title-fallback">初次见面建议</view>
           <view wx:for="{{detail.aiReport.first_date_suggestions}}" wx:key="*this" class="report-item">{{item}}</view>
-          <view wx:if="{{detail.aiReport.data_limitations.length}}" class="report-section-title-fallback">数据限制</view>
-          <view wx:for="{{detail.aiReport.data_limitations}}" wx:key="*this" class="report-item">{{item}}</view>
         </block>
       </view>
       <block wx:else>

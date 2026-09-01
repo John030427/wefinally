@@ -7,6 +7,7 @@ const STORAGE_KEYS = {
   OPENID: 'wf_openid',
   AGREEMENT_ACCEPTED: 'wf_agreement_accepted',
   MATCH_SETTING_COOLDOWN: 'wf_match_setting_cooldown',
+  PROMOTE_CODE: 'wf_promote_code',
   PARTNER_TOKEN: 'wf_partner_token',
   PARTNER_INFO: 'wf_partner_info'
 }
@@ -205,6 +206,7 @@ App({
     wx.removeStorageSync(STORAGE_KEYS.USER_INFO)
     wx.removeStorageSync(STORAGE_KEYS.PARTNER_TOKEN)
     wx.removeStorageSync(STORAGE_KEYS.PARTNER_INFO)
+    wx.removeStorageSync(STORAGE_KEYS.PROMOTE_CODE)
   },
 
   checkNetwork(timeoutMs = networkCheckTimeoutMs) {

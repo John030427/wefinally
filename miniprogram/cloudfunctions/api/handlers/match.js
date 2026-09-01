@@ -39,6 +39,8 @@ const {
   shouldBlockUserForClaim,
   shouldExcludeHistoricalClaims
 } = require('../lib/qaRegistrationReplayPolicy')
+const { resolveQaTestRunEnabled } = require('../lib/qaAccessPolicy')
+const { readiness, enrollmentPatch, isReadyPartner } = require('../lib/qaRealDeviceMatchPolicy')
 
 function parseJson(value) {
   if (!value) return null
@@ -270,34 +272,7 @@ async function saveSetting(data, wxContext) {
   const user = await currentUser(wxContext)
   const existing = await first('user_match_setting', { user_id: user.id })
   const normalized = normalizeMatchSettingInput(data)
-  const intentProfile = compileIntentProfile(Object.assign({}, user, normalized, {
-    mode: normalizeMode()
-  }))
-  const intentProfileJson = JSON.stringify(intentProfile)
-  const alreadyConfirmed = Boolean(
-    existing && existing.intent_profile_confirmed_at && existing.intent_profile_json === intentProfileJson
-  )
-  const profileSource = Object.assign({}, user, normalized, {
-    identity_tags: user.identity_tags,
-    secondary_circle_ids: user.secondary_circle_ids
-  })
-  let aiMatchProfile = null
-  const existingAi = existing && existing.ai_match_profile_json
-    ? (typeof existing.ai_match_profile_json === 'string'
-      ? (() => { try { return JSON.parse(existing.ai_match_profile_json) } catch (e) { return null } })()
-      : existing.ai_match_profile_json)
-    : null
-  if (!existingAi || shouldInvalidateAiMatchProfile(existingAi, profileSource)) {
-    aiMatchProfile = compileAiMatchProfile(profileSource, {
-      intent: intentProfile,
-      profile_version: Number(existing && existing.profile_version || 0) + 1,
-      confirmed_by_user: alreadyConfirmed,
-      corrections: (existingAi && existingAi.corrections) || (existing && existing.ai_profile_corrections) || []
-    })
-  } else {
-    aiMatchProfile = existingAi
-  }
-  const payload = {
+  const canonicalPayload = {
     user_id: user.id,
     age_min: normalized.age_min,
     age_max: normalized.age_max,
@@ -312,20 +287,62 @@ async function saveSetting(data, wxContext) {
     self_view_text: normalized.self_view_text,
     target_view_text: normalized.target_view_text,
     other_requirements: normalized.other_requirements,
-    intent_profile_json: intentProfileJson,
-    intent_profile_confirmed_at: alreadyConfirmed ? existing.intent_profile_confirmed_at : null,
     psych_profile_json: data.psych_profile_json || data.psych_profile || null,
-    ai_match_profile_json: aiMatchProfile,
-    ai_match_profile_version: Number(aiMatchProfile.profile_version || 1),
-    ai_match_profile_source_version: aiMatchProfile.source_profile_version || sourceFingerprint(profileSource),
-    ai_match_profile_status: 'ready',
-    ai_match_profile_generated_at: aiMatchProfile.generated_at || now(),
-    profile_version: Number(aiMatchProfile.profile_version || 1),
     last_edit_time: memberStatus(user) === MEMBER_STATUS.APPROVED ? now() : null
   }
-  const saved = existing
-    ? await updateByDoc('user_match_setting', existing, payload)
-    : await addWithId('user_match_setting', payload, 'match_setting')
+  let saved = existing
+    ? await updateByDoc('user_match_setting', existing, canonicalPayload)
+    : await addWithId('user_match_setting', canonicalPayload, 'match_setting')
+
+  let intentProfile = null
+  let aiMatchProfile = null
+  let derivedProfileDegraded = false
+  let intentAlreadyConfirmed = false
+  try {
+    intentProfile = compileIntentProfile(Object.assign({}, user, normalized, {
+      mode: normalizeMode()
+    }))
+    const intentProfileJson = JSON.stringify(intentProfile)
+    intentAlreadyConfirmed = Boolean(
+      existing && existing.intent_profile_confirmed_at && existing.intent_profile_json === intentProfileJson
+    )
+    const profileSource = Object.assign({}, user, normalized, {
+      identity_tags: user.identity_tags,
+      secondary_circle_ids: user.secondary_circle_ids
+    })
+    const existingAi = existing && existing.ai_match_profile_json
+      ? (typeof existing.ai_match_profile_json === 'string'
+        ? (() => { try { return JSON.parse(existing.ai_match_profile_json) } catch (e) { return null } })()
+        : existing.ai_match_profile_json)
+      : null
+    aiMatchProfile = (!existingAi || shouldInvalidateAiMatchProfile(existingAi, profileSource))
+      ? compileAiMatchProfile(profileSource, {
+        intent: intentProfile,
+        profile_version: Number(existing && existing.profile_version || 0) + 1,
+        confirmed_by_user: intentAlreadyConfirmed,
+        corrections: (existingAi && existingAi.corrections) || (existing && existing.ai_profile_corrections) || []
+      })
+      : existingAi
+    saved = await updateByDoc('user_match_setting', saved, {
+      intent_profile_json: intentProfileJson,
+      intent_profile_confirmed_at: intentAlreadyConfirmed ? existing.intent_profile_confirmed_at : null,
+      ai_match_profile_json: aiMatchProfile,
+      ai_match_profile_version: Number(aiMatchProfile.profile_version || 1),
+      ai_match_profile_source_version: aiMatchProfile.source_profile_version || sourceFingerprint(profileSource),
+      ai_match_profile_status: 'ready',
+      ai_match_profile_generated_at: aiMatchProfile.generated_at || now(),
+      profile_version: Number(aiMatchProfile.profile_version || 1)
+    })
+  } catch (error) {
+    derivedProfileDegraded = true
+    console.error(`[match-setting] derived profile degraded code=${String(error && error.code || 'unknown').slice(0, 64)}`)
+    try {
+      saved = await updateByDoc('user_match_setting', saved, {
+        ai_match_profile_status: 'degraded',
+        ai_match_profile_error: 'derived_profile_unavailable'
+      })
+    } catch (markError) { /* canonical settings are already durable */ }
+  }
   // Keep the owner-scoped sparse corpus synchronized with the canonical
   // settings write. Retrieval callers use the same repository contract. A
   // missing corpus collection must not turn a successful settings save into a
@@ -339,7 +356,8 @@ async function saveSetting(data, wxContext) {
   return Object.assign(saved, {
     intent_profile: intentProfile,
     ai_match_profile: aiMatchProfile,
-    intent_confirmation_required: intentProfile.requires_confirmation && !alreadyConfirmed,
+    intent_confirmation_required: Boolean(intentProfile && intentProfile.requires_confirmation && !intentAlreadyConfirmed),
+    derived_profile_degraded: derivedProfileDegraded,
     rag_sync: ragSync
   })
 }
@@ -631,6 +649,10 @@ async function start(data, wxContext) {
     throw err
   }
   const user = await currentUser(wxContext)
+  return executeImmediateMatch(data, user)
+}
+
+async function executeImmediateMatch(data, user, options = {}) {
   if (!canUseMatching({ member_status: memberStatus(user), vipActive: isVipActive(user) })) {
     throw authError(memberStatus(user) === MEMBER_STATUS.APPROVED ? '请先开通 VIP' : '会员审核通过后才能进入匹配流程')
   }
@@ -653,11 +675,14 @@ async function start(data, wxContext) {
       historicalClaimsByPair.get(pairKey).push(Object.assign({}, row, { pair_key: pairKey }))
     } catch (err) { /* malformed historical rows remain unavailable candidates */ }
   })
+  const allowedCandidateIds = new Set((options.candidateIds || []).map((id) => Number(id)))
   const candidates = (await list('user', { status: 1 }, 100))
     .filter((item) => memberStatus(item) === MEMBER_STATUS.APPROVED)
+    .filter((item) => isVipActive(item, now()))
     .filter((item) => canEnterFormalCandidatePool(item))
     .filter((item) => canUseFixtureForMatch(user, item, now()))
     .filter((item) => sharesCandidateCohort(user, item))
+    .filter((item) => !allowedCandidateIds.size || allowedCandidateIds.has(Number(item.id)))
   if (data.dev_seed_current_user_candidates && candidates.length === 0) {
     candidates.push(await seedDemoCandidate(user))
   }
@@ -703,11 +728,21 @@ async function start(data, wxContext) {
     loadCorpus: loadRagCorpus
   })
   if (!reranked || reranked.applied !== true) {
+    const rerankReason = reranked && reranked.reason || 'ai_rerank_unavailable'
+    if (rerankReason === 'no_candidates') {
+      return {
+        matched: 0,
+        users: ranked.length + 1,
+        evaluated_candidates: ranked.length,
+        reason_code: 'no_qualified_candidates',
+        message: '暂无新的可用候选'
+      }
+    }
     return {
       matched: 0,
       users: ranked.length + 1,
       evaluated_candidates: ranked.length,
-      reason_code: reranked && reranked.reason || 'ai_rerank_unavailable',
+      reason_code: rerankReason,
       message: 'AI匹配暂不可用，请稍后重试'
     }
   }
@@ -788,7 +823,7 @@ async function start(data, wxContext) {
         ai_report_time: null,
         local_report_text: fallbackMatchReportText(user, partner),
         match_date: today,
-        match_type: abTestRunId ? 'A/B内测' : '双向算法测试',
+        match_type: options.matchType || (abTestRunId ? 'A/B内测' : '双向算法测试'),
         ab_test_run_id: abTestRunId,
       pair_key: pairKey
     })
@@ -805,7 +840,7 @@ async function start(data, wxContext) {
         ai_report_time: null,
         local_report_text: fallbackMatchReportText(partner, user),
         match_date: today,
-        match_type: abTestRunId ? 'A/B内测' : '双向算法测试',
+        match_type: options.matchType || (abTestRunId ? 'A/B内测' : '双向算法测试'),
         ab_test_run_id: abTestRunId,
       pair_key: pairKey
     })
@@ -864,6 +899,52 @@ async function start(data, wxContext) {
   }
 }
 
+async function startQaRealDeviceMatch(data, wxContext) {
+  const user = await currentUser(wxContext)
+  const publicEnabled = await flagEnabled('match_test_run_public_enabled')
+  if (!resolveQaTestRunEnabled(user, publicEnabled)) {
+    const error = new Error('仅测试账号可以运行双真机互配')
+    error.code = 403
+    throw error
+  }
+  const setting = await first('user_match_setting', { user_id: user.id })
+  const currentReadiness = readiness(user, setting, now())
+  if (!currentReadiness.ready) {
+    return {
+      matched: 0,
+      status: currentReadiness.code,
+      missing_fields: currentReadiness.missing,
+      message: currentReadiness.message
+    }
+  }
+
+  const patch = enrollmentPatch(user, now())
+  const enrolledUser = patch ? await updateByDoc('user', user, patch) : user
+  const allUsers = await list('user', { status: 1 }, 200)
+  const allSettings = await list('user_match_setting', {}, 500)
+  const settingsByUserId = {}
+  allSettings.forEach((row) => { settingsByUserId[String(row.user_id)] = row })
+  const readyPartners = allUsers.filter((candidate) => (
+    isReadyPartner(enrolledUser, candidate, settingsByUserId[String(candidate.id)], now())
+  ))
+  if (!readyPartners.length) {
+    return {
+      matched: 0,
+      status: 'waiting_partner',
+      enrolled: true,
+      message: '本机已准备好，请在另一台手机补齐资料后点击“两台真机互配测试”'
+    }
+  }
+
+  const result = await executeImmediateMatch({
+    request_id: String(data.request_id || `qa-real-device:${user.id}:${Date.now()}`)
+  }, enrolledUser, {
+    candidateIds: readyPartners.map((partner) => partner.id),
+    matchType: '双真机QA匹配'
+  })
+  return Object.assign({ status: result && Number(result.matched) === 1 ? 'matched' : 'no_match' }, result)
+}
+
 module.exports = {
   getSetting,
   cooldown,
@@ -878,6 +959,7 @@ module.exports = {
   handoff,
   generateReport,
   start,
+  startQaRealDeviceMatch,
   ...createMatchTestRunHandlers({
     currentUser,
     first,

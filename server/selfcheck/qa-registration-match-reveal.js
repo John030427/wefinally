@@ -4,6 +4,7 @@ const path = require('path')
 
 const {
   QA_REGISTRATION_CONFIRM_TEXT,
+  QA_REGISTRATION_PUBLIC_FLAG,
   canReplayRegistration,
   createQaMatchRunId,
   qaRunKey,
@@ -29,8 +30,10 @@ const { sharesCandidateCohort } = require('../../miniprogram/cloudfunctions/api/
 const { registrationReplayEnabledFromProfile } = require('../../miniprogram/utils/qaMatchSimulator')
 
 assert.strictEqual(canReplayRegistration({ account_mode: 'production' }), false)
+assert.strictEqual(canReplayRegistration({ account_mode: 'production' }, true), true)
 assert.strictEqual(canReplayRegistration({ qa_test_run_enabled: true }), true)
 assert.strictEqual(canReplayRegistration({ account_mode: 'internal_qa' }), true)
+assert.strictEqual(QA_REGISTRATION_PUBLIC_FLAG, 'qa_registration_replay_public_enabled')
 assert.throws(
   () => buildReplayRequestPatch({ confirm_text: '重新注册' }, new Date('2026-08-30T08:00:00Z')),
   /确认文字/
@@ -40,6 +43,7 @@ const requestPatch = buildReplayRequestPatch(
   new Date('2026-08-30T08:00:00Z')
 )
 assert.strictEqual(requestPatch.registration_replay_pending, 1)
+assert.strictEqual(requestPatch.qa_test_run_enabled, true)
 assert.strictEqual(requestPatch.qa_registration_reset_request_id, 'qa-reset-001')
 assert.strictEqual(requestPatch.qa_match_cohort, 'qa-real-device-registration-v1')
 assert.strictEqual(buildReplayCompletionPatch({ gender: '女', birth_year: '1994' }).gender, 2)
@@ -162,8 +166,9 @@ const panelSource = source('miniprogram/components/qa-match-panel/qa-match-panel
 const indexSource = source('miniprogram/pages/index/index.wxml')
 const indexJsSource = source('miniprogram/pages/index/index.js')
 assert.ok(routeSource.includes('POST /api/user/qa-registration-reset'))
-assert.ok(userSource.includes('canReplayRegistration(user)'))
-assert.ok(userSource.includes('qa_registration_replay_enabled: canReplayRegistration(user)'))
+assert.ok(userSource.includes('flagEnabled(QA_REGISTRATION_PUBLIC_FLAG)'))
+assert.ok(userSource.includes('canReplayRegistration(user, publicRegistrationReplayEnabled)'))
+assert.ok(userSource.includes('qa_registration_replay_enabled: canReplayRegistration(user, publicRegistrationReplayEnabled)'))
 assert.ok(userSource.includes("action: 'request_qa_registration_replay'"))
 assert.ok(userSource.includes("store.byDocId('user_match_setting', setting._id)"))
 assert.ok(authSource.includes('registration_replay_pending'))

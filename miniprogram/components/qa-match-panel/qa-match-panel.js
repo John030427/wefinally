@@ -149,6 +149,29 @@ Component({
       }
     },
 
+    async onRealDeviceMatch() {
+      if (!this.data.visible || this.data.running) return
+      this.setData({ running: true, statusText: '正在检查两台真机资料…' })
+      try {
+        const result = await post(API_PATHS.MATCH_QA_REAL_DEVICE_START, {
+          request_id: buildRequestId()
+        }, { showLoading: true, loadingText: '正在检查…' })
+        const message = (result && result.message) || ''
+        if (result && Number(result.matched) === 1) {
+          wx.showToast({ title: '双机匹配成功', icon: 'success' })
+          this.setData({ statusText: '双机匹配成功，可在匹配记录中查看' })
+          this.triggerEvent('completed', { status: 'matched', runId: '', executed: result })
+          return
+        }
+        wx.showToast({ title: message || '暂未匹配', icon: 'none' })
+        this.setData({ statusText: message || '暂未匹配' })
+      } catch (err) {
+        this.setData({ statusText: (err && err.message) || '双机匹配检查失败' })
+      } finally {
+        this.setData({ running: false })
+      }
+    },
+
     onResetRegistration() {
       if (!this.data.resetVisible || this.data.running) return
       wx.showModal({

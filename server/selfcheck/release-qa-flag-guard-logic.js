@@ -17,5 +17,6 @@ assert.strictEqual(shouldFailRelease('', false), false)
 const guardSource = require('fs').readFileSync(require('path').join(__dirname, 'release-qa-flag-guard.js'), 'utf8')
 assert(guardSource.includes('PUBLIC_QA_TEST_FLAG_MUST_BE_DISABLED'))
 assert(guardSource.includes('match_test_run_public_enabled'))
+assert(guardSource.includes('qa_registration_replay_public_enabled'))
 
 console.log('PASS release QA flag guard logic')

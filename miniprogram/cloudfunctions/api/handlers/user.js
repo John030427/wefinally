@@ -27,6 +27,7 @@ const { flagEnabled } = require('../lib/flags')
 const { resolveRegion } = require('../lib/regionNormalize')
 const {
   QA_REGISTRATION_CONFIRM_TEXT,
+  QA_REGISTRATION_PUBLIC_FLAG,
   canReplayRegistration,
   createQaMatchRunId,
   buildReplayRequestPatch,
@@ -127,10 +128,11 @@ async function replaceIdentityTags(userId, tags) {
 }
 
 async function profilePayload(user) {
-  const [setting, supportCode, publicTestRunEnabled, identityRows] = await Promise.all([
+  const [setting, supportCode, publicTestRunEnabled, publicRegistrationReplayEnabled, identityRows] = await Promise.all([
     first('user_match_setting', { user_id: user.id }),
     ensureUserSupportCode(user),
     flagEnabled('match_test_run_public_enabled'),
+    flagEnabled(QA_REGISTRATION_PUBLIC_FLAG),
     loadIdentityTags(user.id)
   ])
   const identity = resolveTestIdentity(user)
@@ -147,7 +149,7 @@ async function profilePayload(user) {
     account_mode: identity.account_mode,
     identity_kind: identity.kind,
     qa_test_run_enabled: resolveQaTestRunEnabled(user, publicTestRunEnabled),
-    qa_registration_replay_enabled: canReplayRegistration(user),
+    qa_registration_replay_enabled: canReplayRegistration(user, publicRegistrationReplayEnabled),
     primary_circle_id: summarized.primary_circle_id || user.circle_id,
     secondary_circle_ids: summarized.secondary_circle_ids,
     identity_tags: summarized.tags,
@@ -329,7 +331,8 @@ async function register(data, wxContext) {
 
 async function resetQaRegistration(data, wxContext) {
   const user = await currentUser(wxContext)
-  if (!canReplayRegistration(user)) {
+  const publicRegistrationReplayEnabled = await flagEnabled(QA_REGISTRATION_PUBLIC_FLAG)
+  if (!canReplayRegistration(user, publicRegistrationReplayEnabled)) {
     const error = new Error('仅显式 QA 测试账号可重新录入资料')
     error.code = 403
     throw error
@@ -346,7 +349,9 @@ async function resetQaRegistration(data, wxContext) {
   const setting = await first('user_match_setting', { user_id: user.id })
   await transaction(async (store) => {
     const current = await store.byId('user', user.id)
-    if (!current || !canReplayRegistration(current)) throw new Error('QA 测试账号状态已变化，请刷新后重试')
+    if (!current || !canReplayRegistration(current, publicRegistrationReplayEnabled)) {
+      throw new Error('QA 测试账号状态已变化，请刷新后重试')
+    }
     if (setting && setting._id) {
       const currentSetting = await store.byDocId('user_match_setting', setting._id)
       if (currentSetting) await store.updateByDoc('user_match_setting', currentSetting, buildResetMatchSettingPatch())

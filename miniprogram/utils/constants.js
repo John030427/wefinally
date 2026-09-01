@@ -23,6 +23,7 @@ const API_PATHS = {
   MATCH_AI_PROFILE_CORRECT: '/api/match/ai-profile/correct',
   MATCH_SETTING_COOLDOWN: '/api/match/setting/cooldown',
   MATCH_START: '/api/match/start',
+  MATCH_QA_REAL_DEVICE_START: '/api/match/qa-real-device/start',
   MATCH_LIST: '/api/match/list',
   MATCH_DETAIL: '/api/match/detail',
   MATCH_HANDOFF: '/api/match/handoff',
@@ -60,7 +61,8 @@ const API_PATHS = {
   DIVORCE_REVIEW: '/api/user/divorce-review',
   DIVORCE_REVIEW_STATUS: '/api/user/divorce-review/status',
   MEMBER_APPLICATION: '/api/member/application',
-  MEMBER_APPLICATION_SUBMIT: '/api/member/application/submit'
+  MEMBER_APPLICATION_SUBMIT: '/api/member/application/submit',
+  MEMBER_APPLICATION_REFERRAL: '/api/member/application/referral'
 }
 
 const GENDER_OPTIONS = ['男', '女']

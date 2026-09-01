@@ -3,6 +3,7 @@ const { ensureReferralAttribution, referralSource } = require('../../miniprogram
 
 async function main() {
   assert.strictEqual(referralSource('wf1.7.123.sig'), 'signed_token')
+  assert.strictEqual(referralSource('w1.7.abc.sig'), 'signed_token')
   assert.strictEqual(referralSource('WF7'), 'promote_code')
 
   const writes = []

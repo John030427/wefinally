@@ -202,7 +202,7 @@ async function inviteAssets(actor) {
     try {
       const result = await cloud.openapi.wxacode.getUnlimited({
         scene: referralScene,
-        page: 'pages/register/register',
+        page: 'pages/member-application/member-application',
         checkPath: false,
         envVersion: process.env.MINIPROGRAM_ENV_VERSION || 'trial'
       })
@@ -215,7 +215,7 @@ async function inviteAssets(actor) {
   return {
     promote_code: code,
     attribution_token: referral === code ? '' : referral,
-    miniprogram_path: `/pages/register/register?promote_code=${encodeURIComponent(referral)}`,
+    miniprogram_path: `/pages/member-application/member-application?promote_code=${encodeURIComponent(referral)}`,
     scene: referralScene,
     qrcode_base64: qrcodeBase64,
     qrcode_error: qrcodeError

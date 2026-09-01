@@ -12,6 +12,10 @@ const {
   SUBSCRIBE_TMPL_IDS
 } = require('../../utils/constants')
 const { getCooldownRemain, setCooldownEnd, validateTextLength } = require('../../utils/util')
+const {
+  nextMatchSettingAction,
+  matchSettingFailureMessage
+} = require('../../utils/matchSettingFlow')
 
 function normalizeLikeMarryLabel(value) {
   if (value === '未婚') return '仅看未婚'
@@ -368,7 +372,11 @@ Page({
     this.setData({ submitting: true })
     try {
       await post(API_PATHS.MATCH_INTENT_CONFIRM, {}, { showError: false })
-      if (this.data.memberStatus === 'approved') {
+      const nextAction = nextMatchSettingAction({
+        memberStatus: this.data.memberStatus,
+        intentConfirmationRequired: false
+      })
+      if (nextAction === 'complete') {
         this.setData({ intentConfirmation: null })
         wx.showToast({ title: '理解已确认', icon: 'success' })
         setTimeout(() => wx.navigateBack({ delta: 1 }), 600)
@@ -396,6 +404,7 @@ Page({
 
     this.setData({ submitting: true })
     const { form } = this.data
+    let stage = 'profile'
 
     try {
       const profile = await put(API_PATHS.USER_PROFILE_UPDATE, {
@@ -405,6 +414,7 @@ Page({
       app.globalData.userInfo = profile
       wx.setStorageSync(STORAGE_KEYS.USER_INFO, profile)
 
+      stage = 'setting'
       const savedSetting = await post(API_PATHS.MATCH_SETTING, {
         prefer_age: form.preferAge,
         prefer_education: form.preferEducation,
@@ -416,15 +426,23 @@ Page({
         expect_values: form.expectValues.trim(),
         other_requirements: form.otherRequirements.trim()
       }, { showLoading: true, loadingText: '保存中...' })
-      if (savedSetting && savedSetting.intent_confirmation_required) {
+      const nextAction = nextMatchSettingAction({
+        memberStatus: this.data.memberStatus,
+        intentConfirmationRequired: Boolean(savedSetting && savedSetting.intent_confirmation_required)
+      })
+      if (nextAction === 'confirm_intent') {
         this.setData({ intentConfirmation: savedSetting.intent_profile || null })
-      } else {
+      } else if (nextAction === 'submit_application') {
+        stage = 'application'
         await this.submitApplication()
+      } else {
+        wx.showToast({ title: '配置已保存', icon: 'success' })
+        setTimeout(() => wx.navigateBack({ delta: 1 }), 600)
       }
     } catch (err) {
       wx.showModal({
         title: '保存失败',
-        content: (err && err.message) || '请稍后重试',
+        content: matchSettingFailureMessage(stage, err),
         showCancel: false
       })
     } finally {

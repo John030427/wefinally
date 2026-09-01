@@ -130,7 +130,7 @@ function memory(user, extraUsers = [], options = {}) {
     semanticRerank: async (ranked, currentUser, settingsByUserId) => {
       semanticCalls.push({ ranked, currentUser, settingsByUserId })
       if (options.semanticApplied === false) {
-        return { applied: false, reason: 'disabled', model: '', ranked }
+        return { applied: false, reason: options.semanticReason || 'disabled', model: '', ranked }
       }
       return {
         applied: true,
@@ -192,6 +192,25 @@ async function main() {
   assert.strictEqual(unavailableCompleted.status, 'failed')
   assert.strictEqual(unavailableCompleted.reason_code, 'ai_rerank_unavailable')
   assert.strictEqual(unavailable.tables.user_match_log.length, 0)
+
+  const noCandidates = memory(publicUser, [], {
+    publicEnabled: true,
+    semanticApplied: false,
+    semanticReason: 'no_candidates'
+  })
+  const noCandidateFixture = noCandidates.tables.user.find((row) => row.id === fixture.id)
+  noCandidateFixture.fixture_access_mode = 'public_test_pool'
+  noCandidateFixture.fixture_mode = 'manual_step'
+  const noCandidatesCreated = await noCandidates.handlers.create({
+    request_id: 'req-no-candidates',
+    fixture_journey: 'manual_step'
+  }, {})
+  noCandidates.advance(10000)
+  const noCandidatesCompleted = await noCandidates.handlers.execute({ id: noCandidatesCreated.id }, {})
+  assert.strictEqual(noCandidatesCompleted.status, 'completed_no_match')
+  assert.strictEqual(noCandidatesCompleted.reason_code, 'no_qualified_candidates')
+  assert.match(noCandidatesCompleted.message, /未通过硬条件/)
+  assert.strictEqual(noCandidates.tables.user_match_log.length, 0)
 
   const qaMem = memory(qa)
   const [created, concurrentCreate] = await Promise.all([

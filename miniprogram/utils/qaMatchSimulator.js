@@ -7,7 +7,7 @@ const QA_SCENARIOS = [
   { value: 'decline', label: '暂不方便' },
   { value: 'no_response', label: '不回应' },
   { value: 'accept_no_prefs', label: '接受未填偏好' },
-  { value: 'manual_step', label: '手动推进' }
+  { value: 'manual_step', label: '合成对象 · 约会流程手动推进' }
 ]
 
 function buildRequestId() {

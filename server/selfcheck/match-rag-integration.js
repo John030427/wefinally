@@ -404,6 +404,7 @@ async function main() {
   })
   const originalCurrentUser = userHandler.currentUser
   let syncAttempts = 0
+  let derivedWriteAttempts = 0
   db.first = async () => null
   db.addWithId = async (name, data, prefix) => Object.assign({}, data, {
     _id: `${prefix || name}_901`,
@@ -411,7 +412,15 @@ async function main() {
     create_time: new Date('2026-09-01T00:00:00.000Z'),
     update_time: new Date('2026-09-01T00:00:00.000Z')
   })
-  db.updateByDoc = async (name, row, data) => Object.assign({}, row, data)
+  db.updateByDoc = async (name, row, data) => {
+    if (data && data.ai_match_profile_json) {
+      derivedWriteAttempts += 1
+      const error = new Error('SECRET_DERIVED_PROFILE_FAILURE')
+      error.code = 'derived_write_failed'
+      throw error
+    }
+    return Object.assign({}, row, data)
+  }
   db.listChunksByOwnerIds = async () => []
   db.upsertChunk = async () => {
     syncAttempts += 1
@@ -432,7 +441,13 @@ async function main() {
     assert.strictEqual(saved.rag_sync.synced, false)
     assert.strictEqual(saved.rag_sync.reason, 'corpus_unavailable')
     assert.strictEqual(syncAttempts, 1)
+    assert.strictEqual(derivedWriteAttempts, 1)
+    assert.strictEqual(saved.self_view_text, '重视真诚和责任')
+    assert.strictEqual(saved.target_view_text, '希望对方稳定沟通')
+    assert.strictEqual(saved.ai_match_profile_status, 'degraded')
+    assert.strictEqual(saved.derived_profile_degraded, true)
     assert(!JSON.stringify(saved).includes('SECRET_SYNC_FAILURE'))
+    assert(!JSON.stringify(saved).includes('SECRET_DERIVED_PROFILE_FAILURE'))
   } finally {
     Object.entries(originalDbMethods).forEach(([key, value]) => { db[key] = value })
     userHandler.currentUser = originalCurrentUser

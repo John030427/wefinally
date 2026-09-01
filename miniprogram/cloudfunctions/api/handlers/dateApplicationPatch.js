@@ -1,5 +1,10 @@
 const { normalizeApplication, STATUS } = require('../lib/dateCoordinationPolicy')
-const { previewApplicationChange, shareableSummary, cleanChanges } = require('../lib/dateApplicationPatchPolicy')
+const {
+  PATCHABLE_FIELDS,
+  previewApplicationChange,
+  shareableSummary,
+  cleanChanges
+} = require('../lib/dateApplicationPatchPolicy')
 const { publishCoordinationEvent } = require('../agent/dateCoordinationEvents')
 const { canStartAnotherRound, enqueueProcessing } = require('../lib/dateCoordinationProcessingPolicy')
 const {
@@ -70,6 +75,18 @@ function addHours(value, hours) {
 
 function owns(coordination, userId) {
   return coordination && [Number(coordination.user_a_id), Number(coordination.user_b_id)].includes(Number(userId))
+}
+
+function unwrapApplicationInput(input) {
+  let current = input
+  for (let depth = 0; depth < 3; depth += 1) {
+    if (!current || typeof current !== 'object' || Array.isArray(current)) break
+    const keys = Object.keys(current)
+    if (keys.some((key) => PATCHABLE_FIELDS.includes(key))) return current
+    if (!current.application || typeof current.application !== 'object' || Array.isArray(current.application)) break
+    current = current.application
+  }
+  return current
 }
 
 function publicPatch(row) {
@@ -241,9 +258,10 @@ function createDateApplicationPatchHandlers(overrides = {}) {
     if (!mine || !mine.application) {
       const isInvitee = Number(user.id) === Number(coordination.user_b_id)
       if (isInvitee && (coordination.invitation_proposal || latestForUser(rows, coordination.user_a_id, version))) {
+        const initialChanges = unwrapApplicationInput(data.changes)
         return createInitialPreviewForUser(Object.assign({}, data, {
-          changes: data.changes,
-          application: data.changes
+          changes: initialChanges,
+          application: initialChanges
         }), user, session)
       }
       throw new Error('请先完成自己的约会偏好表单')
@@ -332,7 +350,14 @@ function createDateApplicationPatchHandlers(overrides = {}) {
     if (mine && mine.application) throw new Error('约会申请已经存在，请使用修改预览')
     const initiatorApp = latestForUser(rows, coordination.user_a_id, version)
     const invitation = invitationProposalOf(coordination, initiatorApp)
-    const rawInput = data.application || data.changes || {}
+    const rawInput = unwrapApplicationInput(data.application || data.changes || {})
+    const rawKeys = rawInput && typeof rawInput === 'object' && !Array.isArray(rawInput)
+      ? Object.keys(rawInput)
+      : []
+    if (!rawKeys.length) throw new Error('请至少补充一项自己的约会条件')
+    if (rawKeys.some((key) => !PATCHABLE_FIELDS.includes(key))) {
+      throw new Error('约会申请参数格式无效，请重新说明时间或其他条件')
+    }
     const merged = invitation.areas.length
       ? mergeInvitationWithOverrides(invitation, rawInput)
       : rawInput

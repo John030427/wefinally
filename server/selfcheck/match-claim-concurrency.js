@@ -177,6 +177,7 @@ function qaDeliveryFixture(partnerId, pairRunKey, partnerRunId, options = {}) {
     partnerId,
     requestId: `qa-delivery-${partnerId}`,
     matchCycleId: '2026-08-28-FRI',
+    matchedAt: new Date(options.matchedAt || '2026-08-28T00:00:00.000Z'),
     qaMatchRunKey: pairRunKey,
     qaUserRunId: userRunId,
     qaPartnerRunId: partnerRunId,
@@ -288,11 +289,12 @@ function qaDeliveryFixture(partnerId, pairRunKey, partnerRunId, options = {}) {
     qaDeliveryFixture(20, 'qarunpair_ab_one', 'qarun_user_20_one'),
     qaReplayStore
   )
+  const replayRunStartedAt = new Date(Date.now() + 1000).toISOString()
   const qaSecondRun = await deliverPair(qaDeliveryFixture(
     20,
     'qarunpair_ab_two',
     'qarun_user_20_two',
-    { userRunId: 'qarun_user_3_two', runStartedAt: '2026-09-01T08:00:00.000Z' }
+    { userRunId: 'qarun_user_3_two', runStartedAt: replayRunStartedAt }
   ), qaReplayStore)
   assert.strictEqual(qaFirstRun.delivered, true)
   assert.strictEqual(qaSecondRun.delivered, true)

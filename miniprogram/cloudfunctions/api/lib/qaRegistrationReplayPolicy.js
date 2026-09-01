@@ -3,13 +3,14 @@ const { isInternalQaAccount } = require('./testIdentityPolicy')
 
 const QA_REGISTRATION_CONFIRM_TEXT = '重新注册测试资料'
 const QA_REAL_DEVICE_MATCH_COHORT = 'qa-real-device-registration-v1'
+const QA_REGISTRATION_PUBLIC_FLAG = 'qa_registration_replay_public_enabled'
 
 function boolFlag(value) {
   return value === true || value === 1 || value === '1'
 }
 
-function canReplayRegistration(user = {}) {
-  return boolFlag(user.qa_test_run_enabled) || isInternalQaAccount(user)
+function canReplayRegistration(user = {}, publicEnabled = false) {
+  return boolFlag(publicEnabled) || boolFlag(user.qa_test_run_enabled) || isInternalQaAccount(user)
 }
 
 function cohortKey(user = {}) {
@@ -98,6 +99,7 @@ function buildReplayRequestPatch(data = {}, timestamp = new Date()) {
   const requestId = String(data.request_id || '').trim()
   if (!/^[A-Za-z0-9_-]{8,80}$/.test(requestId)) throw new Error('重录请求编号无效')
   return {
+    qa_test_run_enabled: true,
     registration_replay_pending: 1,
     qa_registration_reset_request_id: requestId,
     qa_registration_reset_at: timestamp,
@@ -166,6 +168,7 @@ function buildResetMatchSettingPatch() {
 
 module.exports = {
   QA_REGISTRATION_CONFIRM_TEXT,
+  QA_REGISTRATION_PUBLIC_FLAG,
   QA_REAL_DEVICE_MATCH_COHORT,
   canReplayRegistration,
   createQaMatchRunId,

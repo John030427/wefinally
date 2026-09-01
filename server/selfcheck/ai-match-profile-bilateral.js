@@ -93,6 +93,8 @@ const presented = presentAiMatchReport({
 })
 assert.ok(presented.sections.some((section) => section.key === 'bilateral'))
 assert.ok(presented.sections.some((section) => section.key === 'why'))
+assert.ok(!presented.sections.some((section) => section.key === 'limits'))
+assert.ok(!JSON.stringify(presented).includes('数据限制'))
 assert.ok(!JSON.stringify(presented).includes('13800138000'))
 assert.ok(!JSON.stringify(presented).includes('对方说'))
 

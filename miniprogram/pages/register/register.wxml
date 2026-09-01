@@ -82,15 +82,9 @@
       </view>
 
       <view class="form-item">
-        <text class="form-label required">工作省份</text>
-        <picker mode="selector" range="{{provinceNames}}" value="{{form.provinceIndex}}" bindchange="onProvinceChange">
-          <view class="picker-value {{form.provinceName ? '' : 'placeholder'}}">{{form.provinceName || '请选择省份'}}</view>
-        </picker>
-      </view>
-      <view class="form-item">
-        <text class="form-label required">工作城市</text>
-        <picker mode="selector" range="{{cityOptions}}" value="{{form.cityIndex}}" bindchange="onCityChange" disabled="{{!form.provinceCode}}">
-          <view class="picker-value {{form.city ? '' : 'placeholder'}}">{{form.city || (form.provinceCode ? '请选择城市' : '请先选择省份')}}</view>
+        <text class="form-label required">工作地区</text>
+        <picker mode="region" level="city" value="{{[form.provinceName, form.city]}}" bindchange="onWorkRegionChange">
+          <view class="picker-value {{form.city ? '' : 'placeholder'}}">{{form.city ? form.provinceName + ' · ' + form.city : '请选择工作省份和城市'}}</view>
         </picker>
       </view>
 

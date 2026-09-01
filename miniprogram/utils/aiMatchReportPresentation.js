@@ -28,7 +28,6 @@ function presentAiMatchReport(report, options) {
   const differences = asList(report.differences).map(itemText).map(redactPrivate).filter(Boolean)
   const communication = asList(report.communication_suggestions).map(itemText).map(redactPrivate).filter(Boolean)
   const firstDate = asList(report.first_date_suggestions).map(itemText).map(redactPrivate).filter(Boolean)
-  const limitations = asList(report.data_limitations).map(itemText).map(redactPrivate).filter(Boolean)
   const summary = redactPrivate(report.summary || '')
 
   const whyLines = strengths.slice(0, 3)
@@ -63,15 +62,7 @@ function presentAiMatchReport(report, options) {
     },
     { key: 'fit', index: '03', title: '契合点', items: strengths.slice(0, 4) },
     { key: 'confirm', index: '04', title: '需要进一步确认', items: differences.slice(0, 4) },
-    { key: 'talk', index: '05', title: '第一次沟通建议', items: (communication.length ? communication : firstDate).slice(0, 3) },
-    {
-      key: 'limits',
-      index: '06',
-      title: '数据限制',
-      items: limitations.length
-        ? limitations.slice(0, 4)
-        : ['部分字段可能缺失；AI 画像置信度有限；尚无实际互动信息。']
-    }
+    { key: 'talk', index: '05', title: '第一次沟通建议', items: (communication.length ? communication : firstDate).slice(0, 3) }
   ].filter(function (section) {
     if (section.groups) {
       return section.groups.some(function (group) { return group.items && group.items.length })
