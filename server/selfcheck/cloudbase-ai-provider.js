@@ -10,7 +10,8 @@ const read = (file) => fs.readFileSync(path.join(root, file), 'utf8')
 
 const cloudbaseAi = require('../../miniprogram/cloudfunctions/api/lib/cloudbaseAi')
 const { getProviderConfig, generateDecision } = require('../../miniprogram/cloudfunctions/api/agent/provider')
-const { generateStructuredMatchReports } = require('../../miniprogram/cloudfunctions/api/lib/deepseek')
+const deepseek = require('../../miniprogram/cloudfunctions/api/lib/deepseek')
+const { generateStructuredMatchReports } = deepseek
 const { canOpenCoordinatorChat } = require('../../miniprogram/cloudfunctions/api/lib/dateCoordinationAccessPolicy')
 
 async function main() {
@@ -122,7 +123,34 @@ async function main() {
   assert.strictEqual('responseFormat' in cloudbaseRequest, false)
   assert.strictEqual('response_format' in cloudbaseRequest, false)
 
-  console.log('cloudbase-ai-provider selfcheck passed (AI PROVIDER TEST 01-17)')
+  // AI PROVIDER TEST 18 the dedicated rerank config must carry the unified
+  // CloudBase enabled state into generateText.
+  const previousRerankEnabled = process.env.DEEPSEEK_MATCH_RERANK_ENABLED
+  const previousAgentEnabled = process.env.AGENT_LLM_ENABLED
+  const previousGenerateText = cloudbaseAi.generateText
+  let capturedRerankConfig = null
+  process.env.DEEPSEEK_MATCH_RERANK_ENABLED = 'true'
+  process.env.AGENT_LLM_ENABLED = 'true'
+  cloudbaseAi.generateText = async (options) => {
+    capturedRerankConfig = options.config
+    return {
+      text: JSON.stringify({ version: 'match_semantic_rerank_v1', ranking: [] }),
+      usage: null,
+      metadata: { provider: 'cloudbase', model: 'hy3' }
+    }
+  }
+  try {
+    await deepseek.rerankMutualMatchCandidates({ candidates: [] })
+    assert.strictEqual(capturedRerankConfig.enabled, true)
+  } finally {
+    cloudbaseAi.generateText = previousGenerateText
+    if (previousRerankEnabled === undefined) delete process.env.DEEPSEEK_MATCH_RERANK_ENABLED
+    else process.env.DEEPSEEK_MATCH_RERANK_ENABLED = previousRerankEnabled
+    if (previousAgentEnabled === undefined) delete process.env.AGENT_LLM_ENABLED
+    else process.env.AGENT_LLM_ENABLED = previousAgentEnabled
+  }
+
+  console.log('cloudbase-ai-provider selfcheck passed (AI PROVIDER TEST 01-18)')
 }
 
 main().catch((err) => {
