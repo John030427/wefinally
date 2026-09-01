@@ -297,20 +297,14 @@ function projectSemanticRefs(refs) {
   return source.slice(0, MAX_SMOKE_REF_OUTPUT).map((value) => normalizedSemanticRef(value) || 'invalid_ref')
 }
 
-function sameCandidateMultiset(rawRefs, deterministicRefs) {
+function sameCandidateRefSequence(rawRefs, deterministicRefs) {
   if (!Array.isArray(rawRefs) || !Array.isArray(deterministicRefs)
     || rawRefs.length !== deterministicRefs.length) return false
-  const normalized = rawRefs.map(normalizedSemanticRef)
-  if (normalized.some((ref) => !ref)) return false
-  const counts = new Map()
-  normalized.forEach((ref) => counts.set(ref, (counts.get(ref) || 0) + 1))
-  const expected = new Map()
-  deterministicRefs.forEach((ref) => expected.set(ref, (expected.get(ref) || 0) + 1))
-  if (counts.size !== expected.size) return false
-  for (const [ref, count] of counts) {
-    if (expected.get(ref) !== count) return false
-  }
-  return true
+  return rawRefs.every((ref, index) => (
+    typeof ref === 'string'
+      && SAFE_SEMANTIC_REF.test(ref)
+      && ref === deterministicRefs[index]
+  ))
 }
 
 function boundedPublicErrorCode(err, action, numericCode) {
@@ -408,7 +402,7 @@ async function smokeSparseRag(input = {}) {
   const outputCandidateRefs = projectSemanticRefs(semanticOutputRefs)
   const candidateSetInvariant = rawSemanticRefs === null
     ? true
-    : sameCandidateMultiset(rawSemanticRefs, deterministicCandidateRefs)
+    : sameCandidateRefSequence(rawSemanticRefs, deterministicCandidateRefs)
   return {
     rag_mode: mode,
     retrieval_version: RETRIEVAL_VERSION,

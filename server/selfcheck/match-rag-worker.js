@@ -356,6 +356,47 @@ async function main() {
         assert.strictEqual(providerFailure.data.reason, 'invalid_result')
         assert.strictEqual(forbidden(providerFailure.data), false)
       }
+
+      const swappedProfiles = fixtureProfiles()
+      const extraProfile = JSON.parse(JSON.stringify(swappedProfiles[1]))
+      extraProfile.id = 103
+      extraProfile.profile.id = 103
+      extraProfile.settings.user_id = 103
+      swappedProfiles.push(extraProfile)
+      deepseek.rerankMutualMatchCandidates = async () => ({
+        enabled: true,
+        provider: 'cloudbase',
+        model: 'hy3',
+        response: {
+          version: 'match_semantic_rerank_v1',
+          ranking: ['candidate_2', 'candidate_1'].map((candidateRef, index) => ({
+            candidate_ref: candidateRef,
+            rank: index + 1,
+            a_to_b_semantic_score: 90,
+            b_to_a_semantic_score: 90,
+            mutual_semantic_score: 90,
+            mutual_strengths: [],
+            asymmetric_risks: [],
+            confirmation_questions: [],
+            evidence_tags: [],
+            strength_evidence_keys: [],
+            risk_evidence_keys: [],
+            missing_categories: [],
+            data_completeness: 0.9,
+            confidence: 0.9
+          }))
+        }
+      })
+      const swapped = await api.main({
+        action: 'smokeSparseRag',
+        payload: { worker_secret: WORKER_SECRET, fixture_only: true, profiles: swappedProfiles, rag_mode: 'active' }
+      })
+      assert.strictEqual(swapped.success, true)
+      assert.deepStrictEqual(swapped.data.input_candidate_refs, ['candidate_1', 'candidate_2'])
+      assert.deepStrictEqual(swapped.data.output_candidate_refs, ['candidate_2', 'candidate_1'])
+      assert.strictEqual(swapped.data.candidate_set_invariant, false)
+      assert.strictEqual(swapped.data.reason, 'invalid_result')
+      assert.strictEqual(forbidden(swapped.data), false)
     } finally {
       deepseek.rerankMutualMatchCandidates = previousRerank
       if (previousAiProvider === undefined) delete process.env.AI_PROVIDER
