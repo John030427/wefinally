@@ -703,11 +703,21 @@ async function start(data, wxContext) {
     loadCorpus: loadRagCorpus
   })
   if (!reranked || reranked.applied !== true) {
+    const rerankReason = reranked && reranked.reason || 'ai_rerank_unavailable'
+    if (rerankReason === 'no_candidates') {
+      return {
+        matched: 0,
+        users: ranked.length + 1,
+        evaluated_candidates: ranked.length,
+        reason_code: 'no_qualified_candidates',
+        message: '暂无新的可用候选'
+      }
+    }
     return {
       matched: 0,
       users: ranked.length + 1,
       evaluated_candidates: ranked.length,
-      reason_code: reranked && reranked.reason || 'ai_rerank_unavailable',
+      reason_code: rerankReason,
       message: 'AI匹配暂不可用，请稍后重试'
     }
   }

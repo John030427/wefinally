@@ -148,11 +148,22 @@ function createMatchTestRunHandlers(deps) {
         loadCorpus: deps.loadCorpus
       })
       if (!reranked || reranked.applied !== true) {
+        const rerankReason = reranked && reranked.reason || 'unavailable'
+        if (rerankReason === 'no_candidates') {
+          return publicRun(await deps.completeRun(claimedRun, { patch: {
+            status: 'completed_no_match',
+            reason_code: 'no_qualified_candidates',
+            matched_count: 0,
+            ai_rerank_applied: false,
+            ai_rerank_reason: rerankReason,
+            message: `当前资料与「${fixtureJourney}」合成画像未通过硬条件，本轮无匹配`
+          } }))
+        }
         return publicRun(await deps.completeRun(claimedRun, { patch: {
           status: 'failed',
           reason_code: 'ai_rerank_unavailable',
           ai_rerank_applied: false,
-          ai_rerank_reason: reranked && reranked.reason || 'unavailable',
+          ai_rerank_reason: rerankReason,
           message: 'AI匹配暂不可用，请稍后重试'
         } }))
       }

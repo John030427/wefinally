@@ -3,7 +3,7 @@
     <text class="qa-panel-badge">内部 QA</text>
     <text class="qa-panel-title">{{title}}</text>
   </view>
-  <view class="qa-panel-hint">仅测试账号可见，正式用户不会看到此区域</view>
+  <view class="qa-panel-hint">此处匹配内置合成测试对象，不会触发两台真机账号互配</view>
 
   <button class="qa-reset-link" wx:if="{{resetVisible}}" bindtap="onResetRegistration" disabled="{{running}}">
     重新注册测试资料
@@ -29,7 +29,7 @@
       bindtap="onToggleScenario"
       disabled="{{running || scenarioPickerVisible}}"
     >
-      测试下一轮匹配
+      测试合成对象匹配
     </button>
     <button
       class="qa-btn qa-btn-primary"
