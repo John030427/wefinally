@@ -1,18 +1,27 @@
 /**
- * RELEASE GUARD — fails if public QA match simulator is enabled in CloudBase.
+ * RELEASE GUARD — fails if any public QA capability is enabled in CloudBase.
  * Run before WeChat experience upload, audit submission, or production release:
  *   npm --prefix server run selfcheck:release-guard
  *
- * DEV NOTE: match_test_run_public_enabled is intentionally ON only during
- * internal testing. It must be disabled in cloud env + system_configs before release.
+ * DEV NOTE: public QA flags are intentionally ON only during internal testing.
+ * They must be disabled in cloud env + system_configs before release.
  */
 const { execSync } = require('child_process')
 const path = require('path')
 
 const envId = process.env.TCB_ENV || 'cloud1-d4gy8l52g08bba326'
 const root = path.resolve(__dirname, '../../miniprogram')
-const flagKey = 'match_test_run_public_enabled'
 const ERROR_CODE = 'PUBLIC_QA_TEST_FLAG_MUST_BE_DISABLED'
+const publicFlags = [
+  {
+    key: 'match_test_run_public_enabled',
+    envKey: 'MATCH_TEST_RUN_PUBLIC_ENABLED'
+  },
+  {
+    key: 'qa_registration_replay_public_enabled',
+    envKey: 'QA_REGISTRATION_REPLAY_PUBLIC_ENABLED'
+  }
+]
 
 function parseJson(raw) {
   return JSON.parse(raw.slice(raw.indexOf('{')))
@@ -23,15 +32,15 @@ function isTruthy(value) {
   return value === true || value === 1 || text === 'true' || text === '1' || text === 'yes' || text === 'on'
 }
 
-function readApiEnvFlag() {
+function readApiEnvFlag(envKey) {
   const raw = execSync(`tcb fn detail api -e ${envId} --json`, { cwd: root, encoding: 'utf8' })
   const detail = parseJson(raw)
   const vars = (((detail.data || detail).Environment || {}).Variables) || []
-  const row = vars.find((item) => item.Key === 'MATCH_TEST_RUN_PUBLIC_ENABLED')
+  const row = vars.find((item) => item.Key === envKey)
   return row ? String(row.Value || '') : ''
 }
 
-function readDbFlag() {
+function readDbFlag(flagKey) {
   const payload = JSON.stringify([{
     TableName: 'system_configs',
     CommandType: 'QUERY',
@@ -52,18 +61,23 @@ function readDbFlag() {
 }
 
 function main() {
-  const envValue = readApiEnvFlag()
-  const dbEnabled = readDbFlag()
-  const envEnabled = isTruthy(envValue)
-  if (envEnabled || dbEnabled) {
-    console.error(`${ERROR_CODE}: match_test_run_public_enabled must be disabled before release`)
-    console.error(JSON.stringify({
-      api_env_MATCH_TEST_RUN_PUBLIC_ENABLED: envValue || '(unset)',
-      system_configs_enabled: dbEnabled
-    }, null, 2))
+  const enabledFlags = publicFlags.map((flag) => {
+    const envValue = readApiEnvFlag(flag.envKey)
+    const dbEnabled = readDbFlag(flag.key)
+    return {
+      key: flag.key,
+      envKey: flag.envKey,
+      envValue: envValue || '(unset)',
+      dbEnabled,
+      enabled: isTruthy(envValue) || dbEnabled
+    }
+  }).filter((flag) => flag.enabled)
+  if (enabledFlags.length) {
+    console.error(`${ERROR_CODE}: public QA flags must be disabled before release`)
+    console.error(JSON.stringify({ enabledFlags }, null, 2))
     process.exit(1)
   }
-  console.log('PASS release QA public flag guard (disabled in CloudBase)')
+  console.log('PASS release QA public flags guard (disabled in CloudBase)')
 }
 
 main()
