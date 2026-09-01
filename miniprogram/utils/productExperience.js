@@ -108,7 +108,7 @@ function buildJourneyState(input) {
       'review_match',
       '当前 · 有一份新结果',
       '先看为什么匹配',
-      '重点核对优势、差异和数据限制，再决定是否推进',
+      '重点核对优势和差异，再决定是否推进',
       '查看匹配理由',
       `/pages/match-detail/match-detail?id=${data.latestMatch.id || data.latestMatch.matchId}`
     )

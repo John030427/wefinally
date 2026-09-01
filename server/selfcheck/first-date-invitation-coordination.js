@@ -286,22 +286,28 @@ async function main() {
   }))
   const overridePreview = await t07patches.createPreviewForUser({
     coordination_id: t06.invited.id,
-    changes: { areas: ['福田'] }
+    changes: {
+      application: {
+        availability: [{ date: SAT, periods: ['afternoon'] }],
+        areas: ['福田']
+      }
+    }
   }, t06.deps.rows.user[1])
   assert.ok(overridePreview.preview)
   assert.strictEqual(overridePreview.preview.application_source, 'invitee_override')
   assert.strictEqual(overridePreview.preview.preference_evidence.areas, 'explicit')
-  assert.strictEqual(overridePreview.preview.preference_evidence.availability, 'inherited')
+  assert.strictEqual(overridePreview.preview.preference_evidence.availability, 'explicit')
+  assert.ok(overridePreview.preview.changed_fields.includes('availability'))
   await t07patches.confirmForUser({ coordination_id: t06.invited.id, patch_id: overridePreview.id }, t06.deps.rows.user[1])
   const afterOverride = await t06.handlers.detail({ id: t06.invited.id }, { user_id: 2 })
   assert.deepStrictEqual(afterOverride.my_application.areas, ['福田'])
-  assert.ok(afterOverride.my_application.availability.some((item) => item.date === FRI))
+  assert.ok(afterOverride.my_application.availability.some((item) => item.date === SAT))
   assert.strictEqual(afterOverride.my_preference_evidence.areas, 'explicit')
   const shared = afterOverride.shared_coordination
   assert.ok(shared.ready)
   const timeDim = shared.dimensions.find((item) => item.key === 'time')
   const areaDim = shared.dimensions.find((item) => item.key === 'area')
-  assert.strictEqual(timeDim.status, 'agreed')
+  assert.strictEqual(timeDim.status, 'conflict')
   assert.strictEqual(areaDim.status, 'conflict')
 
   // TEST 08 B_FULL_PREFERENCE
