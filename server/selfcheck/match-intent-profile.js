@@ -9,6 +9,7 @@ const {
   compileIntentProfile
 } = require('../../miniprogram/cloudfunctions/api/lib/intentProfile')
 const { normalizeMatchSettingInput } = require('../../miniprogram/cloudfunctions/api/lib/memberPolicy')
+const { nextMatchSettingAction } = require('../../miniprogram/utils/matchSettingFlow')
 
 const supplement = '  希望未来在杭州或周边发展，重视稳定沟通；手机号 13800138000，不要写入模型。  '
 const sanitized = sanitizeSupplement(supplement)
@@ -92,7 +93,8 @@ assert(semanticService.includes('请先确认 AI 对你的理解后再开始匹�
 assert(semanticService.includes('你的匹配补充存在需要先厘清的矛盾'))
 assert(fs.readFileSync(path.resolve(__dirname, '../../miniprogram/cloudfunctions/api/handlers/route.js'), 'utf8').includes("POST /api/match/intent/confirm"))
 assert(matchPage.includes('onEditIntent'))
-assert(matchPage.includes("memberStatus === 'approved'"))
+assert.strictEqual(nextMatchSettingAction({ memberStatus: 'approved' }), 'complete')
+assert.strictEqual(nextMatchSettingAction({ memberStatus: 'pending_profile' }), 'submit_application')
 assert(matchWxml.includes('返回修改补充'))
 assert(matchWxml.includes('确认理解并保存'))
 
