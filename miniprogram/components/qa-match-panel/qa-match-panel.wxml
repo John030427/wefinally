@@ -9,6 +9,14 @@
     重新注册测试资料
   </button>
 
+  <view class="qa-real-device-block">
+    <view class="qa-scenario-label">两台真实微信账号</view>
+    <view class="qa-panel-hint">自动检查资料并加入隔离测试组；两台手机都点击后才会互配</view>
+    <button class="qa-btn qa-btn-real" bindtap="onRealDeviceMatch" disabled="{{running}}">
+      两台真机互配测试
+    </button>
+  </view>
+
   <view class="qa-scenario-block" wx:if="{{scenarioPickerVisible}}">
     <view class="qa-scenario-label">测试场景</view>
     <radio-group class="qa-scenario-group" bindchange="onScenarioChange">
@@ -23,7 +31,7 @@
     </radio-group>
   </view>
 
-  <view class="qa-actions">
+  <view class="qa-actions qa-synthetic-actions">
     <button
       class="qa-btn qa-btn-outline"
       bindtap="onToggleScenario"

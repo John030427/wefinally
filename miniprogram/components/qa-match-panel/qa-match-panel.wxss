@@ -60,6 +60,25 @@
   margin-bottom: 20rpx;
 }
 
+.qa-real-device-block {
+  padding: 18rpx;
+  margin-bottom: 20rpx;
+  border: 2rpx solid #efb3c0;
+  border-radius: 16rpx;
+  background: #fff8fa;
+}
+
+.qa-btn-real {
+  width: 100%;
+  color: #fff;
+  background: linear-gradient(135deg, #d14d6b, #f06d89);
+}
+
+.qa-synthetic-actions {
+  padding-top: 18rpx;
+  border-top: 2rpx dashed #e8dcc0;
+}
+
 .qa-scenario-label {
   font-size: 24rpx;
   color: #8a6d3b;

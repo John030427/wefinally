@@ -39,6 +39,8 @@ const {
   shouldBlockUserForClaim,
   shouldExcludeHistoricalClaims
 } = require('../lib/qaRegistrationReplayPolicy')
+const { resolveQaTestRunEnabled } = require('../lib/qaAccessPolicy')
+const { readiness, enrollmentPatch, isReadyPartner } = require('../lib/qaRealDeviceMatchPolicy')
 
 function parseJson(value) {
   if (!value) return null
@@ -631,6 +633,10 @@ async function start(data, wxContext) {
     throw err
   }
   const user = await currentUser(wxContext)
+  return executeImmediateMatch(data, user)
+}
+
+async function executeImmediateMatch(data, user, options = {}) {
   if (!canUseMatching({ member_status: memberStatus(user), vipActive: isVipActive(user) })) {
     throw authError(memberStatus(user) === MEMBER_STATUS.APPROVED ? '请先开通 VIP' : '会员审核通过后才能进入匹配流程')
   }
@@ -653,11 +659,14 @@ async function start(data, wxContext) {
       historicalClaimsByPair.get(pairKey).push(Object.assign({}, row, { pair_key: pairKey }))
     } catch (err) { /* malformed historical rows remain unavailable candidates */ }
   })
+  const allowedCandidateIds = new Set((options.candidateIds || []).map((id) => Number(id)))
   const candidates = (await list('user', { status: 1 }, 100))
     .filter((item) => memberStatus(item) === MEMBER_STATUS.APPROVED)
+    .filter((item) => isVipActive(item, now()))
     .filter((item) => canEnterFormalCandidatePool(item))
     .filter((item) => canUseFixtureForMatch(user, item, now()))
     .filter((item) => sharesCandidateCohort(user, item))
+    .filter((item) => !allowedCandidateIds.size || allowedCandidateIds.has(Number(item.id)))
   if (data.dev_seed_current_user_candidates && candidates.length === 0) {
     candidates.push(await seedDemoCandidate(user))
   }
@@ -798,7 +807,7 @@ async function start(data, wxContext) {
         ai_report_time: null,
         local_report_text: fallbackMatchReportText(user, partner),
         match_date: today,
-        match_type: abTestRunId ? 'A/B内测' : '双向算法测试',
+        match_type: options.matchType || (abTestRunId ? 'A/B内测' : '双向算法测试'),
         ab_test_run_id: abTestRunId,
       pair_key: pairKey
     })
@@ -815,7 +824,7 @@ async function start(data, wxContext) {
         ai_report_time: null,
         local_report_text: fallbackMatchReportText(partner, user),
         match_date: today,
-        match_type: abTestRunId ? 'A/B内测' : '双向算法测试',
+        match_type: options.matchType || (abTestRunId ? 'A/B内测' : '双向算法测试'),
         ab_test_run_id: abTestRunId,
       pair_key: pairKey
     })
@@ -874,6 +883,52 @@ async function start(data, wxContext) {
   }
 }
 
+async function startQaRealDeviceMatch(data, wxContext) {
+  const user = await currentUser(wxContext)
+  const publicEnabled = await flagEnabled('match_test_run_public_enabled')
+  if (!resolveQaTestRunEnabled(user, publicEnabled)) {
+    const error = new Error('仅测试账号可以运行双真机互配')
+    error.code = 403
+    throw error
+  }
+  const setting = await first('user_match_setting', { user_id: user.id })
+  const currentReadiness = readiness(user, setting, now())
+  if (!currentReadiness.ready) {
+    return {
+      matched: 0,
+      status: currentReadiness.code,
+      missing_fields: currentReadiness.missing,
+      message: currentReadiness.message
+    }
+  }
+
+  const patch = enrollmentPatch(user, now())
+  const enrolledUser = patch ? await updateByDoc('user', user, patch) : user
+  const allUsers = await list('user', { status: 1 }, 200)
+  const allSettings = await list('user_match_setting', {}, 500)
+  const settingsByUserId = {}
+  allSettings.forEach((row) => { settingsByUserId[String(row.user_id)] = row })
+  const readyPartners = allUsers.filter((candidate) => (
+    isReadyPartner(enrolledUser, candidate, settingsByUserId[String(candidate.id)], now())
+  ))
+  if (!readyPartners.length) {
+    return {
+      matched: 0,
+      status: 'waiting_partner',
+      enrolled: true,
+      message: '本机已准备好，请在另一台手机补齐资料后点击“两台真机互配测试”'
+    }
+  }
+
+  const result = await executeImmediateMatch({
+    request_id: String(data.request_id || `qa-real-device:${user.id}:${Date.now()}`)
+  }, enrolledUser, {
+    candidateIds: readyPartners.map((partner) => partner.id),
+    matchType: '双真机QA匹配'
+  })
+  return Object.assign({ status: result && Number(result.matched) === 1 ? 'matched' : 'no_match' }, result)
+}
+
 module.exports = {
   getSetting,
   cooldown,
@@ -888,6 +943,7 @@ module.exports = {
   handoff,
   generateReport,
   start,
+  startQaRealDeviceMatch,
   ...createMatchTestRunHandlers({
     currentUser,
     first,

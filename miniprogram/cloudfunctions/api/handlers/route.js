@@ -68,6 +68,7 @@ function route(method, path) {
     'POST /api/match/ai-profile/correct': match.correctAiProfile,
     'GET /api/match/setting/cooldown': match.cooldown,
     'POST /api/match/start': match.start,
+    'POST /api/match/qa-real-device/start': match.startQaRealDeviceMatch,
     'POST /api/match/test-runs': match.create,
     'POST /api/match/report': match.generateReport,
     'POST /api/match/report-tasks': reportTask.create,
