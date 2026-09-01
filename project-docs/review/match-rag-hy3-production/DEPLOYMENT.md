@@ -112,13 +112,18 @@ deterministic matcher; do not delete the collection as part of rollback.
 
 - Reviewed branch: `codex/rag-hy3-production`; deployed code includes
   `e1f0a27`, the HY3 contract fixes `5b7de76` and `0df80b9`, and redacted
-  provider diagnostics `850a657`.
+  provider diagnostics `850a657`, plus the enforced provider deadline in
+  `b1bcab5` / `b1558fa`.
 - Existing Event Functions were updated in place. `api` remains
   `Nodejs16.13`; `match-worker` remains `Nodejs20.19`; the existing worker
   timer trigger was preserved. Both converged to `Active` / `Available`.
-- Unrelated environment variables were preserved. Effective RAG variables on
-  both functions are `MATCH_RAG_MODE=active`, `MATCH_RAG_MODEL=hy3`, and
+- Unrelated environment variables were preserved. Final effective RAG
+  variables on both functions are `MATCH_RAG_MODE=shadow`,
+  `MATCH_RAG_MODEL=hy3`, and
   `MATCH_RAG_RETRIEVAL_VERSION=sparse_bm25_v1`.
+- `api` also has `DEEPSEEK_MATCH_RERANK_ENABLED=true` and an explicit bounded
+  rerank timeout of 12000 ms. These values were verified after the final
+  configuration update; `active` alone is not treated as enabling the model.
 - Created private collection `user_evidence_chunks` with the three required
   indexes: `owner_evidence_unique`, `owner_enabled`, and `content_hash`.
 - Dry-run backfill request `66409d3f-3858-4541-af72-3d367f98ff5e` scanned 59
@@ -147,11 +152,23 @@ deterministic matcher; do not delete the collection as part of rollback.
 - Activation smoke request `d9dd4d07-6ec9-4a6a-8c28-431dbced9697` ran in
   `active`, used `cloudbase` / `hy3`, returned 8 evidence keys, and preserved
   the exact one-candidate input/output set with zero invalid references.
+- Provider-timeout smoke request `7414d006-e05b-4878-a7a3-95e274f8026d`
+  enforced a 1 ms application deadline, returned bounded `timeout` in about
+  0.5 seconds, and preserved the exact candidate sequence. The production
+  timeout was then restored and verified at 12000 ms.
+- `miniprogram/cloudbaserc.json` now declares `api` as `Nodejs16.13`, matching
+  the live function. The worker and agent graph declarations remain
+  `Nodejs20.19`; this prevents a future config-driven deploy from silently
+  changing the API runtime.
 - The monitoring time-series endpoint had not yet emitted samples for these
   fresh invocations at close-out. Direct invocation envelopes reported success
   with no function error or timeout; this metrics-ingestion delay remains an
   explicit post-deployment observation item rather than being reported as
   zero errors.
 
-Activation decision: keep `active`. Rollback remains setting
-`MATCH_RAG_MODE=off` on both functions; the private corpus can remain intact.
+Final activation decision after independent review: keep `shadow` until the
+CloudBase invocation/error/timeout metric window returns usable samples and is
+reviewed. The temporary `active` smoke succeeded, but direct invocation
+receipts do not substitute for the written metrics gate. Rollback remains
+setting `MATCH_RAG_MODE=off` on both functions; the private corpus can remain
+intact.
