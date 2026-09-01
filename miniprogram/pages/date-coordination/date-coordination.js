@@ -89,7 +89,9 @@ function buildCoordinationDisplay(coordination) {
       ? waitingPartnerHero
       : (status === 'collecting_preferences' ? coordinatingHero
         : (status === 'no_overlap'
-          ? '目前还没有找到完整共同安排。已经一致的条件不会再重复询问。'
+          ? (coordination.counter_offer_card
+            ? `对方提出了新的候选时间：${coordination.counter_offer_card.time_text}。你可以接受，或继续告诉 AI 其他可约时间。`
+            : '目前还没有找到完整共同安排。已经一致的条件不会再重复询问。')
           : (status === 'waiting_confirmations'
             ? '已有推荐方案待确认。你也可以继续和 AI 协调员沟通微调。'
             : '正在帮助双方寻找共同安排。你可以随时告诉 AI 想调整的地方。')))
@@ -234,6 +236,8 @@ Page({
       { value: 'flexible', label: '🌈 灵活' }
     ],
     proposal: null,
+    counterOfferCard: null,
+    acceptingCounterOffer: false,
     submitting: false,
     responding: false
   },
@@ -341,6 +345,7 @@ Page({
       showOptionalFullForm: Boolean(coordinationDisplay.showOptionalFullForm),
       invitationCard: coordination.invitation_card || null,
       sharedCoordination: coordination.shared_coordination || null,
+      counterOfferCard: coordination.counter_offer_card || null,
       proposalCard: proposal,
       resultCard: coordination.view_model && coordination.view_model.result_card || null,
       coordinatorHeroText: coordinationDisplay.coordinatorHeroText,
@@ -677,6 +682,26 @@ Page({
 
   async confirmProposal() {
     return this.respondToProposal('confirm')
+  },
+
+  async acceptCounterOffer() {
+    const offer = this.data.counterOfferCard
+    if (!offer || this.data.acceptingCounterOffer) return
+    this.setData({ acceptingCounterOffer: true })
+    try {
+      const result = await post(`${API_PATHS.DATE_COORDINATIONS}/${this.data.coordinationId}/counter-offer/accept`, {
+        coordination_version: Number(offer.coordination_version || this.data.coordination.coordination_version),
+        date: offer.date,
+        period: offer.period
+      }, { showError: false })
+      this.applyCoordination(normalizeCoordination(result))
+      wx.showToast({ title: '已接受，正在重新协调', icon: 'success' })
+    } catch (err) {
+      wx.showToast({ title: (err && err.message) || '接受失败，请刷新后重试', icon: 'none', duration: 3000 })
+      this.refreshCoordination(true)
+    } finally {
+      this.setData({ acceptingCounterOffer: false })
+    }
   },
 
   async rejectProposal() {

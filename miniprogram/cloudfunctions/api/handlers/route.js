@@ -129,6 +129,10 @@ function route(method, path) {
     coordination_id: Number(m[1]),
     patch_id: Number(m[2])
   })
+  m = path.match(/^\/api\/date-coordinations\/(\d+)\/counter-offer\/accept$/)
+  if (method === 'POST' && m) return withParams(dateCoordination.acceptCounterOffer, {
+    coordination_id: Number(m[1])
+  })
   m = path.match(/^\/api\/date-coordinations\/(\d+)\/proposals\/(\d+)\/confirm$/)
   if (method === 'POST' && m) return withParams(dateCoordination.confirmProposal, {
     coordination_id: Number(m[1]),

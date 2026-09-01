@@ -211,6 +211,12 @@ function ownPreferenceOf(state: DateCoordinationState): CoordinationPreference {
   return state.party === 'A' ? state.partyAState : state.partyBState
 }
 
+function counterOfferOf(state: DateCoordinationState): Record<string, unknown> | null {
+  const value = state.sharedState?.counterOffer
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  return value as Record<string, unknown>
+}
+
 function proactiveAsk(state: DateCoordinationState, focus: CoordinationConflictField): string {
   const own = ownPreferenceOf(state)
   if (focus === 'dateWindows') {
@@ -356,6 +362,15 @@ export function buildDateCoordinationGraph(dependencies: DateCoordinationGraphDe
           proposal: null,
           pendingAction: null,
           replyDraft: (waitText + (state.replyDraft ? '\n' + state.replyDraft : '')).trim()
+        }
+      }
+      const counterOffer = counterOfferOf(state)
+      if (counterOffer && typeof counterOffer.time_text === 'string') {
+        return {
+          phase: 'review_counter_offer',
+          proposal: null,
+          pendingAction: null,
+          replyDraft: `对方提出了一个新的候选时间：${sanitizeGraphText(counterOffer.time_text, 80)}。如果这个时间也可以，请在协调页点击“接受这个时间”；如果不方便，直接告诉我你还能接受的时间。`
         }
       }
       if (overlap.missingFields.length > 0) {

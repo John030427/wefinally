@@ -205,7 +205,17 @@
       </block>
     </view>
 
-    <view class="proposal-card card" wx:if="{{coordination.status === 'no_overlap'}}">
+    <view class="proposal-card counter-offer-card card" wx:if="{{coordination.status === 'no_overlap' && counterOfferCard}}">
+      <view class="counter-offer-kicker">对方的新建议</view>
+      <view class="section-title">{{counterOfferCard.title}}</view>
+      <view class="counter-offer-time">{{counterOfferCard.time_text}}</view>
+      <view class="public-note">{{counterOfferCard.body}}</view>
+      <button class="primary-btn full-btn" bindtap="acceptCounterOffer" loading="{{acceptingCounterOffer}}" disabled="{{acceptingCounterOffer}}">接受这个时间</button>
+      <button class="outline-btn full-btn counter-offer-adjust" bindtap="goCoordinator">我再提供其他时间</button>
+      <view class="muted counter-offer-hint">接受后仍需系统重新计算，不会直接确认约会。</view>
+    </view>
+
+    <view class="proposal-card card" wx:if="{{coordination.status === 'no_overlap' && !counterOfferCard}}">
       <view class="section-title">还需要继续协调</view>
       <view class="public-note">已经一致的条件会保留在上方卡片里。请只和 AI 讨论还没解决的差异。</view>
       <button class="primary-btn full-btn" bindtap="goCoordinator">和 AI 继续协调</button>

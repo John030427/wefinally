@@ -13,6 +13,7 @@ const {
 } = require('../lib/syntheticPartnerJourney')
 const { MAX_COORDINATION_ROUNDS, roundNumber, canStartAnotherRound, enqueueProcessing } = require('../lib/dateCoordinationProcessingPolicy')
 const { publishCoordinationEvent } = require('../agent/dateCoordinationEvents')
+const { buildTimeCounterOffer, mergeAcceptedTime } = require('../lib/dateCounterOfferPolicy')
 const {
   ACTIVE_COORDINATION_STATUSES,
   canOpenCoordinatorChat,
@@ -1047,6 +1048,12 @@ function createDateCoordinationHandlers(overrides = {}) {
         user_b_id: coordination.user_b_id
       }
     )
+    const counterOfferCard = buildTimeCounterOffer({
+      coordination,
+      applicationA: initiatorApp && initiatorApp.application,
+      applicationB: inviteeApp && inviteeApp.application,
+      viewerUserId: user.id
+    })
     const activeProposal = proposals.find((item) => item.status === 'active')
       || (coordination.final_proposal_id
         ? proposals.find((item) => Number(item.id) === Number(coordination.final_proposal_id))
@@ -1116,6 +1123,7 @@ function createDateCoordinationHandlers(overrides = {}) {
       my_preference_evidence: mine && mine.preference_evidence ? Object.assign({}, mine.preference_evidence) : null,
       invitation_card: invitationCard,
       shared_coordination: sharedCoordination,
+      counter_offer_card: counterOfferCard,
       proposal_card: proposalCard,
       coordinator_welcome: coordinatorWelcomeText(Object.assign({}, coordination, {
         my_application: mine && mine.application
@@ -1198,6 +1206,50 @@ function createDateCoordinationHandlers(overrides = {}) {
   async function confirmProposal(data, wxContext) {
     const user = await dep('currentUser')(wxContext)
     return confirmProposalForUser(data, user)
+  }
+
+  async function acceptCounterOffer(data, wxContext) {
+    const user = await dep('currentUser')(wxContext)
+    return acceptCounterOfferForUser(data, user)
+  }
+
+  async function acceptCounterOfferForUser(data, user) {
+    const coordination = await dep('byId')('date_coordination', coordinationId(data))
+    if (!coordination || !participant(coordination, user.id)) throw new Error('无权接受该候选时间')
+    const version = Number(coordination.coordination_version || 1)
+    if (Number(data.coordination_version || data.coordinationVersion || 0) !== version) {
+      throw new Error('候选时间已更新，请刷新后重试')
+    }
+    const applications = await dep('list')('date_coordination_application', {
+      coordination_id: Number(coordination.id),
+      coordination_version: version
+    }, 10)
+    const applicationA = applications.find((item) => Number(item.user_id) === Number(coordination.user_a_id))
+    const applicationB = applications.find((item) => Number(item.user_id) === Number(coordination.user_b_id))
+    const mine = applications.find((item) => Number(item.user_id) === Number(user.id))
+    const counterOffer = buildTimeCounterOffer({
+      coordination,
+      applicationA: applicationA && applicationA.application,
+      applicationB: applicationB && applicationB.application,
+      viewerUserId: user.id
+    })
+    if (!counterOffer
+      || String(data.date || '') !== counterOffer.date
+      || String(data.period || '') !== counterOffer.period) {
+      throw new Error('候选时间已更新，请刷新后重试')
+    }
+    if (!mine || !mine.application) throw new Error('请先完成自己的约会偏好')
+
+    const patchHandlers = overrides.applicationPatchHandlers || require('./dateApplicationPatch').createDateApplicationPatchHandlers()
+    const patch = await patchHandlers.createPreviewForUser({
+      coordination_id: Number(coordination.id),
+      changes: {
+        availability: mergeAcceptedTime(mine.application.availability, counterOffer)
+      }
+    }, user)
+    await patchHandlers.confirmForUser({ patch_id: Number(patch.id) }, user)
+    const updated = await dep('byId')('date_coordination', Number(coordination.id))
+    return detailFor(updated || coordination, user)
   }
 
   async function confirmProposalForUser(data, user) {
@@ -1455,6 +1507,8 @@ function createDateCoordinationHandlers(overrides = {}) {
     detail,
     confirmProposal,
     confirmProposalForUser,
+    acceptCounterOffer,
+    acceptCounterOfferForUser,
     recoordinate,
     retryProcessing,
     maybeAdvanceSyntheticPartner,
@@ -1479,6 +1533,7 @@ module.exports = {
   detail: handler('detail'),
   fixtureResponse: handler('fixtureResponse'),
   confirmProposal: handler('confirmProposal'),
+  acceptCounterOffer: handler('acceptCounterOffer'),
   recoordinate: handler('recoordinate'),
   retryProcessing: handler('retryProcessing'),
   advanceSynthetic: handler('advanceSynthetic'),

@@ -47,6 +47,16 @@ export const SharedCoordinationStateSchema = z.object({
   durationCompatibility: z.string().max(40).optional(),
   missingDimensions: z.array(z.string().max(40)).max(12).optional(),
   activeProposalSummary: z.record(z.string(), z.unknown()).nullable().optional(),
+  counterOffer: z.object({
+    kind: z.literal('partner_time_counter_offer'),
+    coordination_version: z.number().int().positive(),
+    dimension: z.literal('time'),
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    period: z.enum(['morning', 'afternoon', 'evening', 'night']),
+    time_text: z.string().min(1).max(80),
+    title: z.string().min(1).max(80),
+    body: z.string().min(1).max(200)
+  }).strict().nullable().optional(),
   actionRequired: z.string().max(80).optional()
 }).strict()
 

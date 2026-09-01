@@ -200,3 +200,33 @@ test('backend payment conflict prevents graph from claiming a complete plan', ()
   assert.equal(overlap.hasOverlap, false)
   assert.deepEqual(overlap.conflictFields, ['payment'])
 })
+
+test('backend counter offer is surfaced as an actionable negotiation step', async () => {
+  const graph = buildDateCoordinationGraph({ checkpointer: new MemorySaver() })
+  const result = await graph.invoke(state({
+    canonicalOverlap: {
+      source: 'backend',
+      hasOverlap: false,
+      missingDimensions: ['time'],
+      conflictDimensions: ['time'],
+      proposal: null
+    },
+    sharedState: {
+      actionRequired: 'review_counter_offer',
+      counterOffer: {
+        kind: 'partner_time_counter_offer',
+        coordination_version: 3,
+        dimension: 'time',
+        date: '2026-09-06',
+        period: 'afternoon',
+        time_text: '2026-09-06 下午',
+        title: '对方提出了一个新的候选时间',
+        body: '接受后重新计算。'
+      }
+    }
+  }), { configurable: { thread_id: 'wf_thread_coordination_counter_offer' } })
+  assert.equal(result.phase, 'review_counter_offer')
+  assert.match(String(result.replyDraft), /2026-09-06 下午/)
+  assert.match(String(result.replyDraft), /接受这个时间/)
+  assert.equal(result.pendingAction, null)
+})

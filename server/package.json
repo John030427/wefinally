@@ -20,6 +20,7 @@
     "selfcheck": "node selfcheck/run-all.js",
     "selfcheck:cloudbase": "node selfcheck/cloudbase-migration.js",
     "selfcheck:agent-core": "node selfcheck/agent-core.js",
+    "selfcheck:date-counter-offer": "node selfcheck/date-counter-offer.js",
     "selfcheck:cloudbase-ai": "node selfcheck/cloudbase-ai-provider.js",
     "selfcheck:cloudbase-ai-live": "node selfcheck/cloudbase-ai-live-smoke.js",
     "selfcheck:agent": "node selfcheck/cloudbase-ai-provider.js && node selfcheck/langgraph-client.js && node selfcheck/langgraph-tool-bridge.js && node selfcheck/agent-core.js && node selfcheck/agent-chat.js && node selfcheck/agent-route-contract.js && node selfcheck/date-coordination-policy.js && node selfcheck/date-coordination-cloud.js && node selfcheck/date-coordination-processing-store.js && node selfcheck/date-coordination-events.js && node selfcheck/date-coordination-async-characterization.js && node selfcheck/date-application-patch.js && node selfcheck/date-coordination-logic-audit.js && node selfcheck/first-date-invitation-coordination.js && node selfcheck/controlled-date-langgraph-e2e.js && node selfcheck/synthetic-coordination-bilateral-e2e.js && node selfcheck/real-ui-fixture-date-langgraph-e2e.js && node selfcheck/request-resilience.js && node selfcheck/agent-ui.js && node selfcheck/product-experience.js && node selfcheck/product-experience-pages.js && node selfcheck/agent-backoffice.js && node selfcheck/agent-operations.js && node selfcheck/coordination-notification-concurrency.js",

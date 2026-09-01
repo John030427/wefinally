@@ -149,7 +149,9 @@ function projectParticipantEvent(event = {}, context = {}) {
     },
     no_overlap: {
       stage: 'no_overlap',
-      content: '本轮暂未找到双方都合适的时间、区域和活动组合。你可以继续告诉我可调整范围。'
+      content: event.counter_offer && !mine
+        ? `对方提出了新的候选时间：${String(event.counter_offer.time_text || '')}。请在协调页选择接受，或继续告诉我其他可约时间。`
+        : '本轮暂未找到双方都合适的时间、区域和活动组合。你可以继续告诉我可调整范围。'
     },
     proposal_confirmed: {
       stage: mine ? 'my_proposal_confirmed' : 'partner_proposal_confirmed',

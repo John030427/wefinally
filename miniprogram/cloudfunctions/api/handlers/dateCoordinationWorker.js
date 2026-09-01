@@ -1,5 +1,6 @@
 const { computeOverlap } = require('../lib/dateCoordinationPolicy')
 const { publishCoordinationEvent } = require('../agent/dateCoordinationEvents')
+const { buildTimeCounterOffer } = require('../lib/dateCounterOfferPolicy')
 
 function defaultDeps() {
   const db = require('../lib/db')
@@ -52,13 +53,27 @@ async function processCoordinationTasks(options = {}) {
       if (result && result.applied) {
         completed += 1
         const proposals = result.proposals || []
+        const changedByUserId = Number(result.coordination.last_changed_by_user_id || 0)
+        const counterViewerId = changedByUserId === Number(result.coordination.user_a_id)
+          ? Number(result.coordination.user_b_id)
+          : (changedByUserId === Number(result.coordination.user_b_id) ? Number(result.coordination.user_a_id) : 0)
+        const counterOffer = !proposals.length && counterViewerId
+          ? buildTimeCounterOffer({
+            coordination: result.coordination,
+            applicationA,
+            applicationB,
+            viewerUserId: counterViewerId
+          })
+          : null
         try {
           await deps.publishCoordinationEvent({
             coordination: result.coordination,
             event: {
               event_type: proposals.length ? 'proposal_generated' : 'no_overlap',
+              actor_user_id: counterOffer ? changedByUserId : 0,
               coordination_version: version,
-              proposal: proposals[0] || null
+              proposal: proposals[0] || null,
+              counter_offer: counterOffer
             }
           })
           if (proposals.length && typeof deps.writeInboxNotification === 'function') {
@@ -77,6 +92,21 @@ async function processCoordinationTasks(options = {}) {
               } catch (inboxError) {
                 console.warn('inbox proposal notification skipped:', inboxError.message || inboxError)
               }
+            }
+          } else if (counterOffer && typeof deps.writeInboxNotification === 'function') {
+            try {
+              await deps.writeInboxNotification({
+                coordination: result.coordination,
+                user_id: counterViewerId,
+                event_type: 'counter_offer_ready',
+                coordination_version: version,
+                title: '对方提出了新的候选时间',
+                body: `${counterOffer.time_text}，请打开协调页选择接受或继续调整。`,
+                stage: 'review_counter_offer',
+                changed_dimensions: ['availability']
+              })
+            } catch (inboxError) {
+              console.warn('inbox counter-offer notification skipped:', inboxError.message || inboxError)
             }
           }
         } catch (eventError) {

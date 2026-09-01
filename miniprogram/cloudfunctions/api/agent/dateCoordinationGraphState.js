@@ -1,5 +1,6 @@
 const { computeOverlap, STATUS } = require('../lib/dateCoordinationPolicy')
 const { buildInvitationCard, invitationProposalOf, invitationVersionOf } = require('../lib/invitationCoordination')
+const { buildTimeCounterOffer } = require('../lib/dateCounterOfferPolicy')
 
 function uniqueStrings(values, limit, maxLength) {
   return [...new Set((values || [])
@@ -193,19 +194,27 @@ function buildDateCoordinationGraphInput(coordination, applications, user, optio
     waitingInviteePreference,
     party
   })
+  const counterOffer = buildTimeCounterOffer({
+    coordination,
+    applicationA: initiatorApp && initiatorApp.application,
+    applicationB: inviteeApp && inviteeApp.application,
+    viewerUserId: user.id
+  })
   const confirmations = options.confirmations || []
   const snapshot = confirmationSnapshot(coordination, confirmations, user)
   const invitationCard = buildInvitationCard(
     invitationProposalOf(coordination, initiatorApp),
     invitationVersionOf(coordination, initiatorApp)
   )
-  const actionRequired = canonicalOverlap.hasOverlap
+  const actionRequired = counterOffer
+    ? 'review_counter_offer'
+    : (canonicalOverlap.hasOverlap
     ? 'confirm_or_adjust'
     : (canonicalOverlap.missingDimensions.includes('own_preference')
       ? 'clarify_overrides'
       : (canonicalOverlap.missingDimensions.includes('partner')
         ? (waitingInviteePreference ? 'wait_invitee_preference' : 'wait_partner')
-        : 'adjust_unresolved_dimension'))
+        : 'adjust_unresolved_dimension')))
   return {
     coordinationId: Number(coordination.id),
     coordinationVersion: version,
@@ -233,6 +242,7 @@ function buildDateCoordinationGraphInput(coordination, applications, user, optio
       missingDimensions: canonicalOverlap.missingDimensions,
       unresolvedDimensions: (canonicalOverlap.conflictDimensions || []).slice(),
       activeProposalSummary: canonicalOverlap.proposal,
+      counterOffer,
       actionRequired
     },
     partnerProgress: partnerProgress(coordination, applications, confirmations, user),
