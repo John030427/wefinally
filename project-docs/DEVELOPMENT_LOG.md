@@ -1768,6 +1768,13 @@ LangGraph 契约修复 / AI 约会协调 / 小程序确认卡 / QA 重复匹配
 
 ### 验证与边界
 - Agent Graph 合同测试新增真实 `api` 共享状态样本；Agent 会话自检覆盖询问预览、确认送达、对方接受和隐私投影；QA 自检覆盖新轮次 run id、已匹配账号隔离与 UI 入口。
+- Agent Graph `npm run check`（构建及 41 项测试）通过；`selfcheck:agent`、`selfcheck:safety`、`selfcheck:ai-report`、`selfcheck:cloudpay`、`selfcheck:member`、`selfcheck:cloud-match` 全部通过。
 - 未改变正式匹配评分、RAG 语料、会员、支付或邀请归因规则。
 - 云函数部署和小程序体验版上传仍按独立发布动作执行并分别记录。
+
+### 云函数部署记录（2026-09-02）
+- 源分支 `fix/date-counter-offer-negotiation`，实现提交 `7c934c3`；目标环境 `cloud1-d4gy8l52g08bba326`（上海）。
+- `agent-graph` 代码更新请求 `4549586e-fc86-4cc6-b7d6-d152be189cb6`，恢复为 `Active/Available`；健康调用返回 `status=ok`，请求 `f9224e7d-12ec-4e70-85d0-8c386f38cd99`。
+- `api` 代码更新请求 `26dc4129-12eb-43a7-91e4-cfc59decf766`，恢复为 `Active/Available`；`ping` 返回 `pong` 与目标环境 ID，请求 `bab59eb4-b154-4cf2-b723-9fc3d64ae6e0`。
+- 本次只替换云函数代码包，未修改运行时、环境变量、权限、触发器或生产数据；尚未上传小程序体验版。
 
