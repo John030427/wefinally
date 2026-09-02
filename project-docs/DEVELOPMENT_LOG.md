@@ -1826,5 +1826,11 @@ LangGraph 契约修复 / AI 约会协调 / 小程序确认卡 / QA 重复匹配
 ### 验证与边界
 - 新增/更新自检覆盖空草稿双向接手、集合范围选填、到达现场位置投影、双方消息写入、最新会话选择和客户端刷新合同。
 - `selfcheck:agent` 与 Agent Graph 41 项构建测试通过；发布前仍需运行其余五组总门禁。
-- 未修改匹配、RAG、会员、支付、邀请归因或数据库集合结构；未部署云函数、未上传小程序体验版、未写生产数据。
+- 未修改匹配、RAG、会员、支付、邀请归因或数据库集合结构；云函数已按下述记录部署，未上传小程序体验版、未写生产数据。
+
+### 云函数部署记录（2026-09-02）
+- 源分支 `fix/date-counter-offer-negotiation`，实现提交 `f1ca287`；目标环境 `cloud1-d4gy8l52g08bba326`（上海，状态 `NORMAL`）。
+- `agent-graph` 代码更新请求 `a0a6a834-b7b5-45ad-a456-1e89c1a9c4fd`，恢复为 `Active/Available`；以 `operation=health` 调用返回 `status=ok`、`runtime=langgraph`，请求 `a34e3937-6b0f-4a11-9dc5-c3d83fd8826b`。
+- `api` 代码更新请求 `81416418-bf31-4860-8c33-58a79af60094`，恢复为 `Active/Available`；`ping` 返回 `pong` 与目标环境 ID，请求 `4e5cd9d4-3d89-4486-b267-4d3bfc1830d4`。
+- 本次只替换两个既有 Event 云函数的代码包，运行时保持 `agent-graph=Nodejs20.19`、`api=Nodejs16.13`；未修改环境变量、权限、触发器、网关或生产数据库，尚未上传小程序体验版。
 
