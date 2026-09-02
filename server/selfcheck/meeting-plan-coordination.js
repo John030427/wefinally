@@ -9,7 +9,10 @@ const {
   planReadiness
 } = require('../../miniprogram/cloudfunctions/api/lib/meetingPlanPolicy')
 const { normalizeApplication, computeOverlap } = require('../../miniprogram/cloudfunctions/api/lib/dateCoordinationPolicy')
-const { buildProposalCard } = require('../../miniprogram/cloudfunctions/api/lib/invitationCoordination')
+const {
+  buildProposalCard,
+  mergeInvitationWithOverrides
+} = require('../../miniprogram/cloudfunctions/api/lib/invitationCoordination')
 const { safeCard } = require('../../miniprogram/cloudfunctions/api/agent/dateCoordinationEvents')
 const { applyMeetingCheckIn, publicState } = require('../../miniprogram/cloudfunctions/api/lib/meetingCheckInService')
 
@@ -40,6 +43,16 @@ async function main() {
   assert.strictEqual(planReadiness(application('深色上衣，手持一本书')).ready, true)
   assert.strictEqual(planReadiness(Object.assign(application('深色上衣'), { meet_point: '' })).ready, true)
   assert.strictEqual(planReadiness(Object.assign(application('深色上衣'), { activity_venue: '星巴克' })).ready, false)
+
+  const changedDayWithoutExactTime = mergeInvitationWithOverrides(application('深色上衣'), {
+    availability: [{ date: '2026-09-10', periods: ['night'] }]
+  })
+  assert.strictEqual(changedDayWithoutExactTime.start_time, '')
+  assert.strictEqual(changedDayWithoutExactTime.activity_venue, '万象天地百老汇影城')
+  assert.throws(
+    () => normalizeApplication(changedDayWithoutExactTime, new Date('2026-09-02T00:00:00.000Z')),
+    /修改了日期或时间段，请再选择具体开始时间/
+  )
 
   const legacy = normalizeApplication({
     availability: [{ date: '2026-09-06', periods: ['night'] }],

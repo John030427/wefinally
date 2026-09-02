@@ -656,3 +656,55 @@
 .optional-form-entry {
   margin: 8rpx 0 24rpx;
 }
+
+.qa-reset-card {
+  margin: -4rpx 0 24rpx;
+  padding: 22rpx 26rpx;
+  border: 1rpx dashed var(--wf-warning, #E8A23D);
+  border-radius: var(--wf-radius-lg, 24rpx);
+  background: rgba(255, 250, 238, 0.82);
+}
+
+.qa-reset-row {
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
+}
+
+.qa-reset-copy { flex: 1; min-width: 0; }
+
+.qa-reset-kicker {
+  color: var(--wf-warning, #E8A23D);
+  font-size: var(--wf-fs-tiny, 20rpx);
+  font-weight: 600;
+  letter-spacing: 2rpx;
+}
+
+.qa-reset-title {
+  margin-top: 8rpx;
+  color: var(--wf-text-main, #3A2E2E);
+  font-size: var(--wf-fs-body, 28rpx);
+  font-weight: 600;
+}
+
+.qa-reset-desc {
+  margin-top: 8rpx;
+  color: var(--wf-text-sub, #8C7B7B);
+  font-size: var(--wf-fs-caption, 24rpx);
+  line-height: 1.6;
+}
+
+.qa-reset-btn {
+  flex: 0 0 184rpx;
+  height: 88rpx;
+  margin: 0;
+  padding: 0 20rpx;
+  border: 1rpx solid var(--wf-warning, #E8A23D);
+  border-radius: 44rpx;
+  background: #FFFFFF;
+  color: #9A6A1E;
+  font-size: 26rpx;
+  line-height: 88rpx;
+}
+
+.qa-reset-btn::after { border: 0; }

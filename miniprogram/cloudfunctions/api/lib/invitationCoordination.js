@@ -679,6 +679,9 @@ function mergeInvitationWithOverrides(invitationProposal, overrides = {}) {
       next[field] = overrides[field]
     }
   }
+  const timeRangeChanged = Object.prototype.hasOwnProperty.call(overrides, 'availability')
+  const exactTimeSupplied = Object.prototype.hasOwnProperty.call(overrides, 'start_time')
+  if (timeRangeChanged && !exactTimeSupplied) next.start_time = ''
   next.arrival_hint = Object.prototype.hasOwnProperty.call(overrides, 'arrival_hint')
     ? overrides.arrival_hint
     : ''

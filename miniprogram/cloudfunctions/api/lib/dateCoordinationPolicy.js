@@ -93,9 +93,11 @@ function normalizeApplication(input = {}, now = new Date()) {
   const usesMeetingPlan = Number(input.contract_version || 0) >= PLAN_CONTRACT_VERSION
     || meetingPlan.start_time || meetingPlan.activity_venue || meetingPlan.meet_point || meetingPlan.arrival_hint
   if (usesMeetingPlan) {
-    if (!meetingPlan.start_time || !meetingPlan.activity_venue) {
-      throw new Error('请补充具体时间和活动场地')
+    if (!meetingPlan.start_time && meetingPlan.activity_venue) {
+      throw new Error('你修改了日期或时间段，请再选择具体开始时间，例如晚上8点')
     }
+    if (meetingPlan.start_time && !meetingPlan.activity_venue) throw new Error('请补充具体活动场地')
+    if (!meetingPlan.start_time || !meetingPlan.activity_venue) throw new Error('请补充具体时间和活动场地')
     if (normalized.availability.length !== 1
       || normalized.availability[0].periods.length !== 1
       || normalized.areas.length !== 1

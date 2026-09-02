@@ -1,4 +1,5 @@
 const { STATUS, normalizeApplication, nextStatus } = require('../lib/dateCoordinationPolicy')
+const { QA_REAL_DEVICE_MATCH_COHORT } = require('../lib/qaRegistrationReplayPolicy')
 const { MEMBER_STATUS, memberStatus } = require('../lib/memberPolicy')
 const { createReminderJob } = require('../agent/notificationJobs')
 const { assertOfflineDatingAllowed } = require('../lib/testFixturePolicy')
@@ -902,7 +903,15 @@ function createDateCoordinationHandlers(overrides = {}) {
       ? data.preference_evidence
       : allExplicitEvidence()
     const changedDimensions = sharedChangedDimensions(data.changed_dimensions, evidence)
-    const application = normalizeApplication(data, now)
+    let application
+    try {
+      application = normalizeApplication(data, now)
+    } catch (error) {
+      error.code = 400
+      error.publicCode = 'DATE_APPLICATION_INVALID'
+      error.publicMessage = String(error.message || '约会安排格式有误，请检查后重试').slice(0, 80)
+      throw error
+    }
     const primaryContext = {
       user_a_id: Number(coordination.user_a_id),
       user_b_id: Number(coordination.user_b_id)
@@ -1175,6 +1184,7 @@ function createDateCoordinationHandlers(overrides = {}) {
         my_application: mine && mine.application
       }), role),
       is_test_data: Number(coordination.is_test_data || 0) === 1,
+      qa_reset_allowed: String(user.qa_match_cohort || '') === QA_REAL_DEVICE_MATCH_COHORT,
       test_data_badge: fixtureSceneBadge(Object.assign({}, coordination, {
         fixture_journey: coordination.synthetic_partner_journey
       })),
@@ -1258,6 +1268,52 @@ function createDateCoordinationHandlers(overrides = {}) {
       now: dep('now'),
       env: dep('env')
     })
+  }
+
+  async function qaReset(data, wxContext) {
+    const user = await dep('currentUser')(wxContext)
+    if (String(user.qa_match_cohort || '') !== QA_REAL_DEVICE_MATCH_COHORT) {
+      throw new Error('仅限双真机 QA 测试账号重置')
+    }
+    if (String(data.confirm_text || '') !== '重新开始本轮测试') {
+      throw new Error('请确认重新开始本轮测试')
+    }
+    const coordination = await dep('byId')('date_coordination', coordinationId(data))
+    if (!coordination || !participant(coordination, user.id)) throw new Error('无权重置该约会协调')
+    if (isTerminalCoordination(coordination.status)) {
+      return { id: Number(coordination.id), status: coordination.status, reset: false, idempotent: true }
+    }
+    const now = dep('now')()
+    const related = [
+      ['agent_session', ['closed', 'cancelled'], 'closed'],
+      ['agent_notification_job', ['delivered', 'cancelled', 'failed'], 'cancelled'],
+      ['date_application_patch', ['applied', 'cancelled', 'expired'], 'cancelled'],
+      ['date_coordination_proposal', ['superseded'], 'superseded'],
+      ['date_coordination_confirmation', ['superseded'], 'superseded']
+    ]
+    for (const [name, terminalStatuses, nextStatusValue] of related) {
+      const rows = await dep('list')(name, { coordination_id: Number(coordination.id) }, 100)
+      for (const row of rows) {
+        if (!terminalStatuses.includes(String(row.status || ''))) {
+          await dep('updateByDoc')(name, row, { status: nextStatusValue })
+        }
+      }
+    }
+    const updated = await dep('updateByDoc')('date_coordination', coordination, {
+      status: STATUS.CLOSED,
+      business_state: 'qa_reset',
+      qa_reset_at: now,
+      qa_reset_by_user_id: Number(user.id)
+    })
+    await dep('publishCoordinationEvent')({
+      coordination: updated,
+      event: {
+        event_type: 'qa_coordination_reset',
+        actor_user_id: Number(user.id),
+        coordination_version: Number(coordination.coordination_version || 1)
+      }
+    })
+    return { id: Number(coordination.id), status: STATUS.CLOSED, reset: true, idempotent: false }
   }
 
   async function advanceSyntheticForUser(coordination, user) {
@@ -1589,7 +1645,8 @@ function createDateCoordinationHandlers(overrides = {}) {
     retryProcessing,
     maybeAdvanceSyntheticPartner,
     advanceSynthetic,
-    meetingCheckIn
+    meetingCheckIn,
+    qaReset
   }
 }
 
@@ -1615,6 +1672,7 @@ module.exports = {
   retryProcessing: handler('retryProcessing'),
   advanceSynthetic: handler('advanceSynthetic'),
   meetingCheckIn: handler('meetingCheckIn'),
+  qaReset: handler('qaReset'),
   createDateCoordinationHandlers,
   processCoordinationDeadlines,
   upsertConfirmation,

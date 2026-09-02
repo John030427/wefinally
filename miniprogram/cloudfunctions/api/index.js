@@ -57,7 +57,8 @@ const SAFE_SMOKE_REASONS = new Set([
 ])
 const SAFE_PUBLIC_ERROR_CODES = new Set([
   'INVALID_RAG_BACKFILL_REQUEST',
-  'INVALID_RAG_SMOKE_REQUEST'
+  'INVALID_RAG_SMOKE_REQUEST',
+  'DATE_APPLICATION_INVALID'
 ])
 const SMOKE_PROFILE_FIELDS = [
   'id',
@@ -529,7 +530,10 @@ exports.main = async (event = {}) => {
     return {
       success: false,
       code,
-      error
+      error,
+      message: SAFE_PUBLIC_ERROR_CODES.has(String(err && err.publicCode || ''))
+        ? String(err.publicMessage || error)
+        : error
     }
   }
 }

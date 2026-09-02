@@ -54,7 +54,8 @@ assert(read('miniprogram/pages/chat/chat.wxml').includes('AI 生成回复仅供�
 const dateJs = read('miniprogram/pages/date-coordination/date-coordination.js')
 const dateWxml = read('miniprogram/pages/date-coordination/date-coordination.wxml')
 const dateWxss = read('miniprogram/pages/date-coordination/date-coordination.wxss')
-const combined = `${dateJs}\n${dateWxml}`
+const dateFormState = read('miniprogram/pages/date-coordination/formState.js')
+const combined = `${dateJs}\n${dateWxml}\n${dateFormState}`
 for (const field of [
   'availability',
   'areas',
@@ -75,7 +76,7 @@ assert(dateJs.includes("respondToProposal('confirm')"))
 assert(dateJs.includes("periods: ['afternoon']"))
 assert(dateJs.includes("value: '咖啡', label: '☕ 咖啡'"))
 assert(dateJs.includes("value: '散步', label: '🚶 散步'"))
-assert(dateJs.includes('areas: []'))
+assert(dateFormState.includes('areas: []'))
 assert(dateJs.includes('this.launchOptions ='))
 assert(dateJs.includes('this.launchOptions || {}'))
 assert(dateJs.includes('refreshCoordination'))

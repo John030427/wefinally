@@ -146,6 +146,8 @@ function route(method, path) {
   if (method === 'POST' && m) return withParams(dateCoordination.advanceSynthetic, { coordination_id: Number(m[1]) })
   m = path.match(/^\/api\/date-coordinations\/(\d+)\/meeting-check-in$/)
   if (method === 'POST' && m) return withParams(dateCoordination.meetingCheckIn, { coordination_id: Number(m[1]) })
+  m = path.match(/^\/api\/date-coordinations\/(\d+)\/qa-reset$/)
+  if (method === 'POST' && m) return withParams(dateCoordination.qaReset, { coordination_id: Number(m[1]) })
   m = path.match(/^\/api\/meet\/share\/([^/]+)$/)
   if (method === 'GET' && m) return withParams(meet.shareDetail, { token: m[1] })
   m = path.match(/^\/api\/meet\/(\d+)$/)

@@ -1,5 +1,6 @@
 const { get, post, put } = require('../../utils/request')
 const { API_PATHS } = require('../../utils/constants')
+const { createEmptyDateCoordinationForm, mergeCoordinationForm } = require('./formState')
 
 function dateText(date) {
   const y = date.getFullYear()
@@ -179,6 +180,7 @@ Page({
     advancingSynthetic: false,
     coordinatorHeroText: '正在寻找双方共同安排。你可以随时和 AI 约会协调员沟通。',
     refreshingCoordination: false,
+    resettingQaCoordination: false,
     fixtureSimulation: null,
     fixtureStage: '',
     fixtureStatusText: '',
@@ -188,22 +190,7 @@ Page({
     dateMax: '',
     selectedDate: '',
     areaText: '',
-    form: {
-      availability: [],
-      areas: [],
-      activities: [],
-      budget: '',
-      payment_preference: '',
-      duration: '',
-      transport_constraints: '',
-      other_requirements: '',
-      share_message: '',
-      contract_version: 2,
-      start_time: '',
-      activity_venue: '',
-      meet_point: '',
-      arrival_hint: ''
-    },
+    form: createEmptyDateCoordinationForm(),
     primaryProposal: {
       date: '',
       period: '',
@@ -338,6 +325,8 @@ Page({
       return
     }
     const id = coordination.id || coordination.coordination_id || coordination.coordinationId || ''
+    const coordinationChanged = Boolean(this.data.coordinationId)
+      && String(this.data.coordinationId) !== String(id)
     const application = coordination.application || coordination.my_application || {}
     const proposal = (coordination.proposal_card)
       || coordination.final_proposal
@@ -349,10 +338,7 @@ Page({
       || coordination.invitation_card
       || null
     const coordinationDisplay = buildCoordinationDisplay(coordination)
-    const form = Object.assign({}, this.data.form, application, {
-      availability: application.availability || this.data.form.availability || [],
-      activities: application.activities || this.data.form.activities || []
-    })
+    const form = mergeCoordinationForm(this.data.form, application, coordinationChanged)
     const synced = syncPrimaryProposal(form, this.data.primaryProposal)
     this.setData({
       coordinationId: String(id),
@@ -380,6 +366,7 @@ Page({
       primaryProposal: synced.primaryProposal,
       primaryOptions: synced.primaryOptions,
       areaText: Array.isArray(form.areas) ? form.areas.join('、') : '',
+      selectedDate: form.availability[0] ? form.availability[0].date : '',
       proposal,
       pageState: 'success'
     })
@@ -488,6 +475,32 @@ Page({
     } finally {
       this.setData({ refreshingCoordination: false })
     }
+  },
+
+  resetQaCoordination() {
+    if (!this.data.coordinationId || this.data.resettingQaCoordination) return
+    wx.showModal({
+      title: '重新开始本轮测试？',
+      content: '当前协调会被关闭，聊天和操作记录仍会保留。之后可重新申请第一次约会。',
+      confirmText: '确认重置',
+      confirmColor: '#D14D6B',
+      success: async (modal) => {
+        if (!modal.confirm) return
+        this.setData({ resettingQaCoordination: true })
+        try {
+          await post(`${API_PATHS.DATE_COORDINATIONS}/${this.data.coordinationId}/qa-reset`, {
+            confirm_text: '重新开始本轮测试'
+          }, { showError: false })
+          this.setData({ form: createEmptyDateCoordinationForm() })
+          wx.showToast({ title: '本轮已重置', icon: 'success' })
+          setTimeout(() => wx.navigateBack({ delta: 1 }), 500)
+        } catch (err) {
+          wx.showToast({ title: (err && err.message) || '重置失败，请重试', icon: 'none', duration: 3000 })
+        } finally {
+          this.setData({ resettingQaCoordination: false })
+        }
+      }
+    })
   },
 
   onDateChange(e) {

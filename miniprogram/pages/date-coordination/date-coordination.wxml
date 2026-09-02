@@ -46,6 +46,17 @@
       <view class="status-pill">{{coordinationDisplay.statusText}}</view>
     </view>
 
+    <view class="qa-reset-card" wx:if="{{coordination.qa_reset_allowed}}">
+      <view class="qa-reset-kicker">内部 QA</view>
+      <view class="qa-reset-row">
+        <view class="qa-reset-copy">
+          <view class="qa-reset-title">重新测试本轮协调</view>
+          <view class="qa-reset-desc">保留记录，只关闭当前轮次。</view>
+        </view>
+        <button class="qa-reset-btn" bindtap="resetQaCoordination" loading="{{resettingQaCoordination}}" disabled="{{resettingQaCoordination}}">重置本轮</button>
+      </view>
+    </view>
+
     <view class="current-plan-card card" wx:if="{{currentPlanCard}}">
       <view class="plan-card-head">
         <view>
