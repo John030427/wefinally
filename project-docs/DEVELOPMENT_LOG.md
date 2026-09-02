@@ -1745,3 +1745,10 @@ LangGraph 协商状态机 / 约会协调 / 小程序 UI / 站内提醒
 - `selfcheck:agent`、`selfcheck:safety`、`selfcheck:ai-report`、`selfcheck:cloudpay`、`selfcheck:member`、`selfcheck:cloud-match` 以及结构化反提案专项自检均通过。
 - 本次未部署云函数、未上传小程序、未写生产数据库；`miniprogram/project.config.json` 的既有本地改动未纳入本次提交。
 
+### 云函数部署记录（2026-09-02）
+- 目标环境：`cloud1-d4gy8l52g08bba326`（上海，状态 `NORMAL`）。
+- 按依赖顺序更新 Event 云函数 `agent-graph`、`api`，仅替换代码包；运行时、环境变量、权限、触发器和网关配置均未修改。
+- `agent-graph` 更新请求 `8719c7de-68fb-4ce9-9a71-d3609a6e64ac`，恢复为 `Active/Available` 后健康调用返回 `status=ok`，调用请求 `1cc7b3b4-2104-4f6d-aa5a-61f87e7df7c5`。
+- `api` 更新请求 `5594cb58-6f50-4e2f-8a2e-f4b7dc41d8d7`，恢复为 `Active/Available` 后 `ping` 返回 `pong` 与目标环境 ID，调用请求 `478eed3a-346d-4dfc-9688-8f084fc31745`。
+- 未上传小程序客户端、未写生产数据库；要在真机看到本次 UI 变化，仍需单独上传新的小程序体验版。
+
