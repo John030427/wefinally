@@ -240,6 +240,25 @@
   margin-bottom: 14rpx;
 }
 
+.patch-scope-note,
+.patch-inherited {
+  margin: 12rpx 0;
+  padding: 14rpx 18rpx;
+  border-radius: 12rpx;
+  font-size: 23rpx;
+  line-height: 1.55;
+}
+
+.patch-scope-note {
+  background: var(--wf-primary-soft, #f9dee4);
+  color: var(--wf-ai-tag, #7b6cc8);
+}
+
+.patch-inherited {
+  background: var(--wf-primary-soft, #f9dee4);
+  color: var(--wf-text-sub, #8c7b7b);
+}
+
 .patch-change {
   padding: 14rpx 0;
   border-top: 1rpx solid #ffdbe4;

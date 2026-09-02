@@ -1,9 +1,22 @@
-const PERIOD_LABELS = Object.freeze({
-  morning: '上午',
-  afternoon: '下午',
-  evening: '晚上',
-  night: '夜间'
+const {
+  PERIOD_LABELS,
+  BUDGET_LABELS,
+  DURATION_LABELS,
+  publicPrimaryProposal,
+  isPrimaryProposalComplete,
+  personalPaymentToNeutral,
+  paymentFactText,
+  buildProposalCard
+} = require('./invitationCoordination')
+
+const DIMENSION_FIELDS = Object.freeze({
+  time: 'availability', area: 'areas', activity: 'activities', budget: 'budget',
+  payment: 'payment_preference', duration: 'duration'
 })
+const DIMENSION_LABELS = Object.freeze({
+  time: '时间', area: '区域', activity: '活动', budget: '预算', payment: '费用方式', duration: '时长'
+})
+const DIMENSION_ORDER = Object.freeze(['time', 'area', 'activity', 'budget', 'payment', 'duration'])
 
 function timeSlots(application) {
   const slots = []
@@ -23,65 +36,214 @@ function displayTime(slot) {
   return `${slot.date} ${PERIOD_LABELS[slot.period] || slot.period}`.trim()
 }
 
-function buildTimeCounterOffer(input = {}) {
+function exactlyOne(values) {
+  const unique = [...new Set((values || []).map((item) => String(item || '').trim()).filter(Boolean))]
+  return unique.length === 1 ? unique[0] : ''
+}
+
+function paymentOf(application, ownerUserId, coordination) {
+  return personalPaymentToNeutral(
+    application && application.payment_preference,
+    ownerUserId,
+    Number(ownerUserId) === Number(coordination.user_a_id) ? coordination.user_b_id : coordination.user_a_id
+  )
+}
+
+function paymentEquals(left, right) {
+  return String(left && left.payment_mode || '') === String(right && right.payment_mode || '')
+    && Number(left && left.payer_user_id || 0) === Number(right && right.payer_user_id || 0)
+}
+
+function explicitDimensions(applicationRow) {
+  const evidence = applicationRow && applicationRow.preference_evidence
+  if (!evidence || typeof evidence !== 'object') return []
+  return DIMENSION_ORDER.filter((dimension) => evidence[DIMENSION_FIELDS[dimension]] === 'explicit')
+}
+
+function changedDimensionsOf(coordination, applicationRow) {
+  const stored = Array.isArray(coordination && coordination.last_changed_dimensions)
+    ? coordination.last_changed_dimensions.map(String)
+    : []
+  const known = new Set(DIMENSION_ORDER)
+  const values = stored.filter((item) => known.has(item))
+  return values.length ? values : explicitDimensions(applicationRow)
+}
+
+function candidateForDimension(dimension, application, ownerUserId, coordination) {
+  if (dimension === 'time') {
+    const slots = timeSlots(application)
+    return slots.length === 1 ? slots[0] : null
+  }
+  if (dimension === 'area') return exactlyOne(application && application.areas)
+  if (dimension === 'activity') return exactlyOne(application && application.activities)
+  if (dimension === 'budget') return String(application && application.budget || '').trim()
+  if (dimension === 'duration') return String(application && application.duration || '').trim()
+  if (dimension === 'payment') {
+    const value = String(application && application.payment_preference || '').trim()
+    if (!value) return null
+    return Object.assign({ application_value: value }, paymentOf(application, ownerUserId, coordination))
+  }
+  return null
+}
+
+function differsFromPrimary(dimension, candidate, primary) {
+  if (!candidate) return false
+  if (dimension === 'time') return candidate.date !== primary.date || candidate.period !== primary.period
+  if (dimension === 'area') return candidate !== primary.area
+  if (dimension === 'activity') return candidate !== primary.activity
+  if (dimension === 'budget') return candidate !== primary.budget
+  if (dimension === 'duration') return candidate !== primary.duration
+  if (dimension === 'payment') return !paymentEquals(candidate, primary)
+  return false
+}
+
+function valueText(dimension, value, coordination) {
+  if (dimension === 'time') return displayTime(value)
+  if (dimension === 'budget') return BUDGET_LABELS[value] || value
+  if (dimension === 'duration') return DURATION_LABELS[value] || value
+  if (dimension === 'payment') {
+    return paymentFactText(value, { user_a_id: coordination.user_a_id, user_b_id: coordination.user_b_id })
+  }
+  return String(value || '')
+}
+
+function primaryValue(dimension, primary) {
+  if (dimension === 'time') return { date: primary.date, period: primary.period }
+  if (dimension === 'area') return primary.area
+  if (dimension === 'activity') return primary.activity
+  if (dimension === 'budget') return primary.budget
+  if (dimension === 'duration') return primary.duration
+  if (dimension === 'payment') return { payment_mode: primary.payment_mode, payer_user_id: primary.payer_user_id }
+  return null
+}
+
+function applyCandidateToProposal(proposal, dimension, candidate) {
+  if (dimension === 'time') {
+    proposal.date = candidate.date
+    proposal.period = candidate.period
+  } else if (dimension === 'area') proposal.area = candidate
+  else if (dimension === 'activity') proposal.activity = candidate
+  else if (dimension === 'budget') proposal.budget = candidate
+  else if (dimension === 'duration') proposal.duration = candidate
+  else if (dimension === 'payment') {
+    proposal.payment_mode = candidate.payment_mode
+    proposal.payer_user_id = candidate.payer_user_id
+  }
+}
+
+function buildStructuredCounterProposal(input = {}) {
   const coordination = input.coordination || {}
   const viewerUserId = Number(input.viewerUserId || 0)
   const changedByUserId = Number(coordination.last_changed_by_user_id || 0)
-  const missing = Array.isArray(coordination.missing_dimensions) ? coordination.missing_dimensions : []
-  if (coordination.status !== 'no_overlap'
-    || missing.length !== 1
-    || missing[0] !== 'time'
-    || !viewerUserId
-    || !changedByUserId
-    || changedByUserId === viewerUserId) return null
+  const missing = [...new Set((Array.isArray(coordination.missing_dimensions)
+    ? coordination.missing_dimensions : []).map(String))]
+  if (coordination.status !== 'no_overlap' || !missing.length
+    || missing.some((item) => !DIMENSION_ORDER.includes(item))
+    || !viewerUserId || !changedByUserId || changedByUserId === viewerUserId) return null
 
   const changedApplication = changedByUserId === Number(coordination.user_a_id)
     ? input.applicationA
     : (changedByUserId === Number(coordination.user_b_id) ? input.applicationB : null)
-  const ownApplication = viewerUserId === Number(coordination.user_a_id)
-    ? input.applicationA
-    : (viewerUserId === Number(coordination.user_b_id) ? input.applicationB : null)
-  if (!changedApplication || !ownApplication) return null
+  const changedApplicationRow = changedByUserId === Number(coordination.user_a_id)
+    ? input.applicationRowA
+    : input.applicationRowB
+  if (!changedApplication) return null
 
-  const ownKeys = new Set(timeSlots(ownApplication).map((slot) => `${slot.date}|${slot.period}`))
-  const candidate = timeSlots(changedApplication)
-    .find((slot) => !ownKeys.has(`${slot.date}|${slot.period}`))
-  if (!candidate) return null
+  const primary = publicPrimaryProposal(input.invitationPrimary || {}, {
+    user_a_id: coordination.user_a_id,
+    user_b_id: coordination.user_b_id
+  })
+  if (!isPrimaryProposalComplete(primary)) return null
 
-  return {
-    kind: 'partner_time_counter_offer',
+  const declared = changedDimensionsOf(coordination, changedApplicationRow)
+  const relevant = DIMENSION_ORDER.filter((dimension) => missing.includes(dimension))
+  if (declared.length && relevant.some((dimension) => !declared.includes(dimension))) return null
+
+  const proposal = Object.assign({}, primary)
+  const changes = []
+  for (const dimension of relevant) {
+    const candidate = candidateForDimension(dimension, changedApplication, changedByUserId, coordination)
+    if (!candidate || !differsFromPrimary(dimension, candidate, primary)) return null
+    applyCandidateToProposal(proposal, dimension, candidate)
+    changes.push({
+      dimension,
+      field: DIMENSION_FIELDS[dimension],
+      label: DIMENSION_LABELS[dimension],
+      before_text: valueText(dimension, primaryValue(dimension, primary), coordination),
+      after_text: valueText(dimension, candidate, coordination),
+      value: candidate,
+      application_value: dimension === 'payment' ? candidate.application_value : undefined
+    })
+  }
+  if (!changes.length || !isPrimaryProposalComplete(proposal)) return null
+
+  const proposalCard = buildProposalCard(Object.assign({}, proposal, {
     coordination_version: Number(coordination.coordination_version || 1),
-    dimension: 'time',
-    date: candidate.date,
-    period: candidate.period,
-    time_text: displayTime(candidate),
-    title: '对方提出了一个新的候选时间',
-    body: '如果这个时间也可以，接受后系统会将它加入你的可约时间并重新计算。'
+    source: 'structured_counter_proposal'
+  }), { user_a_id: coordination.user_a_id, user_b_id: coordination.user_b_id })
+  const changedLabels = changes.map((item) => item.label)
+  const unchangedDimensions = DIMENSION_ORDER.filter((dimension) => !relevant.includes(dimension))
+  const unchangedLabels = unchangedDimensions.map((dimension) => DIMENSION_LABELS[dimension])
+  const proposalToken = [
+    Number(coordination.coordination_version || 1),
+    relevant.join(','), proposal.date, proposal.period, proposal.area, proposal.activity,
+    proposal.budget, proposal.duration, proposal.payment_mode, Number(proposal.payer_user_id || 0)
+  ].join('|')
+  return {
+    kind: 'partner_structured_counter_proposal',
+    coordination_version: Number(coordination.coordination_version || 1),
+    changed_by_user_id: changedByUserId,
+    changed_dimensions: relevant,
+    changes,
+    unchanged_dimensions: unchangedDimensions,
+    unchanged_text: unchangedLabels.join('、'),
+    proposal,
+    proposal_token: proposalToken,
+    proposal_card: proposalCard,
+    time_text: proposalCard.time_text,
+    title: '对方调整了约会方案',
+    body: `这次只调整了${changedLabels.join('、')}，${unchangedLabels.join('、')}保持原方案。`,
+    action_label: '接受这份调整'
   }
 }
 
-function mergeAcceptedTime(availability, counterOffer) {
-  const date = String(counterOffer && counterOffer.date || '').trim()
-  const period = String(counterOffer && counterOffer.period || '').trim()
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !PERIOD_LABELS[period]) {
-    throw new Error('候选时间无效，请刷新后重试')
+function applyAcceptedCounterProposal(application, counterProposal) {
+  if (!application || typeof application !== 'object') throw new Error('请先完成自己的约会偏好')
+  if (!counterProposal || counterProposal.kind !== 'partner_structured_counter_proposal') {
+    throw new Error('调整方案无效，请刷新后重试')
   }
-  const next = (Array.isArray(availability) ? availability : []).map((item) => ({
-    date: String(item && item.date || ''),
-    periods: [...new Set(Array.isArray(item && item.periods) ? item.periods.map(String) : [])]
-  }))
-  const existing = next.find((item) => item.date === date)
-  if (existing) {
-    if (!existing.periods.includes(period)) existing.periods.push(period)
-  } else {
-    if (next.length >= 5) throw new Error('你已选满5个日期，请先和 AI 调整时间范围')
-    next.push({ date, periods: [period] })
+  const next = Object.assign({}, application, {
+    availability: (application.availability || []).map((item) => ({
+      date: String(item && item.date || ''),
+      periods: [...new Set(Array.isArray(item && item.periods) ? item.periods.map(String) : [])]
+    })),
+    areas: [...(application.areas || [])],
+    activities: [...(application.activities || [])]
+  })
+  for (const change of counterProposal.changes || []) {
+    if (change.dimension === 'time') {
+      const slot = change.value || {}
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(String(slot.date || '')) || !PERIOD_LABELS[slot.period]) {
+        throw new Error('候选时间无效，请刷新后重试')
+      }
+      next.availability = [{ date: slot.date, periods: [slot.period] }]
+    } else if (change.dimension === 'area') next.areas = [String(change.value)]
+    else if (change.dimension === 'activity') next.activities = [String(change.value)]
+    else if (change.dimension === 'budget') next.budget = String(change.value)
+    else if (change.dimension === 'duration') next.duration = String(change.value)
+    else if (change.dimension === 'payment') next.payment_preference = String(change.application_value || '')
   }
-  return next.sort((left, right) => left.date.localeCompare(right.date))
+  return next
 }
 
 module.exports = {
-  buildTimeCounterOffer,
-  mergeAcceptedTime,
+  DIMENSION_FIELDS,
+  DIMENSION_LABELS,
+  buildStructuredCounterProposal,
+  applyAcceptedCounterProposal,
+  buildTimeCounterOffer: buildStructuredCounterProposal,
+  mergeAcceptedTime(availability, counterOffer) {
+    return applyAcceptedCounterProposal({ availability }, counterOffer).availability
+  },
   displayTime
 }

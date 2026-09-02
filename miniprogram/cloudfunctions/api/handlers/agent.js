@@ -507,7 +507,7 @@ function createAgentHandlers(overrides = {}) {
       // LangGraph is the primary interaction layer for coordination when it can
       // answer directly; modification requests still go to the backend patch
       // preview pipeline (deterministic business layer owns every write).
-      const modificationIntent = classifyChangeIntent(content) === 'modify_date_application'
+      const modificationIntent = classifyChangeIntent(content, { coordination: true }) === 'modify_date_application'
       const questionLike = /进度|状态|哪一步|怎么样了|看看|怎么样|如何|情况|进展|确认|方案|安排|协调|在吗|\?|？/.test(content)
       if (!modificationIntent && dateGraphResult && ['completed', 'awaiting_confirmation'].includes(dateGraphResult.status)
         && dateGraphResult.replyDraft && (questionLike || resumeText)) {
@@ -613,13 +613,22 @@ function createAgentHandlers(overrides = {}) {
           vip_status: isVip(user, dep('now')()) ? 'active' : 'inactive',
           date_status: coordination.status
         },
-        coordinationState: {
+          coordinationState: {
           status: coordination.status,
           business_state: coordination.business_state || '',
           coordination_version: Number(coordination.coordination_version || 1),
           own_application_status: ownApplicationRow ? 'submitted' : 'missing',
           partner_progress: 'private',
-          missing_dimensions: coordination.missing_dimensions || []
+          missing_dimensions: coordination.missing_dimensions || [],
+          coordination_path: dateGraphResult && dateGraphResult.sharedState
+            ? dateGraphResult.sharedState.coordinationPath || ''
+            : '',
+          has_complete_base_proposal: Boolean(
+            coordination.invitation_primary_proposal
+            && coordination.invitation_primary_proposal.date
+            && coordination.invitation_primary_proposal.area
+            && coordination.invitation_primary_proposal.activity
+          )
         },
         ownApplication: ownApplicationRow && ownApplicationRow.application,
         knowledge: [],
@@ -655,8 +664,12 @@ function createAgentHandlers(overrides = {}) {
           },
           rules: [
             '只能读取和建议修改当前用户自己的约会申请',
-            '明确修改请求返回 intent=modify_date_application 和 create_date_application_patch',
-            '当前用户还没有申请且信息完整时，返回 intent=create_date_application 和 create_date_application_preview，arguments.application 必须包含 availability、areas、activities、budget、payment_preference、duration',
+            '区分三条路径：接受完整邀请、基于完整邀请只调整明确字段、双方分别填写可接受范围后计算交集',
+            '“周日”等短答只代表时间字段，不能擅自推断地点、活动、预算、费用或时长；是否沿用其他字段由 has_complete_base_proposal 决定，并且必须展示预览让用户确认',
+            '明确修改请求返回 intent=modify_date_application 和 create_date_application_patch，arguments 只包含用户明确修改的字段',
+            '当前用户还没有申请但存在完整基础方案时，允许只提交明确 override；后台会继承基础方案并在预览中区分“调整项/保持不变项”',
+            '当前用户还没有申请且没有完整基础方案时，返回 intent=create_date_application 和 create_date_application_preview，arguments.application 必须包含 availability、areas、activities、budget、payment_preference、duration',
+            '用户表达含糊、没有指出调整哪一项时，返回 intent=clarify_scope，不调用写工具，只追问一个具体问题',
             '展示完整申请摘要时必须同时请求 create_date_application_preview，不能只生成普通聊天文本',
             '用户确认发送时只能确认已有后台预览，绝不能自行宣称已经发送',
             '只生成修改预览，绝不直接修改数据库',

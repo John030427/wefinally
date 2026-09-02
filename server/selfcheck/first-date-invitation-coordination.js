@@ -303,6 +303,10 @@ async function main() {
   assert.deepStrictEqual(afterOverride.my_application.areas, ['福田'])
   assert.ok(afterOverride.my_application.availability.some((item) => item.date === SAT))
   assert.strictEqual(afterOverride.my_preference_evidence.areas, 'explicit')
+  assert.deepStrictEqual(
+    t06.deps.rows.date_coordination.find((row) => Number(row.id) === Number(t06.invited.id)).last_changed_dimensions,
+    ['time', 'area']
+  )
   const shared = afterOverride.shared_coordination
   assert.ok(shared.ready)
   const timeDim = shared.dimensions.find((item) => item.key === 'time')

@@ -1,6 +1,11 @@
 const { computeOverlap, STATUS } = require('../lib/dateCoordinationPolicy')
-const { buildInvitationCard, invitationProposalOf, invitationVersionOf } = require('../lib/invitationCoordination')
-const { buildTimeCounterOffer } = require('../lib/dateCounterOfferPolicy')
+const {
+  buildInvitationCard,
+  invitationProposalOf,
+  invitationPrimaryOf,
+  invitationVersionOf
+} = require('../lib/invitationCoordination')
+const { buildStructuredCounterProposal } = require('../lib/dateCounterOfferPolicy')
 
 function uniqueStrings(values, limit, maxLength) {
   return [...new Set((values || [])
@@ -194,20 +199,37 @@ function buildDateCoordinationGraphInput(coordination, applications, user, optio
     waitingInviteePreference,
     party
   })
-  const counterOffer = buildTimeCounterOffer({
+  const invitationPrimary = options.invitationPrimary || invitationPrimaryOf(coordination, initiatorApp, {
+    user_a_id: coordination.user_a_id,
+    user_b_id: coordination.user_b_id
+  })
+  const counterOffer = buildStructuredCounterProposal({
     coordination,
     applicationA: initiatorApp && initiatorApp.application,
     applicationB: inviteeApp && inviteeApp.application,
+    applicationRowA: initiatorApp,
+    applicationRowB: inviteeApp,
+    invitationPrimary,
     viewerUserId: user.id
   })
   const confirmations = options.confirmations || []
   const snapshot = confirmationSnapshot(coordination, confirmations, user)
-  const invitationCard = buildInvitationCard(
-    invitationProposalOf(coordination, initiatorApp),
-    invitationVersionOf(coordination, initiatorApp)
-  )
+  const invitationPreference = invitationProposalOf(coordination, initiatorApp)
+  const invitationCard = buildInvitationCard(invitationPrimary || invitationPreference, invitationVersionOf(coordination, initiatorApp), {
+    primary: invitationPrimary,
+    preference: invitationPreference,
+    user_a_id: coordination.user_a_id,
+    user_b_id: coordination.user_b_id
+  })
+  const coordinationPath = counterOffer
+    ? 'structured_counter_proposal'
+    : (coordination.status === STATUS.INVITING_PARTNER
+      ? (party === 'B' ? 'direct_invitation_response' : 'waiting_invitation_response')
+      : (waitingInviteePreference && party === 'B'
+        ? 'partial_override_from_invitation'
+        : (canonicalOverlap.hasOverlap ? 'confirm_computed_proposal' : 'bilateral_preference_matching')))
   const actionRequired = counterOffer
-    ? 'review_counter_offer'
+    ? 'review_counter_proposal'
     : (canonicalOverlap.hasOverlap
     ? 'confirm_or_adjust'
     : (canonicalOverlap.missingDimensions.includes('own_preference')
@@ -243,6 +265,8 @@ function buildDateCoordinationGraphInput(coordination, applications, user, optio
       unresolvedDimensions: (canonicalOverlap.conflictDimensions || []).slice(),
       activeProposalSummary: canonicalOverlap.proposal,
       counterOffer,
+      coordinationPath,
+      proposalBaseAvailable: Boolean(invitationCard.primary_complete),
       actionRequired
     },
     partnerProgress: partnerProgress(coordination, applications, confirmations, user),

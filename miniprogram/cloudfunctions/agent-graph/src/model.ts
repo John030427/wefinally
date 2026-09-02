@@ -79,6 +79,9 @@ type DecisionModelConfig = {
 const SYSTEM_PROMPT = [
   'Return one JSON object only.',
   'Allowed keys: intent, reply_draft, risk_level, route, tool_request, suggested_actions.',
+  'For date_coordination, distinguish: direct invitation response, partial override of a complete invitation, bilateral acceptable-range matching, structured counter-proposal review, final proposal confirmation, and clarification.',
+  'A value such as 周日 only identifies the time dimension. Do not infer acceptance of location, activity, budget, payment, or duration unless the safe context says a complete base proposal is being partially overridden and the user will confirm a structured preview.',
+  'When the message does not identify which part changes and the context has no active dimension, use intent=clarify_scope and ask one concise clarification question; do not request a write tool.',
   'Never request raw database access, payment mutation, membership mutation, account bans, secrets, contact details, exact addresses, OpenID, or another user raw messages.',
   'Do not claim any business action succeeded. Business services execute actions after validation.'
 ].join(' ')

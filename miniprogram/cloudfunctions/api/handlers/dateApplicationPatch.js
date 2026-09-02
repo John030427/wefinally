@@ -89,6 +89,12 @@ function unwrapApplicationInput(input) {
   return current
 }
 
+function evidenceAfterChanges(sourceEvidence, changedFields) {
+  const evidence = Object.assign({}, sourceEvidence || allExplicitEvidence())
+  for (const field of changedFields || []) evidence[field] = 'explicit'
+  return evidence
+}
+
 function publicPatch(row) {
   return {
     id: Number(row.id),
@@ -470,10 +476,12 @@ function createDateApplicationPatchHandlers(overrides = {}) {
       throw new Error('修改预览正在处理中，请稍后刷新')
     }
     if (patch.operation === 'create') {
+      const createSummary = shareableSummary(patch.preview)
       const result = await dep('saveApplicationForUser')(Object.assign({}, patch.preview.after, {
         coordination_id: Number(coordination.id),
         preference_evidence: patch.preview.preference_evidence || allExplicitEvidence(),
         application_source: patch.preview.application_source || 'invitee_override',
+        changed_dimensions: createSummary.changed_dimensions,
         accepted_base_invitation_version: patch.preview.accepted_base_invitation_version
           || coordination.accepted_base_invitation_version
           || coordination.invitation_version
@@ -503,6 +511,7 @@ function createDateApplicationPatchHandlers(overrides = {}) {
     const mine = latestForUser(rows, user.id, oldVersion)
     if (!mine) throw new Error('没有可修改的约会申请')
     const nextApplication = normalizeApplication(Object.assign({}, mine.application, patch.changes), dep('now')())
+    const patchSummary = shareableSummary(patch.preview)
     if (!canStartAnotherRound(coordination)) {
       const handedOff = await dep('updateByDoc')('date_coordination', coordination, {
         status: STATUS.MANUAL_HANDOFF,
@@ -667,7 +676,7 @@ function createDateApplicationPatchHandlers(overrides = {}) {
         source: isActor ? 'agent_confirmed_patch' : 'version_snapshot',
         preference_version: preferenceVersion,
         preference_evidence: isActor
-          ? (source.preference_evidence || allExplicitEvidence())
+          ? evidenceAfterChanges(source.preference_evidence, patch.preview && patch.preview.changed_fields)
           : (source.preference_evidence || null),
         accepted_base_invitation_version: Number(source.accepted_base_invitation_version || coordination.accepted_base_invitation_version || 0)
       }, 'date_coordination_application')
@@ -702,7 +711,8 @@ function createDateApplicationPatchHandlers(overrides = {}) {
       final_proposal_id: 0,
       confirmation_deadline_at: null,
       invitation_deadline_at: coordination.invitation_deadline_at,
-      last_changed_by_user_id: Number(user.id)
+      last_changed_by_user_id: Number(user.id),
+      last_changed_dimensions: patchSummary.changed_dimensions
     }
     const updatedCoordination = await dep('updateByDoc')('date_coordination', coordination, update)
     const appliedPatch = await dep('updateByDoc')('date_application_patch', patch, {
@@ -710,8 +720,7 @@ function createDateApplicationPatchHandlers(overrides = {}) {
       applied_version: newVersion,
       applied_at: dep('now')()
     })
-    const summary = shareableSummary(patch.preview)
-    const notification = await notifyPartner(updatedCoordination, user, summary, false, newVersion)
+    const notification = await notifyPartner(updatedCoordination, user, patchSummary, false, newVersion)
     return {
       patch: publicPatch(appliedPatch),
       coordination_version: newVersion,

@@ -13,7 +13,10 @@ const {
 } = require('../lib/syntheticPartnerJourney')
 const { MAX_COORDINATION_ROUNDS, roundNumber, canStartAnotherRound, enqueueProcessing } = require('../lib/dateCoordinationProcessingPolicy')
 const { publishCoordinationEvent } = require('../agent/dateCoordinationEvents')
-const { buildTimeCounterOffer, mergeAcceptedTime } = require('../lib/dateCounterOfferPolicy')
+const {
+  buildStructuredCounterProposal,
+  applyAcceptedCounterProposal
+} = require('../lib/dateCounterOfferPolicy')
 const {
   ACTIVE_COORDINATION_STATUSES,
   canOpenCoordinatorChat,
@@ -142,6 +145,19 @@ function coordinationId(data) {
 
 function participant(coordination, userId) {
   return [Number(coordination.user_a_id), Number(coordination.user_b_id)].includes(Number(userId))
+}
+
+function sharedChangedDimensions(input, evidence) {
+  const allowed = new Set(['time', 'area', 'activity', 'budget', 'payment', 'duration'])
+  const supplied = Array.isArray(input) ? input.map(String).filter((item) => allowed.has(item)) : []
+  if (supplied.length) return [...new Set(supplied)]
+  const fields = {
+    availability: 'time', areas: 'area', activities: 'activity', budget: 'budget',
+    payment_preference: 'payment', duration: 'duration'
+  }
+  return Object.keys(fields)
+    .filter((field) => evidence && evidence[field] === 'explicit')
+    .map((field) => fields[field])
 }
 
 function deadlinePassed(value, now) {
@@ -561,7 +577,7 @@ function createDateCoordinationHandlers(overrides = {}) {
     }
     const decision = String(data.decision || '')
     if (!['accept', 'coordinate', 'decline'].includes(decision)) {
-      throw new Error('请选择接受这个安排、和 AI 协调，或这次暂不方便')
+      throw new Error('请选择接受完整方案、只调整部分安排，或这次暂不方便')
     }
     const now = dep('now')()
     const version = Number(coordination.coordination_version || 1)
@@ -862,6 +878,7 @@ function createDateCoordinationHandlers(overrides = {}) {
     const evidence = data.preference_evidence && typeof data.preference_evidence === 'object'
       ? data.preference_evidence
       : allExplicitEvidence()
+    const changedDimensions = sharedChangedDimensions(data.changed_dimensions, evidence)
     const application = normalizeApplication(data, now)
     const primaryContext = {
       user_a_id: Number(coordination.user_a_id),
@@ -973,7 +990,9 @@ function createDateCoordinationHandlers(overrides = {}) {
       processing_error_code: '',
       last_event_at: queued.last_event_at,
       missing_dimensions: [],
-      confirmation_deadline_at: null
+      confirmation_deadline_at: null,
+      last_changed_by_user_id: Number(user.id),
+      last_changed_dimensions: changedDimensions
     })
     await dep('publishCoordinationEvent')({
       coordination: updated,
@@ -1048,10 +1067,13 @@ function createDateCoordinationHandlers(overrides = {}) {
         user_b_id: coordination.user_b_id
       }
     )
-    const counterOfferCard = buildTimeCounterOffer({
+    const counterOfferCard = buildStructuredCounterProposal({
       coordination,
       applicationA: initiatorApp && initiatorApp.application,
       applicationB: inviteeApp && inviteeApp.application,
+      applicationRowA: initiatorApp,
+      applicationRowB: inviteeApp,
+      invitationPrimary,
       viewerUserId: user.id
     })
     const activeProposal = proposals.find((item) => item.status === 'active')
@@ -1215,10 +1237,10 @@ function createDateCoordinationHandlers(overrides = {}) {
 
   async function acceptCounterOfferForUser(data, user) {
     const coordination = await dep('byId')('date_coordination', coordinationId(data))
-    if (!coordination || !participant(coordination, user.id)) throw new Error('无权接受该候选时间')
+    if (!coordination || !participant(coordination, user.id)) throw new Error('无权接受该调整方案')
     const version = Number(coordination.coordination_version || 1)
     if (Number(data.coordination_version || data.coordinationVersion || 0) !== version) {
-      throw new Error('候选时间已更新，请刷新后重试')
+      throw new Error('调整方案已更新，请刷新后重试')
     }
     const applications = await dep('list')('date_coordination_application', {
       coordination_id: Number(coordination.id),
@@ -1227,25 +1249,33 @@ function createDateCoordinationHandlers(overrides = {}) {
     const applicationA = applications.find((item) => Number(item.user_id) === Number(coordination.user_a_id))
     const applicationB = applications.find((item) => Number(item.user_id) === Number(coordination.user_b_id))
     const mine = applications.find((item) => Number(item.user_id) === Number(user.id))
-    const counterOffer = buildTimeCounterOffer({
+    const invitationPrimary = invitationPrimaryOf(coordination, applicationA, {
+      user_a_id: coordination.user_a_id,
+      user_b_id: coordination.user_b_id
+    })
+    const counterOffer = buildStructuredCounterProposal({
       coordination,
       applicationA: applicationA && applicationA.application,
       applicationB: applicationB && applicationB.application,
+      applicationRowA: applicationA,
+      applicationRowB: applicationB,
+      invitationPrimary,
       viewerUserId: user.id
     })
-    if (!counterOffer
-      || String(data.date || '') !== counterOffer.date
-      || String(data.period || '') !== counterOffer.period) {
-      throw new Error('候选时间已更新，请刷新后重试')
+    if (!counterOffer || String(data.proposal_token || data.proposalToken || '') !== counterOffer.proposal_token) {
+      throw new Error('调整方案已更新，请刷新后重试')
     }
     if (!mine || !mine.application) throw new Error('请先完成自己的约会偏好')
 
     const patchHandlers = overrides.applicationPatchHandlers || require('./dateApplicationPatch').createDateApplicationPatchHandlers()
+    const acceptedApplication = applyAcceptedCounterProposal(mine.application, counterOffer)
+    const acceptedChanges = (counterOffer.changes || []).reduce((out, item) => {
+      out[item.field] = acceptedApplication[item.field]
+      return out
+    }, {})
     const patch = await patchHandlers.createPreviewForUser({
       coordination_id: Number(coordination.id),
-      changes: {
-        availability: mergeAcceptedTime(mine.application.availability, counterOffer)
-      }
+      changes: acceptedChanges
     }, user)
     await patchHandlers.confirmForUser({ patch_id: Number(patch.id) }, user)
     const updated = await dep('byId')('date_coordination', Number(coordination.id))

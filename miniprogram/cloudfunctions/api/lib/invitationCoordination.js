@@ -757,7 +757,7 @@ function coordinatorWelcomeText(coordination = {}, role = '') {
     return '你的约会邀请已经发送。\n\n等待对方回应期间，你可以继续告诉我希望调整的时间、区域或其他安排。\n\n修改前我会先给出预览，确认后才更新你自己的建议方案。'
   }
   if (status === STATUS.INVITING_PARTNER && role === 'invitee') {
-    return '请先查看对方的第一次约会邀请。你可以接受这个安排、和我协调其他安排，或选择这次暂不方便。'
+    return '请先查看对方的第一次约会邀请。你可以接受完整方案、只调整部分安排，或选择这次暂不方便。'
   }
   if (status === STATUS.COLLECTING_PREFERENCES && role === 'invitee' && !coordination.my_application) {
     return '你不需要重新填写全部约会信息。\n\n如果大部分安排都可以，直接告诉我你希望调整的地方就可以。\n\n例如：“时间可以，但我更方便福田。”'

@@ -1,6 +1,6 @@
 const { computeOverlap } = require('../lib/dateCoordinationPolicy')
 const { publishCoordinationEvent } = require('../agent/dateCoordinationEvents')
-const { buildTimeCounterOffer } = require('../lib/dateCounterOfferPolicy')
+const { buildStructuredCounterProposal } = require('../lib/dateCounterOfferPolicy')
 
 function defaultDeps() {
   const db = require('../lib/db')
@@ -44,9 +44,11 @@ async function processCoordinationTasks(options = {}) {
     try {
       const version = Number(lease.processing_version || lease.coordination_version || 0)
       const applications = await deps.listApplications(lease.id, version)
-      const byUser = new Map((applications || []).map((item) => [Number(item.user_id), item.application]))
-      const applicationA = byUser.get(Number(lease.user_a_id))
-      const applicationB = byUser.get(Number(lease.user_b_id))
+      const byUser = new Map((applications || []).map((item) => [Number(item.user_id), item]))
+      const applicationRowA = byUser.get(Number(lease.user_a_id))
+      const applicationRowB = byUser.get(Number(lease.user_b_id))
+      const applicationA = applicationRowA && applicationRowA.application
+      const applicationB = applicationRowB && applicationRowB.application
       if (!applicationA || !applicationB) throw new Error('双方协调申请不完整')
       const overlap = computeOverlap(applicationA, applicationB, { version })
       const result = await deps.completeTask(lease, overlap, current)
@@ -58,10 +60,13 @@ async function processCoordinationTasks(options = {}) {
           ? Number(result.coordination.user_b_id)
           : (changedByUserId === Number(result.coordination.user_b_id) ? Number(result.coordination.user_a_id) : 0)
         const counterOffer = !proposals.length && counterViewerId
-          ? buildTimeCounterOffer({
+          ? buildStructuredCounterProposal({
             coordination: result.coordination,
             applicationA,
             applicationB,
+            applicationRowA,
+            applicationRowB,
+            invitationPrimary: result.coordination.invitation_primary_proposal,
             viewerUserId: counterViewerId
           })
           : null
@@ -100,10 +105,10 @@ async function processCoordinationTasks(options = {}) {
                 user_id: counterViewerId,
                 event_type: 'counter_offer_ready',
                 coordination_version: version,
-                title: '对方提出了新的候选时间',
-                body: `${counterOffer.time_text}，请打开协调页选择接受或继续调整。`,
-                stage: 'review_counter_offer',
-                changed_dimensions: ['availability']
+                title: '对方调整了约会方案',
+                body: '请打开协调页核对改动项和调整后的完整方案，再决定接受或继续调整。',
+                stage: 'review_counter_proposal',
+                changed_dimensions: counterOffer.changed_dimensions || []
               })
             } catch (inboxError) {
               console.warn('inbox counter-offer notification skipped:', inboxError.message || inboxError)

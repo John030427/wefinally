@@ -31,13 +31,14 @@ const DIMENSION_LABELS = Object.freeze({
   share_message: 'share_message'
 })
 
-function classifyChangeIntent(message) {
+function classifyChangeIntent(message, options = {}) {
   const text = String(message || '').trim()
   if (!text) return 'consultation'
   if (/[？?]|怎么选|是什么|有什么区别|能不能介绍/.test(text)) return 'consultation'
   const action = /改成|改为|换成|换到|调整为|取消|不要|不想|加上|增加|删除|移除|帮我改|请改/.test(text)
   const field = /周[一二三四五六日天]|预算|元|电影|咖啡|散步|吃饭|奶茶|看展|桌游|区域|地点|时间|上午|下午|晚上|AA|请客|时长/.test(text)
   if (action && field) return 'modify_date_application'
+  if (options.coordination === true && field && text.length <= 80) return 'modify_date_application'
   return 'preference'
 }
 

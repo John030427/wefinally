@@ -179,7 +179,7 @@ async function main() {
 
   await assert.rejects(
     () => agent.createSession({ agent_type: AGENT_TYPES.DATE_COORDINATOR, coordination_id: 80 }, contextB),
-    /请先选择接受这个安排/
+    /请先选择接受完整方案/
   )
   const sessionA = await agent.createSession({ agent_type: AGENT_TYPES.DATE_COORDINATOR, coordination_id: 80 }, contextA)
   assert.ok(sessionA.id)

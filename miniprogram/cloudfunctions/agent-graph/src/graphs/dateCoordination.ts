@@ -217,6 +217,28 @@ function counterOfferOf(state: DateCoordinationState): Record<string, unknown> |
   return value as Record<string, unknown>
 }
 
+function counterProposalReply(counterOffer: Record<string, unknown>): string {
+  const changes = Array.isArray(counterOffer.changes) ? counterOffer.changes : []
+  const changeText = changes
+    .map((item) => {
+      if (!item || typeof item !== 'object') return ''
+      const value = item as Record<string, unknown>
+      const label = sanitizeGraphText(String(value.label || ''), 20)
+      const before = sanitizeGraphText(String(value.before_text || ''), 80)
+      const after = sanitizeGraphText(String(value.after_text || ''), 80)
+      return label && after ? `${label}：${before || '原方案'} → ${after}` : ''
+    })
+    .filter(Boolean)
+    .join('；')
+  const unchanged = sanitizeGraphText(String(counterOffer.unchanged_text || ''), 120)
+  return [
+    '对方提出了一份明确的调整方案。',
+    changeText,
+    unchanged ? `${unchanged}保持原方案。` : '',
+    '请在协调页查看完整方案；接受后只会对齐这些改动，再由系统生成双方确认的最终方案。'
+  ].filter(Boolean).join('\n')
+}
+
 function proactiveAsk(state: DateCoordinationState, focus: CoordinationConflictField): string {
   const own = ownPreferenceOf(state)
   if (focus === 'dateWindows') {
@@ -290,6 +312,10 @@ export function applyConfirmation(
 function mapIntentToPhase(intent: string): string | null {
   const text = String(intent || '').toLowerCase()
   if (/^ask_(time|area|activity|budget|duration|partner|more)$/.test(text)) return text
+  if (text === 'clarify_scope') return 'clarify_scope'
+  if (text === 'accept_current_invitation') return 'review_invitation'
+  if (text === 'modify_specific_dimensions' || text === 'partial_override' || text === 'provide_preference_range') return 'clarify_overrides'
+  if (text === 'accept_counter_proposal' || text === 'review_counter_proposal') return 'review_counter_proposal'
   if (text === 'wait_partner') return 'wait_partner'
   if (text === 'propose') return 'propose'
   if (text === 'manual_handoff') return 'manual_handoff'
@@ -319,6 +345,9 @@ export function buildDateCoordinationGraph(dependencies: DateCoordinationGraphDe
             party: state.party,
             ownPreference: ownPreferenceOf(state),
             sharedState: state.sharedState || {},
+            coordinationPath: String(state.sharedState?.coordinationPath || ''),
+            actionRequired: String(state.sharedState?.actionRequired || ''),
+            proposalBaseAvailable: state.sharedState?.proposalBaseAvailable === true,
             partnerProgress: state.partnerProgress || '',
             confirmationSnapshot: state.confirmationSnapshot || null,
             overlap: {
@@ -341,6 +370,14 @@ export function buildDateCoordinationGraph(dependencies: DateCoordinationGraphDe
       }
     })
     .addNode('computeOverlap', (state) => {
+      if (state.phase === 'clarify_scope' && state.replyDraft) {
+        return {
+          phase: 'clarify_scope',
+          proposal: null,
+          pendingAction: null,
+          replyDraft: state.replyDraft
+        }
+      }
       const overlap = resolveOverlap(state)
       const missingDimensions = state.canonicalOverlap?.missingDimensions
       const missingOwn = Array.isArray(missingDimensions) && missingDimensions.includes('own_preference')
@@ -365,12 +402,12 @@ export function buildDateCoordinationGraph(dependencies: DateCoordinationGraphDe
         }
       }
       const counterOffer = counterOfferOf(state)
-      if (counterOffer && typeof counterOffer.time_text === 'string') {
+      if (counterOffer && counterOffer.kind === 'partner_structured_counter_proposal') {
         return {
-          phase: 'review_counter_offer',
+          phase: 'review_counter_proposal',
           proposal: null,
           pendingAction: null,
-          replyDraft: `对方提出了一个新的候选时间：${sanitizeGraphText(counterOffer.time_text, 80)}。如果这个时间也可以，请在协调页点击“接受这个时间”；如果不方便，直接告诉我你还能接受的时间。`
+          replyDraft: counterProposalReply(counterOffer)
         }
       }
       if (overlap.missingFields.length > 0) {

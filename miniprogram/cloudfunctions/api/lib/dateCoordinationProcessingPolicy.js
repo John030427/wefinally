@@ -118,6 +118,12 @@ function projectParticipantEvent(event = {}, context = {}) {
   const actorId = Number(event.actor_user_id || 0)
   const mine = actorId > 0 && actorId === viewerId
   const proposal = proposalSummary(event.proposal)
+  const counterSummary = event.counter_offer && Array.isArray(event.counter_offer.changes)
+    ? event.counter_offer.changes
+      .map((item) => `${String(item.label || '')}改为${String(item.after_text || '')}`)
+      .filter((item) => item !== '改为')
+      .join('；')
+    : ''
   const definitions = {
     application_submitted: {
       stage: mine ? 'my_application_submitted' : 'partner_application_submitted',
@@ -150,7 +156,7 @@ function projectParticipantEvent(event = {}, context = {}) {
     no_overlap: {
       stage: 'no_overlap',
       content: event.counter_offer && !mine
-        ? `对方提出了新的候选时间：${String(event.counter_offer.time_text || '')}。请在协调页选择接受，或继续告诉我其他可约时间。`
+        ? `对方提出了一份明确的调整方案：${counterSummary || String(event.counter_offer.body || '')}。请在协调页核对完整方案后选择接受，或继续提出其他调整。`
         : '本轮暂未找到双方都合适的时间、区域和活动组合。你可以继续告诉我可调整范围。'
     },
     proposal_confirmed: {

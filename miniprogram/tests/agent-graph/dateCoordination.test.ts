@@ -201,7 +201,38 @@ test('backend payment conflict prevents graph from claiming a complete plan', ()
   assert.deepEqual(overlap.conflictFields, ['payment'])
 })
 
-test('backend counter offer is surfaced as an actionable negotiation step', async () => {
+test('ambiguous negotiation reply is clarified instead of mutating an arbitrary dimension', async () => {
+  const graph = buildDateCoordinationGraph({
+    checkpointer: new MemorySaver(),
+    model: {
+      async decide() {
+        return {
+          intent: 'clarify_scope',
+          replyDraft: '你是想修改时间，还是接受地点和活动安排？',
+          riskLevel: 'safe' as const,
+          route: 'date_coordination' as const,
+          toolRequest: null,
+          suggestedActions: []
+        }
+      }
+    }
+  })
+  const result = await graph.invoke(state({
+    userText: '其他都行吧',
+    canonicalOverlap: {
+      source: 'backend',
+      hasOverlap: false,
+      missingDimensions: ['time', 'area'],
+      conflictDimensions: ['time', 'area'],
+      proposal: null
+    }
+  }), { configurable: { thread_id: 'wf_thread_coordination_clarify_scope' } })
+  assert.equal(result.phase, 'clarify_scope')
+  assert.match(String(result.replyDraft), /修改时间/)
+  assert.equal(result.pendingAction, null)
+})
+
+test('backend structured counter proposal is surfaced with changed and unchanged scope', async () => {
   const graph = buildDateCoordinationGraph({ checkpointer: new MemorySaver() })
   const result = await graph.invoke(state({
     canonicalOverlap: {
@@ -212,21 +243,23 @@ test('backend counter offer is surfaced as an actionable negotiation step', asyn
       proposal: null
     },
     sharedState: {
-      actionRequired: 'review_counter_offer',
+      actionRequired: 'review_counter_proposal',
+      coordinationPath: 'structured_counter_proposal',
       counterOffer: {
-        kind: 'partner_time_counter_offer',
+        kind: 'partner_structured_counter_proposal',
         coordination_version: 3,
-        dimension: 'time',
-        date: '2026-09-06',
-        period: 'afternoon',
+        changed_dimensions: ['time'],
+        changes: [{ label: '时间', before_text: '2026-09-04 下午', after_text: '2026-09-06 下午' }],
+        unchanged_text: '区域、活动、预算、费用方式、时长',
         time_text: '2026-09-06 下午',
-        title: '对方提出了一个新的候选时间',
-        body: '接受后重新计算。'
+        title: '对方调整了约会方案',
+        body: '这次只调整了时间。'
       }
     }
   }), { configurable: { thread_id: 'wf_thread_coordination_counter_offer' } })
-  assert.equal(result.phase, 'review_counter_offer')
+  assert.equal(result.phase, 'review_counter_proposal')
+  assert.match(String(result.replyDraft), /2026-09-04 下午 → 2026-09-06 下午/)
   assert.match(String(result.replyDraft), /2026-09-06 下午/)
-  assert.match(String(result.replyDraft), /接受这个时间/)
+  assert.match(String(result.replyDraft), /区域、活动、预算、费用方式、时长保持原方案/)
   assert.equal(result.pendingAction, null)
 })

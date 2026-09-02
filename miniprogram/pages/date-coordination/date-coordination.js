@@ -90,7 +90,7 @@ function buildCoordinationDisplay(coordination) {
       : (status === 'collecting_preferences' ? coordinatingHero
         : (status === 'no_overlap'
           ? (coordination.counter_offer_card
-            ? `对方提出了新的候选时间：${coordination.counter_offer_card.time_text}。你可以接受，或继续告诉 AI 其他可约时间。`
+            ? '对方提出了一份明确的调整方案。请先核对改动项和完整方案，再决定接受或继续调整。'
             : '目前还没有找到完整共同安排。已经一致的条件不会再重复询问。')
           : (status === 'waiting_confirmations'
             ? '已有推荐方案待确认。你也可以继续和 AI 协调员沟通微调。'
@@ -691,11 +691,10 @@ Page({
     try {
       const result = await post(`${API_PATHS.DATE_COORDINATIONS}/${this.data.coordinationId}/counter-offer/accept`, {
         coordination_version: Number(offer.coordination_version || this.data.coordination.coordination_version),
-        date: offer.date,
-        period: offer.period
+        proposal_token: offer.proposal_token
       }, { showError: false })
       this.applyCoordination(normalizeCoordination(result))
-      wx.showToast({ title: '已接受，正在重新协调', icon: 'success' })
+      wx.showToast({ title: '已接受调整，正在生成方案', icon: 'success' })
     } catch (err) {
       wx.showToast({ title: (err && err.message) || '接受失败，请刷新后重试', icon: 'none', duration: 3000 })
       this.refreshCoordination(true)
@@ -781,7 +780,7 @@ Page({
       return
     }
     if (this.data.coordination && this.data.coordination.status === 'inviting_partner' && this.data.coordination.role === 'invitee') {
-      wx.showToast({ title: '请先选择接受这个安排、和 AI 协调，或这次暂不方便', icon: 'none', duration: 3000 })
+      wx.showToast({ title: '请先选择接受完整方案、只调整部分安排，或这次暂不方便', icon: 'none', duration: 3000 })
       return
     }
     wx.navigateTo({

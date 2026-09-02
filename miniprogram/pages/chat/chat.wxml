@@ -66,7 +66,8 @@
             <text class="msg-time">{{item.timeText}}</text>
           </view>
           <view wx:if="{{item.isBot && item.status === 'completed' && item.patchPreview}}" class="patch-preview-card">
-            <view class="patch-preview-title">{{item.patchPreview.operation === 'create' ? '💌 约会申请发送预览' : '💗 约会条件修改预览'}}</view>
+            <view class="patch-preview-title">{{item.patchPreview.title}}</view>
+            <view wx:if="{{item.patchPreview.partialOverride}}" class="patch-scope-note">只调整下面列出的项目；其余项目沿用你刚看到的完整邀请方案。</view>
             <view class="patch-change" wx:for="{{item.patchPreview.changes}}" wx:for-item="change" wx:key="field">
               <view class="patch-field">{{change.label}}</view>
               <view wx:if="{{item.patchPreview.operation === 'create'}}" class="patch-value-row"><text class="patch-value-label">待发送</text><text class="patch-value after">{{change.after}}</text></view>
@@ -75,11 +76,12 @@
                 <view class="patch-value-row"><text class="patch-value-label">修改后</text><text class="patch-value after">{{change.after}}</text></view>
               </block>
             </view>
-            <view wx:if="{{item.patchPreview.operation === 'create'}}" class="patch-notice">📌 这是待发送申请，当前尚未通知对方。</view>
-            <view wx:elif="{{item.patchPreview.affectsExistingProposal}}" class="patch-notice">📌 影响现有方案，确认后会重新为你们匹配。</view>
-            <view wx:else class="patch-notice">📌 不影响现有方案，会保留当前匹配进度。</view>
-            <view wx:if="{{item.patchPreview.willNotifyPartner}}" class="patch-notice">💌 确认后将通知对方。</view>
-            <view wx:else class="patch-notice">💌 这次修改不会主动通知对方。</view>
+            <view wx:if="{{item.patchPreview.partialOverride && item.patchPreview.inheritedText}}" class="patch-inherited">保持不变：{{item.patchPreview.inheritedText}}</view>
+            <view wx:if="{{item.patchPreview.operation === 'create'}}" class="patch-notice">当前只是预览，确认前不会通知对方。</view>
+            <view wx:elif="{{item.patchPreview.affectsExistingProposal}}" class="patch-notice">这会影响现有方案，确认后将重新计算。</view>
+            <view wx:else class="patch-notice">这次修改会保留当前协调进度。</view>
+            <view wx:if="{{item.patchPreview.willNotifyPartner}}" class="patch-notice">确认后将通知对方，但只发送脱敏后的变更提醒。</view>
+            <view wx:else class="patch-notice">这次修改不会主动通知对方。</view>
             <view wx:if="{{item.patchPreview.primaryResolutionRequired && item.patchPreview.status === 'pending_primary_selection'}}" class="primary-resolution">
               <view class="patch-notice">{{item.patchPreview.resolutionPrompt}}</view>
               <view wx:for="{{item.patchPreview.primaryResolutionFields}}" wx:for-item="resField" wx:key="field">
@@ -101,8 +103,8 @@
               </view>
             </view>
             <view wx:if="{{item.patchPreview.requiresConfirmation && item.patchPreview.status === 'pending_confirmation'}}" class="patch-actions">
-              <button class="patch-confirm" data-patch-id="{{item.patchPreview.id}}" data-message-id="{{item.id}}" bindtap="onConfirmPatch" disabled="{{patchSubmitting}}" loading="{{patchSubmitting}}">{{item.patchPreview.operation === 'create' ? '确认发送' : '确认修改'}}</button>
-              <button class="patch-cancel" data-patch-id="{{item.patchPreview.id}}" data-message-id="{{item.id}}" bindtap="onCancelPatch" disabled="{{patchSubmitting}}">{{item.patchPreview.operation === 'create' ? '暂不发送' : '暂不修改'}}</button>
+              <button class="patch-confirm" data-patch-id="{{item.patchPreview.id}}" data-message-id="{{item.id}}" bindtap="onConfirmPatch" disabled="{{patchSubmitting}}" loading="{{patchSubmitting}}">{{item.patchPreview.confirmLabel}}</button>
+              <button class="patch-cancel" data-patch-id="{{item.patchPreview.id}}" data-message-id="{{item.id}}" bindtap="onCancelPatch" disabled="{{patchSubmitting}}">{{item.patchPreview.cancelLabel}}</button>
             </view>
             <view wx:if="{{item.patchPreview.primaryResolutionRequired && item.patchPreview.status === 'pending_primary_selection'}}" class="patch-actions">
               <button class="patch-cancel" data-patch-id="{{item.patchPreview.id}}" data-message-id="{{item.id}}" bindtap="onCancelPatch" disabled="{{patchSubmitting}}">暂不修改</button>

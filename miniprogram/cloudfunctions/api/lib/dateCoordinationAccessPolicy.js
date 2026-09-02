@@ -117,7 +117,7 @@ function terminalWriteError(status) {
 }
 
 function inviteeCoordinatorBlockedError() {
-  return '请先选择接受这个安排、和 AI 协调其他安排，或这次暂不方便。'
+  return '请先选择接受完整方案、只调整部分安排，或这次暂不方便。'
 }
 
 module.exports = {

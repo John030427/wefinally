@@ -68,6 +68,14 @@ function normalizePatchPreview(raw, requiresConfirmation) {
   if (!patch || !preview || !Array.isArray(preview.changed_fields)) return null
   const status = patch.status || 'pending_confirmation'
   const primaryResolutionRequired = Boolean(preview.primary_resolution_required) || status === 'pending_primary_selection'
+  const partialOverride = (patch.operation || 'modify') === 'create'
+    && preview.application_source === 'invitee_override'
+  const inheritedFields = partialOverride
+    ? Object.keys(preview.preference_evidence || {})
+      .filter((field) => preview.preference_evidence[field] === 'inherited')
+      .map((field) => PATCH_FIELD_LABELS[field] || '')
+      .filter(Boolean)
+    : []
   return {
     id: String(patch.id || patch.patch_id || ''),
     operation: patch.operation || 'modify',
@@ -82,6 +90,13 @@ function normalizePatchPreview(raw, requiresConfirmation) {
     resolutionPrompt: preview.resolution_prompt || '本次建议安排需要确认',
     sourceChanges: preview.source_changes || patch.changes || {},
     primarySelection: preview.primary_selection || patch.primary_selection || {},
+    partialOverride,
+    title: partialOverride
+      ? '局部调整确认'
+      : ((patch.operation || 'modify') === 'create' ? '约会安排发送预览' : '约会条件修改预览'),
+    inheritedText: inheritedFields.join('、'),
+    confirmLabel: partialOverride ? '确认这些调整' : ((patch.operation || 'modify') === 'create' ? '确认发送' : '确认修改'),
+    cancelLabel: partialOverride ? '重新说明' : ((patch.operation || 'modify') === 'create' ? '暂不发送' : '暂不修改'),
     changes: preview.changed_fields.map((field) => {
       let before = formatPatchValue(preview.before && preview.before[field])
       let after = formatPatchValue(preview.after && preview.after[field])

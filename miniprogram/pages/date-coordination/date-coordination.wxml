@@ -81,9 +81,11 @@
     </view>
 
     <view class="invite-actions card" wx:if="{{showAcceptInvitation || showCoordinateInstead || showDecline}}">
-      <view class="section-title">你可以这样回应</view>
-      <button class="primary-btn full-btn" wx:if="{{showAcceptInvitation}}" bindtap="respondInvitation" data-decision="accept" loading="{{responding}}">接受这个安排</button>
-      <button class="outline-btn full-btn" wx:if="{{showCoordinateInstead}}" bindtap="respondInvitation" data-decision="coordinate" loading="{{responding}}">和 AI 协调其他安排</button>
+      <view class="section-title">选择一种回应方式</view>
+      <view class="response-option-copy" wx:if="{{showAcceptInvitation}}">时间、区域、活动等都可以，直接接受整份方案。</view>
+      <button class="primary-btn full-btn" wx:if="{{showAcceptInvitation}}" bindtap="respondInvitation" data-decision="accept" loading="{{responding}}">接受完整方案</button>
+      <view class="response-option-copy" wx:if="{{showCoordinateInstead}}">大部分安排可以，只告诉 AI 需要改变的项目。</view>
+      <button class="outline-btn full-btn" wx:if="{{showCoordinateInstead}}" bindtap="respondInvitation" data-decision="coordinate" loading="{{responding}}">只调整部分安排</button>
       <button class="text-btn full-btn" wx:if="{{showDecline}}" bindtap="respondInvitation" data-decision="decline" loading="{{responding}}">这次暂不方便</button>
     </view>
 
@@ -186,7 +188,8 @@
     </view>
 
     <view class="optional-form-entry" wx:if="{{showOptionalFullForm && !showApplicationForm}}">
-      <button class="outline-btn full-btn" bindtap="toggleOptionalForm">也可以完整填写我的安排</button>
+      <view class="response-option-copy">如果没有明确方案，也可以填写多个可接受选项，由系统寻找交集。</view>
+      <button class="outline-btn full-btn" bindtap="toggleOptionalForm">完整填写可接受范围</button>
     </view>
 
     <view class="proposal-card card" wx:if="{{proposal && (coordination.status === 'waiting_confirmations' || coordination.status === 'arranged')}}">
@@ -206,13 +209,32 @@
     </view>
 
     <view class="proposal-card counter-offer-card card" wx:if="{{coordination.status === 'no_overlap' && counterOfferCard}}">
-      <view class="counter-offer-kicker">对方的新建议</view>
+      <view class="counter-offer-kicker">待回应的完整调整方案</view>
       <view class="section-title">{{counterOfferCard.title}}</view>
-      <view class="counter-offer-time">{{counterOfferCard.time_text}}</view>
       <view class="public-note">{{counterOfferCard.body}}</view>
-      <button class="primary-btn full-btn" bindtap="acceptCounterOffer" loading="{{acceptingCounterOffer}}" disabled="{{acceptingCounterOffer}}">接受这个时间</button>
-      <button class="outline-btn full-btn counter-offer-adjust" bindtap="goCoordinator">我再提供其他时间</button>
-      <view class="muted counter-offer-hint">接受后仍需系统重新计算，不会直接确认约会。</view>
+      <view class="counter-change-list">
+        <view class="counter-change-row" wx:for="{{counterOfferCard.changes}}" wx:key="dimension">
+          <text class="counter-change-label">{{item.label}}</text>
+          <view class="counter-change-values">
+            <text class="counter-change-before">{{item.before_text}}</text>
+            <text class="counter-change-arrow">→</text>
+            <text class="counter-change-after">{{item.after_text}}</text>
+          </view>
+        </view>
+      </view>
+      <view class="unchanged-note" wx:if="{{counterOfferCard.unchanged_text}}">保持不变：{{counterOfferCard.unchanged_text}}</view>
+      <view class="counter-plan" wx:if="{{counterOfferCard.proposal_card}}">
+        <view class="counter-plan-title">调整后的完整方案</view>
+        <view class="fact-row"><text class="fact-label">时间</text><text class="fact-value">{{counterOfferCard.proposal_card.time_text}}</text></view>
+        <view class="fact-row"><text class="fact-label">区域</text><text class="fact-value">{{counterOfferCard.proposal_card.area_text}}</text></view>
+        <view class="fact-row"><text class="fact-label">活动</text><text class="fact-value">{{counterOfferCard.proposal_card.activity_text}}</text></view>
+        <view class="fact-row"><text class="fact-label">预算</text><text class="fact-value">{{counterOfferCard.proposal_card.budget_text}}</text></view>
+        <view class="fact-row"><text class="fact-label">费用方式</text><text class="fact-value">{{counterOfferCard.proposal_card.payment_text}}</text></view>
+        <view class="fact-row"><text class="fact-label">时长</text><text class="fact-value">{{counterOfferCard.proposal_card.duration_text}}</text></view>
+      </view>
+      <button class="primary-btn full-btn" bindtap="acceptCounterOffer" loading="{{acceptingCounterOffer}}" disabled="{{acceptingCounterOffer}}">接受这份调整</button>
+      <button class="outline-btn full-btn counter-offer-adjust" bindtap="goCoordinator">继续提出其他调整</button>
+      <view class="muted counter-offer-hint">接受后只会对齐上面的改动项；系统生成最终方案后，双方仍需确认。</view>
     </view>
 
     <view class="proposal-card card" wx:if="{{coordination.status === 'no_overlap' && !counterOfferCard}}">
