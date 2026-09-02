@@ -3,6 +3,7 @@ const {
   PATCHABLE_FIELDS,
   previewApplicationChange,
   shareableSummary,
+  shareableChangeCard,
   cleanChanges
 } = require('../lib/dateApplicationPatchPolicy')
 const { publishCoordinationEvent } = require('../agent/dateCoordinationEvents')
@@ -56,6 +57,7 @@ function defaultDeps() {
     updateByDoc: db.updateByDoc,
     claimPendingPatch,
     commitPreAcceptInvitationPatch: db.commitPreAcceptInvitationPatch,
+    commitPostAcceptApplicationPatch: db.commitPostAcceptApplicationPatch,
     publishCoordinationEvent,
     now: db.now,
     saveApplicationForUser(data, user) {
@@ -133,7 +135,7 @@ function createDateApplicationPatchHandlers(overrides = {}) {
         })
       }
     }
-    if (name === 'commitPreAcceptInvitationPatch'
+    if (['commitPreAcceptInvitationPatch', 'commitPostAcceptApplicationPatch'].includes(name)
       && overrides.first && overrides.addWithId
       && !Object.prototype.hasOwnProperty.call(overrides, name)) {
       return null
@@ -237,6 +239,47 @@ function createDateApplicationPatchHandlers(overrides = {}) {
       status: 'applied',
       applied_version: Number(nextCoordinationVersion),
       applied_at: ts
+    })
+    return { coordination: updated, patch: appliedPatch, idempotent: false }
+  }
+
+  async function memoryCommitPostAcceptApplicationPatch(input = {}) {
+    const current = await dep('byId')('date_coordination', Number(input.coordination.id))
+    const stale = () => {
+      const err = new Error('约会条件已更新，请重新生成修改预览')
+      err.code = 'STALE_COORDINATION_VERSION'
+      return err
+    }
+    if (!current
+      || Number(current.coordination_version) !== Number(input.expectedCoordinationVersion)
+      || String(current.status) !== String(input.expectedStatus)) throw stale()
+    if (typeof input.beforeCommitHook === 'function') await input.beforeCommitHook('post_accept_patch')
+    const refreshed = await dep('byId')('date_coordination', Number(input.coordination.id))
+    if (!refreshed
+      || Number(refreshed.coordination_version) !== Number(input.expectedCoordinationVersion)
+      || String(refreshed.status) !== String(input.expectedStatus)) throw stale()
+    const proposals = await dep('list')('date_coordination_proposal', {
+      coordination_id: Number(refreshed.id),
+      coordination_version: Number(input.expectedCoordinationVersion)
+    }, 20)
+    for (const proposal of proposals.filter((item) => item.status === 'active')) {
+      await dep('updateByDoc')('date_coordination_proposal', proposal, { status: 'superseded' })
+    }
+    const confirmations = await dep('list')('date_coordination_confirmation', {
+      coordination_id: Number(refreshed.id),
+      coordination_version: Number(input.expectedCoordinationVersion)
+    }, 20)
+    for (const confirmation of confirmations) {
+      await dep('updateByDoc')('date_coordination_confirmation', confirmation, { status: 'superseded' })
+    }
+    for (const row of input.nextApplications || []) {
+      await dep('addWithId')('date_coordination_application', row, 'date_coordination_application')
+    }
+    const updated = await dep('updateByDoc')('date_coordination', refreshed, input.coordinationUpdate)
+    const appliedPatch = await dep('updateByDoc')('date_application_patch', input.patch, {
+      status: 'applied',
+      applied_version: Number(input.nextCoordinationVersion),
+      applied_at: dep('now')()
     })
     return { coordination: updated, patch: appliedPatch, idempotent: false }
   }
@@ -398,7 +441,7 @@ function createDateApplicationPatchHandlers(overrides = {}) {
     return publicPatch(created)
   }
 
-  async function notifyPartner(coordination, user, summary, proposalCreated, version) {
+  async function notifyPartner(coordination, user, summary, proposalCreated, version, changeCard) {
     const partnerId = Number(coordination.user_a_id) === Number(user.id)
       ? Number(coordination.user_b_id)
       : Number(coordination.user_a_id)
@@ -412,7 +455,8 @@ function createDateApplicationPatchHandlers(overrides = {}) {
         actor_user_id: Number(user.id),
         coordination_version: Number(version),
         has_proposal: Boolean(proposalCreated),
-        changed_dimensions: summary.changed_dimensions
+        changed_dimensions: summary.changed_dimensions,
+        change_card: changeCard || null
       }
     })
     try {
@@ -422,7 +466,7 @@ function createDateApplicationPatchHandlers(overrides = {}) {
         event_type: 'preference_changed',
         coordination_version: Number(version),
         title: '对方更新了可约条件',
-        body: '对方更新了可约时间，目前双方在共同条件上可能出现新的交集。请进入查看共同进度。',
+        body: '对方更新了约会方案。请进入协调会话查看具体变更和最新共同进度。',
         changed_dimensions: summary.changed_dimensions || [],
         stage: 'preference_changed'
       })
@@ -544,25 +588,6 @@ function createDateApplicationPatchHandlers(overrides = {}) {
     const stillInviting = coordination.status === STATUS.INVITING_PARTNER
       && Number(user.id) === Number(coordination.user_a_id)
 
-    // INVITING_PARTNER patches must not supersede proposals/confirmations before CAS.
-    // B Direct Accept may have just written those docs; tearing them would leave ARRANGED without cards.
-    if (!stillInviting) {
-      const proposals = await dep('list')('date_coordination_proposal', {
-        coordination_id: Number(coordination.id),
-        coordination_version: oldVersion
-      }, 20)
-      for (const proposal of proposals.filter((item) => item.status === 'active')) {
-        await dep('updateByDoc')('date_coordination_proposal', proposal, { status: 'superseded' })
-      }
-      const confirmations = await dep('list')('date_coordination_confirmation', {
-        coordination_id: Number(coordination.id),
-        coordination_version: oldVersion
-      }, 20)
-      for (const confirmation of confirmations) {
-        await dep('updateByDoc')('date_coordination_confirmation', confirmation, { status: 'superseded' })
-      }
-    }
-
     if (stillInviting) {
       const source = latestForUser(rows, Number(user.id), oldVersion)
       const nextPreferenceVersion = Number(source && (source.preference_version || source.coordination_version) || oldVersion || 1) + 1
@@ -645,7 +670,14 @@ function createDateApplicationPatchHandlers(overrides = {}) {
         throw err
       }
       const summary = shareableSummary(patch.preview)
-      const notification = await notifyPartner(committed.coordination, user, summary, false, newVersion)
+      const notification = await notifyPartner(
+        committed.coordination,
+        user,
+        summary,
+        false,
+        newVersion,
+        shareableChangeCard(patch.preview)
+      )
       return {
         patch: publicPatch(committed.patch || patch),
         coordination_version: newVersion,
@@ -659,6 +691,7 @@ function createDateApplicationPatchHandlers(overrides = {}) {
 
     const participants = [Number(coordination.user_a_id), Number(coordination.user_b_id)]
     const nextApplications = new Map()
+    const nextApplicationRows = []
     for (const participantId of participants) {
       const source = latestForUser(rows, participantId, oldVersion)
       if (!source || !source.application) continue
@@ -667,7 +700,7 @@ function createDateApplicationPatchHandlers(overrides = {}) {
       const preferenceVersion = isActor
         ? Number(source.preference_version || source.coordination_version || oldVersion || 1) + 1
         : Number(source.preference_version || source.coordination_version || oldVersion || 1)
-      await dep('addWithId')('date_coordination_application', {
+      nextApplicationRows.push({
         coordination_id: Number(coordination.id),
         user_id: participantId,
         coordination_version: newVersion,
@@ -679,7 +712,7 @@ function createDateApplicationPatchHandlers(overrides = {}) {
           ? evidenceAfterChanges(source.preference_evidence, patch.preview && patch.preview.changed_fields)
           : (source.preference_evidence || null),
         accepted_base_invitation_version: Number(source.accepted_base_invitation_version || coordination.accepted_base_invitation_version || 0)
-      }, 'date_coordination_application')
+      })
       nextApplications.set(participantId, application)
     }
 
@@ -714,13 +747,39 @@ function createDateApplicationPatchHandlers(overrides = {}) {
       last_changed_by_user_id: Number(user.id),
       last_changed_dimensions: patchSummary.changed_dimensions
     }
-    const updatedCoordination = await dep('updateByDoc')('date_coordination', coordination, update)
-    const appliedPatch = await dep('updateByDoc')('date_application_patch', patch, {
-      status: 'applied',
-      applied_version: newVersion,
-      applied_at: dep('now')()
-    })
-    const notification = await notifyPartner(updatedCoordination, user, patchSummary, false, newVersion)
+    const commitInput = {
+      coordination,
+      actorUserId: Number(user.id),
+      expectedCoordinationVersion: oldVersion,
+      expectedStatus: coordination.status,
+      nextCoordinationVersion: newVersion,
+      nextApplications: nextApplicationRows,
+      coordinationUpdate: update,
+      patchId: Number(patch.id),
+      patchDocId: patch._id,
+      patch,
+      beforeCommitHook: dep('beforeCommitHook')
+    }
+    const commitFn = dep('commitPostAcceptApplicationPatch')
+    let committed
+    try {
+      committed = typeof commitFn === 'function'
+        ? await commitFn(commitInput)
+        : await memoryCommitPostAcceptApplicationPatch(commitInput)
+    } catch (err) {
+      await dep('updateByDoc')('date_application_patch', patch, { status: 'pending_confirmation' })
+      throw err
+    }
+    const updatedCoordination = committed.coordination
+    const appliedPatch = committed.patch || patch
+    const notification = await notifyPartner(
+      updatedCoordination,
+      user,
+      patchSummary,
+      false,
+      newVersion,
+      shareableChangeCard(patch.preview)
+    )
     return {
       patch: publicPatch(appliedPatch),
       coordination_version: newVersion,

@@ -161,6 +161,28 @@ async function serviceChecks() {
   assert.deepStrictEqual(tables.date_coordination_event[0].shareable_summary.changed_dimensions, ['activity', 'budget'])
   const repeated = await handlers.confirmForUser({ coordination_id: 50, patch_id: pending.id }, tables.user[0])
   assert.strictEqual(repeated.coordination_version, 2)
+  tables.date_coordination_proposal.push({ id: 901, coordination_id: 50, coordination_version: 2, status: 'active' })
+  tables.date_coordination_confirmation.push({ id: 902, coordination_id: 50, user_id: 2, coordination_version: 2, decision: 'confirm', status: 'active' })
+  const racePreview = await handlers.createPreviewForUser({
+    coordination_id: 50,
+    session_id: 100,
+    changes: { areas: ['南山区'] }
+  }, tables.user[0])
+  const versionThreeCount = tables.date_coordination_application.filter((row) => row.coordination_version === 3).length
+  deps.beforeCommitHook = async (phase) => {
+    if (phase === 'post_accept_patch') tables.date_coordination[0].status = 'arranged'
+  }
+  await assert.rejects(
+    () => handlers.confirmForUser({ coordination_id: 50, patch_id: racePreview.id }, tables.user[0]),
+    /已更新.*重新生成/
+  )
+  assert.strictEqual(tables.date_coordination_proposal.find((row) => row.id === 901).status, 'active')
+  assert.strictEqual(tables.date_coordination_confirmation.find((row) => row.id === 902).status, 'active')
+  assert.strictEqual(tables.date_coordination_application.filter((row) => row.coordination_version === 3).length, versionThreeCount)
+  delete deps.beforeCommitHook
+  tables.date_coordination[0].status = 'computing_overlap'
+  const storedRacePatch = tables.date_application_patch.find((row) => row.id === racePreview.id)
+  storedRacePatch.status = 'cancelled'
   const noOverlapPreview = await handlers.createPreviewForUser({
     coordination_id: 50,
     session_id: 100,

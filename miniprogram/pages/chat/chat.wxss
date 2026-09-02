@@ -240,6 +240,52 @@
   margin-bottom: 14rpx;
 }
 
+.coordination-update-card {
+  width: 100%;
+  max-width: 540rpx;
+  box-sizing: border-box;
+  margin-top: 12rpx;
+  padding: 22rpx;
+  border: 1rpx solid var(--wf-border, #f0e4e4);
+  border-left: 8rpx solid var(--wf-primary, #e8637f);
+  border-radius: var(--wf-radius-md, 16rpx);
+  background: var(--wf-card, #fff);
+  box-shadow: var(--wf-shadow-card, 0 6rpx 24rpx rgba(214, 116, 140, 0.08));
+}
+
+.coordination-update-kicker {
+  margin-bottom: 8rpx;
+  color: var(--wf-ai-tag, #7b6cc8);
+  font-size: 21rpx;
+  letter-spacing: 1rpx;
+}
+
+.chat-plan-facts {
+  margin-top: 14rpx;
+  padding: 14rpx 18rpx;
+  border-radius: var(--wf-radius-sm, 12rpx);
+  background: var(--wf-bg, #faf6f4);
+}
+
+.chat-plan-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 20rpx;
+  padding: 8rpx 0;
+  color: var(--wf-text-main, #3a2e2e);
+  font-size: 23rpx;
+  line-height: 1.5;
+}
+
+.chat-plan-row text:first-child {
+  flex: none;
+  color: var(--wf-text-sub, #8c7b7b);
+}
+
+.chat-plan-row text:last-child {
+  text-align: right;
+}
+
 .patch-scope-note,
 .patch-inherited {
   margin: 12rpx 0;

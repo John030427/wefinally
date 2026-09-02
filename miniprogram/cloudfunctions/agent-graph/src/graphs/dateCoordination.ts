@@ -22,7 +22,16 @@ export type CoordinationProposal = {
   budgetBand?: 'low' | 'medium' | 'high'
 }
 
-export type CoordinationConflictField = 'dateWindows' | 'regions' | 'venueTypes' | 'duration' | 'budget' | 'payment'
+export type CoordinationConflictField =
+  | 'dateWindows'
+  | 'regions'
+  | 'venueTypes'
+  | 'exactTime'
+  | 'activityVenue'
+  | 'meetPoint'
+  | 'duration'
+  | 'budget'
+  | 'payment'
 
 export type CoordinationOverlap = {
   hasOverlap: boolean
@@ -156,6 +165,9 @@ function mapBackendDimension(value: string): CoordinationConflictField | 'partne
   if (key === 'time' || key === 'dateWindows') return 'dateWindows'
   if (key === 'area' || key === 'regions') return 'regions'
   if (key === 'activity' || key === 'venueTypes') return 'venueTypes'
+  if (key === 'exact_time' || key === 'start_time') return 'exactTime'
+  if (key === 'activity_venue') return 'activityVenue'
+  if (key === 'meet_point') return 'meetPoint'
   if (key === 'duration') return 'duration'
   if (key === 'budget') return 'budget'
   if (key === 'payment' || key === 'payment_preference') return 'payment'
@@ -201,6 +213,9 @@ const CONFLICT_ASK: Record<CoordinationConflictField, string> = {
   dateWindows: '目前双方还没有找到共同时间。你之前选择的是：',
   regions: '时间已经对齐，但区域还没有交集。你之前填写的是：',
   venueTypes: '区域已经对齐，但活动类型还没有交集。你之前选择的是：',
+  exactTime: '日期和大致时间段已经对齐，但还需要确认具体几点。你希望几点开始？',
+  activityVenue: '活动已经确定，但具体活动场地还需要确认。请提供一个适合该活动的公共场地。',
+  meetPoint: '活动场地已经明确，但还需要一个双方容易找到的公共集合点。',
   duration: '时间、区域和活动都已对齐，但时长还需要协调。是否可以放宽时长要求？',
   budget: '其他条件都已对齐，但预算还需要协调。是否可以放宽预算范围？',
   payment: '时间、区域、活动和预算已经对齐，但费用方式还不兼容。是否可以调整付款方式？'
@@ -253,6 +268,7 @@ function proactiveAsk(state: DateCoordinationState, focus: CoordinationConflictF
     const venues = (own.venueTypes || []).slice(0, 3).join('；') || '你还没有选择活动类型'
     return CONFLICT_ASK.venueTypes + venues + '。是否可以换一种活动？'
   }
+  if (focus === 'exactTime' || focus === 'activityVenue' || focus === 'meetPoint') return CONFLICT_ASK[focus]
   return CONFLICT_ASK[focus]
 }
 
@@ -260,6 +276,9 @@ const FOCUS_PHASE: Record<CoordinationConflictField, string> = {
   dateWindows: 'ask_time',
   regions: 'ask_area',
   venueTypes: 'ask_activity',
+  exactTime: 'ask_exact_time',
+  activityVenue: 'ask_activity_venue',
+  meetPoint: 'ask_meet_point',
   duration: 'ask_duration',
   budget: 'ask_budget',
   payment: 'ask_payment'
@@ -311,7 +330,7 @@ export function applyConfirmation(
 
 function mapIntentToPhase(intent: string): string | null {
   const text = String(intent || '').toLowerCase()
-  if (/^ask_(time|area|activity|budget|duration|partner|more)$/.test(text)) return text
+  if (/^ask_(time|exact_time|area|activity|activity_venue|meet_point|budget|duration|partner|more)$/.test(text)) return text
   if (text === 'clarify_scope') return 'clarify_scope'
   if (text === 'accept_current_invitation') return 'review_invitation'
   if (text === 'modify_specific_dimensions' || text === 'partial_override' || text === 'provide_preference_range') return 'clarify_overrides'
@@ -370,6 +389,18 @@ export function buildDateCoordinationGraph(dependencies: DateCoordinationGraphDe
       }
     })
     .addNode('computeOverlap', (state) => {
+      const planIssue = state.sharedState?.planIssue
+      if (planIssue && typeof planIssue === 'object' && !Array.isArray(planIssue)) {
+        const message = sanitizeGraphText(String((planIssue as Record<string, unknown>).message || ''), 240)
+        if (message) {
+          return {
+            phase: 'clarify_plan',
+            proposal: null,
+            pendingAction: null,
+            replyDraft: message
+          }
+        }
+      }
       if (state.phase === 'clarify_scope' && state.replyDraft) {
         return {
           phase: 'clarify_scope',

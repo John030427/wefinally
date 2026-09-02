@@ -24,12 +24,78 @@ const {
 } = require('../lib/dateCoordinationAccessPolicy')
 const { coordinatorWelcomeText } = require('../lib/invitationCoordination')
 const { applyAcceptedCounterProposal } = require('../lib/dateCounterOfferPolicy')
+const { exactTimeFromText, periodForStartTime } = require('../lib/meetingPlanPolicy')
+const {
+  publicState: publicMeetingState,
+  applyMeetingCheckIn
+} = require('../lib/meetingCheckInService')
 
 const FREE_DAILY_LIMIT = 5
 const VIP_DAILY_LIMIT = 30
 const CREATE_APPLICATION_PREVIEW_TOOL = 'create_date_application_preview'
 const CONFIRM_APPLICATION_TOOL = 'confirm_date_application'
 const PARTNER_INQUIRY_TOOL = 'generate_partner_notification'
+
+function meetingConversationIntent(content) {
+  const text = String(content || '').trim()
+  if (/现场.*不符|不是本人|感觉不对|身份不符/.test(text)) return { action: 'mismatch' }
+  if (/没找到|找不到|没看见对方|对方在哪/.test(text)) return { action: 'not_found' }
+  if (/见到对方|已经见面|确认见到|找到对方了/.test(text)) return { action: 'met' }
+  if (/我到了|已经到了|到集合点了|已到达/.test(text)) return { action: 'arrived' }
+  if (/对方穿什么|怎么认对方|如何认出对方|识别对方/.test(text)) return { query: 'partner_hint' }
+  if (/对方到了吗|对方到没到|到达了吗/.test(text)) return { query: 'partner_arrival' }
+  if (/我(?:会)?穿|我的穿着|到场识别|识别提示|我拿着|我会拿着/.test(text)) {
+    return { action: 'set_arrival_hint', arrival_hint: text.replace(/^(?:到场识别提示|识别提示)[:：]?\s*/, '') }
+  }
+  return null
+}
+
+function meetingReply(intent, state) {
+  if (intent.query === 'partner_hint') {
+    return state.partner_arrival_hint
+      ? `对方主动提供的到场识别提示是：${state.partner_arrival_hint}。请只在约定的公共集合点核对；AI 无法替你验证现实身份。`
+      : '对方还没有提供到场识别提示。你可以先补充自己的穿搭或手持物，我会在对方确认后通过协调会话转达。'
+  }
+  if (intent.query === 'partner_arrival') {
+    return state.partner_arrived ? '对方已确认到达约定集合点。' : '对方尚未确认到达；我不会共享实时定位，你可以继续在公共集合点等待。'
+  }
+  return {
+    set_arrival_hint: '识别提示已经记录并通过约会协调会话同步给对方。',
+    arrived: '已记录你到达集合点；对方会在自己的协调会话中看到到达提醒。',
+    met: state.meeting_confirmed ? '双方都已确认见面。' : '你已确认见到对方，正在等待对方确认。',
+    not_found: '已通过协调会话通知对方你暂未找到人，请留在公共集合点并核对识别提示。',
+    mismatch: '现场情况不符，本次会合已暂停。请停止接触并前往安全公共区域，必要时联系平台人工客服或当地紧急服务。'
+  }[intent.action] || '到场状态已更新。'
+}
+
+function applyExactTimeToDecision(decision, content, currentApplication) {
+  const startTime = exactTimeFromText(content)
+  if (!startTime || !decision) return decision
+  const request = decision.toolRequest || decision.tool_request
+  if (!request || !request.arguments || typeof request.arguments !== 'object') return decision
+  const args = request.arguments
+  const target = args.application && typeof args.application === 'object' ? args.application : args
+  target.start_time = startTime
+  const period = periodForStartTime(startTime)
+  if (Array.isArray(target.availability) && target.availability.length === 1) {
+    target.availability = target.availability.map((item) => Object.assign({}, item, { periods: [period] }))
+  } else if (currentApplication && Array.isArray(currentApplication.availability)
+    && currentApplication.availability.length === 1) {
+    target.availability = currentApplication.availability.map((item) => Object.assign({}, item, { periods: [period] }))
+  }
+  return decision
+}
+
+function movieVenueClarification(content, application) {
+  const text = String(content || '')
+  if (!/电影|看电影/.test(text)) return ''
+  const venueText = `${text} ${String(application && application.activity_venue || '')}`
+  if (/电影院|影城|影院/.test(venueText)) return ''
+  if (/星巴克|咖啡店|咖啡馆/.test(`${text} ${String(application && application.areas || '')}`)) {
+    return '你确认了“看电影”，但当前只看到星巴克。星巴克可以作为集合点，但还需要具体电影院作为活动场地。你想去哪家电影院？'
+  }
+  return ''
+}
 
 function pendingActionIntent(content) {
   const text = String(content || '').trim()
@@ -102,8 +168,11 @@ function defaultDeps() {
     addWithId: db.addWithId,
     updateByDoc: db.updateByDoc,
     claimPendingPatch,
+    commitPreAcceptInvitationPatch: db.commitPreAcceptInvitationPatch,
+    commitPostAcceptApplicationPatch: db.commitPostAcceptApplicationPatch,
     now: db.now,
     generateDecision,
+    publishCoordinationEvent: require('../agent/dateCoordinationEvents').publishCoordinationEvent,
     env: process.env,
     invokeGraphFunction: (name, payload) => cloud.callFunction({ name, data: payload }),
     notifyInbox(input) {
@@ -136,6 +205,7 @@ function publicMessage(row) {
   if (row.patch_preview) result.patch_preview = sanitizeOutput(row.patch_preview)
   if (row.partner_inquiry_preview) result.partner_inquiry_preview = publicPartnerInquiry(row.partner_inquiry_preview)
   if (row.partner_inquiry) result.partner_inquiry = publicPartnerInquiry(row.partner_inquiry)
+  if (row.coordination_update_card) result.coordination_update_card = sanitizeOutput(row.coordination_update_card)
   if (row.handoff) result.handoff = sanitizeOutput(row.handoff)
   return result
 }
@@ -250,7 +320,10 @@ function createAgentHandlers(overrides = {}) {
       publicRow.coordinator_welcome = coordinatorWelcomeText(Object.assign({}, coordination, {
         my_application: ownApp && ownApp.application
       }), role)
-      publicRow.coordinator_read_only = !canWriteCoordinatorAction(coordination, user, { hasOwnApplication: Boolean(ownApp) })
+      publicRow.coordinator_read_only = coordination.status === 'arranged'
+        ? false
+        : !canWriteCoordinatorAction(coordination, user, { hasOwnApplication: Boolean(ownApp) })
+      publicRow.coordinator_meeting_mode = coordination.status === 'arranged'
       publicRow.coordination_status = coordination && coordination.status
     }
     return publicRow
@@ -364,6 +437,43 @@ function createAgentHandlers(overrides = {}) {
         const reply = inviteeCoordinatorBlockedError()
         await saveMessage(session, user, 'assistant', reply)
         return { session_id: session.id, agent_type: session.agent_type, reply, declined: false }
+      }
+      const possibleMeetingIntent = coordination ? meetingConversationIntent(content) : null
+      const meetingIntent = possibleMeetingIntent && (
+        coordination.status === 'arranged'
+        || (coordination.status === 'waiting_confirmations'
+          && (possibleMeetingIntent.action === 'set_arrival_hint' || possibleMeetingIntent.query === 'partner_hint'))
+      ) ? possibleMeetingIntent : null
+      if (meetingIntent) {
+        await saveMessage(session, user, 'user', content)
+        const applications = await dep('list')('date_coordination_application', {
+          coordination_id: Number(coordination.id)
+        }, 50)
+        let meetingState = publicMeetingState(coordination, applications, user.id, dep('env'))
+        if (meetingIntent.action) {
+          meetingState = await applyMeetingCheckIn({
+            coordination_id: Number(coordination.id),
+            user_id: Number(user.id),
+            action: meetingIntent.action,
+            arrival_hint: meetingIntent.arrival_hint
+          }, {
+            byId: dep('byId'),
+            list: dep('list'),
+            updateByDoc: dep('updateByDoc'),
+            publishCoordinationEvent: dep('publishCoordinationEvent'),
+            now: dep('now'),
+            env: dep('env')
+          })
+        }
+        const reply = meetingReply(meetingIntent, meetingState)
+        if (!meetingIntent.action) await saveMessage(session, user, 'assistant', reply)
+        return {
+          session_id: session.id,
+          agent_type: session.agent_type,
+          reply,
+          meeting_checkin: meetingState,
+          risk_level: meetingIntent.action === 'mismatch' ? 'high' : 'safe'
+        }
       }
       if (coordination && isTerminalCoordination(coordination.status) && !canWriteCoordinatorAction(coordination, user, { hasOwnApplication: Boolean(ownApp) })) {
         const role = isInitiator(coordination, user) ? 'initiator' : 'invitee'
@@ -481,7 +591,7 @@ function createAgentHandlers(overrides = {}) {
         updateByDoc: dep('updateByDoc'),
         now: dep('now')
       })
-      const patchHandlers = createDateApplicationPatchHandlers({
+      const patchHandlerDeps = {
         first: dep('first'),
         list: dep('list'),
         byId: dep('byId'),
@@ -490,7 +600,12 @@ function createAgentHandlers(overrides = {}) {
         claimPendingPatch: dep('claimPendingPatch'),
         now: dep('now'),
         saveApplicationForUser: coordinationHandlers.saveApplicationForUser
-      })
+      }
+      if (!Object.prototype.hasOwnProperty.call(overrides, 'first')) {
+        patchHandlerDeps.commitPreAcceptInvitationPatch = dep('commitPreAcceptInvitationPatch')
+        patchHandlerDeps.commitPostAcceptApplicationPatch = dep('commitPostAcceptApplicationPatch')
+      }
+      const patchHandlers = createDateApplicationPatchHandlers(patchHandlerDeps)
       const allApplications = await dep('list')('date_coordination_application', {
         coordination_id: Number(coordination.id)
       }, 200)
@@ -801,6 +916,25 @@ function createAgentHandlers(overrides = {}) {
       }
 
       const ownApplicationRow = latestApplication(allApplications, user.id, coordination.coordination_version)
+      const planClarification = classifyChangeIntent(content, { coordination: true }) === 'modify_date_application'
+        ? movieVenueClarification(content, ownApplicationRow && ownApplicationRow.application)
+        : ''
+      if (planClarification) {
+        await recordTool(session, user, TOOL_NAMES.DATE_COORDINATION, 'completed')
+        await saveMessage(session, user, 'assistant', planClarification, {
+          graph_phase: 'clarify_activity_venue',
+          coordination_id: Number(coordination.id)
+        })
+        return {
+          session_id: session.id,
+          agent_type: session.agent_type,
+          reply: planClarification,
+          tool: TOOL_NAMES.DATE_COORDINATION,
+          provider: 'backend',
+          graph_phase: 'clarify_activity_venue',
+          risk_level: 'safe'
+        }
+      }
       const context = buildContext({
         summary: session.summary || '',
         turns: await recentTurns(session),
@@ -837,7 +971,7 @@ function createAgentHandlers(overrides = {}) {
         PARTNER_INQUIRY_TOOL,
         TOOL_NAMES.MATCH
       ]
-      const decision = await dep('generateDecision')({
+      let decision = await dep('generateDecision')({
         agentType: session.agent_type,
         message: content,
         context,
@@ -851,6 +985,10 @@ function createAgentHandlers(overrides = {}) {
             availability: [{ date: 'YYYY-MM-DD', periods: ['morning|afternoon|evening|night'] }],
             areas: ['行政区或公共商圈'],
             activities: ['咖啡|吃饭|奶茶|散步|看展|电影|桌游，最多3项'],
+            start_time: 'HH:mm；用户说晚上8点时必须输出20:00，并将period设为night',
+            activity_venue: '具体公共活动场地，例如某电影院；不能把星巴克当作电影院',
+            meet_point: '具体公共集合点；可以是电影院附近的星巴克',
+            arrival_hint: '可选的非敏感穿搭或手持物提示，不得包含联系方式',
             budget: 'under-50|50-100|100-200|over-200|flexible',
             payment_preference: 'aa|partner_pays|self_pays|flexible',
             duration: 'about-1h|1-2h|2-3h|flexible',
@@ -862,6 +1000,9 @@ function createAgentHandlers(overrides = {}) {
             '只能读取和建议修改当前用户自己的约会申请',
             '区分三条路径：接受完整邀请、基于完整邀请只调整明确字段、双方分别填写可接受范围后计算交集',
             '“周日”等短答只代表时间字段，不能擅自推断地点、活动、预算、费用或时长；是否沿用其他字段由 has_complete_base_proposal 决定，并且必须展示预览让用户确认',
+            '用户给出具体钟点时必须保留为start_time；20:00属于night，不能只降级为evening或“晚上”',
+            '活动与场地冲突时必须澄清：例如“电影+星巴克”要询问星巴克是否只是集合点，并要求activity_venue为具体电影院；不能静默拼接',
+            '最终方案应区分activity_venue与meet_point。到场识别使用arrival_hint，只能转述用户主动提供的非敏感穿搭或手持物，不能声称AI验证了现实身份',
             '明确修改请求返回 intent=modify_date_application 和 create_date_application_patch，arguments 只包含用户明确修改的字段',
             '当前用户还没有申请但存在完整基础方案时，允许只提交明确 override；后台会继承基础方案并在预览中区分“调整项/保持不变项”',
             '当前用户还没有申请且没有完整基础方案时，返回 intent=create_date_application 和 create_date_application_preview，arguments.application 必须包含 availability、areas、activities、budget、payment_preference、duration',
@@ -874,6 +1015,7 @@ function createAgentHandlers(overrides = {}) {
           ]
         }).slice(0, 7000)
       })
+      decision = applyExactTimeToDecision(decision, content, ownApplicationRow && ownApplicationRow.application)
       await dep('addWithId')('agent_run', {
         session_id: session.id,
         user_id: user.id,

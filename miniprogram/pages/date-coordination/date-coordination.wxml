@@ -46,6 +46,47 @@
       <view class="status-pill">{{coordinationDisplay.statusText}}</view>
     </view>
 
+    <view class="current-plan-card card" wx:if="{{currentPlanCard}}">
+      <view class="plan-card-head">
+        <view>
+          <view class="plan-kicker">当前有效版本 · V{{coordinationDisplay.version}}</view>
+          <view class="section-title">AI 协调方案</view>
+        </view>
+        <view class="plan-ready-pill {{currentPlanCard.meeting_ready ? 'ready' : 'pending'}}">{{currentPlanCard.meeting_ready ? '可以赴约' : '待补充'}}</view>
+      </view>
+      <view class="plan-conflict" wx:if="{{currentPlanCard.meeting_conflict}}">{{currentPlanCard.meeting_conflict.message}}</view>
+      <view class="fact-row"><text class="fact-label">时间</text><text class="fact-value">{{currentPlanCard.time_text || '待确认'}}</text></view>
+      <view class="fact-row"><text class="fact-label">活动</text><text class="fact-value">{{currentPlanCard.activity_text || '待确认'}}</text></view>
+      <view class="fact-row"><text class="fact-label">活动场地</text><text class="fact-value">{{currentPlanCard.activity_venue_text || '待确认'}}</text></view>
+      <view class="fact-row"><text class="fact-label">集合点</text><text class="fact-value">{{currentPlanCard.meet_point_text || '待确认'}}</text></view>
+      <view class="fact-row"><text class="fact-label">区域</text><text class="fact-value">{{currentPlanCard.area_text || '待确认'}}</text></view>
+      <view class="fact-row"><text class="fact-label">预算 / 费用</text><text class="fact-value">{{currentPlanCard.budget_text || '待确认'}} · {{currentPlanCard.payment_text || '待确认'}}</text></view>
+      <view class="fact-row"><text class="fact-label">时长</text><text class="fact-value">{{currentPlanCard.duration_text || '待确认'}}</text></view>
+      <view class="plan-safe-note">双方确认的是同一版本；关键安排改变后，需要重新确认。</view>
+      <button class="outline-btn full-btn" wx:if="{{showCoordinatorCta && (currentPlanCard.meeting_conflict || !currentPlanCard.meeting_ready)}}" bindtap="goCoordinator">让 AI 帮我补齐或澄清</button>
+    </view>
+
+    <view class="meeting-card card" wx:if="{{meetingCheckin && meetingCheckin.enabled}}">
+      <view class="section-title">到场会合</view>
+      <view class="public-note">AI 只负责转达双方主动提供的信息，不能验证现实身份。请在公共集合点确认现场情况。</view>
+      <view class="plan-conflict" wx:if="{{meetingCheckin.meeting_paused}}">会合已因现场情况不符而暂停。请停止接触并联系平台人工客服；恢复必须经过人工审核。</view>
+      <view class="arrival-status-row"><text>我的状态</text><text>{{meetingCheckin.my_arrived ? '已到达' : '尚未到达'}}</text></view>
+      <view class="arrival-status-row"><text>对方状态</text><text>{{meetingCheckin.partner_arrived ? '已到达' : '尚未到达'}}</text></view>
+      <view class="meeting-code" wx:if="{{meetingCheckin.meeting_code}}"><text>会合暗号</text><text class="meeting-code-value">{{meetingCheckin.meeting_code}}</text></view>
+      <view class="partner-hint" wx:if="{{meetingCheckin.partner_arrival_hint}}">对方主动提供：{{meetingCheckin.partner_arrival_hint}}</view>
+      <view class="form-item">
+        <view class="form-label">我的到场识别提示</view>
+        <input class="input field-input" maxlength="60" placeholder="例如：深色上衣，手持一本书" value="{{form.arrival_hint}}" bindinput="onArrivalHintInput" />
+        <button class="outline-btn full-btn" bindtap="updateArrivalHint" disabled="{{submitting || meetingCheckin.meeting_paused}}">同步给对方</button>
+      </view>
+      <button class="primary-btn full-btn" bindtap="markArrived" disabled="{{submitting || meetingCheckin.my_arrived || meetingCheckin.meeting_paused}}">{{meetingCheckin.my_arrived ? '我已确认到达' : '我已到达集合点'}}</button>
+      <view class="meeting-actions">
+        <button class="outline-btn" bindtap="confirmMet" disabled="{{submitting || !meetingCheckin.can_confirm_met || meetingCheckin.my_met_confirmed || meetingCheckin.meeting_paused}}">已见到对方</button>
+        <button class="outline-btn" bindtap="reportNotFound" disabled="{{submitting || meetingCheckin.meeting_paused}}">暂未找到</button>
+      </view>
+      <button class="text-btn full-btn danger-text" bindtap="reportMismatch" disabled="{{submitting}}">现场情况不符，暂停会合</button>
+    </view>
+
     <view class="result-card card" wx:if="{{resultCard}}">
       <view class="section-title">{{resultCard.title || '邀请结果'}}</view>
       <view class="invite-text">{{resultCard.body || coordination.declined_public_message || '对方暂未接受本次约会邀请。'}}</view>
@@ -67,17 +108,6 @@
       <view class="section-title">自动协调已转人工</view>
       <view class="public-note">已经完成 5 轮自动协调。平台客服会基于安全摘要继续协助，不会替任何一方作决定。</view>
       <button class="outline-btn full-btn" bindtap="goService">联系人工客服</button>
-    </view>
-
-    <view class="fact-card card" wx:if="{{invitationCard && (coordination.status === 'inviting_partner' || coordination.status === 'collecting_initiator' || !sharedCoordination.ready)}}">
-      <view class="section-title">{{coordinationDisplay.receivedInvitation ? '第一次约会邀请' : '你的建议'}}</view>
-      <view class="fact-row"><text class="fact-label">时间</text><text class="fact-value">{{invitationCard.time_text}}</text></view>
-      <view class="fact-row"><text class="fact-label">区域</text><text class="fact-value">{{invitationCard.area_text}}</text></view>
-      <view class="fact-row"><text class="fact-label">活动</text><text class="fact-value">{{invitationCard.activity_text}}</text></view>
-      <view class="fact-row"><text class="fact-label">预算</text><text class="fact-value">{{invitationCard.budget_text}}</text></view>
-      <view class="fact-row"><text class="fact-label">费用方式</text><text class="fact-value">{{invitationCard.payment_text}}</text></view>
-      <view class="fact-row"><text class="fact-label">时长</text><text class="fact-value">{{invitationCard.duration_text}}</text></view>
-      <view class="muted" wx:if="{{invitationCard.range_hint}}">{{invitationCard.range_hint}}</view>
     </view>
 
     <view class="invite-actions card" wx:if="{{showAcceptInvitation || showCoordinateInstead || showDecline}}">
@@ -119,7 +149,7 @@
       <view class="section-title">{{coordination.status === 'collecting_initiator' ? '填写第一次约会建议' : '完整填写我的安排'}}</view>
       <view class="form-hint" wx:if="{{coordination.status === 'collecting_initiator'}}">提交后会邀请对方。这表示你愿意按当前建议参加，但还不是最终确认。</view>
       <view class="form-item">
-        <view class="form-label required">📅 可约时间</view>
+        <view class="form-label required">📅 可约时间（本次建议日期）</view>
         <picker mode="date" start="{{dateMin}}" end="{{dateMax}}" value="{{selectedDate}}" bindchange="onDateChange">
           <view class="picker-value">未来14天内选择日期</view>
         </picker>
@@ -128,7 +158,7 @@
             <text>{{dateItem.date}}</text>
             <text class="remove-date" bindtap="removeAvailability" data-value="{{dateItem.date}}">移除</text>
           </view>
-          <view class="form-label">🕰 可约时间段</view>
+          <view class="form-label">🕰 可约时间段（本次单选）</view>
           <view class="choice-list">
             <view class="choice-tag {{selection.periods[dateItem.date] && selection.periods[dateItem.date][periodItem.value] ? 'selected' : ''}}" wx:for="{{periodOptions}}" wx:for-item="periodItem" wx:key="value" bindtap="togglePeriod" data-date="{{dateItem.date}}" data-period="{{periodItem.value}}" hover-class="choice-tag-pressed">{{periodItem.label}}</view>
           </view>
@@ -136,12 +166,12 @@
         </view>
       </view>
       <view class="form-item">
-        <view class="form-label required">📍 偏好区域</view>
-        <input class="input field-input" placeholder="例如：南山区、福田区" value="{{areaText}}" bindinput="onAreasInput" />
-        <view class="field-help">可以填写多个区域，用顿号或逗号分隔</view>
+        <view class="form-label required">📍 偏好区域（本次单选）</view>
+        <input class="input field-input" placeholder="例如：南山区" value="{{areaText}}" bindinput="onAreasInput" />
+        <view class="field-help">填写一个区域；如需改动，可在 AI 协调会话中提出新方案。</view>
       </view>
       <view class="form-item">
-        <view class="form-label required">🎯 活动偏好（最多3项）</view>
+        <view class="form-label required">🎯 活动偏好（本次单选）</view>
         <view class="choice-list">
           <view class="choice-tag {{selection.activities[item.value] ? 'selected' : ''}}" wx:for="{{activityOptions}}" wx:key="value" bindtap="toggleActivity" data-value="{{item.value}}" hover-class="choice-tag-pressed">{{item.label}}</view>
         </view>
@@ -178,6 +208,27 @@
         </view>
       </block>
       <view class="form-item">
+        <view class="form-label required">具体开始时间</view>
+        <picker mode="time" value="{{form.start_time}}" bindchange="onStartTimeChange">
+          <view class="picker-value">{{form.start_time || '请选择具体几点，例如 20:00'}}</view>
+        </picker>
+        <view class="field-help">粗时间段用于寻找共同空档，具体时间用于最终赴约。</view>
+      </view>
+      <view class="form-item">
+        <view class="form-label required">活动场地</view>
+        <input class="input field-input" maxlength="80" placeholder="例如：万象天地百老汇影城" value="{{form.activity_venue}}" data-key="activity_venue" bindinput="onInput" />
+      </view>
+      <view class="form-item">
+        <view class="form-label required">公共集合点</view>
+        <input class="input field-input" maxlength="80" placeholder="例如：影城一楼取票机旁" value="{{form.meet_point}}" data-key="meet_point" bindinput="onInput" />
+        <view class="field-help">可以填写星巴克等容易找到的公共位置，但要与活动场地区分。</view>
+      </view>
+      <view class="form-item">
+        <view class="form-label">到场识别提示（选填）</view>
+        <input class="input field-input" maxlength="60" placeholder="例如：深色上衣，手持一本书" value="{{form.arrival_hint}}" data-key="arrival_hint" bindinput="onInput" />
+        <view class="field-help">双方确认方案后仍可补充。只写穿搭颜色或手持物，不要填写身份、单位、账号、数字或住址。</view>
+      </view>
+      <view class="form-item">
         <view class="form-label">🚌 出行限制</view>
         <input class="input field-input" placeholder="例如：不方便走远、需要靠近地铁" value="{{form.transport_constraints}}" data-key="transport_constraints" bindinput="onInput" />
         <view class="field-help">没有限制也可以留空，不需要填写详细地址</view>
@@ -188,18 +239,12 @@
     </view>
 
     <view class="optional-form-entry" wx:if="{{showOptionalFullForm && !showApplicationForm}}">
-      <view class="response-option-copy">如果没有明确方案，也可以填写多个可接受选项，由系统寻找交集。</view>
-      <button class="outline-btn full-btn" bindtap="toggleOptionalForm">完整填写可接受范围</button>
+      <view class="response-option-copy">也可以提交一份完整候选方案，由系统比较双方差异并逐项协调。</view>
+      <button class="outline-btn full-btn" bindtap="toggleOptionalForm">填写我的候选方案</button>
     </view>
 
     <view class="proposal-card card" wx:if="{{proposal && (coordination.status === 'waiting_confirmations' || coordination.status === 'arranged')}}">
-      <view class="section-title">{{coordination.status === 'arranged' ? '最终安排' : 'AI 协调方案'}}</view>
-      <view class="fact-row"><text class="fact-label">时间</text><text class="fact-value">{{proposal.time_text || proposal.date}}</text></view>
-      <view class="fact-row"><text class="fact-label">区域</text><text class="fact-value">{{proposal.area_text || proposal.area}}</text></view>
-      <view class="fact-row"><text class="fact-label">活动</text><text class="fact-value">{{proposal.activity_text || proposal.activity}}</text></view>
-      <view class="fact-row"><text class="fact-label">预算</text><text class="fact-value">{{proposal.budget_text || proposal.budget || '待确认'}}</text></view>
-      <view class="fact-row"><text class="fact-label">费用方式</text><text class="fact-value">{{proposal.payment_text || '待确认'}}</text></view>
-      <view class="fact-row"><text class="fact-label">时长</text><text class="fact-value">{{proposal.duration_text || proposal.duration || '待确认'}}</text></view>
+      <view class="section-title">{{coordination.status === 'arranged' ? '方案确认完成' : '确认上方方案'}}</view>
       <view class="public-note" wx:if="{{coordination.status !== 'arranged'}}">方案来自系统计算结果，不是聊天文本。双方确认后才会生效。</view>
       <block wx:if="{{coordination.status === 'waiting_confirmations'}}">
         <button class="primary-btn full-btn" bindtap="confirmProposal" loading="{{submitting}}" disabled="{{submitting || coordination.confirmed_by_me}}">{{coordination.confirmed_by_me ? '你已确认，正在等待对方' : '确认这个方案'}}</button>

@@ -8,6 +8,15 @@ function dateText(date) {
   return `${y}-${m}-${d}`
 }
 
+function periodForTime(value) {
+  const hour = Number(String(value || '').slice(0, 2))
+  if (!Number.isFinite(hour)) return ''
+  if (hour < 12) return 'morning'
+  if (hour < 17) return 'afternoon'
+  if (hour < 19) return 'evening'
+  return 'night'
+}
+
 function normalizeCoordination(data) {
   const coordination = data && (data.coordination || data)
   return coordination || {}
@@ -161,6 +170,8 @@ Page({
     invitationCard: null,
     sharedCoordination: null,
     proposalCard: null,
+    currentPlanCard: null,
+    meetingCheckin: null,
     resultCard: null,
     advancingSynthetic: false,
     coordinatorHeroText: '正在寻找双方共同安排。你可以随时和 AI 约会协调员沟通。',
@@ -183,7 +194,12 @@ Page({
       duration: '',
       transport_constraints: '',
       other_requirements: '',
-      share_message: ''
+      share_message: '',
+      contract_version: 2,
+      start_time: '',
+      activity_venue: '',
+      meet_point: '',
+      arrival_hint: ''
     },
     primaryProposal: {
       date: '',
@@ -325,6 +341,10 @@ Page({
       || coordination.proposal
       || (coordination.proposals || [])[0]
       || null
+    const currentPlanCard = proposal
+      || (coordination.counter_offer_card && coordination.counter_offer_card.proposal_card)
+      || coordination.invitation_card
+      || null
     const coordinationDisplay = buildCoordinationDisplay(coordination)
     const form = Object.assign({}, this.data.form, application, {
       availability: application.availability || this.data.form.availability || [],
@@ -347,6 +367,8 @@ Page({
       sharedCoordination: coordination.shared_coordination || null,
       counterOfferCard: coordination.counter_offer_card || null,
       proposalCard: proposal,
+      currentPlanCard,
+      meetingCheckin: coordination.meeting_checkin || null,
       resultCard: coordination.view_model && coordination.view_model.result_card || null,
       coordinatorHeroText: coordinationDisplay.coordinatorHeroText,
       form,
@@ -466,9 +488,12 @@ Page({
 
   onDateChange(e) {
     const value = e.detail.value
-    const availability = this.data.form.availability || []
-    if (availability.some((item) => item.date === value)) return
-    const nextAvailability = [...availability, { date: value, periods: ['afternoon'] }].slice(0, 5)
+    const previous = (this.data.form.availability || [])[0]
+    const defaultSlot = { date: value, periods: ['afternoon'] }
+    const nextAvailability = [{
+      date: value,
+      periods: previous && previous.periods && previous.periods.length ? [previous.periods[0]] : defaultSlot.periods
+    }]
     const nextForm = Object.assign({}, this.data.form, { availability: nextAvailability })
     const synced = syncPrimaryProposal(nextForm, this.data.primaryProposal)
     this.setData({
@@ -498,15 +523,7 @@ Page({
     const period = e.currentTarget.dataset.period
     const availability = (this.data.form.availability || []).map((item) => {
       if (item.date !== date) return item
-      const periods = item.periods || []
-      if (periods.includes(period) && periods.length === 1) {
-        wx.showToast({ title: '每个日期至少保留一个时间段', icon: 'none' })
-        return item
-      }
-      return {
-        ...item,
-        periods: periods.includes(period) ? periods.filter((value) => value !== period) : [...periods, period]
-      }
+      return Object.assign({}, item, { periods: [period] })
     })
     const nextForm = Object.assign({}, this.data.form, { availability })
     const synced = syncPrimaryProposal(nextForm, this.data.primaryProposal)
@@ -520,14 +537,7 @@ Page({
 
   toggleActivity(e) {
     const value = e.currentTarget.dataset.value
-    const activities = this.data.form.activities || []
-    const next = activities.includes(value)
-      ? activities.filter((item) => item !== value)
-      : [...activities, value].slice(0, 3)
-    if (!activities.includes(value) && activities.length >= 3) {
-      wx.showToast({ title: '活动最多3项', icon: 'none' })
-      return
-    }
+    const next = [value]
     const nextForm = Object.assign({}, this.data.form, { activities: next })
     const synced = syncPrimaryProposal(nextForm, this.data.primaryProposal)
     this.setData({
@@ -544,7 +554,7 @@ Page({
 
   onAreasInput(e) {
     const areaText = e.detail.value
-    const areas = areaText.split(/[、,，]/).map((item) => item.trim()).filter(Boolean).slice(0, 6)
+    const areas = areaText.trim() ? [areaText.trim()] : []
     const nextForm = Object.assign({}, this.data.form, { areas })
     const synced = syncPrimaryProposal(nextForm, this.data.primaryProposal)
     this.setData({
@@ -574,6 +584,76 @@ Page({
 
   selectPrimaryActivity(e) {
     this.setData({ 'primaryProposal.activity': e.currentTarget.dataset.value })
+  },
+
+  onStartTimeChange(e) {
+    const startTime = e.detail.value
+    const period = periodForTime(startTime)
+    const targetDate = this.data.primaryProposal.date
+      || ((this.data.form.availability || [])[0] && this.data.form.availability[0].date)
+    const availability = (this.data.form.availability || []).map((item) => (
+      item.date === targetDate && period
+        ? Object.assign({}, item, { periods: [period] })
+        : item
+    ))
+    const nextForm = Object.assign({}, this.data.form, { start_time: startTime, availability })
+    const synced = syncPrimaryProposal(nextForm, this.data.primaryProposal)
+    this.setData({
+      'form.start_time': startTime,
+      'form.availability': availability,
+      selection: buildSelection(nextForm),
+      primaryProposal: synced.primaryProposal,
+      primaryOptions: synced.primaryOptions
+    })
+  },
+
+  onArrivalHintInput(e) {
+    this.setData({ 'form.arrival_hint': e.detail.value })
+  },
+
+  async updateArrivalHint() {
+    if (!this.data.form.arrival_hint) {
+      wx.showToast({ title: '请先填写到场识别提示', icon: 'none' })
+      return
+    }
+    return this.submitMeetingAction('set_arrival_hint', { arrival_hint: this.data.form.arrival_hint })
+  },
+
+  async submitMeetingAction(action, extra) {
+    if (!this.data.coordinationId || this.data.submitting) return
+    this.setData({ submitting: true })
+    try {
+      const result = await post(`${API_PATHS.DATE_COORDINATIONS}/${this.data.coordinationId}/meeting-check-in`, Object.assign({ action }, extra || {}), { showError: false })
+      this.setData({ meetingCheckin: result })
+      const message = {
+        arrived: '已通知对方你已到达',
+        met: result.meeting_confirmed ? '双方已确认见面' : '已确认，等待对方',
+        not_found: '已请 AI 通知对方',
+        mismatch: '会合已暂停，请先确保安全',
+        set_arrival_hint: '识别提示已同步'
+      }[action] || '状态已更新'
+      wx.showToast({ title: message, icon: action === 'mismatch' ? 'none' : 'success', duration: 2500 })
+    } catch (err) {
+      wx.showToast({ title: (err && err.message) || '操作失败，请重试', icon: 'none', duration: 3000 })
+    } finally {
+      this.setData({ submitting: false })
+    }
+  },
+
+  markArrived() {
+    return this.submitMeetingAction('arrived')
+  },
+
+  confirmMet() {
+    return this.submitMeetingAction('met')
+  },
+
+  reportNotFound() {
+    return this.submitMeetingAction('not_found')
+  },
+
+  reportMismatch() {
+    return this.submitMeetingAction('mismatch')
   },
 
   async respondInvitation(e) {
@@ -624,8 +704,14 @@ Page({
   async submitApplication() {
     if (this.data.submitting) return
     if (!this.data.form.availability.length || !this.data.form.areas.length || !this.data.form.activities.length ||
-      !this.data.form.budget || !this.data.form.payment_preference || !this.data.form.duration) {
-      wx.showToast({ title: '请补充可约时间、区域和活动', icon: 'none' })
+      !this.data.form.budget || !this.data.form.payment_preference || !this.data.form.duration ||
+      !this.data.form.start_time || !this.data.form.activity_venue || !this.data.form.meet_point) {
+      wx.showToast({ title: '请补充具体时间、活动场地和集合点', icon: 'none', duration: 3000 })
+      return
+    }
+    if (this.data.form.activities.length === 1 && this.data.form.activities[0] === '电影'
+      && !/电影院|影城|影院/.test(String(this.data.form.activity_venue || ''))) {
+      wx.showToast({ title: '看电影需要填写具体电影院；咖啡店可作为集合点', icon: 'none', duration: 3000 })
       return
     }
     const wasInitiatorDraft = this.data.coordination && this.data.coordination.status === 'collecting_initiator'
@@ -646,6 +732,11 @@ Page({
         period: primary.period,
         area: primary.area,
         activity: primary.activity,
+        contract_version: 2,
+        start_time: this.data.form.start_time,
+        activity_venue: this.data.form.activity_venue,
+        meet_point: this.data.form.meet_point,
+        arrival_hint: this.data.form.arrival_hint,
         budget: this.data.form.budget,
         duration: this.data.form.duration,
         payment_preference: this.data.form.payment_preference

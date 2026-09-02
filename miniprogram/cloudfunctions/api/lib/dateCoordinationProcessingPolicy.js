@@ -106,8 +106,17 @@ function completeProcessingVersion(coordination = {}, input = {}) {
 }
 
 function proposalSummary(proposal = {}) {
-  const period = { morning: '上午', afternoon: '下午', evening: '晚上', night: '夜间' }[proposal.period] || proposal.period || ''
-  return [proposal.date, period, proposal.area, proposal.activity, proposal.duration]
+  const period = { morning: '上午', afternoon: '下午', evening: '傍晚', night: '晚上' }[proposal.period] || proposal.period || ''
+  const time = [proposal.date, proposal.start_time || period].filter(Boolean).join(' ')
+  return [
+    time,
+    proposal.activity,
+    proposal.activity_venue,
+    proposal.meet_point,
+    proposal.area,
+    proposal.budget,
+    proposal.duration
+  ]
     .map((item) => String(item || '').trim())
     .filter(Boolean)
     .join('、')
@@ -171,6 +180,30 @@ function projectParticipantEvent(event = {}, context = {}) {
       stage: 'arranged',
       content: proposal ? `双方已确认同一方案：${proposal}。请继续按安全流程准备见面。` : '双方已确认同一方案，请继续按安全流程准备见面。'
     },
+    arrival_hint_updated: {
+      stage: mine ? 'my_arrival_hint_updated' : 'partner_arrival_hint_updated',
+      content: mine
+        ? '你的到场识别提示已记录。双方确认约会后，对方会在协调会话中看到这条非敏感提示。'
+        : `对方补充了到场识别提示：${String(event.arrival_hint || '已补充').slice(0, 60)}。请只在约定的公共集合点核对。`
+    },
+    participant_arrived: {
+      stage: mine ? 'my_arrived' : 'partner_arrived',
+      content: mine ? '已记录你到达集合点。等待对方到达后再进行双方会合确认。' : '对方已确认到达约定集合点。你到达后也请点击“我已到达”。'
+    },
+    participant_not_found: {
+      stage: mine ? 'my_not_found' : 'partner_not_found',
+      content: mine ? '已通知对方你暂未找到人。请留在约定的公共集合点并核对识别提示。' : '对方暂未找到你，请核对自己是否在约定集合点，并通过 AI 发送公共标志物说明。'
+    },
+    participant_met_confirmed: {
+      stage: mine ? 'my_met_confirmed' : 'partner_met_confirmed',
+      content: mine ? '你已确认见到对方，正在等待对方确认。' : '对方已确认见到你；请在现场情况一致时再完成自己的确认。'
+    },
+    participant_mismatch: {
+      stage: 'meeting_mismatch',
+      content: mine
+        ? '已记录现场情况不符。请停止接触、前往安全公共区域，必要时联系平台人工客服或当地紧急服务。'
+        : '对方反馈现场情况不符。本次会合暂停，请不要继续接触；如有误会请通过平台人工客服处理。'
+    },
     recoordination_started: {
       stage: 'recoordination_started',
       content: `已进入第 ${Number(event.round_number || 1)} 轮协调，请补充或调整你的可接受范围。`
@@ -193,7 +226,12 @@ function projectParticipantEvent(event = {}, context = {}) {
     stage: selected.stage,
     content: selected.content,
     coordination_version: Number(event.coordination_version || 0),
-    round_number: Number(event.round_number || 1)
+    round_number: Number(event.round_number || 1),
+    card: event.change_card && typeof event.change_card === 'object'
+      ? event.change_card
+      : (event.proposal && typeof event.proposal === 'object'
+        ? { kind: 'plan', title: '当前完整方案', proposal: event.proposal }
+        : null)
   }
 }
 

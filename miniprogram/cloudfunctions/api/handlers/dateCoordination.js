@@ -13,6 +13,7 @@ const {
 } = require('../lib/syntheticPartnerJourney')
 const { MAX_COORDINATION_ROUNDS, roundNumber, canStartAnotherRound, enqueueProcessing } = require('../lib/dateCoordinationProcessingPolicy')
 const { publishCoordinationEvent } = require('../agent/dateCoordinationEvents')
+const { publicState: publicMeetingState, applyMeetingCheckIn } = require('../lib/meetingCheckInService')
 const {
   buildStructuredCounterProposal,
   applyAcceptedCounterProposal
@@ -100,6 +101,7 @@ async function expireCoordinationIfCurrent(coordination) {
 function defaultDeps() {
   const db = require('../lib/db')
   return {
+    env: process.env,
     currentUser: require('./user').currentUser,
     first: db.first,
     list: db.list,
@@ -390,6 +392,7 @@ function createDateCoordinationHandlers(overrides = {}) {
   let defaults = null
   function dep(name) {
     if (Object.prototype.hasOwnProperty.call(overrides, name)) return overrides[name]
+    if (name === 'env' && overrides.first && overrides.addWithId) return process.env
     if (name === 'publishCoordinationEvent' && overrides.first && overrides.addWithId) {
       return (input) => publishCoordinationEvent(input, {
         first: overrides.first,
@@ -1147,6 +1150,7 @@ function createDateCoordinationHandlers(overrides = {}) {
       shared_coordination: sharedCoordination,
       counter_offer_card: counterOfferCard,
       proposal_card: proposalCard,
+      meeting_checkin: publicMeetingState(coordination, applications, user.id, dep('env')),
       coordinator_welcome: coordinatorWelcomeText(Object.assign({}, coordination, {
         my_application: mine && mine.application
       }), role),
@@ -1166,8 +1170,12 @@ function createDateCoordinationHandlers(overrides = {}) {
         source: item.source || 'backend',
         date: item.date,
         period: item.period,
+        start_time: item.start_time || '',
         area: item.area,
         activity: item.activity,
+        activity_venue: item.activity_venue || '',
+        meet_point: item.meet_point || '',
+        contract_version: Number(item.contract_version || 1),
         budget: item.budget,
         payment_preference: item.payment_preference,
         duration: item.duration
@@ -1212,6 +1220,23 @@ function createDateCoordinationHandlers(overrides = {}) {
     await advanceSyntheticForUser(coordination, user)
     const updated = await dep('byId')('date_coordination', Number(coordination && coordination.id))
     return detailFor(updated || coordination, user)
+  }
+
+  async function meetingCheckIn(data, wxContext) {
+    const user = await dep('currentUser')(wxContext)
+    return applyMeetingCheckIn({
+      coordination_id: coordinationId(data),
+      user_id: Number(user.id),
+      action: data.action,
+      arrival_hint: data.arrival_hint || data.arrivalHint
+    }, {
+      byId: dep('byId'),
+      list: dep('list'),
+      updateByDoc: dep('updateByDoc'),
+      publishCoordinationEvent: dep('publishCoordinationEvent'),
+      now: dep('now'),
+      env: dep('env')
+    })
   }
 
   async function advanceSyntheticForUser(coordination, user) {
@@ -1542,7 +1567,8 @@ function createDateCoordinationHandlers(overrides = {}) {
     recoordinate,
     retryProcessing,
     maybeAdvanceSyntheticPartner,
-    advanceSynthetic
+    advanceSynthetic,
+    meetingCheckIn
   }
 }
 
@@ -1567,6 +1593,7 @@ module.exports = {
   recoordinate: handler('recoordinate'),
   retryProcessing: handler('retryProcessing'),
   advanceSynthetic: handler('advanceSynthetic'),
+  meetingCheckIn: handler('meetingCheckIn'),
   createDateCoordinationHandlers,
   processCoordinationDeadlines,
   upsertConfirmation,

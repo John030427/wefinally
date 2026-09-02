@@ -118,6 +118,107 @@
   margin-top: 18rpx;
 }
 
+.current-plan-card {
+  border: 2rpx solid var(--wf-primary-soft, #f9dee4);
+  background: var(--wf-card, #fff);
+  box-shadow: var(--wf-shadow-card, 0 6rpx 24rpx rgba(214, 116, 140, 0.08));
+}
+
+.plan-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20rpx;
+}
+
+.plan-kicker {
+  margin-bottom: 8rpx;
+  color: var(--wf-primary-strong, #d14d6b);
+  font-size: 21rpx;
+  letter-spacing: 1rpx;
+}
+
+.plan-ready-pill {
+  flex: none;
+  padding: 8rpx 16rpx;
+  border-radius: 24rpx;
+  font-size: 22rpx;
+}
+
+.plan-ready-pill.ready {
+  color: var(--wf-success, #4caf87);
+  background: rgba(76, 175, 135, 0.1);
+}
+
+.plan-ready-pill.pending {
+  color: var(--wf-warning, #e8a23d);
+  background: rgba(232, 162, 61, 0.1);
+}
+
+.plan-conflict {
+  margin: 16rpx 0;
+  padding: 18rpx 20rpx;
+  border-left: 6rpx solid var(--wf-warning, #e8a23d);
+  border-radius: var(--wf-radius-sm, 12rpx);
+  background: rgba(232, 162, 61, 0.08);
+  color: var(--wf-text-main, #3a2e2e);
+  font-size: 25rpx;
+  line-height: 1.6;
+}
+
+.plan-safe-note {
+  margin: 18rpx 0;
+  color: var(--wf-text-sub, #8c7b7b);
+  font-size: 23rpx;
+  line-height: 1.6;
+}
+
+.meeting-card {
+  border-top: 8rpx solid var(--wf-success, #4caf87);
+}
+
+.arrival-status-row,
+.meeting-code {
+  display: flex;
+  justify-content: space-between;
+  gap: 20rpx;
+  padding: 18rpx 0;
+  border-bottom: 1rpx solid var(--wf-border, #f0e4e4);
+  color: var(--wf-text-main, #3a2e2e);
+  font-size: 26rpx;
+}
+
+.meeting-code-value {
+  color: var(--wf-primary-strong, #d14d6b);
+  font-weight: 700;
+  letter-spacing: 4rpx;
+}
+
+.partner-hint {
+  margin-top: 18rpx;
+  padding: 18rpx 20rpx;
+  border-radius: var(--wf-radius-md, 16rpx);
+  background: var(--wf-primary-soft, #f9dee4);
+  color: var(--wf-text-main, #3a2e2e);
+  font-size: 25rpx;
+  line-height: 1.6;
+}
+
+.meeting-actions {
+  display: flex;
+  gap: 16rpx;
+  margin-top: 18rpx;
+}
+
+.meeting-actions button {
+  flex: 1;
+  margin: 0;
+}
+
+.danger-text {
+  color: var(--wf-danger, #d9534f) !important;
+}
+
 .response-option-copy {
   margin: 18rpx 4rpx 10rpx;
   color: var(--wf-text-sub, #8c7b7b);

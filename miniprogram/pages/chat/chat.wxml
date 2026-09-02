@@ -65,6 +65,22 @@
             <text class="msg-text">{{item.content}}</text>
             <text class="msg-time">{{item.timeText}}</text>
           </view>
+          <view wx:if="{{item.isBot && item.status === 'completed' && item.coordinationUpdateCard}}" class="coordination-update-card">
+            <view class="coordination-update-kicker">约会协调更新</view>
+            <view class="patch-preview-title">{{item.coordinationUpdateCard.title}}</view>
+            <view class="patch-change" wx:for="{{item.coordinationUpdateCard.changes}}" wx:for-item="change" wx:key="label">
+              <view class="patch-field">{{change.label}}</view>
+              <view class="patch-value-row"><text class="patch-value-label">原方案</text><text class="patch-value before">{{change.beforeText}}</text></view>
+              <view class="patch-value-row"><text class="patch-value-label">新方案</text><text class="patch-value after">{{change.afterText}}</text></view>
+            </view>
+            <view wx:if="{{item.coordinationUpdateCard.hasPlan}}" class="chat-plan-facts">
+              <view class="chat-plan-row" wx:if="{{item.coordinationUpdateCard.timeText}}"><text>时间</text><text>{{item.coordinationUpdateCard.timeText}}</text></view>
+              <view class="chat-plan-row" wx:if="{{item.coordinationUpdateCard.activityText}}"><text>活动</text><text>{{item.coordinationUpdateCard.activityText}}</text></view>
+              <view class="chat-plan-row" wx:if="{{item.coordinationUpdateCard.venueText}}"><text>活动场地</text><text>{{item.coordinationUpdateCard.venueText}}</text></view>
+              <view class="chat-plan-row" wx:if="{{item.coordinationUpdateCard.meetPointText}}"><text>集合点</text><text>{{item.coordinationUpdateCard.meetPointText}}</text></view>
+              <view class="chat-plan-row" wx:if="{{item.coordinationUpdateCard.areaText}}"><text>区域</text><text>{{item.coordinationUpdateCard.areaText}}</text></view>
+            </view>
+          </view>
           <view wx:if="{{item.isBot && item.status === 'completed' && item.patchPreview}}" class="patch-preview-card">
             <view class="patch-preview-title">{{item.patchPreview.title}}</view>
             <view wx:if="{{item.patchPreview.partialOverride}}" class="patch-scope-note">只调整下面列出的项目；其余项目沿用你刚看到的完整邀请方案。</view>
@@ -121,7 +137,7 @@
               <view class="patch-value-row"><text class="patch-value-label">拟询问</text><text class="patch-value after">{{change.afterText}}</text></view>
             </view>
             <view wx:if="{{item.partnerInquiryPreview.unchangedText}}" class="patch-inherited">保持不变：{{item.partnerInquiryPreview.unchangedText}}</view>
-            <view class="patch-notice">完整安排：{{item.partnerInquiryPreview.timeText}} · {{item.partnerInquiryPreview.areaText}} · {{item.partnerInquiryPreview.activityText}}</view>
+            <view class="patch-notice">完整安排：{{item.partnerInquiryPreview.timeText}} · {{item.partnerInquiryPreview.activityText}} · {{item.partnerInquiryPreview.venueText || '活动场地待确认'}} · 集合于{{item.partnerInquiryPreview.meetPointText || '待确认'}} · {{item.partnerInquiryPreview.areaText}}</view>
             <view class="patch-notice">确认前不会通知对方；发送后对方可以接受或继续调整。</view>
             <view wx:if="{{item.partnerInquiryPreview.status === 'pending_confirmation'}}" class="patch-actions">
               <button class="patch-confirm" data-action="confirm" bindtap="onPartnerInquiryAction" disabled="{{sending}}">{{item.partnerInquiryPreview.confirmLabel}}</button>
@@ -144,7 +160,7 @@
     <view class="chat-input-bar safe-bottom">
       <input
         class="chat-input"
-        placeholder="{{coordinatorReadOnly ? '当前结果仅供查看' : '输入您的问题...'}}"
+        placeholder="{{coordinatorReadOnly ? '当前结果仅供查看' : (coordinatorMeetingMode ? '例如：我到了 / 对方穿什么' : '输入您的问题...')}}"
         value="{{inputText}}"
         bindinput="onInput"
         confirm-type="send"

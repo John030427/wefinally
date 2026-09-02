@@ -1,0 +1,142 @@
+const PLAN_CONTRACT_VERSION = 2
+
+const PERIOD_LABELS = Object.freeze({
+  morning: '上午',
+  afternoon: '下午',
+  evening: '傍晚',
+  night: '晚上'
+})
+
+const ACTIVITY_VENUE_RULES = Object.freeze({
+  '电影': /电影院|影城|影院|cinema|movie/i,
+  '咖啡': /咖啡|星巴克|coffee|cafe|café/i,
+  '奶茶': /奶茶|茶饮|tea/i,
+  '吃饭': /餐厅|饭店|餐馆|restaurant|food/i,
+  '看展': /展馆|展览|美术馆|博物馆|gallery|museum/i,
+  '桌游': /桌游|board\s*game/i
+})
+
+function text(value, maxLength) {
+  return String(value || '')
+    .replace(/[\u0000-\u001f\u007f]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, maxLength)
+}
+
+function normalizeStartTime(value) {
+  const raw = text(value, 8)
+  const matched = raw.match(/^(\d{1,2}):([0-5]\d)$/)
+  if (!matched) return ''
+  const hour = Number(matched[1])
+  if (hour > 23) return ''
+  return `${String(hour).padStart(2, '0')}:${matched[2]}`
+}
+
+function exactTimeFromText(value) {
+  const raw = text(value, 200)
+  const matched = raw.match(/(?:(上午|中午|下午|傍晚|晚上|夜里)\s*)?(\d{1,2})(?:点|:)(?:\s*(\d{1,2})分?)?/)
+  if (!matched) return ''
+  let hour = Number(matched[2])
+  const minute = Number(matched[3] || 0)
+  if (!Number.isInteger(hour) || hour > 23 || minute > 59) return ''
+  if (/下午|傍晚|晚上|夜里/.test(matched[1] || '') && hour < 12) hour += 12
+  return normalizeStartTime(`${hour}:${String(minute).padStart(2, '0')}`)
+}
+
+function periodForStartTime(value) {
+  const normalized = normalizeStartTime(value)
+  if (!normalized) return ''
+  const hour = Number(normalized.slice(0, 2))
+  if (hour < 12) return 'morning'
+  if (hour < 17) return 'afternoon'
+  if (hour < 19) return 'evening'
+  return 'night'
+}
+
+function containsPrivateContact(value) {
+  const raw = String(value || '')
+  return /(?:微信|vx|v信|手机号|电话|联系我|加我|QQ|邮箱|身份证|住址)/i.test(raw)
+    || /(?:公司|单位|学校|大学|学院|小区|宿舍|办公室|写字楼|楼栋|单元|房间|姓名|我叫|账号|抖音|微博)/i.test(raw)
+    || /\d|@/.test(raw)
+}
+
+function normalizeArrivalHint(value) {
+  const normalized = text(value, 60)
+  if (containsPrivateContact(normalized)) {
+    const error = new Error('到场识别提示只能填写穿搭颜色或手持物，不能包含身份、单位、住址、账号或数字')
+    error.code = 'UNSAFE_ARRIVAL_HINT'
+    throw error
+  }
+  if (normalized && !/(?:红|橙|黄|绿|蓝|紫|黑|白|灰|棕|粉|衣|衫|外套|裤|裙|鞋|帽|包|眼镜|书|花|伞|杯|手持|拿着|背着)/.test(normalized)) {
+    const error = new Error('到场识别提示请只描述穿搭颜色或手持物')
+    error.code = 'UNSAFE_ARRIVAL_HINT'
+    throw error
+  }
+  return normalized
+}
+
+function normalizeMeetingPlanFields(input = {}) {
+  const startTime = normalizeStartTime(input.start_time || input.startTime)
+  const inferredPeriod = periodForStartTime(startTime)
+  return {
+    contract_version: Number(input.contract_version || input.contractVersion || 0),
+    start_time: startTime,
+    period: inferredPeriod || text(input.period, 20),
+    activity_venue: text(input.activity_venue || input.activityVenue, 80),
+    meet_point: text(input.meet_point || input.meetPoint, 80),
+    arrival_hint: normalizeArrivalHint(input.arrival_hint || input.arrivalHint)
+  }
+}
+
+function activityVenueConflict(activity, activityVenue) {
+  const normalizedActivity = text(activity, 20)
+  const normalizedVenue = text(activityVenue, 80)
+  if (!normalizedActivity || !normalizedVenue) return null
+  const rule = ACTIVITY_VENUE_RULES[normalizedActivity]
+  if (!rule || rule.test(normalizedVenue)) return null
+  return {
+    code: 'ACTIVITY_VENUE_CONFLICT',
+    activity: normalizedActivity,
+    activity_venue: normalizedVenue,
+    message: normalizedActivity === '电影'
+      ? `你选择了看电影，但活动场地是“${normalizedVenue}”。请确认它是集合点，还是把活动场地改为具体电影院。`
+      : `“${normalizedVenue}”看起来与“${normalizedActivity}”不一致，请确认活动场地或修改活动。`
+  }
+}
+
+function planReadiness(input = {}, options = {}) {
+  const normalized = normalizeMeetingPlanFields(input)
+  const missing = []
+  if (!normalized.start_time) missing.push('start_time')
+  if (!normalized.activity_venue) missing.push('activity_venue')
+  if (!normalized.meet_point) missing.push('meet_point')
+  const activity = input.activity || (Array.isArray(input.activities) ? input.activities[0] : '')
+  const conflict = activityVenueConflict(activity, normalized.activity_venue)
+  return {
+    ready: missing.length === 0 && !conflict,
+    missing_fields: missing,
+    conflict,
+    fields: normalized
+  }
+}
+
+function formatPlanTime(date, period, startTime) {
+  const day = text(date, 10)
+  const exact = normalizeStartTime(startTime)
+  const label = PERIOD_LABELS[period] || text(period, 20)
+  return [day, exact || label].filter(Boolean).join(' ')
+}
+
+module.exports = {
+  PLAN_CONTRACT_VERSION,
+  PERIOD_LABELS,
+  normalizeStartTime,
+  exactTimeFromText,
+  periodForStartTime,
+  normalizeArrivalHint,
+  normalizeMeetingPlanFields,
+  activityVenueConflict,
+  planReadiness,
+  formatPlanTime
+}

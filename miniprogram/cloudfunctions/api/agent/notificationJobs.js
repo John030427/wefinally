@@ -33,8 +33,8 @@ function proposalNotificationText(proposal = {}) {
   const period = {
     morning: '上午',
     afternoon: '下午',
-    evening: '晚上',
-    night: '夜间'
+    evening: '傍晚',
+    night: '晚上'
   }[proposal.period] || proposal.period || ''
   let payment = ''
   if (proposal.payment_mode === 'aa' || proposal.payment_preference === 'aa') payment = 'AA'

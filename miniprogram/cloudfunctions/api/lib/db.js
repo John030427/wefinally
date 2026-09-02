@@ -1090,6 +1090,85 @@ async function commitPreAcceptInvitationPatch(input = {}, timestamp = now()) {
   })
 }
 
+/**
+ * CAS an accepted coordination patch and its new-version snapshots atomically.
+ * This prevents a stale proposal confirmation from arranging the old version
+ * while a participant is moving the coordination to the next version.
+ */
+async function commitPostAcceptApplicationPatch(input = {}, timestamp = now()) {
+  const {
+    coordination,
+    actorUserId,
+    expectedCoordinationVersion,
+    expectedStatus,
+    nextCoordinationVersion,
+    nextApplications,
+    coordinationUpdate,
+    patchId,
+    patchDocId
+  } = input
+  if (!coordination || !coordination._id) throw new Error('日期协调不存在')
+  const expectedVersion = Number(expectedCoordinationVersion)
+  const nextVersion = Number(nextCoordinationVersion)
+  if (!Number.isSafeInteger(expectedVersion) || !Number.isSafeInteger(nextVersion) || nextVersion !== expectedVersion + 1) {
+    throw new Error('约会条件已更新，请重新生成修改预览')
+  }
+  return transaction(async (adapter) => {
+    const stale = () => {
+      const err = new Error('约会条件已更新，请重新生成修改预览')
+      err.code = 'STALE_COORDINATION_VERSION'
+      return err
+    }
+    let current = await adapter.byDocId('date_coordination', coordination._id)
+    if (!current
+      || Number(current.coordination_version) !== expectedVersion
+      || String(current.status) !== String(expectedStatus)
+      || ![Number(current.user_a_id), Number(current.user_b_id)].includes(Number(actorUserId))) {
+      throw stale()
+    }
+    if (typeof input.beforeCommitHook === 'function') await input.beforeCommitHook('post_accept_patch')
+    current = await adapter.byDocId('date_coordination', coordination._id)
+    if (!current
+      || Number(current.coordination_version) !== expectedVersion
+      || String(current.status) !== String(expectedStatus)) {
+      throw stale()
+    }
+
+    const proposals = await adapter.list('date_coordination_proposal', {
+      coordination_id: Number(current.id),
+      coordination_version: expectedVersion
+    }, 20)
+    for (const proposal of proposals.filter((item) => item.status === 'active')) {
+      await adapter.updateByDoc('date_coordination_proposal', proposal, { status: 'superseded' })
+    }
+    const confirmations = await adapter.list('date_coordination_confirmation', {
+      coordination_id: Number(current.id),
+      coordination_version: expectedVersion
+    }, 20)
+    for (const confirmation of confirmations) {
+      await adapter.updateByDoc('date_coordination_confirmation', confirmation, { status: 'superseded' })
+    }
+    for (const row of nextApplications || []) {
+      await adapter.addWithId('date_coordination_application', row, 'date_coordination_application')
+    }
+    const updated = await adapter.updateByDoc('date_coordination', current, coordinationUpdate)
+    let appliedPatch = null
+    if (patchDocId || patchId) {
+      const patch = patchDocId
+        ? await adapter.byDocId('date_application_patch', patchDocId)
+        : await adapter.byId('date_application_patch', patchId)
+      if (patch) {
+        appliedPatch = await adapter.updateByDoc('date_application_patch', patch, {
+          status: 'applied',
+          applied_version: nextVersion,
+          applied_at: timestamp
+        })
+      }
+    }
+    return { coordination: updated, patch: appliedPatch, idempotent: false }
+  })
+}
+
 async function commitCoordinationConfirmation(coordination, proposal, input = {}, timestamp = now()) {
   if (!coordination || !coordination._id || !proposal || !proposal._id) throw new Error('方案已失效，请刷新后重试')
   const userId = Number(input.user_id || 0)
@@ -1191,6 +1270,7 @@ module.exports = {
   commitDirectInvitationAccept,
   commitInvitationResponse,
   commitPreAcceptInvitationPatch,
+  commitPostAcceptApplicationPatch,
   authError,
   withCollection
 }

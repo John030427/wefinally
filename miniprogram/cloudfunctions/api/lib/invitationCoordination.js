@@ -8,6 +8,12 @@
  */
 
 const { STATUS, PERIODS } = require('./dateCoordinationPolicy')
+const {
+  PLAN_CONTRACT_VERSION,
+  normalizeMeetingPlanFields,
+  planReadiness,
+  formatPlanTime
+} = require('./meetingPlanPolicy')
 
 const STALE_INVITATION_MESSAGE = '对方刚刚更新了约会安排，请查看最新方案后再确认。'
 const WAITING_PARTNER_MESSAGE = '当前正在等待对方回应。'
@@ -51,7 +57,10 @@ const EVIDENCE_FIELDS = Object.freeze([
   'activities',
   'budget',
   'payment_preference',
-  'duration'
+  'duration',
+  'start_time',
+  'activity_venue',
+  'meet_point'
 ])
 const CANONICAL_JOURNEYS = Object.freeze([
   'accept_direct',
@@ -81,14 +90,15 @@ function primaryProposalRequiredError(message) {
   return error
 }
 
-function primaryProposalIncompleteError() {
-  const error = new Error(PRIMARY_PROPOSAL_INCOMPLETE_MESSAGE)
+function primaryProposalIncompleteError(message) {
+  const error = new Error(message || PRIMARY_PROPOSAL_INCOMPLETE_MESSAGE)
   error.code = 'PRIMARY_PROPOSAL_INCOMPLETE'
   return error
 }
 
 function publicInvitationProposal(application = {}) {
-  return {
+  const meetingPlan = normalizeMeetingPlanFields(application)
+  const proposal = {
     availability: Array.isArray(application.availability) ? application.availability : [],
     areas: Array.isArray(application.areas) ? application.areas.slice() : [],
     activities: Array.isArray(application.activities) ? application.activities.slice() : [],
@@ -96,6 +106,16 @@ function publicInvitationProposal(application = {}) {
     payment_preference: String(application.payment_preference || ''),
     duration: String(application.duration || '')
   }
+  if (Number(application.contract_version || 0) >= PLAN_CONTRACT_VERSION
+    || meetingPlan.start_time || meetingPlan.activity_venue || meetingPlan.meet_point) {
+    Object.assign(proposal, {
+      contract_version: PLAN_CONTRACT_VERSION,
+      start_time: meetingPlan.start_time,
+      activity_venue: meetingPlan.activity_venue,
+      meet_point: meetingPlan.meet_point
+    })
+  }
+  return proposal
 }
 
 function weekdayLabel(dateStr) {
@@ -216,7 +236,8 @@ function paymentFactText(payment = {}, context = {}) {
 function publicPrimaryProposal(input = {}, context = {}) {
   if (!input || typeof input !== 'object') return null
   const date = String(input.date || '').slice(0, 10)
-  const period = String(input.period || '').trim()
+  const meetingPlan = normalizeMeetingPlanFields(input)
+  const period = meetingPlan.period || String(input.period || '').trim()
   const area = String(input.area || '').trim()
   const activity = String(input.activity || '').trim()
   const budget = String(input.budget || '').trim()
@@ -225,7 +246,7 @@ function publicPrimaryProposal(input = {}, context = {}) {
   if (!payment.payment_mode && input.payment_preference && context.user_a_id) {
     payment = personalPaymentToNeutral(input.payment_preference, context.user_a_id, context.user_b_id)
   }
-  return {
+  const proposal = {
     date,
     period,
     area,
@@ -235,6 +256,16 @@ function publicPrimaryProposal(input = {}, context = {}) {
     payment_mode: payment.payment_mode,
     payer_user_id: payment.payer_user_id
   }
+  if (Number(input.contract_version || 0) >= PLAN_CONTRACT_VERSION
+    || meetingPlan.start_time || meetingPlan.activity_venue || meetingPlan.meet_point) {
+    Object.assign(proposal, {
+      contract_version: PLAN_CONTRACT_VERSION,
+      start_time: meetingPlan.start_time,
+      activity_venue: meetingPlan.activity_venue,
+      meet_point: meetingPlan.meet_point
+    })
+  }
+  return proposal
 }
 
 function isPrimaryProposalComplete(proposal) {
@@ -242,7 +273,7 @@ function isPrimaryProposalComplete(proposal) {
   const paymentOk = proposal.payment_mode === 'aa'
     || proposal.payment_mode === 'flexible'
     || (proposal.payment_mode === 'single_payer' && Number(proposal.payer_user_id) > 0)
-  return Boolean(
+  const baseComplete = Boolean(
     proposal.date
     && PERIODS.includes(proposal.period)
     && proposal.area
@@ -251,6 +282,9 @@ function isPrimaryProposalComplete(proposal) {
     && proposal.duration
     && paymentOk
   )
+  if (!baseComplete) return false
+  if (Number(proposal.contract_version || 1) < PLAN_CONTRACT_VERSION) return true
+  return planReadiness(proposal).ready
 }
 
 function preferenceHasSlot(prefs, date, period) {
@@ -264,6 +298,11 @@ function primaryFitsPreferenceExceptPayment(primary, prefs) {
   if (!(prefs.activities || []).includes(primary.activity)) return false
   if (String(prefs.budget || '') !== String(primary.budget || '')) return false
   if (String(prefs.duration || '') !== String(primary.duration || '')) return false
+  if (Number(primary.contract_version || 1) >= PLAN_CONTRACT_VERSION) {
+    if (String(prefs.start_time || '') !== String(primary.start_time || '')) return false
+    if (String(prefs.activity_venue || '') !== String(primary.activity_venue || '')) return false
+    if (String(prefs.meet_point || '') !== String(primary.meet_point || '')) return false
+  }
   return true
 }
 
@@ -428,9 +467,23 @@ function resolvePrimaryAfterPreferenceChange(previous, prefs, context = {}, sele
 
   next.budget = String(prefs && prefs.budget || '')
   next.duration = String(prefs && prefs.duration || '')
+  next.contract_version = Number(prefs && prefs.contract_version || next.contract_version || 1)
+  next.start_time = String(prefs && prefs.start_time || '')
+  next.activity_venue = String(prefs && prefs.activity_venue || '')
+  next.meet_point = String(prefs && prefs.meet_point || '')
   const required = fields.length > 0
   const synced = syncPrimaryPaymentFromPreference(next, prefs, context.user_a_id, context.user_b_id)
   const primary = synced || publicPrimaryProposal(next, context)
+  if (!required && Number(primary && primary.contract_version || 1) >= PLAN_CONTRACT_VERSION) {
+    const readiness = planReadiness(primary)
+    if (!readiness.ready) {
+      throw primaryProposalIncompleteError(
+        readiness.conflict
+          ? readiness.conflict.message
+          : '请补充具体时间、活动场地和公共集合点后再确认方案'
+      )
+    }
+  }
   return {
     required,
     fields,
@@ -473,6 +526,10 @@ function derivePrimaryFromSingletonPrefs(prefs, userAId, userBId) {
     activity: prefs.activities[0],
     budget: prefs.budget,
     duration: prefs.duration,
+    contract_version: Number(prefs.contract_version || 1),
+    start_time: prefs.start_time,
+    activity_venue: prefs.activity_venue,
+    meet_point: prefs.meet_point,
     payment_mode: payment.payment_mode,
     payer_user_id: payment.payer_user_id
   }, { user_a_id: userAId, user_b_id: userBId })
@@ -483,6 +540,16 @@ function resolvePrimaryInvitationProposal(input = {}, prefs, context = {}) {
     input.invitation_primary_proposal || input.primary_proposal || input.primary || null,
     context
   )
+  if (explicit && Number(explicit.contract_version || 1) >= PLAN_CONTRACT_VERSION) {
+    const readiness = planReadiness(explicit)
+    if (!readiness.ready) {
+      throw primaryProposalIncompleteError(
+        readiness.conflict
+          ? readiness.conflict.message
+          : '请补充具体时间、活动场地和公共集合点后再发送邀请'
+      )
+    }
+  }
   if (explicit && isPrimaryProposalComplete(explicit)) {
     if (prefs && !primaryFitsPreference(explicit, prefs, context)) {
       throw primaryProposalRequiredError('本次建议安排必须落在你的可接受范围内')
@@ -516,6 +583,11 @@ function buildInvitationCard(primaryOrPrefs = {}, version = 1, options = {}) {
       : null
   )
   const complete = isPrimaryProposalComplete(primary)
+  const readiness = primary
+    ? (Number(primary.contract_version || 1) < PLAN_CONTRACT_VERSION
+        ? { ready: true, missing_fields: [], conflict: null }
+        : planReadiness(primary))
+    : { ready: false, missing_fields: ['start_time', 'activity_venue', 'meet_point'], conflict: null }
   const paymentText = complete
     ? paymentFactText(primary, {
       user_a_id: options.user_a_id,
@@ -530,9 +602,17 @@ function buildInvitationCard(primaryOrPrefs = {}, version = 1, options = {}) {
   return {
     invitation_version: Number(version || 1),
     primary_complete: complete,
-    time_text: complete ? formatDatePeriod(primary.date, primary.period) : (prefs ? formatAvailabilityRange(prefs.availability) : '待确认'),
+    time_text: primary && primary.date
+      ? formatPlanTime(primary.date, primary.period, primary.start_time)
+      : (prefs ? formatAvailabilityRange(prefs.availability) : '待确认'),
     area_text: complete ? (primary.area || '待确认') : (formatList(prefs && prefs.areas) || '待确认'),
     activity_text: complete ? (primary.activity || '待确认') : (formatList(prefs && prefs.activities) || '待确认'),
+    activity_venue_text: primary && primary.activity_venue || '待确认',
+    meet_point_text: primary && primary.meet_point || '待确认',
+    arrival_hint_text: '可在确认约会后补充',
+    meeting_ready: Boolean(primary && readiness.ready),
+    meeting_missing_fields: readiness.missing_fields || [],
+    meeting_conflict: readiness.conflict || null,
     budget_text: complete
       ? (BUDGET_LABELS[primary.budget] || primary.budget || '待确认')
       : (BUDGET_LABELS[prefs && prefs.budget] || (prefs && prefs.budget) || '待确认'),
@@ -546,6 +626,10 @@ function buildInvitationCard(primaryOrPrefs = {}, version = 1, options = {}) {
     period: complete ? primary.period : '',
     area: complete ? primary.area : '',
     activity: complete ? primary.activity : '',
+    contract_version: primary ? Number(primary.contract_version || 1) : Number(prefs && prefs.contract_version || 1),
+    start_time: primary && primary.start_time || '',
+    activity_venue: primary && primary.activity_venue || '',
+    meet_point: primary && primary.meet_point || '',
     budget: complete ? primary.budget : (prefs && prefs.budget) || '',
     duration: complete ? primary.duration : (prefs && prefs.duration) || '',
     range_hint: hasRange ? '对方还有其他可调整范围' : '',
@@ -595,6 +679,9 @@ function mergeInvitationWithOverrides(invitationProposal, overrides = {}) {
       next[field] = overrides[field]
     }
   }
+  next.arrival_hint = Object.prototype.hasOwnProperty.call(overrides, 'arrival_hint')
+    ? overrides.arrival_hint
+    : ''
   return next
 }
 
@@ -694,6 +781,9 @@ function buildSharedCoordinationState(applicationA, applicationB, options = {}) 
 function buildProposalCard(proposal, options = {}) {
   if (!proposal) return null
   const payment = normalizeNeutralPayment(proposal)
+  const readiness = Number(proposal.contract_version || 1) < PLAN_CONTRACT_VERSION
+    ? { ready: true, missing_fields: [], conflict: null }
+    : planReadiness(proposal)
   return {
     id: Number(proposal.id || 0),
     proposal_key: proposal.proposal_key || '',
@@ -705,6 +795,10 @@ function buildProposalCard(proposal, options = {}) {
     activity: proposal.activity || '',
     budget: proposal.budget || '',
     duration: proposal.duration || '',
+    contract_version: Number(proposal.contract_version || 1),
+    start_time: proposal.start_time || '',
+    activity_venue: proposal.activity_venue || '',
+    meet_point: proposal.meet_point || '',
     payment_mode: payment.payment_mode,
     payer_user_id: payment.payer_user_id,
     // Keep field for older clients; never expose personal perspective labels as truth
@@ -712,10 +806,16 @@ function buildProposalCard(proposal, options = {}) {
       ? payment.payment_mode
       : (payment.payment_mode === 'single_payer' ? 'one_pays' : ''),
     time_text: proposal.date
-      ? formatDatePeriod(proposal.date, proposal.period)
+      ? formatPlanTime(proposal.date, proposal.period, proposal.start_time)
       : '待确认',
     area_text: proposal.area || '待确认',
     activity_text: proposal.activity || '待确认',
+    activity_venue_text: proposal.activity_venue || '待确认',
+    meet_point_text: proposal.meet_point || '待确认',
+    arrival_hint_text: '可在确认约会后补充',
+    meeting_ready: readiness.ready,
+    meeting_missing_fields: readiness.missing_fields,
+    meeting_conflict: readiness.conflict,
     budget_text: BUDGET_LABELS[proposal.budget] || proposal.budget || '待确认',
     duration_text: DURATION_LABELS[proposal.duration] || proposal.duration || '待确认',
     payment_text: paymentFactText(Object.assign({}, proposal, payment), {
@@ -741,6 +841,10 @@ function buildDirectAcceptProposal(primary, version, options = {}) {
     activity: proposal.activity,
     budget: proposal.budget,
     duration: proposal.duration,
+    contract_version: Number(proposal.contract_version || 1),
+    start_time: proposal.start_time || '',
+    activity_venue: proposal.activity_venue || '',
+    meet_point: proposal.meet_point || '',
     payment_mode: proposal.payment_mode,
     payer_user_id: proposal.payer_user_id,
     payment_preference: proposal.payment_mode === 'aa' || proposal.payment_mode === 'flexible'
@@ -769,7 +873,7 @@ function coordinatorWelcomeText(coordination = {}, role = '') {
     return '已经有一份来自系统的候选方案。请在协调页的方案卡片上确认或继续告诉我需要调整的地方。'
   }
   if (status === STATUS.ARRANGED) {
-    return '双方已确认最终方案。我可以解释这次安排，但不能再修改。'
+    return '双方已确认最终方案。关键安排不能直接改写；见面当天可以在这里告诉我“我到了”“对方穿什么”“暂未找到”或“现场情况不符”，我会通过协调会话安全转达。'
   }
   if (status === STATUS.INVITATION_DECLINED) {
     return '本次约会邀请对方暂未接受，协调已经结束。我可以说明结果，但不能再修改安排。'

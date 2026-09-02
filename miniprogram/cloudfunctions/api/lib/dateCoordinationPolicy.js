@@ -20,6 +20,11 @@ const ACTIVITIES = ['咖啡', '吃饭', '奶茶', '散步', '看展', '电影', 
 const BUDGETS = ['under-50', '50-100', '100-200', 'over-200', 'flexible']
 const PAYMENT_PREFERENCES = ['aa', 'partner_pays', 'self_pays', 'flexible']
 const DURATIONS = ['about-1h', '1-2h', '2-3h', 'flexible']
+const {
+  PLAN_CONTRACT_VERSION,
+  normalizeMeetingPlanFields,
+  activityVenueConflict
+} = require('./meetingPlanPolicy')
 
 function uniqueStrings(values, limit) {
   const result = []
@@ -73,7 +78,8 @@ function normalizeApplication(input = {}, now = new Date()) {
   if (!activities.length) throw new Error('请选择至少一项活动偏好')
   if (activities.length > 3) throw new Error('活动偏好最多选择3项')
   if (activities.some((item) => !ACTIVITIES.includes(item))) throw new Error('活动偏好包含无效选项')
-  return {
+  const meetingPlan = normalizeMeetingPlanFields(input)
+  const normalized = {
     availability: normalizeAvailability(input.availability, now),
     areas,
     activities,
@@ -84,6 +90,36 @@ function normalizeApplication(input = {}, now = new Date()) {
     other_requirements: textValue(input.other_requirements, 100),
     share_message: textValue(input.share_message, 100)
   }
+  const usesMeetingPlan = Number(input.contract_version || 0) >= PLAN_CONTRACT_VERSION
+    || meetingPlan.start_time || meetingPlan.activity_venue || meetingPlan.meet_point || meetingPlan.arrival_hint
+  if (usesMeetingPlan) {
+    if (!meetingPlan.start_time || !meetingPlan.activity_venue || !meetingPlan.meet_point) {
+      throw new Error('请补充具体时间、活动场地和公共集合点')
+    }
+    if (normalized.availability.length !== 1
+      || normalized.availability[0].periods.length !== 1
+      || normalized.areas.length !== 1
+      || normalized.activities.length !== 1) {
+      throw new Error('包含具体时间和场地的方案只能选择一个日期、时间段、区域和活动')
+    }
+    if (normalized.availability[0].periods[0] !== meetingPlan.period) {
+      throw new Error('具体时间与所选时间段不一致')
+    }
+    const venueConflict = activityVenueConflict(normalized.activities[0], meetingPlan.activity_venue)
+    if (venueConflict) {
+      const error = new Error(venueConflict.message)
+      error.code = venueConflict.code
+      throw error
+    }
+    Object.assign(normalized, {
+      contract_version: PLAN_CONTRACT_VERSION,
+      start_time: meetingPlan.start_time,
+      activity_venue: meetingPlan.activity_venue,
+      meet_point: meetingPlan.meet_point,
+      arrival_hint: meetingPlan.arrival_hint
+    })
+  }
+  return normalized
 }
 
 function intersect(a, b) {
@@ -156,6 +192,19 @@ function computeOverlap(applicationA, applicationB, options = {}) {
     || paymentCompat === 'one_pays'
   )
   const duration = compatiblePreference(applicationA.duration, applicationB.duration)
+  const modernPlan = Math.min(
+    Number(applicationA.contract_version || 1),
+    Number(applicationB.contract_version || 1)
+  ) >= PLAN_CONTRACT_VERSION
+  const startTime = String(applicationA.start_time || '') === String(applicationB.start_time || '')
+    ? String(applicationA.start_time || '')
+    : ''
+  const activityVenue = String(applicationA.activity_venue || '') === String(applicationB.activity_venue || '')
+    ? String(applicationA.activity_venue || '')
+    : ''
+  const meetPoint = String(applicationA.meet_point || '') === String(applicationB.meet_point || '')
+    ? String(applicationA.meet_point || '')
+    : ''
   const missing = []
   if (!times.length) missing.push('time')
   if (!areas.length) missing.push('area')
@@ -163,6 +212,13 @@ function computeOverlap(applicationA, applicationB, options = {}) {
   if (!budget) missing.push('budget')
   if (!paymentOk) missing.push('payment')
   if (!duration) missing.push('duration')
+  if (modernPlan && !startTime) missing.push('exact_time')
+  if (modernPlan && !activityVenue) missing.push('activity_venue')
+  if (modernPlan && !meetPoint) missing.push('meet_point')
+  const compatibleActivities = modernPlan && activityVenue
+    ? activities.filter((activity) => !activityVenueConflict(activity, activityVenue))
+    : activities
+  if (modernPlan && activities.length && !compatibleActivities.length) missing.push('activity_venue')
   if (missing.length) return { proposals: [], missing_dimensions: missing }
 
   // one_pays without resolved payer ids stays incomplete for shared cards
@@ -173,9 +229,9 @@ function computeOverlap(applicationA, applicationB, options = {}) {
   const proposals = []
   for (const slot of times) {
     for (const area of areas) {
-      for (const activity of activities) {
+      for (const activity of compatibleActivities) {
         const [date, period] = slot.split('|')
-        proposals.push({
+        const proposal = {
           proposal_key: `v${version}-${date}-${period}-${area}-${activity}`,
           coordination_version: version,
           date,
@@ -189,7 +245,16 @@ function computeOverlap(applicationA, applicationB, options = {}) {
             ? sharedPayment.payment_mode
             : 'one_pays',
           duration
-        })
+        }
+        if (modernPlan) {
+          Object.assign(proposal, {
+            contract_version: PLAN_CONTRACT_VERSION,
+            start_time: startTime,
+            activity_venue: activityVenue,
+            meet_point: meetPoint
+          })
+        }
+        proposals.push(proposal)
         if (proposals.length === 3) return { proposals, missing_dimensions: [] }
       }
     }

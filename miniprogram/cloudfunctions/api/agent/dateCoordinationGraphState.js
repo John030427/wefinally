@@ -251,6 +251,9 @@ function buildDateCoordinationGraphInput(coordination, applications, user, optio
         time_text: invitationCard.time_text,
         area_text: invitationCard.area_text,
         activity_text: invitationCard.activity_text,
+        activity_venue_text: invitationCard.activity_venue_text || '',
+        meet_point_text: invitationCard.meet_point_text || '',
+        meeting_ready: Boolean(invitationCard.meeting_ready),
         budget_text: invitationCard.budget_text,
         duration_text: invitationCard.duration_text,
         invitation_version: invitationCard.invitation_version
@@ -267,6 +270,17 @@ function buildDateCoordinationGraphInput(coordination, applications, user, optio
       counterOffer,
       coordinationPath,
       proposalBaseAvailable: Boolean(invitationCard.primary_complete),
+      planIssue: invitationCard.meeting_conflict
+        ? {
+          code: String(invitationCard.meeting_conflict.code || 'ACTIVITY_VENUE_CONFLICT'),
+          message: String(invitationCard.meeting_conflict.message || '活动与场地需要确认').slice(0, 240)
+        }
+        : (Number(invitationCard.contract_version || 1) >= 2 && !invitationCard.meeting_ready
+          ? {
+            code: 'MEETING_PLAN_INCOMPLETE',
+            message: '请补充具体开始时间、活动场地和公共集合点，再确认最终方案。到场识别提示可在双方确认后分别补充。'
+          }
+          : null),
       actionRequired
     },
     partnerProgress: partnerProgress(coordination, applications, confirmations, user),

@@ -42,6 +42,9 @@ const InvitationCardSchema = z.object({
   time_text: z.string().max(120),
   area_text: z.string().max(120),
   activity_text: z.string().max(160),
+  activity_venue_text: z.string().max(120).optional(),
+  meet_point_text: z.string().max(120).optional(),
+  meeting_ready: z.boolean().optional(),
   budget_text: z.string().max(80),
   duration_text: z.string().max(80),
   invitation_version: z.number().int().positive()
@@ -96,7 +99,11 @@ export const SharedCoordinationStateSchema = z.object({
     'bilateral_preference_matching'
   ]).optional(),
   proposalBaseAvailable: z.boolean().optional(),
-  actionRequired: z.string().max(80).optional()
+  actionRequired: z.string().max(80).optional(),
+  planIssue: z.object({
+    code: z.string().max(80),
+    message: z.string().max(240)
+  }).strict().nullable().optional()
 }).strict()
 
 export const ConfirmationSnapshotSchema = z.object({

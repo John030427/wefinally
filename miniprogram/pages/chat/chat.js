@@ -25,7 +25,11 @@ const PATCH_FIELD_LABELS = {
   duration: '可接受时长',
   transport_constraints: '出行限制',
   other_requirements: '其他要求',
-  share_message: '对方可见内容'
+  share_message: '对方可见内容',
+  start_time: '具体时间',
+  activity_venue: '活动场地',
+  meet_point: '集合点',
+  arrival_hint: '到场识别提示'
 }
 
 function formatPatchValue(value) {
@@ -129,6 +133,8 @@ function normalizePartnerInquiryPreview(raw, incoming = false) {
     timeText: String(card.time_text || ''),
     areaText: String(card.area_text || ''),
     activityText: String(card.activity_text || ''),
+    venueText: String(card.activity_venue_text || ''),
+    meetPointText: String(card.meet_point_text || ''),
     budgetText: String(card.budget_text || ''),
     durationText: String(card.duration_text || ''),
     changes: preview.changes.map((item) => ({
@@ -141,12 +147,36 @@ function normalizePartnerInquiryPreview(raw, incoming = false) {
   }
 }
 
+function normalizeCoordinationUpdateCard(raw) {
+  if (!raw || typeof raw !== 'object') return null
+  const proposal = raw.proposal && typeof raw.proposal === 'object' ? raw.proposal : {}
+  return {
+    kind: String(raw.kind || 'update'),
+    title: String(raw.title || '约会方案有更新'),
+    changes: (Array.isArray(raw.changes) ? raw.changes : []).map((item) => ({
+      label: String(item.label || '调整项'),
+      beforeText: String(item.before_text || ''),
+      afterText: String(item.after_text || '')
+    })),
+    timeText: String(proposal.time_text || ''),
+    areaText: String(proposal.area_text || ''),
+    activityText: String(proposal.activity_text || ''),
+    venueText: String(proposal.activity_venue_text || ''),
+    meetPointText: String(proposal.meet_point_text || ''),
+    budgetText: String(proposal.budget_text || ''),
+    paymentText: String(proposal.payment_text || ''),
+    durationText: String(proposal.duration_text || ''),
+    hasPlan: Boolean(proposal.time_text || proposal.activity_text || proposal.activity_venue_text || proposal.meet_point_text)
+  }
+}
+
 function assistantMessage(item, index) {
   const patchPreview = normalizePatchPreview(item && item.patch_preview, item && item.requires_confirmation)
   const partnerInquiryPreview = normalizePartnerInquiryPreview(
     item && (item.partner_inquiry_preview || item.partner_inquiry),
     Boolean(item && item.partner_inquiry && !item.partner_inquiry_preview)
   )
+  const coordinationUpdateCard = normalizeCoordinationUpdateCard(item && item.coordination_update_card)
   const content = item.ai_content || item.reply || item.content || '已收到您的咨询'
   return {
     id: `b_${item.id || index}`,
@@ -157,6 +187,7 @@ function assistantMessage(item, index) {
     timeText: formatDate(item.create_time || item.createdAt || item.time, 'HH:mm'),
     patchPreview,
     partnerInquiryPreview,
+    coordinationUpdateCard,
     handoff: item && item.handoff && item.handoff.available ? item.handoff : null,
     reveal: false,
     errorText: ''
@@ -217,6 +248,7 @@ Page({
     coordinationId: '',
     coordinatorWelcome: '',
     coordinatorReadOnly: false,
+    coordinatorMeetingMode: false,
     patchSubmitting: false,
     supportCode: '',
     supportCodeState: 'loading',
@@ -369,7 +401,8 @@ Page({
       sessionId: String(sessionId),
       sessionReady: true,
       coordinatorWelcome: String(session.coordinator_welcome || ''),
-      coordinatorReadOnly: Boolean(session.coordinator_read_only)
+      coordinatorReadOnly: Boolean(session.coordinator_read_only),
+      coordinatorMeetingMode: Boolean(session.coordinator_meeting_mode)
     })
     return String(sessionId)
   },

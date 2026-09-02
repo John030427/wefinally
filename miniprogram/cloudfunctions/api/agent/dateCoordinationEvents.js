@@ -1,4 +1,5 @@
 const { projectParticipantEvent } = require('../lib/dateCoordinationProcessingPolicy')
+const { formatPlanTime } = require('../lib/meetingPlanPolicy')
 
 function defaultDeps() {
   const db = require('../lib/db')
@@ -16,10 +17,38 @@ function eventKey(coordination, event) {
 }
 
 function safeChangedDimensions(value) {
-  const allowed = new Set(['availability', 'area', 'activity', 'budget', 'payment', 'duration'])
+  const allowed = new Set([
+    'time', 'availability', 'area', 'activity', 'budget', 'payment', 'duration',
+    'exact_time', 'activity_venue', 'meet_point', 'arrival_hint'
+  ])
   return Array.from(new Set((Array.isArray(value) ? value : [])
     .map((item) => String(item || '').trim())
     .filter((item) => allowed.has(item))))
+}
+
+function safeCard(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const proposal = value.proposal && typeof value.proposal === 'object' ? value.proposal : {}
+  const changes = Array.isArray(value.changes) ? value.changes.slice(0, 8).map((item) => ({
+    label: String(item && item.label || '').slice(0, 30),
+    before_text: String(item && item.before_text || '').slice(0, 100),
+    after_text: String(item && item.after_text || '').slice(0, 100)
+  })) : []
+  return {
+    kind: String(value.kind || 'update').slice(0, 30),
+    title: String(value.title || '约会方案有更新').slice(0, 60),
+    changes,
+    proposal: {
+      time_text: String(proposal.time_text || formatPlanTime(proposal.date, proposal.period, proposal.start_time)).slice(0, 80),
+      area_text: String(proposal.area_text || proposal.area || '').slice(0, 80),
+      activity_text: String(proposal.activity_text || proposal.activity || '').slice(0, 50),
+      activity_venue_text: String(proposal.activity_venue_text || proposal.activity_venue || '').slice(0, 80),
+      meet_point_text: String(proposal.meet_point_text || proposal.meet_point || '').slice(0, 80),
+      budget_text: String(proposal.budget_text || proposal.budget || '').slice(0, 50),
+      payment_text: String(proposal.payment_text || proposal.payment_mode || proposal.payment_preference || '').slice(0, 50),
+      duration_text: String(proposal.duration_text || proposal.duration || '').slice(0, 50)
+    }
+  }
 }
 
 async function ensureSession(deps, coordination, userId) {
@@ -90,7 +119,8 @@ async function publishCoordinationEvent(input = {}, overrides) {
         stage: projection.stage,
         role: 'assistant',
         sender_type: 'assistant',
-        content: projection.content
+        content: projection.content,
+        coordination_update_card: safeCard(projection.card)
       }, 'agent_message')
     }
     messages.push(message)
@@ -98,4 +128,4 @@ async function publishCoordinationEvent(input = {}, overrides) {
   return { event: stored, messages }
 }
 
-module.exports = { eventKey, publishCoordinationEvent, safeChangedDimensions }
+module.exports = { eventKey, publishCoordinationEvent, safeChangedDimensions, safeCard }
