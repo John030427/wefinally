@@ -28,14 +28,16 @@ function readiness(user = {}, setting = {}, timestamp = new Date()) {
   return { ready: true, code: 'ready', missing: [], message: '资料已完整' }
 }
 
-function enrollmentPatch(user = {}, timestamp = new Date()) {
+function enrollmentPatch(user = {}, timestamp = new Date(), options = {}) {
   const cohort = String(user.qa_match_cohort || '').trim()
   if (cohort && cohort !== QA_REAL_DEVICE_MATCH_COHORT) {
     const error = new Error('当前账号属于其他测试批次，不能自动切换')
     error.code = 409
     throw error
   }
-  if (cohort === QA_REAL_DEVICE_MATCH_COHORT && String(user.qa_match_run_id || '').trim()) return null
+  if (cohort === QA_REAL_DEVICE_MATCH_COHORT
+    && String(user.qa_match_run_id || '').trim()
+    && options.forceNewRound !== true) return null
   return {
     qa_test_run_enabled: true,
     qa_match_cohort: QA_REAL_DEVICE_MATCH_COHORT,
@@ -52,6 +54,7 @@ function isReadyPartner(viewer = {}, candidate = {}, setting = {}, timestamp = n
   if (String(viewer.qa_match_cohort || '') !== QA_REAL_DEVICE_MATCH_COHORT) return false
   if (String(candidate.qa_match_cohort || '') !== QA_REAL_DEVICE_MATCH_COHORT) return false
   if (!String(candidate.qa_match_run_id || '').trim()) return false
+  if (String(candidate.match_status || '') === 'matched') return false
   return readiness(candidate, setting, timestamp).ready
 }
 

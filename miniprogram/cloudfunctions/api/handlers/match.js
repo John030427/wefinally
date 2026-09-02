@@ -918,7 +918,15 @@ async function startQaRealDeviceMatch(data, wxContext) {
     }
   }
 
-  const patch = enrollmentPatch(user, now())
+  const restartRound = data.restart_round === true || data.restartRound === true
+  if (String(user.match_status || '') === 'matched' && !restartRound) {
+    return {
+      matched: 0,
+      status: 'new_round_required',
+      message: '当前轮次已经匹配完成；如需再次测试，请点击“再来一轮真机互配”'
+    }
+  }
+  const patch = enrollmentPatch(user, now(), { forceNewRound: restartRound })
   const enrolledUser = patch ? await updateByDoc('user', user, patch) : user
   const allUsers = await list('user', { status: 1 }, 200)
   const allSettings = await list('user_match_setting', {}, 500)

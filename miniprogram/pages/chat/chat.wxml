@@ -112,6 +112,29 @@
             <view wx:elif="{{item.patchPreview.status === 'applied'}}" class="patch-status">{{item.patchPreview.operation === 'create' ? '已确认发送' : '已确认修改'}}</view>
             <view wx:elif="{{item.patchPreview.status === 'cancelled'}}" class="patch-status">{{item.patchPreview.operation === 'create' ? '已暂不发送' : '已暂不修改'}}</view>
           </view>
+          <view wx:if="{{item.isBot && item.status === 'completed' && item.partnerInquiryPreview}}" class="patch-preview-card partner-inquiry-card">
+            <view class="patch-preview-title">{{item.partnerInquiryPreview.title}}</view>
+            <view class="patch-scope-note">{{item.partnerInquiryPreview.body}}</view>
+            <view class="patch-change" wx:for="{{item.partnerInquiryPreview.changes}}" wx:for-item="change" wx:key="label">
+              <view class="patch-field">{{change.label}}</view>
+              <view class="patch-value-row"><text class="patch-value-label">原方案</text><text class="patch-value before">{{change.beforeText}}</text></view>
+              <view class="patch-value-row"><text class="patch-value-label">拟询问</text><text class="patch-value after">{{change.afterText}}</text></view>
+            </view>
+            <view wx:if="{{item.partnerInquiryPreview.unchangedText}}" class="patch-inherited">保持不变：{{item.partnerInquiryPreview.unchangedText}}</view>
+            <view class="patch-notice">完整安排：{{item.partnerInquiryPreview.timeText}} · {{item.partnerInquiryPreview.areaText}} · {{item.partnerInquiryPreview.activityText}}</view>
+            <view class="patch-notice">确认前不会通知对方；发送后对方可以接受或继续调整。</view>
+            <view wx:if="{{item.partnerInquiryPreview.status === 'pending_confirmation'}}" class="patch-actions">
+              <button class="patch-confirm" data-action="confirm" bindtap="onPartnerInquiryAction" disabled="{{sending}}">{{item.partnerInquiryPreview.confirmLabel}}</button>
+              <button class="patch-cancel" data-action="cancel" bindtap="onPartnerInquiryAction" disabled="{{sending}}">{{item.partnerInquiryPreview.cancelLabel}}</button>
+            </view>
+            <view wx:elif="{{item.partnerInquiryPreview.status === 'sent' && item.partnerInquiryPreview.incoming}}" class="patch-actions">
+              <button class="patch-confirm" data-action="accept" bindtap="onPartnerInquiryAction" disabled="{{sending}}">接受这份调整</button>
+            </view>
+            <view wx:elif="{{item.partnerInquiryPreview.status === 'sent'}}" class="patch-status">已发送给对方</view>
+            <view wx:elif="{{item.partnerInquiryPreview.status === 'accepted'}}" class="patch-status">已接受并重新计算</view>
+            <view wx:elif="{{item.partnerInquiryPreview.status === 'cancelled'}}" class="patch-status">已取消</view>
+            <view wx:elif="{{item.partnerInquiryPreview.status === 'expired'}}" class="patch-status">方案已更新，请重新生成询问</view>
+          </view>
           <button wx:if="{{item.isBot && item.status === 'completed' && item.handoff && item.handoff.provider === 'wechat_kf'}}" class="human-service-btn" open-type="contact">联系微信客服</button>
           <button wx:if="{{item.isBot && item.status === 'completed' && item.handoff && item.handoff.provider === 'wecom'}}" class="human-service-btn" data-message-id="{{item.id}}" bindtap="openHumanService">打开企业微信客服</button>
         </block>

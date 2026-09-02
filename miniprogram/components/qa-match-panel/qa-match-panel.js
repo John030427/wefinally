@@ -22,6 +22,7 @@ Component({
     scenario: 'coordinate',
     scenarios: QA_SCENARIOS,
     running: false,
+    realMatchCompleted: false,
     countdown: 0,
     statusText: ''
   },
@@ -56,7 +57,8 @@ Component({
       const access = await refreshQaAccess({ force })
       this.setData({
         visible: access.enabled,
-        resetVisible: access.registrationReplayEnabled
+        resetVisible: access.registrationReplayEnabled,
+        realMatchCompleted: String(access.profile && access.profile.match_status || '') === 'matched'
       })
     },
 
@@ -154,14 +156,19 @@ Component({
       this.setData({ running: true, statusText: '正在检查两台真机资料…' })
       try {
         const result = await post(API_PATHS.MATCH_QA_REAL_DEVICE_START, {
-          request_id: buildRequestId()
+          request_id: buildRequestId(),
+          restart_round: this.data.realMatchCompleted
         }, { showLoading: true, loadingText: '正在检查…' })
         const message = (result && result.message) || ''
         if (result && Number(result.matched) === 1) {
           wx.showToast({ title: '双机匹配成功', icon: 'success' })
           this.setData({ statusText: '双机匹配成功，可在匹配记录中查看' })
+          this.setData({ realMatchCompleted: true })
           this.triggerEvent('completed', { status: 'matched', runId: '', executed: result })
           return
+        }
+        if (result && result.status === 'waiting_partner' && this.data.realMatchCompleted) {
+          this.setData({ realMatchCompleted: false })
         }
         wx.showToast({ title: message || '暂未匹配', icon: 'none' })
         this.setData({ statusText: message || '暂未匹配' })

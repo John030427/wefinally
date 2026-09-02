@@ -47,9 +47,14 @@ assert.strictEqual(patch.qa_match_cohort, 'qa-real-device-registration-v1')
 assert.match(patch.qa_match_run_id, /^qarun_1_/)
 const enrolled = { ...user, ...patch }
 assert.strictEqual(enrollmentPatch(enrolled, timestamp), null)
+const nextRoundPatch = enrollmentPatch({ ...enrolled, match_status: 'matched' }, timestamp, { forceNewRound: true })
+assert.match(nextRoundPatch.qa_match_run_id, /^qarun_1_/)
+assert.strictEqual(nextRoundPatch.match_status, 'idle')
+assert.strictEqual(nextRoundPatch.matched_partner_id, 0)
 
 const partner = { ...enrolled, id: 2, gender: 2, qa_match_run_id: 'qarun_2_test' }
 assert.strictEqual(isReadyPartner(enrolled, partner, { ...setting, user_id: 2 }, timestamp), true)
+assert.strictEqual(isReadyPartner(enrolled, { ...partner, match_status: 'matched' }, { ...setting, user_id: 2 }, timestamp), false)
 assert.strictEqual(isReadyPartner(enrolled, { ...partner, qa_match_cohort: '' }, { ...setting, user_id: 2 }, timestamp), false)
 
 const root = path.resolve(__dirname, '../..')
@@ -60,7 +65,9 @@ const view = fs.readFileSync(path.join(root, 'miniprogram/components/qa-match-pa
 assert(route.includes("'POST /api/match/qa-real-device/start': match.startQaRealDeviceMatch"))
 assert(handler.includes("matchType: '双真机QA匹配'"))
 assert(handler.includes('candidateIds: readyPartners.map'))
+assert(handler.includes('new_round_required'))
 assert(panel.includes('MATCH_QA_REAL_DEVICE_START'))
 assert(view.includes('两台真机互配测试'))
+assert(view.includes('再来一轮真机互配'))
 
 console.log('PASS QA real-device matching readiness and isolated enrollment policy')

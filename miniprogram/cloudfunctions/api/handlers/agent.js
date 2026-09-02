@@ -23,17 +23,63 @@ const {
   inviteeCoordinatorBlockedError
 } = require('../lib/dateCoordinationAccessPolicy')
 const { coordinatorWelcomeText } = require('../lib/invitationCoordination')
+const { applyAcceptedCounterProposal } = require('../lib/dateCounterOfferPolicy')
 
 const FREE_DAILY_LIMIT = 5
 const VIP_DAILY_LIMIT = 30
 const CREATE_APPLICATION_PREVIEW_TOOL = 'create_date_application_preview'
 const CONFIRM_APPLICATION_TOOL = 'confirm_date_application'
+const PARTNER_INQUIRY_TOOL = 'generate_partner_notification'
 
 function pendingActionIntent(content) {
   const text = String(content || '').trim()
   if (/取消|暂不|先不|不要|别发|不发送|不提交/.test(text)) return 'cancel'
-  if (/确认(?:发送|提交)?|(?:帮我|请|可以|直接|就)?(?:发送|提交)(?:申请)?吧|没问题.*(?:发送|提交)|就这样.*(?:发送|提交)/.test(text)) return 'confirm'
+  if (/^(?:是|好|好的|可以|同意)$/.test(text)
+    || /确认(?:发送|提交|询问)?|(?:帮我|请|可以|直接|就)?(?:发送|提交|询问)(?:申请|对方)?吧|没问题.*(?:发送|提交|询问)|就这样.*(?:发送|提交|询问)/.test(text)) return 'confirm'
   return ''
+}
+
+function partnerUserId(coordination, userId) {
+  return Number(userId) === Number(coordination.user_a_id)
+    ? Number(coordination.user_b_id)
+    : Number(coordination.user_a_id)
+}
+
+function inquiryPreviewFromGraph(coordination, applications, sender, confirmations) {
+  const recipientId = partnerUserId(coordination, sender.id)
+  const state = buildDateCoordinationGraphInput(coordination, applications, { id: recipientId }, { confirmations })
+  const offer = state && state.sharedState && state.sharedState.counterOffer
+  if (!offer || offer.kind !== 'partner_structured_counter_proposal'
+    || Number(offer.changed_by_user_id) !== Number(sender.id)) return null
+  return {
+    status: 'pending_confirmation',
+    coordination_id: Number(coordination.id),
+    coordination_version: Number(coordination.coordination_version || 1),
+    recipient_user_id: recipientId,
+    proposal_token: String(offer.proposal_token || ''),
+    title: '询问对方前请确认',
+    body: String(offer.body || '请确认要把这份调整方案询问对方。'),
+    changes: offer.changes || [],
+    unchanged_text: String(offer.unchanged_text || ''),
+    proposal_card: offer.proposal_card || {},
+    confirm_label: '确认询问对方',
+    cancel_label: '暂不询问'
+  }
+}
+
+function publicPartnerInquiry(value) {
+  const input = value && typeof value === 'object' ? value : {}
+  return sanitizeOutput({
+    status: String(input.status || ''),
+    coordination_version: Number(input.coordination_version || 1),
+    title: String(input.title || '').slice(0, 80),
+    body: String(input.body || '').slice(0, 240),
+    changes: Array.isArray(input.changes) ? input.changes.slice(0, 6) : [],
+    unchanged_text: String(input.unchanged_text || '').slice(0, 160),
+    proposal_card: input.proposal_card || {},
+    confirm_label: String(input.confirm_label || '').slice(0, 40),
+    cancel_label: String(input.cancel_label || '').slice(0, 40)
+  })
 }
 
 function guardUnverifiedSuccessClaim(reply) {
@@ -59,7 +105,10 @@ function defaultDeps() {
     now: db.now,
     generateDecision,
     env: process.env,
-    invokeGraphFunction: (name, payload) => cloud.callFunction({ name, data: payload })
+    invokeGraphFunction: (name, payload) => cloud.callFunction({ name, data: payload }),
+    notifyInbox(input) {
+      return require('../lib/coordinationInbox').notifyInbox(input)
+    }
   }
 }
 
@@ -85,6 +134,8 @@ function publicMessage(row) {
     create_time: row.create_time
   }
   if (row.patch_preview) result.patch_preview = sanitizeOutput(row.patch_preview)
+  if (row.partner_inquiry_preview) result.partner_inquiry_preview = publicPartnerInquiry(row.partner_inquiry_preview)
+  if (row.partner_inquiry) result.partner_inquiry = publicPartnerInquiry(row.partner_inquiry)
   if (row.handoff) result.handoff = sanitizeOutput(row.handoff)
   return result
 }
@@ -508,8 +559,10 @@ function createAgentHandlers(overrides = {}) {
       // answer directly; modification requests still go to the backend patch
       // preview pipeline (deterministic business layer owns every write).
       const modificationIntent = classifyChangeIntent(content, { coordination: true }) === 'modify_date_application'
+      const partnerInquiryLike = /询问对方|问问对方|告诉对方|通知对方|发给对方|对方.*(?:可以|方便)吗/.test(content)
       const questionLike = /进度|状态|哪一步|怎么样了|看看|怎么样|如何|情况|进展|确认|方案|安排|协调|在吗|\?|？/.test(content)
-      if (!modificationIntent && dateGraphResult && ['completed', 'awaiting_confirmation'].includes(dateGraphResult.status)
+      if (!modificationIntent && !partnerInquiryLike && !pendingActionIntent(content)
+        && dateGraphResult && ['completed', 'awaiting_confirmation'].includes(dateGraphResult.status)
         && dateGraphResult.replyDraft && (questionLike || resumeText)) {
         const reply = [resumeText, dateGraphResult.replyDraft].filter(Boolean).join('\n')
         await saveMessage(session, user, 'assistant', reply, { graph_phase: dateGraphResult.phase })
@@ -521,6 +574,149 @@ function createAgentHandlers(overrides = {}) {
           provider: 'langgraph',
           graph_phase: dateGraphResult.phase,
           resume_summary: resumeText ? true : undefined,
+          risk_level: 'safe'
+        }
+      }
+      const sessionMessages = await dep('list')('agent_message', { session_id: Number(session.id) }, 100)
+      const pendingInquiryMessage = sessionMessages
+        .filter((row) => row.role === 'assistant'
+          && row.partner_inquiry_preview
+          && row.partner_inquiry_preview.status === 'pending_confirmation')
+        .sort((a, b) => Number(b.id || 0) - Number(a.id || 0))[0]
+      const inquiryActionIntent = pendingInquiryMessage ? pendingActionIntent(content) : ''
+      if (pendingInquiryMessage && inquiryActionIntent === 'confirm') {
+        const latestCoordination = await dep('byId')('date_coordination', Number(coordination.id))
+        const latestApplications = await dep('list')('date_coordination_application', {
+          coordination_id: Number(coordination.id)
+        }, 200)
+        const latestConfirmations = await dep('list')('date_coordination_confirmation', {
+          coordination_id: Number(coordination.id)
+        }, 50).catch(() => [])
+        const preview = inquiryPreviewFromGraph(latestCoordination, latestApplications, user, latestConfirmations)
+        const previous = pendingInquiryMessage.partner_inquiry_preview
+        if (!preview
+          || Number(previous.coordination_version) !== Number(latestCoordination.coordination_version || 1)
+          || String(previous.proposal_token || '') !== String(preview.proposal_token || '')) {
+          await dep('updateByDoc')('agent_message', pendingInquiryMessage, {
+            partner_inquiry_preview: Object.assign({}, previous, { status: 'expired' })
+          })
+          const reply = '协调方案刚刚发生了变化，这份询问预览已失效。请重新告诉我想询问对方的方案。'
+          await saveMessage(session, user, 'assistant', reply)
+          return { session_id: session.id, agent_type: session.agent_type, reply, stale_preview: true, risk_level: 'safe' }
+        }
+        const partnerId = Number(preview.recipient_user_id)
+        const partnerSessions = await dep('list')('agent_session', {
+          user_id: partnerId,
+          agent_type: AGENT_TYPES.DATE_COORDINATOR
+        }, 100)
+        const partnerSession = partnerSessions.find((row) => (
+          Number(row.coordination_id) === Number(coordination.id)
+          && !['closed', 'cancelled'].includes(row.status)
+        )) || await dep('addWithId')('agent_session', {
+          user_id: partnerId,
+          agent_type: AGENT_TYPES.DATE_COORDINATOR,
+          coordination_id: Number(coordination.id),
+          status: 'active',
+          summary: '',
+          unresolved_count: 0
+        }, 'agent_session')
+        const sentPreview = Object.assign({}, preview, {
+          status: 'sent',
+          sent_at: dep('now')()
+        })
+        await dep('updateByDoc')('agent_message', pendingInquiryMessage, {
+          partner_inquiry_preview: sentPreview
+        })
+        await dep('addWithId')('agent_message', {
+          session_id: Number(partnerSession.id),
+          user_id: partnerId,
+          agent_type: AGENT_TYPES.DATE_COORDINATOR,
+          role: 'assistant',
+          sender_type: 'agent',
+          content: `对方想询问你是否接受这份调整：${preview.body} 你可以在约会协调详情中接受，或继续告诉我希望调整哪一项。`,
+          partner_inquiry: publicPartnerInquiry(sentPreview)
+        }, 'agent_message')
+        await dep('notifyInbox')({
+          coordination: latestCoordination,
+          user_id: partnerId,
+          event_type: 'partner_inquiry',
+          coordination_version: Number(latestCoordination.coordination_version || 1),
+          title: '对方发来一份约会调整询问',
+          body: '请查看调整内容，并选择接受或继续协商。',
+          stage: 'coordination'
+        })
+        const reply = '已确认发送给对方。对方可以接受这份调整，也可以继续提出其他时间或安排。'
+        await recordTool(session, user, PARTNER_INQUIRY_TOOL, 'completed')
+        await saveMessage(session, user, 'assistant', reply, { execution_verified: true })
+        await markSeen()
+        return {
+          session_id: session.id,
+          agent_type: session.agent_type,
+          reply,
+          tool: PARTNER_INQUIRY_TOOL,
+          partner_notified: true,
+          risk_level: 'safe'
+        }
+      }
+      if (pendingInquiryMessage && inquiryActionIntent === 'cancel') {
+        const previous = pendingInquiryMessage.partner_inquiry_preview
+        await dep('updateByDoc')('agent_message', pendingInquiryMessage, {
+          partner_inquiry_preview: Object.assign({}, previous, { status: 'cancelled' })
+        })
+        const reply = '好的，这份询问已取消，不会通知对方。'
+        await saveMessage(session, user, 'assistant', reply)
+        return { session_id: session.id, agent_type: session.agent_type, reply, cancelled: true, risk_level: 'safe' }
+      }
+      const receivedInquiryMessage = sessionMessages
+        .filter((row) => row.role === 'assistant'
+          && row.partner_inquiry
+          && row.partner_inquiry.status === 'sent')
+        .sort((a, b) => Number(b.id || 0) - Number(a.id || 0))[0]
+      const acceptsReceivedInquiry = /^(?:接受|同意|可以|就这个|确认接受|接受这份调整)[！!。.]?$/.test(String(content || '').trim())
+      if (receivedInquiryMessage && acceptsReceivedInquiry) {
+        const latestCoordination = await dep('byId')('date_coordination', Number(coordination.id))
+        const latestApplications = await dep('list')('date_coordination_application', {
+          coordination_id: Number(coordination.id)
+        }, 200)
+        const latestConfirmations = await dep('list')('date_coordination_confirmation', {
+          coordination_id: Number(coordination.id)
+        }, 50).catch(() => [])
+        const graphState = buildDateCoordinationGraphInput(latestCoordination, latestApplications, user, {
+          confirmations: latestConfirmations
+        })
+        const counterOffer = graphState && graphState.sharedState && graphState.sharedState.counterOffer
+        const ownRow = latestApplication(latestApplications, user.id, latestCoordination.coordination_version)
+        if (!counterOffer || counterOffer.kind !== 'partner_structured_counter_proposal' || !ownRow) {
+          const reply = '这份调整已经失效或被新的方案替代了，请查看最新协调状态后再选择。'
+          await saveMessage(session, user, 'assistant', reply)
+          return { session_id: session.id, agent_type: session.agent_type, reply, stale_inquiry: true, risk_level: 'safe' }
+        }
+        const acceptedApplication = applyAcceptedCounterProposal(ownRow.application, counterOffer)
+        const acceptedChanges = (counterOffer.changes || []).reduce((out, item) => {
+          out[item.field] = acceptedApplication[item.field]
+          return out
+        }, {})
+        const patch = await patchHandlers.createPreviewForUser({
+          coordination_id: Number(coordination.id),
+          changes: acceptedChanges
+        }, user, session)
+        await patchHandlers.confirmForUser({
+          coordination_id: Number(coordination.id),
+          patch_id: Number(patch.id)
+        }, user)
+        await dep('updateByDoc')('agent_message', receivedInquiryMessage, {
+          partner_inquiry: Object.assign({}, receivedInquiryMessage.partner_inquiry, { status: 'accepted' })
+        })
+        const reply = '已接受这份调整并重新计算双方安排。若其他条件仍一致，系统会进入共同方案确认；如仍有差异，我会继续说明需要协调的项目。'
+        await recordTool(session, user, 'accept_partner_counter_proposal', 'completed')
+        await saveMessage(session, user, 'assistant', reply, { execution_verified: true })
+        await markSeen()
+        return {
+          session_id: session.id,
+          agent_type: session.agent_type,
+          reply,
+          tool: 'accept_partner_counter_proposal',
+          accepted: true,
           risk_level: 'safe'
         }
       }
@@ -638,7 +834,7 @@ function createAgentHandlers(overrides = {}) {
         TOOL_NAMES.DATE_COORDINATION,
         PATCH_TOOL,
         CREATE_APPLICATION_PREVIEW_TOOL,
-        'generate_partner_notification',
+        PARTNER_INQUIRY_TOOL,
         TOOL_NAMES.MATCH
       ]
       const decision = await dep('generateDecision')({
@@ -671,6 +867,7 @@ function createAgentHandlers(overrides = {}) {
             '当前用户还没有申请且没有完整基础方案时，返回 intent=create_date_application 和 create_date_application_preview，arguments.application 必须包含 availability、areas、activities、budget、payment_preference、duration',
             '用户表达含糊、没有指出调整哪一项时，返回 intent=clarify_scope，不调用写工具，只追问一个具体问题',
             '展示完整申请摘要时必须同时请求 create_date_application_preview，不能只生成普通聊天文本',
+            '用户明确要求询问或通知对方是否接受当前调整方案时，返回 intent=generate_partner_notification 和同名工具；后台必须先生成询问预览，经用户确认后才发送',
             '用户确认发送时只能确认已有后台预览，绝不能自行宣称已经发送',
             '只生成修改预览，绝不直接修改数据库',
             '不得输出另一方原始回答、原因或隐私'
@@ -691,6 +888,30 @@ function createAgentHandlers(overrides = {}) {
       }, 'agent_run')
 
       const toolRequest = decision.toolRequest || null
+      if (decision.intent === PARTNER_INQUIRY_TOOL
+        && toolRequest && toolRequest.tool === PARTNER_INQUIRY_TOOL) {
+        const preview = inquiryPreviewFromGraph(coordination, allApplications, user, confirmations)
+        if (!preview) {
+          const reply = '目前还没有一份可以安全询问对方的明确调整方案。请先告诉我具体想改哪一项，例如“改成周日下午”，我会先生成修改预览。'
+          await recordTool(session, user, PARTNER_INQUIRY_TOOL, 'failed', 'no_structured_proposal')
+          await saveMessage(session, user, 'assistant', reply)
+          return { session_id: session.id, agent_type: session.agent_type, reply, tool_failed: true, risk_level: 'safe' }
+        }
+        const reply = '我已整理好要询问对方的方案。请先核对调整项和保持不变项，确认后才会通知对方。'
+        await recordTool(session, user, PARTNER_INQUIRY_TOOL, 'completed')
+        await saveMessage(session, user, 'assistant', reply, { partner_inquiry_preview: preview })
+        return {
+          session_id: session.id,
+          agent_type: session.agent_type,
+          reply,
+          provider: decision.provider || 'deepseek',
+          tool: PARTNER_INQUIRY_TOOL,
+          partner_inquiry_preview: publicPartnerInquiry(preview),
+          requires_confirmation: true,
+          risk_level: 'safe',
+          suggested_actions: ['confirm_partner_inquiry', 'cancel_partner_inquiry']
+        }
+      }
       if (decision.intent === 'modify_date_application' && toolRequest && toolRequest.tool === PATCH_TOOL) {
         try {
           const args = Object.assign({}, toolRequest.arguments || {})

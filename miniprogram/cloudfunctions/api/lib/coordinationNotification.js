@@ -24,7 +24,9 @@ const WECHAT_WORTHY_EVENTS = new Set([
   'PREFERENCE_UPDATED',
   'preference_updated',
   'COUNTER_OFFER_READY',
-  'counter_offer_ready'
+  'counter_offer_ready',
+  'PARTNER_INQUIRY',
+  'partner_inquiry'
 ])
 
 function notifyConfig(env = process.env) {

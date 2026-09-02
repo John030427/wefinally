@@ -55,7 +55,7 @@ function createPendingAssistantMessage({ pendingMessageId, requestId, agentType,
   }
 }
 
-function completeAssistantMessage(pending, { content, patchPreview, handoff, timeText }) {
+function completeAssistantMessage(pending, { content, patchPreview, partnerInquiryPreview, handoff, timeText }) {
   const text = String(content || '').trim()
   if (!text && !patchPreview) {
     return Object.assign({}, pending, {
@@ -70,6 +70,7 @@ function completeAssistantMessage(pending, { content, patchPreview, handoff, tim
     content: text,
     waitingText: '',
     patchPreview: patchPreview || null,
+    partnerInquiryPreview: partnerInquiryPreview || null,
     handoff: handoff || null,
     timeText: timeText || pending.timeText,
     reveal: true,

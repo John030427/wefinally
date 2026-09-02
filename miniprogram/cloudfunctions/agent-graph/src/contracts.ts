@@ -38,7 +38,45 @@ export const CanonicalOverlapSchema = z.object({
   proposal: z.record(z.string(), z.unknown()).nullable().optional()
 }).strict()
 
+const InvitationCardSchema = z.object({
+  time_text: z.string().max(120),
+  area_text: z.string().max(120),
+  activity_text: z.string().max(160),
+  budget_text: z.string().max(80),
+  duration_text: z.string().max(80),
+  invitation_version: z.number().int().positive()
+}).strict()
+
+const LegacyTimeCounterOfferSchema = z.object({
+  kind: z.literal('partner_time_counter_offer'),
+  coordination_version: z.number().int().positive(),
+  dimension: z.literal('time'),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  period: z.enum(['morning', 'afternoon', 'evening', 'night']),
+  time_text: z.string().min(1).max(80),
+  title: z.string().min(1).max(80),
+  body: z.string().min(1).max(200)
+}).strict()
+
+const StructuredCounterOfferSchema = z.object({
+  kind: z.literal('partner_structured_counter_proposal'),
+  coordination_version: z.number().int().positive(),
+  changed_by_user_id: z.number().int().positive(),
+  changed_dimensions: z.array(z.string().max(40)).min(1).max(6),
+  changes: z.array(z.record(z.string(), z.unknown())).min(1).max(6),
+  unchanged_dimensions: z.array(z.string().max(40)).max(6),
+  unchanged_text: z.string().max(160),
+  proposal: z.record(z.string(), z.unknown()),
+  proposal_token: z.string().min(1).max(500),
+  proposal_card: z.record(z.string(), z.unknown()),
+  time_text: z.string().max(120),
+  title: z.string().min(1).max(80),
+  body: z.string().min(1).max(240),
+  action_label: z.string().min(1).max(40)
+}).strict()
+
 export const SharedCoordinationStateSchema = z.object({
+  invitationCard: InvitationCardSchema.optional(),
   commonTime: z.array(z.string().max(64)).max(12).optional(),
   commonArea: z.array(z.string().max(40)).max(8).optional(),
   commonActivity: z.array(z.string().max(32)).max(8).optional(),
@@ -46,17 +84,18 @@ export const SharedCoordinationStateSchema = z.object({
   paymentCompatibility: z.string().max(40).optional(),
   durationCompatibility: z.string().max(40).optional(),
   missingDimensions: z.array(z.string().max(40)).max(12).optional(),
+  unresolvedDimensions: z.array(z.string().max(40)).max(12).optional(),
   activeProposalSummary: z.record(z.string(), z.unknown()).nullable().optional(),
-  counterOffer: z.object({
-    kind: z.literal('partner_time_counter_offer'),
-    coordination_version: z.number().int().positive(),
-    dimension: z.literal('time'),
-    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-    period: z.enum(['morning', 'afternoon', 'evening', 'night']),
-    time_text: z.string().min(1).max(80),
-    title: z.string().min(1).max(80),
-    body: z.string().min(1).max(200)
-  }).strict().nullable().optional(),
+  counterOffer: z.union([LegacyTimeCounterOfferSchema, StructuredCounterOfferSchema]).nullable().optional(),
+  coordinationPath: z.enum([
+    'structured_counter_proposal',
+    'direct_invitation_response',
+    'waiting_invitation_response',
+    'partial_override_from_invitation',
+    'confirm_computed_proposal',
+    'bilateral_preference_matching'
+  ]).optional(),
+  proposalBaseAvailable: z.boolean().optional(),
   actionRequired: z.string().max(80).optional()
 }).strict()
 

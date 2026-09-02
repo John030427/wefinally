@@ -25,7 +25,22 @@ function fakeDeps() {
     user_match_log: [{ id: 10, user_id: 1, match_user_id: 2, status: 'matched' }],
     date_coordination: [
       { id: 50, user_a_id: 1, user_b_id: 2, status: 'collecting_preferences', coordination_version: 1 },
-      { id: 51, user_a_id: 1, user_b_id: 2, status: 'collecting_initiator', business_state: 'created', coordination_version: 1 }
+      { id: 51, user_a_id: 1, user_b_id: 2, status: 'collecting_initiator', business_state: 'created', coordination_version: 1 },
+      {
+        id: 52,
+        user_a_id: 1,
+        user_b_id: 2,
+        status: 'no_overlap',
+        business_state: 'coordinating',
+        coordination_version: 2,
+        missing_dimensions: ['time'],
+        last_changed_by_user_id: 1,
+        last_changed_dimensions: ['time'],
+        invitation_primary_proposal: {
+          date: '2026-07-18', period: 'afternoon', area: '福田区', activity: '咖啡',
+          budget: '100-200', payment_mode: 'aa', payer_user_id: 0, duration: '1-2h'
+        }
+      }
     ],
     date_coordination_application: [{
       id: 60,
@@ -59,12 +74,35 @@ function fakeDeps() {
         other_requirements: '不公开的自由文本',
         share_message: '不公开的留言'
       }
+    }, {
+      id: 62,
+      coordination_id: 52,
+      user_id: 1,
+      coordination_version: 2,
+      preference_evidence: { availability: 'explicit' },
+      application: {
+        availability: [{ date: '2026-07-20', periods: ['afternoon'] }],
+        areas: ['福田区'], activities: ['咖啡'], budget: '100-200',
+        payment_preference: 'aa', duration: '1-2h'
+      }
+    }, {
+      id: 63,
+      coordination_id: 52,
+      user_id: 2,
+      coordination_version: 2,
+      preference_evidence: { availability: 'explicit' },
+      application: {
+        availability: [{ date: '2026-07-18', periods: ['afternoon'] }],
+        areas: ['福田区'], activities: ['咖啡'], budget: '100-200',
+        payment_preference: 'aa', duration: '1-2h'
+      }
     }],
     date_coordination_proposal: [],
     date_coordination_confirmation: [],
     date_application_patch: [],
     date_coordination_event: [],
-    agent_notification_job: []
+    agent_notification_job: [],
+    coordination_notification: []
   }
   let id = 100
   const match = (row, query) => Object.keys(query || {}).every((key) => row[key] === query[key])
@@ -95,6 +133,15 @@ function fakeDeps() {
     async updateByDoc(name, doc, data) {
       Object.assign(doc, data, { update_time: deps.now() })
       return doc
+    },
+    async notifyInbox(input) {
+      return deps.addWithId('coordination_notification', {
+        coordination_id: Number(input.coordination.id),
+        user_id: Number(input.user_id),
+        event_type: input.event_type,
+        title: input.title,
+        body: input.body
+      })
     },
     async claimPendingPatch(patch) {
       const current = tables.date_application_patch.find((row) => Number(row.id) === Number(patch.id))
@@ -181,6 +228,18 @@ function fakeDeps() {
           fallback: false
         }
       }
+      if (input.message === '询问对方周日下午可以吗') {
+        return {
+          intent: 'generate_partner_notification',
+          replyDraft: '已生成询问预览。',
+          requestedTools: ['generate_partner_notification'],
+          toolRequest: { tool: 'generate_partner_notification', arguments: {} },
+          riskLevel: 'safe',
+          suggestedActions: ['confirm_partner_inquiry'],
+          provider: 'deepseek',
+          fallback: false
+        }
+      }
       if (['想聊聊健康恋爱', '我对相处节奏拿不准'].includes(input.message)) {
         assert.strictEqual(input.context.knowledge.length, 0)
       }
@@ -236,6 +295,7 @@ async function main() {
   const coordinator = await handlers.createSession({ agent_type: AGENT_TYPES.DATE_COORDINATOR, coordination_id: 50 }, contextA)
   const coordinatorB = await handlers.createSession({ agent_type: AGENT_TYPES.DATE_COORDINATOR, coordination_id: 50 }, contextB)
   const initialCoordinator = await handlers.createSession({ agent_type: AGENT_TYPES.DATE_COORDINATOR, coordination_id: 51 }, contextA)
+  const inquiryCoordinator = await handlers.createSession({ agent_type: AGENT_TYPES.DATE_COORDINATOR, coordination_id: 52 }, contextA)
   assert.strictEqual(platformAgain.id, platform.id)
   assert.notStrictEqual(platform.id, love.id)
   assert.strictEqual(coordinator.coordination_id, 50)
@@ -312,6 +372,37 @@ async function main() {
     && row.status === 'fallback'
     && row.error_code === 'graph_unavailable'))
   deps.env.LANGGRAPH_ENABLED = 'false'
+
+  const inquiryPreview = await handlers.send({
+    session_id: inquiryCoordinator.id,
+    message: '询问对方周日下午可以吗'
+  }, contextA)
+  assert.strictEqual(inquiryPreview.requires_confirmation, true)
+  assert.strictEqual(inquiryPreview.partner_inquiry_preview.status, 'pending_confirmation')
+  assert.deepStrictEqual(inquiryPreview.partner_inquiry_preview.changes.map((item) => item.label), ['时间'])
+  assert(inquiryPreview.partner_inquiry_preview.unchanged_text.includes('区域'))
+  assert.strictEqual(deps.tables.coordination_notification.length, 0)
+
+  const inquirySent = await handlers.send({
+    session_id: inquiryCoordinator.id,
+    message: '确认询问对方'
+  }, contextA)
+  assert.strictEqual(inquirySent.partner_notified, true)
+  assert.strictEqual(deps.tables.coordination_notification.length, 1)
+  assert.strictEqual(deps.tables.coordination_notification[0].user_id, 2)
+  const partnerInquirySession = deps.tables.agent_session.find((row) => (
+    row.user_id === 2 && row.coordination_id === 52
+  ))
+  assert(partnerInquirySession)
+  assert(deps.tables.agent_message.some((row) => (
+    row.session_id === partnerInquirySession.id && row.partner_inquiry
+  )))
+  const inquiryAccepted = await handlers.send({
+    session_id: partnerInquirySession.id,
+    message: '接受这份调整'
+  }, contextB)
+  assert.strictEqual(inquiryAccepted.accepted, true)
+  assert.strictEqual(inquiryAccepted.tool, 'accept_partner_counter_proposal')
 
   const patchReply = await handlers.send({ session_id: coordinator.id, message: '不想看电影了，帮我改成咖啡' }, contextA)
   assert.strictEqual(patchReply.provider, 'deepseek')

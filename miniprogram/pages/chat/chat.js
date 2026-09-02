@@ -116,8 +116,37 @@ function normalizePatchPreview(raw, requiresConfirmation) {
   }
 }
 
+function normalizePartnerInquiryPreview(raw, incoming = false) {
+  const preview = raw && (raw.partner_inquiry_preview || raw.partnerInquiryPreview || raw)
+  if (!preview || !preview.proposal_card || !Array.isArray(preview.changes)) return null
+  const card = preview.proposal_card
+  return {
+    status: String(preview.status || 'pending_confirmation'),
+    incoming,
+    title: String(preview.title || '询问对方前请确认'),
+    body: String(preview.body || ''),
+    unchangedText: String(preview.unchanged_text || ''),
+    timeText: String(card.time_text || ''),
+    areaText: String(card.area_text || ''),
+    activityText: String(card.activity_text || ''),
+    budgetText: String(card.budget_text || ''),
+    durationText: String(card.duration_text || ''),
+    changes: preview.changes.map((item) => ({
+      label: String(item.label || '调整项'),
+      beforeText: String(item.before_text || ''),
+      afterText: String(item.after_text || '')
+    })),
+    confirmLabel: String(preview.confirm_label || '确认询问对方'),
+    cancelLabel: String(preview.cancel_label || '暂不询问')
+  }
+}
+
 function assistantMessage(item, index) {
   const patchPreview = normalizePatchPreview(item && item.patch_preview, item && item.requires_confirmation)
+  const partnerInquiryPreview = normalizePartnerInquiryPreview(
+    item && (item.partner_inquiry_preview || item.partner_inquiry),
+    Boolean(item && item.partner_inquiry && !item.partner_inquiry_preview)
+  )
   const content = item.ai_content || item.reply || item.content || '已收到您的咨询'
   return {
     id: `b_${item.id || index}`,
@@ -127,6 +156,7 @@ function assistantMessage(item, index) {
     waitingText: '',
     timeText: formatDate(item.create_time || item.createdAt || item.time, 'HH:mm'),
     patchPreview,
+    partnerInquiryPreview,
     handoff: item && item.handoff && item.handoff.available ? item.handoff : null,
     reveal: false,
     errorText: ''
@@ -505,11 +535,29 @@ Page({
       if (!this._pageActive || this._activeRequestId !== requestId) return
 
       this.clearWaitingTimers()
+      const responseMeta = result.reply && typeof result.reply === 'object' ? result.reply : {}
+      if (responseMeta.partner_notified === true || responseMeta.cancelled === true || responseMeta.accepted === true) {
+        const inquiryStatus = responseMeta.accepted === true
+          ? 'accepted'
+          : (responseMeta.partner_notified === true ? 'sent' : 'cancelled')
+        this.safeSetData({
+          messages: this.data.messages.map((item) => (
+            item.partnerInquiryPreview
+              && (item.partnerInquiryPreview.status === 'pending_confirmation'
+                || (responseMeta.accepted === true && item.partnerInquiryPreview.incoming))
+              ? Object.assign({}, item, {
+                partnerInquiryPreview: Object.assign({}, item.partnerInquiryPreview, { status: inquiryStatus })
+              })
+              : item
+          ))
+        })
+      }
       const completed = completeAssistantMessage(
         this.data.messages.find((m) => m.id === pendingMessageId) || pending,
         {
           content: result.content,
           patchPreview: result.patchPreview,
+          partnerInquiryPreview: normalizePartnerInquiryPreview(result.reply && result.reply.partner_inquiry_preview),
           handoff: result.handoff,
           timeText: formatDate(new Date(), 'HH:mm')
         }
@@ -623,6 +671,13 @@ Page({
 
   async onCancelPatch(e) {
     await this.submitPatchAction(e, 'cancel')
+  },
+
+  onPartnerInquiryAction(e) {
+    if (this.data.sending || this._turnStarting || this.data.coordinatorReadOnly) return
+    const action = String(e.currentTarget.dataset.action || '')
+    const text = action === 'accept' ? '接受这份调整' : (action === 'confirm' ? '确认询问对方' : '暂不询问')
+    this.setData({ inputText: text }, () => this.onSend())
   },
 
   async onSelectPrimaryResolution(e) {

@@ -11,9 +11,9 @@
 
   <view class="qa-real-device-block">
     <view class="qa-scenario-label">两台真实微信账号</view>
-    <view class="qa-panel-hint">自动检查资料并加入隔离测试组；两台手机都点击后才会互配</view>
+    <view class="qa-panel-hint">自动检查资料并加入隔离测试组；两台手机都点击后才会互配。再次测试会开启新轮次，旧匹配记录仍保留。</view>
     <button class="qa-btn qa-btn-real" bindtap="onRealDeviceMatch" disabled="{{running}}">
-      两台真机互配测试
+      {{realMatchCompleted ? '再来一轮真机互配' : '两台真机互配测试'}}
     </button>
   </view>
 
