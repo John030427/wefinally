@@ -259,10 +259,15 @@ async function main() {
 
   const second = await handlers.create({ match_user_id: 1 }, { user_id: 2 })
   assert.strictEqual(second.id, first.id)
-  assert.strictEqual(second.role, 'invitee')
-  assert.strictEqual(second.can_submit_application, false)
+  assert.strictEqual(second.role, 'initiator')
+  assert.strictEqual(second.can_submit_application, true)
   assert.strictEqual(second.can_respond_invitation, false)
   assert.strictEqual(deps.rows.date_coordination.length, 1)
+  assert.strictEqual(deps.rows.date_coordination[0].user_a_id, 2)
+  assert.strictEqual(deps.rows.date_coordination[0].user_b_id, 1)
+  const reclaimed = await handlers.create({ match_log_id: 10 }, { user_id: 1 })
+  assert.strictEqual(reclaimed.role, 'initiator')
+  assert.strictEqual(reclaimed.can_submit_application, true)
 
   const denied = createDateCoordinationHandlers(memoryDeps({
     user: [{ _id: 'user_3', id: 3, member_status: 'pending_review', is_vip: 1 }],

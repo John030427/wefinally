@@ -1090,6 +1090,27 @@ async function commitPreAcceptInvitationPatch(input = {}, timestamp = now()) {
   })
 }
 
+async function claimDateCoordinationDraft(input = {}, timestamp = now()) {
+  const coordination = input.coordination
+  const claimantUserId = Number(input.claimantUserId || 0)
+  if (!coordination || !coordination._id || !claimantUserId) throw new Error('约会草稿无效')
+  return transaction(async (adapter) => {
+    const current = await adapter.byDocId('date_coordination', coordination._id)
+    if (!current) throw new Error('日期协调不存在')
+    if (current.status !== 'collecting_initiator' || Number(current.user_a_id) === claimantUserId) return current
+    if (Number(current.user_b_id) !== claimantUserId) throw new Error('无权接手该约会草稿')
+    const applications = await adapter.list('date_coordination_application', {
+      coordination_id: Number(current.id)
+    }, 1)
+    if (applications.length) return current
+    return adapter.updateByDoc('date_coordination', current, {
+      user_a_id: claimantUserId,
+      user_b_id: Number(current.user_a_id),
+      application_deadline_at: new Date(new Date(timestamp).getTime() + 72 * 60 * 60 * 1000)
+    })
+  })
+}
+
 /**
  * CAS an accepted coordination patch and its new-version snapshots atomically.
  * This prevents a stale proposal confirmation from arranging the old version
@@ -1269,6 +1290,7 @@ module.exports = {
   commitCoordinationConfirmation,
   commitDirectInvitationAccept,
   commitInvitationResponse,
+  claimDateCoordinationDraft,
   commitPreAcceptInvitationPatch,
   commitPostAcceptApplicationPatch,
   authError,

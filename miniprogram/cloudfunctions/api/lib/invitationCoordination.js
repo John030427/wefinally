@@ -480,7 +480,7 @@ function resolvePrimaryAfterPreferenceChange(previous, prefs, context = {}, sele
       throw primaryProposalIncompleteError(
         readiness.conflict
           ? readiness.conflict.message
-          : '请补充具体时间、活动场地和公共集合点后再确认方案'
+          : '请补充具体时间和活动场地后再确认方案'
       )
     }
   }
@@ -546,7 +546,7 @@ function resolvePrimaryInvitationProposal(input = {}, prefs, context = {}) {
       throw primaryProposalIncompleteError(
         readiness.conflict
           ? readiness.conflict.message
-          : '请补充具体时间、活动场地和公共集合点后再发送邀请'
+          : '请补充具体时间和活动场地后再发送邀请'
       )
     }
   }
@@ -587,7 +587,7 @@ function buildInvitationCard(primaryOrPrefs = {}, version = 1, options = {}) {
     ? (Number(primary.contract_version || 1) < PLAN_CONTRACT_VERSION
         ? { ready: true, missing_fields: [], conflict: null }
         : planReadiness(primary))
-    : { ready: false, missing_fields: ['start_time', 'activity_venue', 'meet_point'], conflict: null }
+    : { ready: false, missing_fields: ['start_time', 'activity_venue'], conflict: null }
   const paymentText = complete
     ? paymentFactText(primary, {
       user_a_id: options.user_a_id,
@@ -608,7 +608,7 @@ function buildInvitationCard(primaryOrPrefs = {}, version = 1, options = {}) {
     area_text: complete ? (primary.area || '待确认') : (formatList(prefs && prefs.areas) || '待确认'),
     activity_text: complete ? (primary.activity || '待确认') : (formatList(prefs && prefs.activities) || '待确认'),
     activity_venue_text: primary && primary.activity_venue || '待确认',
-    meet_point_text: primary && primary.meet_point || '待确认',
+    meet_point_text: primary && primary.meet_point || '到场前再确认',
     arrival_hint_text: '可在确认约会后补充',
     meeting_ready: Boolean(primary && readiness.ready),
     meeting_missing_fields: readiness.missing_fields || [],
@@ -811,7 +811,7 @@ function buildProposalCard(proposal, options = {}) {
     area_text: proposal.area || '待确认',
     activity_text: proposal.activity || '待确认',
     activity_venue_text: proposal.activity_venue || '待确认',
-    meet_point_text: proposal.meet_point || '待确认',
+    meet_point_text: proposal.meet_point || '到场前再确认',
     arrival_hint_text: '可在确认约会后补充',
     meeting_ready: readiness.ready,
     meeting_missing_fields: readiness.missing_fields,

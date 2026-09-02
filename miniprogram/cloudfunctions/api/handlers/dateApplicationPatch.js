@@ -117,6 +117,7 @@ function createDateApplicationPatchHandlers(overrides = {}) {
     if (name === 'publishCoordinationEvent' && overrides.first && overrides.addWithId) {
       return (input) => publishCoordinationEvent(input, {
         first: overrides.first,
+        list: overrides.list,
         addWithId: overrides.addWithId,
         now: overrides.now
       })

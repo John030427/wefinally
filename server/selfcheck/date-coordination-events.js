@@ -12,6 +12,7 @@ function memoryDeps() {
   return {
     tables,
     first: async (name, query) => tables[name].find((row) => matches(row, query)) || null,
+    list: async (name, query) => tables[name].filter((row) => matches(row, query)),
     addWithId: async (name, data) => {
       const row = Object.assign({ _id: `${name}_${++id}`, id }, data)
       tables[name].push(row)
@@ -81,6 +82,30 @@ async function main() {
   assert.strictEqual(proposal.messages.length, 2)
   assert(proposal.messages.every((row) => row.content.includes('2026-08-18')))
   assert(proposal.messages.every((row) => row.content.includes('南山区')))
+
+  const newestUserBSession = await deps.addWithId('agent_session', {
+    user_id: 2,
+    agent_type: 'date_coordinator',
+    coordination_id: 51,
+    status: 'active'
+  })
+
+  const arrival = await publishCoordinationEvent({
+    coordination,
+    event: {
+      event_type: 'participant_arrived',
+      actor_user_id: 1,
+      coordination_version: 1,
+      idempotency_suffix: 'arrival-a',
+      arrival_position: '星巴克吧台旁'
+    }
+  }, deps)
+  const arrivalForA = arrival.messages.find((row) => row.user_id === 1)
+  const arrivalForB = arrival.messages.find((row) => row.user_id === 2)
+  assert(arrivalForA.content.includes('同步给对方'))
+  assert(arrivalForB.content.includes('星巴克吧台旁'))
+  assert.strictEqual(arrivalForB.stage, 'partner_arrived')
+  assert.strictEqual(arrivalForB.session_id, newestUserBSession.id)
 
   console.log('PASS bilateral coordination events are private and idempotent')
 }

@@ -38,6 +38,7 @@ async function main() {
   assert(activityVenueConflict('电影', '星巴克'))
   assert.strictEqual(activityVenueConflict('电影', '万象天地百老汇影城'), null)
   assert.strictEqual(planReadiness(application('深色上衣，手持一本书')).ready, true)
+  assert.strictEqual(planReadiness(Object.assign(application('深色上衣'), { meet_point: '' })).ready, true)
   assert.strictEqual(planReadiness(Object.assign(application('深色上衣'), { activity_venue: '星巴克' })).ready, false)
 
   const legacy = normalizeApplication({
@@ -55,6 +56,13 @@ async function main() {
   assert.strictEqual(overlap.proposals.length, 1)
   assert.strictEqual(overlap.proposals[0].start_time, '20:00')
   assert.strictEqual(overlap.proposals[0].activity_venue, '万象天地百老汇影城')
+  const withoutFixedMeetingPoint = computeOverlap(
+    Object.assign(application('深色上衣'), { meet_point: '' }),
+    Object.assign(application('浅色外套'), { meet_point: '影城一楼' }),
+    { version: 4, user_a_id: 1, user_b_id: 2 }
+  )
+  assert.strictEqual(withoutFixedMeetingPoint.proposals.length, 1)
+  assert.strictEqual(withoutFixedMeetingPoint.proposals[0].meet_point, '')
   assert.throws(
     () => normalizeApplication(Object.assign(application('深色上衣'), { activities: ['咖啡', '电影'] }), new Date('2026-09-02T00:00:00.000Z')),
     /只能选择一个日期、时间段、区域和活动/
@@ -104,7 +112,9 @@ async function main() {
     () => applyMeetingCheckIn({ coordination_id: 9, user_id: 1, action: 'set_arrival_hint', arrival_hint: '我在南方科技大学，穿蓝色衬衫' }, deps),
     /只能填写穿搭颜色或手持物/
   )
-  await applyMeetingCheckIn({ coordination_id: 9, user_id: 1, action: 'arrived' }, deps)
+  await applyMeetingCheckIn({ coordination_id: 9, user_id: 1, action: 'arrived', arrival_position: '星巴克吧台旁' }, deps)
+  const partnerArrivalState = publicState(tables.date_coordination[0], tables.date_coordination_application, 2, deps.env)
+  assert.strictEqual(partnerArrivalState.partner_arrival_position, '星巴克吧台旁')
   await applyMeetingCheckIn({ coordination_id: 9, user_id: 2, action: 'arrived' }, deps)
   const met = await applyMeetingCheckIn({ coordination_id: 9, user_id: 1, action: 'met' }, deps)
   assert.strictEqual(met.my_met_confirmed, true)
@@ -117,6 +127,7 @@ async function main() {
     /会合已暂停/
   )
   assert.strictEqual(events.some((event) => event.event_type === 'arrival_hint_updated'), true)
+  assert.strictEqual(events.some((event) => event.event_type === 'participant_arrived' && event.arrival_position === '星巴克吧台旁'), true)
 
   const root = path.resolve(__dirname, '../..')
   const dateWxml = fs.readFileSync(path.join(root, 'miniprogram/pages/date-coordination/date-coordination.wxml'), 'utf8')
@@ -124,6 +135,8 @@ async function main() {
   const route = fs.readFileSync(path.join(root, 'miniprogram/cloudfunctions/api/handlers/route.js'), 'utf8')
   assert(dateWxml.includes('AI 协调方案'))
   assert(dateWxml.includes('到场会合'))
+  assert(dateWxml.includes('现场位置（选填）'))
+  assert(dateWxml.includes('初步会合范围（选填）'))
   assert(chatWxml.includes('coordinationUpdateCard'))
   assert(route.includes('/meeting-check-in'))
   console.log('PASS exact meeting plan + chat update cards + safe arrival coordination')

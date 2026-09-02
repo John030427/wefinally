@@ -76,6 +76,22 @@ function normalizeArrivalHint(value) {
   return normalized
 }
 
+function normalizeArrivalPosition(value) {
+  const normalized = text(value, 40)
+  if (!normalized) return ''
+  if (containsPrivateContact(normalized)) {
+    const error = new Error('现场位置只能填写公共场所内的可见位置，不能包含身份、单位、住址、账号或数字')
+    error.code = 'UNSAFE_ARRIVAL_POSITION'
+    throw error
+  }
+  if (!/(?:吧台|靠窗|窗边|门口|入口|出口|前台|取票机|收银台|大厅|等候区|服务台|招牌|电梯|扶梯|楼梯|立柱|柜台|座位|桌|角落|旁边|附近)/.test(normalized)) {
+    const error = new Error('请描述公共场所内容易找到的位置，例如“吧台旁”或“靠窗座位”')
+    error.code = 'UNSAFE_ARRIVAL_POSITION'
+    throw error
+  }
+  return normalized
+}
+
 function normalizeMeetingPlanFields(input = {}) {
   const startTime = normalizeStartTime(input.start_time || input.startTime)
   const inferredPeriod = periodForStartTime(startTime)
@@ -110,7 +126,6 @@ function planReadiness(input = {}, options = {}) {
   const missing = []
   if (!normalized.start_time) missing.push('start_time')
   if (!normalized.activity_venue) missing.push('activity_venue')
-  if (!normalized.meet_point) missing.push('meet_point')
   const activity = input.activity || (Array.isArray(input.activities) ? input.activities[0] : '')
   const conflict = activityVenueConflict(activity, normalized.activity_venue)
   return {
@@ -135,6 +150,7 @@ module.exports = {
   exactTimeFromText,
   periodForStartTime,
   normalizeArrivalHint,
+  normalizeArrivalPosition,
   normalizeMeetingPlanFields,
   activityVenueConflict,
   planReadiness,

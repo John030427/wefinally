@@ -1,6 +1,6 @@
 const crypto = require('crypto')
 const { STATUS } = require('./dateCoordinationPolicy')
-const { normalizeArrivalHint } = require('./meetingPlanPolicy')
+const { normalizeArrivalHint, normalizeArrivalPosition } = require('./meetingPlanPolicy')
 
 const ACTIONS = Object.freeze(['set_arrival_hint', 'arrived', 'met', 'not_found', 'mismatch'])
 
@@ -44,6 +44,8 @@ function publicState(coordination, applications, userId, env = {}) {
     ),
     partner_arrival_hint: String(partner && partner.application && partner.application.arrival_hint || ''),
     my_arrival_hint: String(mine && mine.application && mine.application.arrival_hint || ''),
+    partner_arrival_position: String(coordination[`arrival_position_${partnerSide}`] || ''),
+    my_arrival_position: String(coordination[`arrival_position_${side}`] || ''),
     meeting_code: meetingCode,
     safety_alert: Boolean(coordination.mismatch_a_at || coordination.mismatch_b_at),
     meeting_paused: String(coordination.meeting_status || '') === 'paused'
@@ -58,9 +60,9 @@ function publicState(coordination, applications, userId, env = {}) {
   }
 }
 
-function checkInEvent(action, hint) {
+function checkInEvent(action, hint, arrivalPosition) {
   if (action === 'set_arrival_hint') return { event_type: 'arrival_hint_updated', arrival_hint: hint }
-  if (action === 'arrived') return { event_type: 'participant_arrived' }
+  if (action === 'arrived') return { event_type: 'participant_arrived', arrival_position: arrivalPosition }
   if (action === 'met') return { event_type: 'participant_met_confirmed' }
   if (action === 'not_found') return { event_type: 'participant_not_found' }
   return { event_type: 'participant_mismatch' }
@@ -86,6 +88,7 @@ async function applyMeetingCheckIn(input = {}, deps) {
   const now = deps.now()
   let updated = coordination
   let hint = ''
+  let arrivalPosition = ''
   if (action === 'set_arrival_hint') {
     hint = normalizeArrivalHint(input.arrival_hint)
     if (!hint) throw new Error('请提供简短、非敏感的到场识别提示')
@@ -107,14 +110,15 @@ async function applyMeetingCheckIn(input = {}, deps) {
     if (action === 'met' && !(coordination.arrival_a_at && coordination.arrival_b_at)) {
       throw new Error('请等待双方都确认到达后再确认已经见面')
     }
+    if (action === 'arrived') arrivalPosition = normalizeArrivalPosition(input.arrival_position)
     const update = action === 'mismatch'
       ? { [field]: now, meeting_status: 'paused', meeting_paused_at: now, meeting_pause_reason: 'participant_mismatch' }
-      : { [field]: now }
+      : Object.assign({ [field]: coordination[field] || now }, arrivalPosition ? { [`arrival_position_${side}`]: arrivalPosition } : {})
     updated = await deps.updateByDoc('date_coordination', coordination, update)
   }
   await deps.publishCoordinationEvent({
     coordination: updated,
-    event: Object.assign(checkInEvent(action, hint), {
+    event: Object.assign(checkInEvent(action, hint, arrivalPosition), {
       actor_user_id: userId,
       coordination_version: Number(updated.coordination_version || 1),
       idempotency_suffix: action === 'set_arrival_hint' ? hint : String(new Date(now).getTime())

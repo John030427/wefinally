@@ -93,8 +93,8 @@ function normalizeApplication(input = {}, now = new Date()) {
   const usesMeetingPlan = Number(input.contract_version || 0) >= PLAN_CONTRACT_VERSION
     || meetingPlan.start_time || meetingPlan.activity_venue || meetingPlan.meet_point || meetingPlan.arrival_hint
   if (usesMeetingPlan) {
-    if (!meetingPlan.start_time || !meetingPlan.activity_venue || !meetingPlan.meet_point) {
-      throw new Error('请补充具体时间、活动场地和公共集合点')
+    if (!meetingPlan.start_time || !meetingPlan.activity_venue) {
+      throw new Error('请补充具体时间和活动场地')
     }
     if (normalized.availability.length !== 1
       || normalized.availability[0].periods.length !== 1
@@ -214,7 +214,6 @@ function computeOverlap(applicationA, applicationB, options = {}) {
   if (!duration) missing.push('duration')
   if (modernPlan && !startTime) missing.push('exact_time')
   if (modernPlan && !activityVenue) missing.push('activity_venue')
-  if (modernPlan && !meetPoint) missing.push('meet_point')
   const compatibleActivities = modernPlan && activityVenue
     ? activities.filter((activity) => !activityVenueConflict(activity, activityVenue))
     : activities

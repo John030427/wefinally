@@ -74,7 +74,9 @@ function buildCoordinationDisplay(coordination) {
     expired: status === 'expired',
     waitingPartner: status === 'inviting_partner' && role !== 'invitee',
     receivedInvitation: status === 'inviting_partner' && role === 'invitee',
-    shouldPoll: status === 'computing_overlap' && ['queued', 'processing'].includes(processingStatus),
+    shouldPoll: (status === 'computing_overlap' && ['queued', 'processing'].includes(processingStatus))
+      || (status === 'arranged' && !(coordination.meeting_checkin
+        && (coordination.meeting_checkin.meeting_confirmed || coordination.meeting_checkin.meeting_paused))),
     showCoordinatorCta,
     showPreSubmitCoordinatorCard: status === 'collecting_initiator' && role === 'initiator',
     showAcceptInvitation: Boolean(vm.show_accept_invitation || (
@@ -172,6 +174,7 @@ Page({
     proposalCard: null,
     currentPlanCard: null,
     meetingCheckin: null,
+    arrivalPosition: '',
     resultCard: null,
     advancingSynthetic: false,
     coordinatorHeroText: '正在寻找双方共同安排。你可以随时和 AI 约会协调员沟通。',
@@ -369,6 +372,7 @@ Page({
       proposalCard: proposal,
       currentPlanCard,
       meetingCheckin: coordination.meeting_checkin || null,
+      arrivalPosition: this.data.arrivalPosition || String(coordination.meeting_checkin && coordination.meeting_checkin.my_arrival_position || ''),
       resultCard: coordination.view_model && coordination.view_model.result_card || null,
       coordinatorHeroText: coordinationDisplay.coordinatorHeroText,
       form,
@@ -611,6 +615,10 @@ Page({
     this.setData({ 'form.arrival_hint': e.detail.value })
   },
 
+  onArrivalPositionInput(e) {
+    this.setData({ arrivalPosition: e.detail.value })
+  },
+
   async updateArrivalHint() {
     if (!this.data.form.arrival_hint) {
       wx.showToast({ title: '请先填写到场识别提示', icon: 'none' })
@@ -641,7 +649,7 @@ Page({
   },
 
   markArrived() {
-    return this.submitMeetingAction('arrived')
+    return this.submitMeetingAction('arrived', { arrival_position: this.data.arrivalPosition })
   },
 
   confirmMet() {
@@ -705,8 +713,8 @@ Page({
     if (this.data.submitting) return
     if (!this.data.form.availability.length || !this.data.form.areas.length || !this.data.form.activities.length ||
       !this.data.form.budget || !this.data.form.payment_preference || !this.data.form.duration ||
-      !this.data.form.start_time || !this.data.form.activity_venue || !this.data.form.meet_point) {
-      wx.showToast({ title: '请补充具体时间、活动场地和集合点', icon: 'none', duration: 3000 })
+      !this.data.form.start_time || !this.data.form.activity_venue) {
+      wx.showToast({ title: '请补充具体时间和活动场地', icon: 'none', duration: 3000 })
       return
     }
     if (this.data.form.activities.length === 1 && this.data.form.activities[0] === '电影'

@@ -114,6 +114,7 @@ function defaultDeps() {
     commitConfirmation: db.commitCoordinationConfirmation,
     commitDirectInvitationAccept: db.commitDirectInvitationAccept,
     commitInvitationResponse: db.commitInvitationResponse,
+    claimDateCoordinationDraft: db.claimDateCoordinationDraft,
     commitPreAcceptInvitationPatch: db.commitPreAcceptInvitationPatch,
     expireIfCurrent: expireCoordinationIfCurrent,
     publishCoordinationEvent,
@@ -396,6 +397,7 @@ function createDateCoordinationHandlers(overrides = {}) {
     if (name === 'publishCoordinationEvent' && overrides.first && overrides.addWithId) {
       return (input) => publishCoordinationEvent(input, {
         first: overrides.first,
+        list: overrides.list,
         addWithId: overrides.addWithId,
         now: overrides.now
       })
@@ -415,7 +417,7 @@ function createDateCoordinationHandlers(overrides = {}) {
       }
     }
     // Unit selfchecks provide first/addWithId but not CloudBase transactions
-    if (['commitDirectInvitationAccept', 'commitInvitationResponse', 'commitPreAcceptInvitationPatch'].includes(name)
+    if (['commitDirectInvitationAccept', 'commitInvitationResponse', 'claimDateCoordinationDraft', 'commitPreAcceptInvitationPatch'].includes(name)
       && overrides.first && overrides.addWithId
       && !Object.prototype.hasOwnProperty.call(overrides, name)) {
       return null
@@ -441,8 +443,26 @@ function createDateCoordinationHandlers(overrides = {}) {
 
     const key = pairKey(user.id, partnerId)
     const existingRows = await dep('list')('date_coordination', { pair_key: key }, 50)
-    const activeExisting = (existingRows || []).find((row) => ACTIVE_COORDINATION_STATUSES.includes(row.status))
-    if (activeExisting) return detailFor(activeExisting, user)
+    let activeExisting = (existingRows || []).find((row) => ACTIVE_COORDINATION_STATUSES.includes(row.status))
+    if (activeExisting) {
+      if (activeExisting.status === STATUS.COLLECTING_INITIATOR
+        && Number(activeExisting.user_b_id) === Number(user.id)) {
+        const applications = await dep('list')('date_coordination_application', {
+          coordination_id: Number(activeExisting.id)
+        }, 1)
+        if (!applications.length) {
+          const claim = dep('claimDateCoordinationDraft')
+          activeExisting = claim
+            ? await claim({ coordination: activeExisting, claimantUserId: Number(user.id) }, now)
+            : await dep('updateByDoc')('date_coordination', activeExisting, {
+              user_a_id: Number(user.id),
+              user_b_id: Number(activeExisting.user_a_id),
+              application_deadline_at: addHours(now, 72)
+            })
+        }
+      }
+      return detailFor(activeExisting, user)
+    }
 
     if (!match) match = await dep('first')('user_match_log', {
       user_id: Number(user.id),
@@ -1228,7 +1248,8 @@ function createDateCoordinationHandlers(overrides = {}) {
       coordination_id: coordinationId(data),
       user_id: Number(user.id),
       action: data.action,
-      arrival_hint: data.arrival_hint || data.arrivalHint
+      arrival_hint: data.arrival_hint || data.arrivalHint,
+      arrival_position: data.arrival_position || data.arrivalPosition
     }, {
       byId: dep('byId'),
       list: dep('list'),

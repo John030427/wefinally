@@ -5,6 +5,7 @@ function defaultDeps() {
   const db = require('../lib/db')
   return {
     first: db.first,
+    list: db.list,
     addWithId: db.addWithId,
     now: db.now
   }
@@ -52,12 +53,18 @@ function safeCard(value) {
 }
 
 async function ensureSession(deps, coordination, userId) {
-  let session = await deps.first('agent_session', {
+  const query = {
     user_id: Number(userId),
     agent_type: 'date_coordinator',
-    coordination_id: Number(coordination.id),
-    status: 'active'
-  })
+    coordination_id: Number(coordination.id)
+  }
+  const sessions = typeof deps.list === 'function' ? await deps.list('agent_session', query, 100) : []
+  let session = sessions
+    .filter((row) => !['closed', 'cancelled'].includes(String(row.status || '')))
+    .sort((a, b) => Number(b.id || 0) - Number(a.id || 0))[0] || null
+  if (!session && typeof deps.list !== 'function') {
+    session = await deps.first('agent_session', Object.assign({}, query, { status: 'active' }))
+  }
   if (!session) {
     session = await deps.addWithId('agent_session', {
       user_id: Number(userId),

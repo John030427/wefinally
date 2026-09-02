@@ -278,7 +278,7 @@ function buildDateCoordinationGraphInput(coordination, applications, user, optio
         : (Number(invitationCard.contract_version || 1) >= 2 && !invitationCard.meeting_ready
           ? {
             code: 'MEETING_PLAN_INCOMPLETE',
-            message: '请补充具体开始时间、活动场地和公共集合点，再确认最终方案。到场识别提示可在双方确认后分别补充。'
+            message: '请补充具体开始时间和活动场地，再确认最终方案。初步会合范围可以选填，现场具体位置可在到达时再同步。'
           }
           : null),
       actionRequired

@@ -16,6 +16,8 @@ const {
   resolveCompleteAssistantReply
 } = require('../../utils/aiChatWaiting')
 
+const HISTORY_POLL_MS = 4000
+
 const PATCH_FIELD_LABELS = {
   availability: '可约时间',
   areas: '偏好区域',
@@ -28,7 +30,7 @@ const PATCH_FIELD_LABELS = {
   share_message: '对方可见内容',
   start_time: '具体时间',
   activity_venue: '活动场地',
-  meet_point: '集合点',
+  meet_point: '初步会合范围',
   arrival_hint: '到场识别提示'
 }
 
@@ -258,6 +260,9 @@ Page({
   _pageActive: true,
   _waitingTimer: null,
   _slowHintTimer: null,
+  _historyPollTimer: null,
+  _historyLoaded: false,
+  _refreshingHistory: false,
   _activeRequestId: '',
   _turnStarting: false,
 
@@ -292,10 +297,17 @@ Page({
   onUnload() {
     this._pageActive = false
     this.clearWaitingTimers()
+    this.stopHistoryPolling()
   },
 
   onHide() {
-    // Keep timers while page is in stack; clear only on unload.
+    this.stopHistoryPolling()
+  },
+
+  onShow() {
+    this._pageActive = true
+    if (this._historyLoaded) this.refreshAgentHistory()
+    this.startHistoryPolling()
   },
 
   clearWaitingTimers() {
@@ -306,6 +318,39 @@ Page({
     if (this._slowHintTimer) {
       clearTimeout(this._slowHintTimer)
       this._slowHintTimer = null
+    }
+  },
+
+  stopHistoryPolling() {
+    if (this._historyPollTimer) {
+      clearInterval(this._historyPollTimer)
+      this._historyPollTimer = null
+    }
+  },
+
+  startHistoryPolling() {
+    this.stopHistoryPolling()
+    if (!this._pageActive || !this._historyLoaded || this.data.agentType !== AGENT_TYPES.DATE_COORDINATOR) return
+    this._historyPollTimer = setInterval(() => this.refreshAgentHistory(), HISTORY_POLL_MS)
+  },
+
+  async refreshAgentHistory() {
+    if (!this._pageActive || this._refreshingHistory || this.data.sending
+      || this.data.agentType !== AGENT_TYPES.DATE_COORDINATOR || !this.data.sessionReady) return
+    this._refreshingHistory = true
+    try {
+      const messages = await this.loadAgentHistory()
+      if (!this._pageActive || !messages.length) return
+      const signature = (rows) => rows.map((item) => `${item.id}:${item.status}:${item.content}`).join('|')
+      if (signature(messages) === signature(this.data.messages)) return
+      this.safeSetData({
+        messages,
+        scrollToView: `msg-${messages[messages.length - 1].id}`
+      })
+    } catch (err) {
+      // 前台轮询失败不覆盖当前会话；用户仍可手动发送或重新进入页面。
+    } finally {
+      this._refreshingHistory = false
     }
   },
 
@@ -451,6 +496,8 @@ Page({
       messages,
       scrollToView: `msg-${messages[messages.length - 1].id}`
     })
+    this._historyLoaded = true
+    this.startHistoryPolling()
     this.autoSendHandoffMessage()
   },
 

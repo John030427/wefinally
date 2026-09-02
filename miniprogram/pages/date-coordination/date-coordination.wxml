@@ -58,7 +58,7 @@
       <view class="fact-row"><text class="fact-label">时间</text><text class="fact-value">{{currentPlanCard.time_text || '待确认'}}</text></view>
       <view class="fact-row"><text class="fact-label">活动</text><text class="fact-value">{{currentPlanCard.activity_text || '待确认'}}</text></view>
       <view class="fact-row"><text class="fact-label">活动场地</text><text class="fact-value">{{currentPlanCard.activity_venue_text || '待确认'}}</text></view>
-      <view class="fact-row"><text class="fact-label">集合点</text><text class="fact-value">{{currentPlanCard.meet_point_text || '待确认'}}</text></view>
+      <view class="fact-row"><text class="fact-label">初步会合范围</text><text class="fact-value">{{currentPlanCard.meet_point_text || '到场前再确认'}}</text></view>
       <view class="fact-row"><text class="fact-label">区域</text><text class="fact-value">{{currentPlanCard.area_text || '待确认'}}</text></view>
       <view class="fact-row"><text class="fact-label">预算 / 费用</text><text class="fact-value">{{currentPlanCard.budget_text || '待确认'}} · {{currentPlanCard.payment_text || '待确认'}}</text></view>
       <view class="fact-row"><text class="fact-label">时长</text><text class="fact-value">{{currentPlanCard.duration_text || '待确认'}}</text></view>
@@ -68,18 +68,24 @@
 
     <view class="meeting-card card" wx:if="{{meetingCheckin && meetingCheckin.enabled}}">
       <view class="section-title">到场会合</view>
-      <view class="public-note">AI 只负责转达双方主动提供的信息，不能验证现实身份。请在公共集合点确认现场情况。</view>
+      <view class="public-note">AI 只负责转达双方主动提供的信息，不能验证现实身份。到达活动场地后，可以再告诉对方自己在吧台、靠窗等公共位置。</view>
       <view class="plan-conflict" wx:if="{{meetingCheckin.meeting_paused}}">会合已因现场情况不符而暂停。请停止接触并联系平台人工客服；恢复必须经过人工审核。</view>
       <view class="arrival-status-row"><text>我的状态</text><text>{{meetingCheckin.my_arrived ? '已到达' : '尚未到达'}}</text></view>
       <view class="arrival-status-row"><text>对方状态</text><text>{{meetingCheckin.partner_arrived ? '已到达' : '尚未到达'}}</text></view>
       <view class="meeting-code" wx:if="{{meetingCheckin.meeting_code}}"><text>会合暗号</text><text class="meeting-code-value">{{meetingCheckin.meeting_code}}</text></view>
       <view class="partner-hint" wx:if="{{meetingCheckin.partner_arrival_hint}}">对方主动提供：{{meetingCheckin.partner_arrival_hint}}</view>
+      <view class="partner-hint" wx:if="{{meetingCheckin.partner_arrival_position}}">对方现在位于：{{meetingCheckin.partner_arrival_position}}</view>
+      <view class="form-item">
+        <view class="form-label">现场位置（选填）</view>
+        <input class="input field-input" maxlength="40" placeholder="例如：星巴克吧台旁、靠窗座位" value="{{arrivalPosition}}" bindinput="onArrivalPositionInput" />
+        <view class="field-help">只填写公共场所内容易找到的位置，不填写实时定位或详细地址。</view>
+      </view>
       <view class="form-item">
         <view class="form-label">我的到场识别提示</view>
         <input class="input field-input" maxlength="60" placeholder="例如：深色上衣，手持一本书" value="{{form.arrival_hint}}" bindinput="onArrivalHintInput" />
         <button class="outline-btn full-btn" bindtap="updateArrivalHint" disabled="{{submitting || meetingCheckin.meeting_paused}}">同步给对方</button>
       </view>
-      <button class="primary-btn full-btn" bindtap="markArrived" disabled="{{submitting || meetingCheckin.my_arrived || meetingCheckin.meeting_paused}}">{{meetingCheckin.my_arrived ? '我已确认到达' : '我已到达集合点'}}</button>
+      <button class="primary-btn full-btn" bindtap="markArrived" disabled="{{submitting || meetingCheckin.meeting_paused}}">{{meetingCheckin.my_arrived ? '更新到场位置并通知对方' : '我已到达，通知对方'}}</button>
       <view class="meeting-actions">
         <button class="outline-btn" bindtap="confirmMet" disabled="{{submitting || !meetingCheckin.can_confirm_met || meetingCheckin.my_met_confirmed || meetingCheckin.meeting_paused}}">已见到对方</button>
         <button class="outline-btn" bindtap="reportNotFound" disabled="{{submitting || meetingCheckin.meeting_paused}}">暂未找到</button>
@@ -219,9 +225,9 @@
         <input class="input field-input" maxlength="80" placeholder="例如：万象天地百老汇影城" value="{{form.activity_venue}}" data-key="activity_venue" bindinput="onInput" />
       </view>
       <view class="form-item">
-        <view class="form-label required">公共集合点</view>
-        <input class="input field-input" maxlength="80" placeholder="例如：影城一楼取票机旁" value="{{form.meet_point}}" data-key="meet_point" bindinput="onInput" />
-        <view class="field-help">可以填写星巴克等容易找到的公共位置，但要与活动场地区分。</view>
+        <view class="form-label">初步会合范围（选填）</view>
+        <input class="input field-input" maxlength="80" placeholder="例如：影城大厅；不熟悉现场可以留空" value="{{form.meet_point}}" data-key="meet_point" bindinput="onInput" />
+        <view class="field-help">这里只是提前约定的大致范围。到达后可再通知对方“吧台旁、靠窗座位”等现场位置。</view>
       </view>
       <view class="form-item">
         <view class="form-label">到场识别提示（选填）</view>

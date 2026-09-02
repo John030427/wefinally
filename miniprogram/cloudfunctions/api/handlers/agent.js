@@ -41,7 +41,10 @@ function meetingConversationIntent(content) {
   if (/现场.*不符|不是本人|感觉不对|身份不符/.test(text)) return { action: 'mismatch' }
   if (/没找到|找不到|没看见对方|对方在哪/.test(text)) return { action: 'not_found' }
   if (/见到对方|已经见面|确认见到|找到对方了/.test(text)) return { action: 'met' }
-  if (/我到了|已经到了|到集合点了|已到达/.test(text)) return { action: 'arrived' }
+  if (/我到了|已经到了|到集合点了|已到达/.test(text)) {
+    const positionMatch = text.match(/(?:我现在|目前|我)?在([^，。！？!?]{2,40})/)
+    return { action: 'arrived', arrival_position: positionMatch ? positionMatch[1].trim() : '' }
+  }
   if (/对方穿什么|怎么认对方|如何认出对方|识别对方/.test(text)) return { query: 'partner_hint' }
   if (/对方到了吗|对方到没到|到达了吗/.test(text)) return { query: 'partner_arrival' }
   if (/我(?:会)?穿|我的穿着|到场识别|识别提示|我拿着|我会拿着/.test(text)) {
@@ -57,11 +60,14 @@ function meetingReply(intent, state) {
       : '对方还没有提供到场识别提示。你可以先补充自己的穿搭或手持物，我会在对方确认后通过协调会话转达。'
   }
   if (intent.query === 'partner_arrival') {
-    return state.partner_arrived ? '对方已确认到达约定集合点。' : '对方尚未确认到达；我不会共享实时定位，你可以继续在公共集合点等待。'
+    if (!state.partner_arrived) return '对方尚未确认到达；我不会共享实时定位。你可以到达活动场地后告诉我自己所在的公共位置。'
+    return state.partner_arrival_position
+      ? `对方已确认到达，并告知现在位于：${state.partner_arrival_position}。这只是对方主动提供的现场描述。`
+      : '对方已确认到达活动场地，但还没有补充现场具体位置。'
   }
   return {
     set_arrival_hint: '识别提示已经记录并通过约会协调会话同步给对方。',
-    arrived: '已记录你到达集合点；对方会在自己的协调会话中看到到达提醒。',
+    arrived: '已记录你到达活动场地；对方会在自己的协调会话中看到到达提醒和你主动填写的现场位置。',
     met: state.meeting_confirmed ? '双方都已确认见面。' : '你已确认见到对方，正在等待对方确认。',
     not_found: '已通过协调会话通知对方你暂未找到人，请留在公共集合点并核对识别提示。',
     mismatch: '现场情况不符，本次会合已暂停。请停止接触并前往安全公共区域，必要时联系平台人工客服或当地紧急服务。'
@@ -455,7 +461,8 @@ function createAgentHandlers(overrides = {}) {
             coordination_id: Number(coordination.id),
             user_id: Number(user.id),
             action: meetingIntent.action,
-            arrival_hint: meetingIntent.arrival_hint
+            arrival_hint: meetingIntent.arrival_hint,
+            arrival_position: meetingIntent.arrival_position
           }, {
             byId: dep('byId'),
             list: dep('list'),
@@ -987,7 +994,7 @@ function createAgentHandlers(overrides = {}) {
             activities: ['咖啡|吃饭|奶茶|散步|看展|电影|桌游，最多3项'],
             start_time: 'HH:mm；用户说晚上8点时必须输出20:00，并将period设为night',
             activity_venue: '具体公共活动场地，例如某电影院；不能把星巴克当作电影院',
-            meet_point: '具体公共集合点；可以是电影院附近的星巴克',
+            meet_point: '可选的初步会合范围，例如影城大厅；双方不熟悉现场时允许留空',
             arrival_hint: '可选的非敏感穿搭或手持物提示，不得包含联系方式',
             budget: 'under-50|50-100|100-200|over-200|flexible',
             payment_preference: 'aa|partner_pays|self_pays|flexible',
@@ -1002,7 +1009,8 @@ function createAgentHandlers(overrides = {}) {
             '“周日”等短答只代表时间字段，不能擅自推断地点、活动、预算、费用或时长；是否沿用其他字段由 has_complete_base_proposal 决定，并且必须展示预览让用户确认',
             '用户给出具体钟点时必须保留为start_time；20:00属于night，不能只降级为evening或“晚上”',
             '活动与场地冲突时必须澄清：例如“电影+星巴克”要询问星巴克是否只是集合点，并要求activity_venue为具体电影院；不能静默拼接',
-            '最终方案应区分activity_venue与meet_point。到场识别使用arrival_hint，只能转述用户主动提供的非敏感穿搭或手持物，不能声称AI验证了现实身份',
+            '最终方案必须有activity_venue；meet_point只是可选的初步会合范围，不能因缺少它阻止方案确认。到场后可转述用户主动提供的吧台旁、靠窗座位等公共现场位置',
+            '到场识别使用arrival_hint，只能转述用户主动提供的非敏感穿搭或手持物，不能声称AI验证了现实身份',
             '明确修改请求返回 intent=modify_date_application 和 create_date_application_patch，arguments 只包含用户明确修改的字段',
             '当前用户还没有申请但存在完整基础方案时，允许只提交明确 override；后台会继承基础方案并在预览中区分“调整项/保持不变项”',
             '当前用户还没有申请且没有完整基础方案时，返回 intent=create_date_application 和 create_date_application_preview，arguments.application 必须包含 availability、areas、activities、budget、payment_preference、duration',

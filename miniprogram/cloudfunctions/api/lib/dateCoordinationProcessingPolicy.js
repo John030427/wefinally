@@ -188,7 +188,11 @@ function projectParticipantEvent(event = {}, context = {}) {
     },
     participant_arrived: {
       stage: mine ? 'my_arrived' : 'partner_arrived',
-      content: mine ? '已记录你到达集合点。等待对方到达后再进行双方会合确认。' : '对方已确认到达约定集合点。你到达后也请点击“我已到达”。'
+      content: mine
+        ? '已记录你到达活动场地，并把到达状态同步给对方。等待对方到达后再进行双方会合确认。'
+        : (event.arrival_position
+            ? `对方已到达，并告知现在位于：${String(event.arrival_position).slice(0, 40)}。你到达后也请点击“我已到达”。`
+            : '对方已确认到达活动场地。你到达后也请点击“我已到达”。')
     },
     participant_not_found: {
       stage: mine ? 'my_not_found' : 'partner_not_found',
