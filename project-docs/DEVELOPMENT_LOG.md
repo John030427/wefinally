@@ -1804,3 +1804,9 @@ LangGraph 契约修复 / AI 约会协调 / 小程序确认卡 / QA 重复匹配
 - 本次未修改正式匹配评分、RAG 语料、会员、支付或邀请归因规则；`miniprogram/project.config.json` 的既有本地改动不纳入提交。
 - 云函数部署与微信小程序体验版上传是独立发布动作；本记录先提交实现，云端更新结果在部署后追加。
 
+### 云函数部署记录（2026-09-02）
+- 源分支 `fix/date-counter-offer-negotiation`，实现提交 `e5b8006`；目标环境 `cloud1-d4gy8l52g08bba326`（上海）。
+- `agent-graph` 代码更新请求 `fbfde89d-3359-427a-a61a-26795bce4986`，恢复为 `Active/Available`；以 `operation=health` 调用返回 `status=ok`、`runtime=langgraph`，请求 `1ccf3e16-6efb-4e73-a83a-a2b95fd5275d`。
+- `api` 代码更新请求 `9e312921-c715-45bb-a8d0-9697e53b7ece`，恢复为 `Active/Available`；`ping` 返回 `pong` 与目标环境 ID，请求 `16d08473-de39-4ee0-8b43-7ae930bab1a4`。
+- 本次只替换两个既有 Event 云函数的代码包，未修改运行时、环境变量、权限、触发器、网关或生产数据库；尚未上传小程序体验版。
+
