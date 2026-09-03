@@ -1852,3 +1852,23 @@ LangGraph 契约修复 / AI 约会协调 / 小程序确认卡 / QA 重复匹配
 - `api` 代码更新请求 `81416418-bf31-4860-8c33-58a79af60094`，恢复为 `Active/Available`；`ping` 返回 `pong` 与目标环境 ID，请求 `4e5cd9d4-3d89-4486-b267-4d3bfc1830d4`。
 - 本次只替换两个既有 Event 云函数的代码包，运行时保持 `agent-graph=Nodejs20.19`、`api=Nodejs16.13`；未修改环境变量、权限、触发器、网关或生产数据库，尚未上传小程序体验版。
 
+---
+
+## 2026-09-03 — 协调会话单例、通知已读水位与发布自检修复
+
+### 类型
+并发可靠性 / CloudBase 事务 / 测试可信度 / 云函数发布
+
+### 根因与修复
+- Cursor 已将协调事件、投影消息和通知创建改为幂等事务，但会话仍使用 `list -> add`，同一事件并发时两个参与者会生成四个活跃会话。新增 `agent_session_dedupe` 稳定事务锁，首次使用优先接管已有未关闭会话。
+- 通知创建与未读递增已原子化，但标记已读仍在事务外逐条更新并用旧 cursor 回写。新增事务化 `markCoordinationNotificationsSeen`，小程序携带 `through_notification_id` 可见水位，水位之后到达的新通知不会被误读或丢计数。
+- 修复公共错误响应把业务错误字符串误写入 `code` 的问题；`code` 恢复为数字状态，`error` 保持稳定业务码。
+- 修复通知并发测试悬空 Promise 导致 Node 静默退出、后半段断言未执行的问题，并更新两个已过期的 fixture/UI 自检合同。
+
+### 验证与部署
+- 六组发布基线 `agent / safety / ai-report / cloudpay / member / cloud-match` 全部通过；反提案、QA 重置、发布保护专项与 JavaScript 语法检查通过。
+- 发布代码提交 `d5f2e408259047dd4d747905fac387d22a89b7ff` 已先推送到 `origin/fix/date-counter-offer-negotiation`，远程 SHA 一致。
+- 由该提交的干净 `git archive` 更新 CloudBase 环境 `cloud1-d4gy8l52g08bba326` 的既有 `api` Event 函数；状态恢复 `Active/Available`，运行时保持 `Nodejs16.13`，修改时间 `2026-09-03 19:31:00`。
+- `ping` 返回 `pong` 与正确环境；无凭证 worker 冒烟返回数字 `403` 和 `WORKER_AUTH_FAILED`，确认新版错误合同已生效。
+- 未改环境变量、权限、触发器、运行时或生产数据；未上传微信小程序体验版。后续可靠性规划见 `project-docs/DATE_COORDINATION_RELIABILITY_ARCHITECTURE_2026-09-03.md`。
+

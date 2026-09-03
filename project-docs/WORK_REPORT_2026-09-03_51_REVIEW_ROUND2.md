@@ -58,3 +58,40 @@ Release code for CloudBase is **`1c223b2`**. This documentation commit is intent
 - Dual-phone same coordination event retry after mid-delivery failure (message compensation)
 - Counter-offer / arrival-position / AI report product paths already covered by selfcheck; spot-check on WeChat DevTools after separate miniprogram upload authorization
 - Miniprogram experience-version upload remains a separate action and was not done in this release
+
+## Codex follow-up review and deployment (2026-09-03 19:31 +08:00)
+
+- Release code commit: `d5f2e408259047dd4d747905fac387d22a89b7ff`
+- GitHub remote SHA before deployment: `d5f2e408259047dd4d747905fac387d22a89b7ff`
+- CloudBase env / function: `cloud1-d4gy8l52g08bba326` / `api`
+- Runtime / state: `Nodejs16.13` / `Active` / `Available`
+- Deployment modification time: `2026-09-03 19:31:00`
+- Deployment source: clean `git archive` of the release commit; 122 tracked files; no `node_modules`
+- Deployment scope: code only; environment variables, permissions, triggers, runtime and production data were not changed
+- `ping` smoke request: success, `pong`, expected environment returned
+- Public error contract smoke: unauthenticated worker action returned numeric `code: 403` and stable `error: WORKER_AUTH_FAILED`
+- Mini Program upload: NOT PERFORMED
+- Live LangGraph smoke: `MANUAL_REQUIRED`
+
+### Additional review fixes
+
+1. Added a transaction-backed singleton claim for each participant's active date-coordinator session. Concurrent duplicate event delivery no longer creates four sessions for two participants.
+2. Added atomic notification read handling. Notification rows and unread cursor are updated in one transaction, while the client sends a visible notification watermark so newly arrived messages remain unread.
+3. Corrected the public error response schema: `code` is numeric HTTP-style status; `error` is the stable business code.
+4. Repaired a notification concurrency selfcheck that previously exited with an unresolved Promise before reaching its assertions; refreshed two stale fixture/UI test contracts.
+5. Added `project-docs/DATE_COORDINATION_RELIABILITY_ARCHITECTURE_2026-09-03.md`, including the next outbox, observability and controlled historical-session cleanup stages.
+
+### Final gates
+
+All commands passed immediately before commit/deployment:
+
+- `npm --prefix server run selfcheck:agent`
+- `npm --prefix server run selfcheck:safety`
+- `npm --prefix server run selfcheck:ai-report`
+- `npm --prefix server run selfcheck:cloudpay`
+- `npm --prefix server run selfcheck:member`
+- `npm --prefix server run selfcheck:cloud-match`
+- `npm --prefix server run selfcheck:date-counter-offer`
+- `npm --prefix server run selfcheck:date-qa-reset`
+- `npm --prefix server run selfcheck:release-guard`
+- `git diff --check` and `node --check` for changed production JavaScript
