@@ -24,6 +24,7 @@ const API_PATHS = {
   MATCH_SETTING_COOLDOWN: '/api/match/setting/cooldown',
   MATCH_START: '/api/match/start',
   MATCH_QA_REAL_DEVICE_START: '/api/match/qa-real-device/start',
+  MATCH_QA_PAIR_RESET: '/api/match/qa-pair-reset',
   MATCH_LIST: '/api/match/list',
   MATCH_DETAIL: '/api/match/detail',
   MATCH_HANDOFF: '/api/match/handoff',

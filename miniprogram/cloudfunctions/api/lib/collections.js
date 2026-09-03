@@ -61,5 +61,7 @@ module.exports = {
   date_experience_feedback: 'date_experience_feedback',
   match_batch_run: 'match_batch_runs',
   fixture_response_job: 'fixture_response_jobs',
-  controlled_date_scenario_run: 'controlled_date_scenario_runs'
+  controlled_date_scenario_run: 'controlled_date_scenario_runs',
+  qa_pair_reset_run: 'qa_pair_reset_runs',
+  qa_pair_reset_audit: 'qa_pair_reset_audits'
 }

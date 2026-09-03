@@ -1,0 +1,25 @@
+const assert = require('assert')
+const fs = require('fs')
+const path = require('path')
+
+const root = path.resolve(__dirname, '../..')
+const read = (file) => fs.readFileSync(path.join(root, file), 'utf8')
+
+const route = read('miniprogram/cloudfunctions/api/handlers/route.js')
+const handler = read('miniprogram/cloudfunctions/api/handlers/qaPairReset.js')
+const constants = read('miniprogram/utils/constants.js')
+const panelJs = read('miniprogram/components/qa-match-panel/qa-match-panel.js')
+const panelWxml = read('miniprogram/components/qa-match-panel/qa-match-panel.wxml')
+
+assert(route.includes("const qaPairReset = require('./qaPairReset')"))
+assert(route.includes("'POST /api/match/qa-pair-reset': qaPairReset.reset"))
+assert(handler.includes('executeQaPairReset'))
+assert(handler.includes('acquireQaPairResetRun'))
+assert(handler.includes('qa_pair_reset_audit'))
+assert(constants.includes("MATCH_QA_PAIR_RESET: '/api/match/qa-pair-reset'"))
+assert(panelJs.includes('onResetQaPairData'))
+assert(panelJs.includes("confirm_text: '彻底清空本对测试数据'"))
+assert(panelWxml.includes('清空双机匹配与协调数据'))
+assert(panelWxml.includes('保留注册资料、画像、会员与订单'))
+
+console.log('PASS QA pair reset API and mini program contract')

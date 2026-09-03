@@ -15,6 +15,10 @@
     <button class="qa-btn qa-btn-real" bindtap="onRealDeviceMatch" disabled="{{running}}">
       {{realMatchCompleted ? '再来一轮真机互配' : '两台真机互配测试'}}
     </button>
+    <button class="qa-pair-reset" bindtap="onResetQaPairData" disabled="{{running}}">
+      清空双机匹配与协调数据
+    </button>
+    <view class="qa-pair-reset-hint">保留注册资料、画像、会员与订单；清空后两台手机可重新匹配。</view>
   </view>
 
   <view class="qa-scenario-block" wx:if="{{scenarioPickerVisible}}">

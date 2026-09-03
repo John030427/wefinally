@@ -1310,6 +1310,43 @@ async function createCoordinationNotificationOnce(notification = {}) {
   }))))
 }
 
+async function acquireQaPairResetRun(data) {
+  const requestId = String(data && data.request_id || '')
+  const pairHash = String(data && data.pair_hash || '')
+  if (!requestId || !pairHash) throw new Error('QA 双机重置幂等键无效')
+  const digest = crypto.createHash('sha256').update(`${pairHash}:${requestId}`).digest('hex').slice(0, 32)
+  const documentId = `qa_pair_reset_${digest}`
+  return withCollection('qa_pair_reset_run', () => db.runTransaction(async (rawTransaction) => {
+    const adapter = transactionAdapter(rawTransaction)
+    const current = await adapter.byDocId('qa_pair_reset_run', documentId)
+    const timestamp = now()
+    if (current) {
+      const expired = current.status === 'deleting'
+        && current.lease_expires_at
+        && new Date(current.lease_expires_at).getTime() <= timestamp.getTime()
+      if (!expired) return { created: false, run: current }
+      const resumed = Object.assign({}, current, {
+        status: 'deleting',
+        retry_count: Number(current.retry_count || 0) + 1,
+        lease_expires_at: new Date(timestamp.getTime() + 2 * 60 * 1000),
+        update_time: timestamp
+      })
+      await adapter.setByDocId('qa_pair_reset_run', documentId, resumed)
+      return { created: true, run: resumed }
+    }
+    const id = await adapter.nextCounter('qa_pair_reset_run')
+    const run = Object.assign({}, data, {
+      _id: documentId,
+      id,
+      lease_expires_at: new Date(timestamp.getTime() + 2 * 60 * 1000),
+      create_time: timestamp,
+      update_time: timestamp
+    })
+    await adapter.setByDocId('qa_pair_reset_run', documentId, run)
+    return { created: true, run }
+  }))
+}
+
 async function markCoordinationNotificationsSeen(input = {}) {
   const userId = Number(input.user_id || 0)
   if (!Number.isSafeInteger(userId) || userId <= 0) throw new Error('标记已读缺少用户')
@@ -1473,6 +1510,7 @@ module.exports = {
   claimMatchTestRun,
   completeMatchTestRun,
   acquireFixtureResponseJob,
+  acquireQaPairResetRun,
   listDueFixtureResponseJobs,
   claimFixtureResponseJob,
   completeFixtureResponseJob,

@@ -14,6 +14,7 @@ const experienceFeedback = require('./experienceFeedback')
 const backoffice = require('./backoffice')
 const notifications = require('./notifications')
 const partnerOnboarding = require('./partnerOnboardingCloud')
+const qaPairReset = require('./qaPairReset')
 
 function methodOf(value) {
   return String(value || 'GET').toUpperCase()
@@ -69,6 +70,7 @@ function route(method, path) {
     'GET /api/match/setting/cooldown': match.cooldown,
     'POST /api/match/start': match.start,
     'POST /api/match/qa-real-device/start': match.startQaRealDeviceMatch,
+    'POST /api/match/qa-pair-reset': qaPairReset.reset,
     'POST /api/match/test-runs': match.create,
     'POST /api/match/report': match.generateReport,
     'POST /api/match/report-tasks': reportTask.create,
