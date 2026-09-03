@@ -57,7 +57,7 @@ assert.throws(() => normalizeApplication({
   activities: ['咖啡', '吃饭', '看展', '散步']
 }, now), /最多选择3项/)
 
-const overlap = computeOverlap(applicationA, applicationB, { version: 2 })
+const overlap = computeOverlap(applicationA, applicationB, { version: 2, user_a_id: 1, user_b_id: 2 })
 assert.deepStrictEqual(overlap.missing_dimensions, [])
 assert.strictEqual(overlap.proposals.length, 1)
 assert.deepStrictEqual(overlap.proposals[0], {
@@ -79,7 +79,7 @@ const noOverlap = computeOverlap(applicationA, {
   availability: [{ date: '2026-07-20', periods: ['morning'] }],
   areas: ['罗湖区'],
   activities: ['桌游']
-}, { version: 3 })
+}, { version: 3, user_a_id: 1, user_b_id: 2 })
 assert.strictEqual(noOverlap.proposals.length, 0)
 assert.deepStrictEqual(noOverlap.missing_dimensions, ['time', 'area', 'activity'])
 
