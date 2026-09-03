@@ -1259,8 +1259,29 @@ async function createCoordinationNotificationOnce(notification = {}) {
   const key = String(notification.idempotency_key || '')
   if (!key) throw new Error('站内通知缺少幂等键')
   const digest = crypto.createHash('sha256').update(key).digest('hex')
-  return withCollection('coordination_notification_dedupe', () => withCollection('coordination_notification', () => db.runTransaction(async (rawTransaction) => {
+  const userId = Number(notification.user_id || 0)
+  if (!Number.isSafeInteger(userId) || userId <= 0) throw new Error('站内通知缺少用户')
+  return withCollection('coordination_notification_dedupe', () => withCollection('coordination_notification', () => withCollection('user_notification_cursor', () => db.runTransaction(async (rawTransaction) => {
     const adapter = transactionAdapter(rawTransaction)
+    async function currentUnread(ownerUserId) {
+      const cursor = await adapter.first('user_notification_cursor', { user_id: Number(ownerUserId) })
+      return Number(cursor && cursor.unread_count || 0)
+    }
+    async function bumpUnread(ownerUserId) {
+      const cursor = await adapter.first('user_notification_cursor', { user_id: Number(ownerUserId) })
+      if (cursor) {
+        const unread = Number(cursor.unread_count || 0) + 1
+        await adapter.updateByDoc('user_notification_cursor', cursor, { unread_count: unread })
+        return unread
+      }
+      await adapter.addWithId('user_notification_cursor', {
+        user_id: Number(ownerUserId),
+        unread_count: 1,
+        last_seen_coordination_event_id: 0,
+        last_seen_coordination_version: 0
+      }, 'user_notification_cursor')
+      return 1
+    }
     const existingLock = await adapter.byDocId('coordination_notification_dedupe', digest)
     if (existingLock) {
       if (existingLock.idempotency_key && String(existingLock.idempotency_key) !== key) {
@@ -1269,7 +1290,12 @@ async function createCoordinationNotificationOnce(notification = {}) {
       const existingNotification = existingLock.notification_id
         ? await adapter.byId('coordination_notification', Number(existingLock.notification_id))
         : null
-      if (existingNotification) return { created: false, notification: existingNotification }
+      if (!existingNotification) throw new Error('站内通知幂等锁缺少目标记录')
+      return {
+        created: false,
+        notification: existingNotification,
+        unread_count: await currentUnread(existingNotification.user_id || userId)
+      }
     }
     const stored = await adapter.addWithId('coordination_notification', Object.assign({}, notification, {
       read_at: notification.read_at === undefined ? null : notification.read_at
@@ -1279,8 +1305,9 @@ async function createCoordinationNotificationOnce(notification = {}) {
       notification_id: Number(stored.id),
       create_time: stored.create_time || now()
     })
-    return { created: true, notification: stored }
-  })))
+    const unreadCount = await bumpUnread(userId)
+    return { created: true, notification: stored, unread_count: unreadCount }
+  }))))
 }
 
 module.exports = {

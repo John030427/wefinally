@@ -39,33 +39,68 @@ function defaultDeps() {
 
 function memoryCreateCoordinationNotificationOnce(deps) {
   if (!deps.__coordNotificationClaims) deps.__coordNotificationClaims = new Map()
+  if (!deps.__coordUserQueues) deps.__coordUserQueues = new Map()
   return async function createOnce(notification) {
-    const key = String(notification.idempotency_key || '')
-    if (!key) {
-      const record = await deps.addWithId('coordination_notification', Object.assign({}, notification, {
-        read_at: notification.read_at === undefined ? null : notification.read_at
-      }), 'coordination_notification')
-      return { created: true, notification: record }
-    }
-    const claims = deps.__coordNotificationClaims
-    if (claims.has(key)) {
-      const stored = await Promise.resolve(claims.get(key))
-      return { created: false, notification: stored }
-    }
-    let resolveClaim
-    const pending = new Promise((resolve) => { resolveClaim = resolve })
-    claims.set(key, pending)
+    const userId = Number(notification.user_id || 0)
+    const queues = deps.__coordUserQueues
+    const prev = queues.get(userId) || Promise.resolve()
+    let release
+    const gate = new Promise((resolve) => { release = resolve })
+    queues.set(userId, prev.catch(() => {}).then(() => gate))
+    await prev.catch(() => {})
     try {
-      const record = await deps.addWithId('coordination_notification', Object.assign({}, notification, {
-        read_at: notification.read_at === undefined ? null : notification.read_at
-      }), 'coordination_notification')
-      claims.set(key, record)
-      resolveClaim(record)
-      return { created: true, notification: record }
-    } catch (err) {
-      claims.delete(key)
-      resolveClaim(null)
-      throw err
+      const key = String(notification.idempotency_key || '')
+      async function readUnread() {
+        if (typeof deps.first !== 'function') return 0
+        const cursor = await deps.first('user_notification_cursor', { user_id: userId })
+        return Number(cursor && cursor.unread_count || 0)
+      }
+      async function bumpUnread() {
+        if (typeof deps.first !== 'function' || typeof deps.addWithId !== 'function') return 1
+        const cursor = await deps.first('user_notification_cursor', { user_id: userId })
+        if (cursor && typeof deps.updateByDoc === 'function') {
+          const unread = Number(cursor.unread_count || 0) + 1
+          await deps.updateByDoc('user_notification_cursor', cursor, { unread_count: unread })
+          return unread
+        }
+        await deps.addWithId('user_notification_cursor', {
+          user_id: userId,
+          unread_count: 1,
+          last_seen_coordination_event_id: 0,
+          last_seen_coordination_version: 0
+        }, 'user_notification_cursor')
+        return 1
+      }
+      if (!key) {
+        const record = await deps.addWithId('coordination_notification', Object.assign({}, notification, {
+          read_at: notification.read_at === undefined ? null : notification.read_at
+        }), 'coordination_notification')
+        const unreadCount = await bumpUnread()
+        return { created: true, notification: record, unread_count: unreadCount }
+      }
+      const claims = deps.__coordNotificationClaims
+      if (claims.has(key)) {
+        const stored = await Promise.resolve(claims.get(key))
+        return { created: false, notification: stored, unread_count: await readUnread() }
+      }
+      let resolveClaim
+      const pending = new Promise((resolve) => { resolveClaim = resolve })
+      claims.set(key, pending)
+      try {
+        const record = await deps.addWithId('coordination_notification', Object.assign({}, notification, {
+          read_at: notification.read_at === undefined ? null : notification.read_at
+        }), 'coordination_notification')
+        const unreadCount = await bumpUnread()
+        claims.set(key, record)
+        resolveClaim(record)
+        return { created: true, notification: record, unread_count: unreadCount }
+      } catch (err) {
+        claims.delete(key)
+        resolveClaim(null)
+        throw err
+      }
+    } finally {
+      release()
     }
   }
 }
@@ -120,24 +155,15 @@ async function notifyInbox(input = {}, overrides) {
   const createOnce = resolveCreateOnce(deps)
   const created = await createOnce(Object.assign({}, notification, { read_at: null }))
   const record = created.notification
+  const unreadCount = Number(created.unread_count || 0)
   if (!created.created) {
-    const cursor = typeof deps.first === 'function'
-      ? await deps.first('user_notification_cursor', { user_id })
-      : null
     return {
       queued: false,
       stale: false,
       duplicate: true,
       notification_id: Number((record && record.id) || 0),
-      unread_count: Number((cursor && cursor.unread_count) || 0)
+      unread_count: unreadCount
     }
-  }
-  let cursor = await deps.first('user_notification_cursor', { user_id })
-  const nextCursor = applyUnreadCursor(cursor || { user_id }, record)
-  if (cursor) {
-    await deps.updateByDoc('user_notification_cursor', cursor, nextCursor)
-  } else {
-    await deps.addWithId('user_notification_cursor', nextCursor, 'user_notification_cursor')
   }
   const wechat = await sendWechatSubscribeAdapter({
     event_type: eventType,
@@ -148,16 +174,18 @@ async function notifyInbox(input = {}, overrides) {
     config: deps.config,
     sendSubscribeMessage: deps.sendSubscribeMessage
   })
-  await deps.updateByDoc('coordination_notification', record, {
-    status: wechat.sent ? 'sent' : 'skipped',
-    wechat_reason: wechat.sent ? '' : String(wechat.reason || 'skipped'),
-    sent_at: deps.now()
-  })
+  if (typeof deps.updateByDoc === 'function' && record) {
+    await deps.updateByDoc('coordination_notification', record, {
+      status: wechat.sent ? 'sent' : 'skipped',
+      wechat_reason: wechat.sent ? '' : String(wechat.reason || 'skipped'),
+      sent_at: deps.now()
+    })
+  }
   return {
     queued: true,
     stale: false,
     notification_id: Number(record.id || 0),
-    unread_count: nextCursor.unread_count,
+    unread_count: unreadCount,
     wechat: wechat
   }
 }

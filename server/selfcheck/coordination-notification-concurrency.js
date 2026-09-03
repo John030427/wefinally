@@ -199,13 +199,130 @@ async function main() {
   assert.strictEqual(tables.coordination_notification.length, 1)
   assert.strictEqual([left, right].filter((item) => item.duplicate).length, 1)
   assert.strictEqual(tables.coordination_notification_dedupe.length, 1)
+  assert.strictEqual(tables.user_notification_cursor.length, 1)
+  assert.strictEqual(tables.user_notification_cursor[0].unread_count, 1)
+
+  // Different keys for the same user must serialize cursor increments.
+  // Race on out-of-transaction cursor writes should fail before the fix.
+  const diffTables = {
+    coordination_notification: [],
+    user_notification_cursor: [],
+    coordination_notification_dedupe: []
+  }
+  let diffId = 1
+  const diffBarrier = createBarrier(2)
+  const diffDeps = {
+    first: async (name, query) => {
+      if (name === 'user_notification_cursor') await diffBarrier()
+      return (diffTables[name] || []).find((row) => Object.keys(query).every((key) => row[key] === query[key])) || null
+    },
+    addWithId: async (name, data) => {
+      const row = Object.assign({ id: diffId++, _id: `${name}_${diffId}` }, data)
+      if (!diffTables[name]) diffTables[name] = []
+      diffTables[name].push(row)
+      return row
+    },
+    updateByDoc: async (_name, row, data) => Object.assign(row, data),
+    now,
+    config: { wechatEnabled: false, templateIds: [] },
+    sendSubscribeMessage: async () => ({ sent: false, reason: 'disabled' })
+  }
+  const firstInput = Object.assign({}, input, { event_type: 'proposal_ready' })
+  const secondInput = Object.assign({}, input, { event_type: 'meeting_arrived:abc123' })
+  const [firstResult, secondResult] = await Promise.all([
+    notifyInbox(firstInput, diffDeps),
+    notifyInbox(secondInput, diffDeps)
+  ])
+  assert.strictEqual(diffTables.coordination_notification.length, 2)
+  assert.strictEqual(diffTables.user_notification_cursor.length, 1)
+  assert.strictEqual(diffTables.user_notification_cursor[0].unread_count, 2)
+  assert.deepStrictEqual(
+    [firstResult.unread_count, secondResult.unread_count].sort((a, b) => a - b),
+    [1, 2]
+  )
+
+  // Fixed atomic path with per-user transactional queue.
+  const txnTables = {
+    coordination_notification: [],
+    user_notification_cursor: [],
+    coordination_notification_dedupe: []
+  }
+  let txnId = 1
+  const txnClaims = new Map()
+  let cursorChain = Promise.resolve()
+  const txnDeps = {
+    first: async (name, query) => (txnTables[name] || []).find((row) => Object.keys(query).every((key) => row[key] === query[key])) || null,
+    addWithId: async (name, data) => {
+      const row = Object.assign({ id: txnId++, _id: `${name}_${txnId}` }, data)
+      if (!txnTables[name]) txnTables[name] = []
+      txnTables[name].push(row)
+      return row
+    },
+    updateByDoc: async (_name, row, data) => Object.assign(row, data),
+    now,
+    config: { wechatEnabled: false, templateIds: [] },
+    sendSubscribeMessage: async () => ({ sent: false, reason: 'disabled' }),
+    createCoordinationNotificationOnce: async (notification) => {
+      const userId = Number(notification.user_id || 0)
+      const prev = cursorChain.catch(() => {})
+      let release
+      const gate = new Promise((resolve) => { release = resolve })
+      cursorChain = prev.then(() => gate)
+      await prev
+      try {
+        const key = String(notification.idempotency_key || '')
+        const digest = crypto.createHash('sha256').update(key).digest('hex')
+        const existingClaim = txnClaims.get(digest)
+        if (existingClaim) {
+          const stored = await Promise.resolve(existingClaim)
+          const cursor = txnTables.user_notification_cursor.find((row) => Number(row.user_id) === userId) || null
+          return { created: false, notification: stored, unread_count: Number(cursor && cursor.unread_count || 0) }
+        }
+        let resolveClaim
+        const claimPromise = new Promise((resolve) => { resolveClaim = resolve })
+        txnClaims.set(digest, claimPromise)
+        const row = Object.assign({ id: txnId++, _id: `coordination_notification_${txnId}` }, notification, { read_at: null })
+        txnTables.coordination_notification.push(row)
+        txnTables.coordination_notification_dedupe.push({
+          _id: digest,
+          idempotency_key: key,
+          notification_id: row.id
+        })
+        let cursor = txnTables.user_notification_cursor.find((item) => Number(item.user_id) === userId) || null
+        if (cursor) {
+          cursor.unread_count = Number(cursor.unread_count || 0) + 1
+        } else {
+          cursor = { id: txnId++, _id: `user_notification_cursor_${txnId}`, user_id: userId, unread_count: 1 }
+          txnTables.user_notification_cursor.push(cursor)
+        }
+        resolveClaim(row)
+        txnClaims.set(digest, row)
+        return { created: true, notification: row, unread_count: Number(cursor.unread_count || 0) }
+      } finally {
+        release()
+      }
+    }
+  }
+  const [txnFirst, txnSecond] = await Promise.all([
+    notifyInbox(firstInput, txnDeps),
+    notifyInbox(secondInput, txnDeps)
+  ])
+  assert.strictEqual(txnTables.coordination_notification.length, 2)
+  assert.strictEqual(txnTables.user_notification_cursor.length, 1)
+  assert.strictEqual(txnTables.user_notification_cursor[0].unread_count, 2)
+  assert.deepStrictEqual(
+    [txnFirst.unread_count, txnSecond.unread_count].sort((a, b) => a - b),
+    [1, 2]
+  )
 
   const inboxSource = fs.readFileSync(path.join(__dirname, '../../miniprogram/cloudfunctions/api/lib/coordinationInbox.js'), 'utf8')
   assert(inboxSource.includes('createCoordinationNotificationOnce'))
   assert(!/idempotency_key && typeof deps\.first === 'function'/.test(inboxSource))
+  assert(!inboxSource.includes('applyUnreadCursor(cursor || { user_id }, record)'))
   const dbSource = fs.readFileSync(path.join(__dirname, '../../miniprogram/cloudfunctions/api/lib/db.js'), 'utf8')
   assert(dbSource.includes('async function createCoordinationNotificationOnce'))
   assert(dbSource.includes('coordination_notification_dedupe'))
+  assert(dbSource.includes('unread_count'))
 
   console.log('PASS coordination concurrency + notification + UI contracts')
 }
