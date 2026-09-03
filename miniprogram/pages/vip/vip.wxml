@@ -57,6 +57,7 @@
         disabled="{{purchasing}}"
         loading="{{purchasing}}"
       >{{isVip ? '续费 VIP ¥' + vipPrice : '立即开通 ¥' + vipPrice}}</button>
+      <button class="btn-secondary" open-type="contact">支付异常联系人工客服</button>
     </view>
   </block>
 </view>

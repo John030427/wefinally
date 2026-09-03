@@ -8,6 +8,15 @@
 .section { margin-top: 24rpx; padding: 28rpx; background: #fff; }
 .section-title { font-weight: 600; margin-bottom: 16rpx; }
 .review-note { color: #555; line-height: 1.7; white-space: pre-wrap; }
+.invite-card { margin-top: 24rpx; padding: 32rpx; border: 1rpx solid #f3d9df; border-radius: 24rpx; background: linear-gradient(145deg, #fff 0%, #fff7f8 100%); box-shadow: 0 12rpx 32rpx rgba(209,77,107,.06); }
+.invite-eyebrow { color: #d14d6b; font-size: 22rpx; font-weight: 600; }
+.invite-title { margin-top: 10rpx; color: #3a2e2e; font-size: 32rpx; font-weight: 600; }
+.invite-desc, .invite-safe { margin-top: 12rpx; color: #8b7d7d; font-size: 24rpx; line-height: 1.65; }
+.invite-input { height: 88rpx; margin-top: 24rpx; padding: 0 26rpx; border: 1rpx solid #eadfe0; border-radius: 16rpx; background: #fff; color: #3a2e2e; box-sizing: border-box; }
+.invite-message { margin-top: 12rpx; color: #d14d6b; font-size: 23rpx; line-height: 1.5; }
+.invite-button { height: 88rpx; margin-top: 20rpx; border: 0; border-radius: 999rpx; background: #e8637f; color: #fff; font-size: 28rpx; line-height: 88rpx; }
+.invite-button::after { border: 0; }
+.invite-button[disabled] { background: #eadfe0; color: #9b8c8f; }
 .actions { margin-top: 36rpx; display: flex; flex-direction: column; gap: 20rpx; }
 .primary { background: #ff6b8a; color: #fff; border-radius: 8rpx; }
 .secondary { background: #fff; color: #555; border: 1rpx solid #ddd; border-radius: 8rpx; }

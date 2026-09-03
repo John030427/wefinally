@@ -42,7 +42,7 @@ const { PARTNER_STATUS } = require('../src/config/constants');
     const tools = await request('GET', '/api/partner/promote-tools', undefined, token);
     ok('partner promote path points current register page',
       tools.status === 200 &&
-      tools.json.data.mini_program_path === '/pages/register/register?promote_code=SCPARTNER1');
+      tools.json.data.mini_program_path === '/pages/member-application/member-application?promote_code=SCPARTNER1');
   } finally {
     await cleanupOpenids(openids);
     await cleanupPartnerPhones([phone]);

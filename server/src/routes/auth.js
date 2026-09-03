@@ -126,12 +126,13 @@ router.post('/partner-login', async (req, res, next) => {
     }
 
     const token = signToken({ id: partner.id, role: ROLES.PARTNER, phone });
+    const { maskPhone } = require('../utils/privacyMask');
     return success(res, {
       token,
       partner: {
         id: partner.id,
         name: partner.name,
-        phone: partner.phone,
+        phone_masked: maskPhone(partner.phone),
         circle_id: partner.circle_id,
         promote_code: partner.promote_code,
         balance: partner.balance,
@@ -161,7 +162,10 @@ router.post('/admin-login', async (req, res, next) => {
       return fail(res, '账号或密码错误', 401, 401);
     }
 
-    const adminRole = admin.role || ADMIN_ROLES.SUPER_ADMIN;
+    const adminRole = String(admin.role || '').trim();
+    if (!Object.values(ADMIN_ROLES).includes(adminRole)) {
+      return fail(res, '后台账号角色无效，请联系超级管理员', 403, 403);
+    }
     const token = signToken({ id: admin.id, role: ROLES.ADMIN, username, admin_role: adminRole });
     return success(res, {
       token,

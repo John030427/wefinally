@@ -10,18 +10,10 @@ const { debounceMiddleware } = require('../middleware/guard');
 
 const { PARTNER_STATUS, USER_STATUS } = require('../config/constants');
 const { nextMemberStatus } = require('../utils/memberPolicy');
-
-const {
-
-  formatPartnerForAdmin,
-
-  formatPartnerUser,
-
-  formatPartnerOrder,
-
-} = require('../utils/apiFormat');
-
-
+const { createReferralToken, createReferralScene } = require('../../../miniprogram/cloudfunctions/api/lib/partnerReferralPolicy');
+const { formatPartnerForAdmin, formatPartnerUser, formatPartnerOrder } = require('../utils/apiFormat');
+const { sanitizePartnerApplication } = require('../utils/privacyMask');
+const { assertPartnerApplicationScope } = require('../utils/partnerScopePolicy');
 
 const router = express.Router();
 
@@ -171,7 +163,7 @@ router.get('/users', async (req, res, next) => {
     const [count] = await pool.query(`SELECT COUNT(*) AS total FROM \`user\` u ${where}`, params);
     const [rows] = await pool.query(
       `SELECT u.id, u.gender, u.birth_year, u.status, u.member_status, u.is_vip,
-              u.vip_expire_time, u.create_time, u.city, u.marry_status, u.openid,
+              u.vip_expire_time, u.create_time, u.city, u.marry_status, u.support_code,
               u.occupation_description,
               (SELECT ma.id FROM member_application ma WHERE ma.user_id = u.id ORDER BY ma.revision DESC LIMIT 1) AS application_id,
               (SELECT ma.review_note FROM member_application ma WHERE ma.user_id = u.id ORDER BY ma.revision DESC LIMIT 1) AS review_note
@@ -194,20 +186,37 @@ router.put('/users/:id/audit', async (req, res, next) => {
     const userId = Number(req.params.id);
     const { action, reason } = req.body;
     const [users] = await conn.query(
-      'SELECT * FROM `user` WHERE id = ? AND promote_partner_id = ?',
-      [userId, req.auth.id]
+      `SELECT id, gender, birth_year, status, member_status, is_vip, vip_expire_time,
+              create_time, city, marry_status, support_code, occupation_description, education,
+              promote_partner_id
+       FROM \`user\` WHERE id = ?`,
+      [userId]
     );
-    if (!users.length) return fail(res, '用户不存在或不属于您的邀请', 404, 404);
+    if (!users.length) return fail(res, '用户不存在', 404, 404);
     const [applications] = await conn.query(
-      'SELECT * FROM member_application WHERE user_id = ? ORDER BY revision DESC LIMIT 1',
+      `SELECT id, user_id, assigned_partner_id, status, revision, review_note, submitted_at, create_time, reviewed_at,
+              city, education, occupation, birth_year
+       FROM member_application WHERE user_id = ? ORDER BY revision DESC LIMIT 1`,
       [userId]
     );
     const application = applications[0] || null;
+    if (application) {
+      try {
+        assertPartnerApplicationScope(users[0], application, req.auth.id);
+      } catch (err) {
+        return fail(res, err.message, 403, 403);
+      }
+    } else if (Number(users[0].promote_partner_id) !== Number(req.auth.id)) {
+      return fail(res, '用户不存在或不属于您的邀请', 404, 404);
+    }
     if (action === 'view') {
       return success(res, {
         user: formatPartnerUser(users[0]),
-        application,
-        note: '审核操作会保留意见和状态变更记录'
+        application: sanitizePartnerApplication(application),
+        note: '审核操作会保留意见和状态变更记录。请勿向他人泄露用户私人资料。',
+        next_action: application && application.status === 'pending_review'
+          ? '请审核：通过 / 需要补充资料 / 不通过'
+          : '查看后可按当前状态继续处理'
       });
     }
     if (!application) return fail(res, '用户尚未提交会员申请');
@@ -238,7 +247,12 @@ router.put('/users/:id/audit', async (req, res, next) => {
       [req.auth.id, userId, application.id, req.auth.id, action, application.status, nextStatus, reviewReason]
     );
     await conn.commit();
-    const [updated] = await pool.query('SELECT * FROM `user` WHERE id = ?', [userId]);
+    const [updated] = await pool.query(
+      `SELECT id, gender, birth_year, status, member_status, is_vip, vip_expire_time,
+              create_time, city, marry_status, support_code, occupation_description, education
+       FROM \`user\` WHERE id = ?`,
+      [userId]
+    );
     return success(res, { user: formatPartnerUser(updated[0]), member_status: nextStatus }, '审核状态已更新');
   } catch (err) {
     await conn.rollback();
@@ -423,12 +437,21 @@ router.get('/promote-tools', async (req, res, next) => {
 
 
     const code = partner[0].promote_code;
+    let referral = code;
+    let referralScene = '';
+    if (process.env.PARTNER_REFERRAL_SECRET) {
+      try {
+        referral = createReferralToken(req.auth.id);
+        referralScene = createReferralScene(req.auth.id);
+      } catch (err) { referral = code; }
+    }
 
     return success(res, {
 
       promote_code: code,
-
-      mini_program_path: `/pages/register/register?promote_code=${code}`,
+      attribution_token: referral === code ? '' : referral,
+      mini_program_path: `/pages/member-application/member-application?promote_code=${encodeURIComponent(referral)}`,
+      scene: referralScene,
 
       share_title: 'WeFinally · 遇见对的人',
 

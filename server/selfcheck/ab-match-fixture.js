@@ -57,9 +57,11 @@ function scenario() {
     list: async (name, query) => (tables[name] || []).filter((row) => matches(row, query)),
     addWithId: async (name, data, prefix) => {
       const row = { _id: `${prefix || name}_${++sequence}`, id: sequence, ...data }
+      tables[name] = tables[name] || []
       tables[name].push(row)
       return row
     },
+    updateByDoc: async (name, doc, data) => Object.assign(doc, data),
     removeByDoc: async (name, doc) => {
       const rows = tables[name] || []
       const index = rows.findIndex((row) => row._id === doc._id)
@@ -156,6 +158,116 @@ async function main() {
     }, actor),
     /测试候选不存在/
   )
+
+  const { normalizeInput } = require('../../miniprogram/cloudfunctions/api/handlers/abMatchFixture')
+  const rejectedInput = normalizeInput({
+    action: 'prepare',
+    ownerUserId: 8,
+    reason: '拒绝场景',
+    requestId: 'ab_prepare_8_1784883000000',
+    fixture_journey: 'reject'
+  })
+  assert.strictEqual(rejectedInput.fixture_journey, 'reject')
+  assert.throws(
+    () => normalizeInput({
+      action: 'prepare',
+      ownerUserId: 8,
+      reason: '未知旅程',
+      requestId: 'ab_prepare_8_1784884000000',
+      fixture_journey: 'mystery'
+    }),
+    /fixture_journey/
+  )
+
+  const dual = scenario()
+  let rid = 0
+  dual.deps.randomId = () => `run_dual_${++rid}_abcdefgh`
+  const dualService = createAbMatchFixtureService(dual.deps)
+  const acceptPrep = await dualService.change({
+    action: 'prepare',
+    ownerUserId: 8,
+    reason: '接受场景',
+    requestId: 'ab_prepare_8_1784885000000',
+    fixture_journey: 'accept'
+  }, actor)
+  const rejectPrep = await dualService.change({
+    action: 'prepare',
+    ownerUserId: 8,
+    reason: '拒绝场景',
+    requestId: 'ab_prepare_8_1784886000000',
+    fixture_journey: 'reject'
+  }, actor)
+  assert.notStrictEqual(acceptPrep.run_id, rejectPrep.run_id)
+  assert.strictEqual(acceptPrep.candidate.fixture_journey, 'accept')
+  assert.strictEqual(rejectPrep.candidate.fixture_journey, 'reject')
+  assert.strictEqual(dual.tables.user.filter((row) => Number(row.is_test_fixture || 0) === 1).length, 2)
+
+  dual.tables.date_coordination = [{
+    _id: 'coord_test',
+    id: 501,
+    user_a_id: 8,
+    user_b_id: acceptPrep.candidate.id,
+    status: 'inviting_partner',
+    is_test_data: 1,
+    ab_test_run_id: acceptPrep.run_id
+  }]
+  dual.tables.agent_session = [{
+    _id: 'sess_test',
+    id: 701,
+    coordination_id: 501,
+    user_id: 8,
+    status: 'active'
+  }]
+  const dualClean = await dualService.change({
+    action: 'cleanup',
+    ownerUserId: 8,
+    runId: acceptPrep.run_id,
+    reason: '清理接受场景',
+    requestId: 'ab_cleanup_8_1784887000000'
+  }, actor)
+  assert.ok(dualClean.closed_coordinations >= 1)
+  assert.strictEqual(dual.tables.date_coordination[0].status, 'closed')
+  assert.strictEqual(dual.tables.user.find((row) => row.fixture_journey === 'reject').status, 1)
+
+  const extra = scenario()
+  extra.deps.randomId = () => 'run_extra_abcdefghijkl'
+  const extraService = createAbMatchFixtureService(extra.deps)
+  const coordPrep = await extraService.change({
+    action: 'prepare',
+    ownerUserId: 8,
+    reason: '协调场景',
+    requestId: 'ab_prepare_8_1784888000000',
+    fixture_journey: 'coordinate',
+    fixture_mode: 'manual_step'
+  }, actor)
+  assert.strictEqual(coordPrep.candidate.fixture_journey, 'coordinate')
+  assert.strictEqual(coordPrep.candidate.fixture_mode, 'manual_step')
+  const silentPrepInput = normalizeInput({
+    action: 'prepare',
+    ownerUserId: 8,
+    reason: '不回应',
+    requestId: 'ab_prepare_8_1784889000000',
+    fixture_journey: 'no_response',
+    fixture_mode: 'manual'
+  })
+  assert.strictEqual(silentPrepInput.fixture_journey, 'no_response')
+  assert.strictEqual(silentPrepInput.fixture_mode, 'manual_step')
+  const directInput = normalizeInput({
+    action: 'prepare',
+    ownerUserId: 8,
+    reason: '直接接受',
+    requestId: 'ab_prepare_8_1784890000000',
+    fixture_journey: 'accept_direct'
+  })
+  assert.strictEqual(directInput.fixture_journey, 'accept_direct')
+  const noPrefsInput = normalizeInput({
+    action: 'prepare',
+    ownerUserId: 8,
+    reason: '接受未填',
+    requestId: 'ab_prepare_8_1784891000000',
+    fixture_journey: 'accept_no_prefs'
+  })
+  assert.strictEqual(noPrefsInput.fixture_journey, 'accept_no_prefs')
 
   console.log('PASS controlled A/B match fixture lifecycle')
 }

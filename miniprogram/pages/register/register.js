@@ -9,9 +9,18 @@ const {
   BABY_PLAN_OPTIONS,
   HOUSE_CAR_OPTIONS,
   CITY_OPTIONS,
-  HEIGHT_RANGE_OPTIONS
+  HEIGHT_RANGE_OPTIONS,
+  PROVINCE_OPTIONS,
+  MAX_IDENTITY_TAGS,
+  listCities,
+  resolveRegion
 } = require('../../utils/constants')
-const { parsePromoteCode } = require('../../utils/util')
+const { parsePromoteCode, normalizePromoteCode } = require('../../utils/util')
+const {
+  buildSecondaryIdentityGroups,
+  buildSelectedSecondaryIdentities,
+  toggleSecondaryIdentitySelection
+} = require('../../utils/secondaryIdentityPicker')
 
 Page({
   data: {
@@ -24,7 +33,13 @@ Page({
     marriageOptions: MARRIAGE_OPTIONS,
     babyPlanOptions: BABY_PLAN_OPTIONS,
     houseCarOptions: HOUSE_CAR_OPTIONS,
+    provinceOptions: PROVINCE_OPTIONS,
+    provinceNames: PROVINCE_OPTIONS.map((item) => item.province_name),
     cityOptions: CITY_OPTIONS,
+    secondaryIdentityDrawerVisible: false,
+    secondaryIdentityQuery: '',
+    secondaryIdentityGroups: [],
+    selectedSecondaryIdentities: [],
     circleOptions: [],
     circleNames: [],
     circleGroups: [],
@@ -36,7 +51,11 @@ Page({
       genderIndex: -1,
       birthYear: '',
       birthYearIndex: -1,
+      provinceCode: '',
+      provinceName: '',
+      provinceIndex: -1,
       city: '',
+      cityCode: '',
       cityIndex: -1,
       education: '',
       educationIndex: -1,
@@ -53,6 +72,7 @@ Page({
       circleId: 0,
       circleIndex: -1,
       circleName: '',
+      secondaryCircleIds: [],
       occupationDescription: '',
       appearanceDescription: '',
       promote_code: ''
@@ -73,6 +93,9 @@ Page({
       return
     }
     this.setData({ editMode: Boolean(options && options.edit === '1') })
+    if (this.data.editMode) {
+      wx.setNavigationBarTitle({ title: '个人资料' })
+    }
     this.initBirthYears()
     this.initHeights()
     this.parsePromoteCode(options)
@@ -103,7 +126,7 @@ Page({
       code = wx.getStorageSync(STORAGE_KEYS.PROMOTE_CODE) || ''
     }
     if (code) {
-      const normalized = String(code).trim().toUpperCase()
+      const normalized = normalizePromoteCode(code)
       wx.setStorageSync(STORAGE_KEYS.PROMOTE_CODE, normalized)
       this.setData({
         'form.promote_code': normalized,
@@ -134,6 +157,7 @@ Page({
         circleMatrix: circlePicker.matrix,
         pageState: 'success'
       })
+      this.refreshSecondaryIdentityOptions(this.data.form.circleId, this.data.form.secondaryCircleIds)
       if (this.data.editMode) {
         const profile = await get(API_PATHS.USER_PROFILE, {}, { showError: false })
         this.fillExistingProfile(profile, list, circlePicker.groups)
@@ -153,15 +177,31 @@ Page({
     const circleIndex = Math.max(0, group ? group.circles.findIndex((item) => Number(item.id) === Number(profile.circle_id)) : 0)
     const gender = Number(profile.gender) === 1 ? '男' : '女'
     const birthYear = profile.birth_year ? `${profile.birth_year}年` : ''
+    const region = resolveRegion({
+      province_code: profile.province_code,
+      city_code: profile.city_code,
+      city: profile.city_name || profile.city
+    })
+    const provinceIndex = PROVINCE_OPTIONS.findIndex((item) => item.province_code === region.province_code)
+    const cityList = region.province_code ? listCities(region.province_code) : []
+    const secondaryCircleIds = Array.isArray(profile.secondary_circle_ids)
+      ? profile.secondary_circle_ids.map(Number)
+      : []
     const form = Object.assign({}, this.data.form, {
       gender,
       genderIndex: GENDER_OPTIONS.indexOf(gender),
       birthYear,
       birthYearIndex: this.data.birthYearOptions.indexOf(birthYear),
-      city: profile.city || '',
-      cityIndex: CITY_OPTIONS.indexOf(profile.city),
+      provinceCode: region.province_code || '',
+      provinceName: region.province_name || '',
+      provinceIndex,
+      city: region.city_name || profile.city || '',
+      cityCode: region.city_code || '',
+      cityIndex: cityList.findIndex((item) => item.city_name === (region.city_name || profile.city)),
       education: profile.education || '',
       educationIndex: EDUCATION_OPTIONS.indexOf(profile.education),
+      income: profile.income_range || '',
+      incomeIndex: INCOME_OPTIONS.indexOf(profile.income_range),
       marriage: profile.marry_status || '',
       marriageIndex: MARRIAGE_OPTIONS.indexOf(profile.marry_status),
       babyPlan: profile.baby_plan || '',
@@ -172,18 +212,21 @@ Page({
       heightIndex: HEIGHT_RANGE_OPTIONS.indexOf(profile.height_range),
       circleId: Number(profile.circle_id || 0),
       circleName: circle ? (circle.name || circle.circle_name) : '',
+      secondaryCircleIds,
       occupationDescription: profile.occupation_description || '',
       appearanceDescription: profile.appearance_description || '',
       promote_code: profile.promote_code || ''
     })
     this.setData({
       form,
+      cityOptions: cityList.length ? cityList.map((item) => item.city_name) : CITY_OPTIONS,
       circleMultiIndex: [plateIndex, circleIndex],
       circleMatrix: [this.data.circlePlates, group ? group.circles.map((item) => item.name || item.circle_name) : []],
       appearanceDescriptionLen: form.appearanceDescription.length,
       promoStatus: 'success',
       promoMessage: '邀请归属已锁定'
     })
+    this.refreshSecondaryIdentityOptions(form.circleId, secondaryCircleIds)
   },
 
   buildCirclePicker(list) {
@@ -234,12 +277,84 @@ Page({
     const circle = group && group.circles[circleIndex]
     if (!circle) return
     const name = circle.name || circle.circle_name
+    const secondaryCircleIds = (this.data.form.secondaryCircleIds || []).filter((id) => Number(id) !== Number(circle.id))
     this.setData({
       circleMultiIndex: [plateIndex, circleIndex],
       'form.circleId': circle.id,
       'form.circleName': name,
+      'form.secondaryCircleIds': secondaryCircleIds,
       'form.occupationDescription': Number(circle.id) === 0 ? this.data.form.occupationDescription : '',
       'form.circleIndex': this.data.circleOptions.findIndex((item) => item.id === circle.id)
+    })
+    this.refreshSecondaryIdentityOptions(circle.id, secondaryCircleIds)
+  },
+
+  refreshSecondaryIdentityOptions(primaryId, selectedIds) {
+    const primary = Number(primaryId != null ? primaryId : this.data.form.circleId)
+    const selected = selectedIds || this.data.form.secondaryCircleIds || []
+    this.setData({
+      secondaryIdentityGroups: buildSecondaryIdentityGroups(
+        this.data.circleOptions,
+        primary,
+        selected,
+        this.data.secondaryIdentityQuery
+      ),
+      selectedSecondaryIdentities: buildSelectedSecondaryIdentities(this.data.circleOptions, selected)
+    })
+  },
+
+  openSecondaryIdentityDrawer() {
+    this.setData({
+      secondaryIdentityDrawerVisible: true,
+      secondaryIdentityQuery: ''
+    })
+    this.refreshSecondaryIdentityOptions(this.data.form.circleId, this.data.form.secondaryCircleIds)
+  },
+
+  closeSecondaryIdentityDrawer() {
+    this.setData({ secondaryIdentityDrawerVisible: false })
+  },
+
+  noop() {},
+
+  onSecondaryIdentitySearch(e) {
+    this.setData({ secondaryIdentityQuery: e.detail.value || '' })
+    this.refreshSecondaryIdentityOptions(this.data.form.circleId, this.data.form.secondaryCircleIds)
+  },
+
+  toggleSecondaryIdentity(e) {
+    const id = Number(e.currentTarget.dataset.id)
+    if (!Number.isFinite(id)) return
+    const result = toggleSecondaryIdentitySelection(
+      this.data.form.secondaryCircleIds,
+      id,
+      Math.max(0, MAX_IDENTITY_TAGS - 1)
+    )
+    if (result.limitReached) {
+      wx.showToast({ title: `其他身份最多${MAX_IDENTITY_TAGS - 1}个`, icon: 'none' })
+      return
+    }
+    const next = result.selectedIds
+    this.setData({ 'form.secondaryCircleIds': next })
+    this.refreshSecondaryIdentityOptions(this.data.form.circleId, next)
+  },
+
+  onWorkRegionChange(e) {
+    const values = (e.detail && e.detail.value) || []
+    const codes = (e.detail && e.detail.code) || []
+    if (!values[0] || !values[1]) return
+    const region = resolveRegion({
+      province_code: codes[0],
+      city_code: codes[1],
+      city: values[1]
+    })
+    this.setData({
+      'form.provinceIndex': PROVINCE_OPTIONS.findIndex((item) => item.province_code === region.province_code),
+      'form.provinceCode': region.province_code || String(codes[0] || ''),
+      'form.provinceName': region.province_name || values[0],
+      'form.cityIndex': -1,
+      'form.city': region.city_name || String(values[1]).replace(/市$/, ''),
+      'form.cityCode': region.city_code || String(codes[1] || '')
     })
   },
 
@@ -300,7 +415,7 @@ Page({
   },
 
   onPromoteInput(e) {
-    const code = String(e.detail.value || '').replace(/\s/g, '').toUpperCase()
+    const code = normalizePromoteCode(e.detail.value)
     const update = {
       'form.promote_code': code,
       promoStatus: code ? 'pending' : '',
@@ -338,7 +453,7 @@ Page({
   },
 
   async checkPromoteCode(options = {}) {
-    const code = String(this.data.form.promote_code || '').trim().toUpperCase()
+    const code = normalizePromoteCode(this.data.form.promote_code)
     if (!code) {
       this.setData({ promoStatus: '', promoMessage: '' })
       wx.removeStorageSync(STORAGE_KEYS.PROMOTE_CODE)
@@ -378,7 +493,7 @@ Page({
 
   validateForm() {
     const { form } = this.data
-    const required = ['gender', 'birthYear', 'city', 'education', 'marriage', 'height', 'babyPlan', 'circleName']
+    const required = ['gender', 'birthYear', 'provinceName', 'city', 'education', 'marriage', 'height', 'babyPlan', 'circleName']
     for (const key of required) {
       if (!form[key]) {
         wx.showToast({ title: '请完善所有必填信息', icon: 'none' })
@@ -413,11 +528,6 @@ Page({
       wx.showToast({ title: '请填写具体职业', icon: 'none' })
       return false
     }
-    if (!String(form.promote_code || '').trim()) {
-      wx.showToast({ title: '邀请制注册需要邀请码', icon: 'none' })
-      return false
-    }
-
     if (form.marriage === '离异') {
       wx.showModal({
         title: '需先提交复入申请',
@@ -439,11 +549,18 @@ Page({
         const profile = await put(API_PATHS.USER_PROFILE_UPDATE, {
           birth_year: form.birthYear.replace('年', ''),
           city: form.city,
+          province_code: form.provinceCode,
+          province_name: form.provinceName,
+          city_code: form.cityCode,
+          city_name: form.city,
           education: form.education,
+          income_range: form.income || '',
           baby_plan: form.babyPlan,
           house_car: form.houseCar || '',
           height_range: form.height,
           circle_id: form.circleId,
+          primary_circle_id: form.circleId,
+          secondary_circle_ids: form.secondaryCircleIds || [],
           occupation_description: String(form.occupationDescription || '').trim(),
           appearance_description: form.appearanceDescription.trim()
         }, { showLoading: true, loadingText: '保存中...' })
@@ -458,6 +575,10 @@ Page({
         gender: form.gender,
         birth_year: form.birthYear.replace('年', ''),
         city: form.city,
+        province_code: form.provinceCode,
+        province_name: form.provinceName,
+        city_code: form.cityCode,
+        city_name: form.city,
         education: form.education,
         income_range: form.income || '',
         marry_status: form.marriage,
@@ -466,8 +587,10 @@ Page({
         height_range: form.height,
         appearance_description: form.appearanceDescription.trim(),
         circle_id: form.circleId,
+        primary_circle_id: form.circleId,
+        secondary_circle_ids: form.secondaryCircleIds || [],
         occupation_description: String(form.occupationDescription || '').trim(),
-        promote_code: String(form.promote_code || '').trim().toUpperCase(),
+        promote_code: normalizePromoteCode(form.promote_code),
         agreements: ['user_service', 'privacy', 'data_auth'],
         device_info: `${wx.getSystemInfoSync().model || ''} ${wx.getSystemInfoSync().system || ''}`
       }, { showLoading: true, loadingText: '提交中...' })

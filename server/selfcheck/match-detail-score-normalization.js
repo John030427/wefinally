@@ -40,6 +40,9 @@ function loadPage(detail) {
       if (request === '../../utils/util') {
         return require(path.join(root, 'miniprogram/utils/util.js'))
       }
+      if (request === '../../utils/aiMatchReportPresentation') {
+        return require(path.join(root, 'miniprogram/utils/aiMatchReportPresentation.js'))
+      }
       throw new Error(`Unexpected require: ${request}`)
     }
   }
@@ -77,6 +80,11 @@ async function run() {
     score_detail: { normalizedTotal: 79, total: 100, max_total: 128 }
   }))
   assert.strictEqual(camel.totalScorePercent, 79)
+
+  const aiAdjusted = await render(Object.assign({}, base, {
+    score_detail: { final_match_score: 84, normalized_total: 79, total: 100, max_total: 128 }
+  }))
+  assert.strictEqual(aiAdjusted.totalScorePercent, 84)
 
   const derived = await render(Object.assign({}, base, {
     score_detail: { total: 100, max_total: 128 }

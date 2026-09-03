@@ -1,0 +1,17 @@
+.notify-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20rpx 4rpx 12rpx;
+}
+.notify-title { font-size: 30rpx; font-weight: 600; color: #333; }
+.notify-mark-all { font-size: 24rpx; color: #c96b45; background: transparent; border: none; padding: 0; }
+.notify-item { display: flex; align-items: flex-start; padding: 24rpx; margin-bottom: 20rpx; position: relative; }
+.notify-icon { font-size: 40rpx; margin-right: 18rpx; }
+.notify-body { flex: 1; }
+.notify-title-row { display: flex; align-items: center; justify-content: space-between; }
+.notify-item-title { font-size: 28rpx; font-weight: 600; color: #2f2a26; }
+.notify-time { font-size: 22rpx; color: #999; }
+.notify-item-body { font-size: 25rpx; color: #555; line-height: 1.6; margin-top: 8rpx; }
+.notify-unread-dot { width: 14rpx; height: 14rpx; border-radius: 50%; background: #e34d59; margin-left: 12rpx; margin-top: 10rpx; flex: none; }
+.notify-arrow { color: #c9c2bb; margin-left: 10rpx; margin-top: 8rpx; font-size: 30rpx; }

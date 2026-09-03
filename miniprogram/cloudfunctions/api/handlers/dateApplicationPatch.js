@@ -1,5 +1,43 @@
-const { normalizeApplication, computeOverlap, STATUS } = require('../lib/dateCoordinationPolicy')
-const { previewApplicationChange, shareableSummary, cleanChanges } = require('../lib/dateApplicationPatchPolicy')
+const { normalizeApplication, STATUS } = require('../lib/dateCoordinationPolicy')
+const { enrichChangesWithDerivedClears } = require('../lib/dateApplicationDerivedFields')
+const { attachPublicError } = require('../lib/businessError')
+const {
+  PATCHABLE_FIELDS,
+  previewApplicationChange,
+  shareableSummary,
+  shareableChangeCard,
+  cleanChanges
+} = require('../lib/dateApplicationPatchPolicy')
+const { publishCoordinationEvent, attachMemoryIdempotentCreates } = require('../agent/dateCoordinationEvents')
+const { canStartAnotherRound, enqueueProcessing } = require('../lib/dateCoordinationProcessingPolicy')
+const {
+  canModifyApplication,
+  terminalWriteError,
+  WRITE_BLOCKED_STATUSES
+} = require('../lib/dateCoordinationAccessPolicy')
+const {
+  publicInvitationProposal,
+  invitationProposalOf,
+  invitationVersionOf,
+  invitationPrimaryOf,
+  resolvePrimaryInvitationProposal,
+  resolvePrimaryAfterPreferenceChange,
+  cleanPrimarySelection,
+  derivePrimaryFromSingletonPrefs,
+  primaryFitsPreference,
+  primaryFitsPreferenceExceptPayment,
+  syncPrimaryPaymentFromPreference,
+  invitationAlreadyRespondedError,
+  invitationExpiredError,
+  primaryResolutionRequiredError,
+  isExpiredInvitationRow,
+  invitingPartnerDeadlinePassed,
+  persistExpiredInvitationRecord,
+  paymentFactText,
+  evidenceFromChanges,
+  mergeInvitationWithOverrides,
+  allExplicitEvidence
+} = require('../lib/invitationCoordination')
 
 async function claimPendingPatch(patch) {
   const db = require('../lib/db')
@@ -20,10 +58,17 @@ function defaultDeps() {
     addWithId: db.addWithId,
     updateByDoc: db.updateByDoc,
     claimPendingPatch,
+    commitPreAcceptInvitationPatch: db.commitPreAcceptInvitationPatch,
+    commitPostAcceptApplicationPatch: db.commitPostAcceptApplicationPatch,
+    publishCoordinationEvent,
     now: db.now,
     saveApplicationForUser(data, user) {
       const { createDateCoordinationHandlers } = require('./dateCoordination')
       return createDateCoordinationHandlers().saveApplicationForUser(data, user)
+    },
+    writeInboxNotification(input) {
+      const { notifyInbox } = require('../lib/coordinationInbox')
+      return notifyInbox(input)
     }
   }
 }
@@ -34,6 +79,24 @@ function addHours(value, hours) {
 
 function owns(coordination, userId) {
   return coordination && [Number(coordination.user_a_id), Number(coordination.user_b_id)].includes(Number(userId))
+}
+
+function unwrapApplicationInput(input) {
+  let current = input
+  for (let depth = 0; depth < 3; depth += 1) {
+    if (!current || typeof current !== 'object' || Array.isArray(current)) break
+    const keys = Object.keys(current)
+    if (keys.some((key) => PATCHABLE_FIELDS.includes(key))) return current
+    if (!current.application || typeof current.application !== 'object' || Array.isArray(current.application)) break
+    current = current.application
+  }
+  return current
+}
+
+function evidenceAfterChanges(sourceEvidence, changedFields) {
+  const evidence = Object.assign({}, sourceEvidence || allExplicitEvidence())
+  for (const field of changedFields || []) evidence[field] = 'explicit'
+  return evidence
 }
 
 function publicPatch(row) {
@@ -51,10 +114,182 @@ function publicPatch(row) {
 
 function createDateApplicationPatchHandlers(overrides = {}) {
   let defaults = null
+  const unitMode = overrides.unitMode === true
   function dep(name) {
-    if (overrides[name]) return overrides[name]
+    if (Object.prototype.hasOwnProperty.call(overrides, name)) return overrides[name]
+    if (name === 'publishCoordinationEvent' && unitMode) {
+      return (input) => publishCoordinationEvent(input, attachMemoryIdempotentCreates({
+        first: overrides.first,
+        list: overrides.list,
+        addWithId: overrides.addWithId,
+        now: overrides.now
+      }))
+    }
+    if (name === 'writeInboxNotification' && !overrides.writeInboxNotification && unitMode) {
+      return (input) => {
+        const { notifyInbox } = require('../lib/coordinationInbox')
+        const { notifyConfig } = require('../lib/coordinationNotification')
+        return notifyInbox(input, {
+          first: overrides.first,
+          addWithId: overrides.addWithId,
+          updateByDoc: overrides.updateByDoc,
+          now: overrides.now,
+          config: notifyConfig(process.env),
+          sendSubscribeMessage: null
+        })
+      }
+    }
+    if (name === 'claimPendingPatch' && unitMode
+      && !Object.prototype.hasOwnProperty.call(overrides, name)) {
+      return async (patch) => {
+        if (!patch || patch.status !== 'pending_confirmation') return false
+        Object.assign(patch, { status: 'applying' })
+        return true
+      }
+    }
+    if (['commitPreAcceptInvitationPatch', 'commitPostAcceptApplicationPatch'].includes(name)
+      && unitMode
+      && !Object.prototype.hasOwnProperty.call(overrides, name)) {
+      return null
+    }
+    if (name === 'beforeCommitHook' && unitMode) {
+      return null
+    }
     if (!defaults) defaults = defaultDeps()
     return defaults[name]
+  }
+
+  async function memoryCommitPreAcceptInvitationPatch(input = {}) {
+    const {
+      coordination,
+      actorUserId,
+      expectedCoordinationVersion,
+      expectedInvitationVersion,
+      nextCoordinationVersion,
+      nextInvitationVersion,
+      nextApplication,
+      nextPreferenceVersion,
+      nextPrimaryProposal,
+      invitationProposal,
+      patch,
+      preferenceEvidence,
+      acceptedBaseInvitationVersion,
+      beforeCommitHook
+    } = input
+    const ts = dep('now')()
+    const current = await dep('byId')('date_coordination', coordination.id)
+    if (!current) throw new Error('日期协调不存在')
+    if (isExpiredInvitationRow(current) || invitingPartnerDeadlinePassed(current, ts)) {
+      return persistExpiredInvitationRecord(current, (data) => dep('updateByDoc')('date_coordination', current, data))
+    }
+    if (current.status !== STATUS.INVITING_PARTNER) throw invitationAlreadyRespondedError()
+    if (Number(current.user_a_id) !== Number(actorUserId)) throw new Error('仅发起方可以在等待回应时修改邀请')
+    if (current.invitation_responded_at) throw invitationAlreadyRespondedError()
+    if (Number(current.coordination_version) !== Number(expectedCoordinationVersion)) {
+      throw attachPublicError(Object.assign(new Error('约会条件已更新，请重新生成修改预览'), {
+        code: 'STALE_COORDINATION_VERSION'
+      }), 'STALE_COORDINATION_VERSION')
+    }
+    if (invitationVersionOf(current) !== Number(expectedInvitationVersion)) {
+      throw attachPublicError(Object.assign(new Error('对方刚刚更新了约会安排，请查看最新方案后再确认'), {
+        code: 'STALE_INVITATION_VERSION',
+        refresh_invitation: true
+      }), 'STALE_INVITATION_VERSION')
+    }
+    if (typeof beforeCommitHook === 'function') await beforeCommitHook('pre_accept_patch')
+
+    const refreshed = await dep('byId')('date_coordination', current.id)
+    if (isExpiredInvitationRow(refreshed) || invitingPartnerDeadlinePassed(refreshed, ts)) {
+      return persistExpiredInvitationRecord(refreshed || current, (data) => dep('updateByDoc')('date_coordination', refreshed || current, data))
+    }
+    if (!refreshed
+      || refreshed.status !== STATUS.INVITING_PARTNER
+      || refreshed.invitation_responded_at
+      || Number(refreshed.coordination_version) !== Number(expectedCoordinationVersion)
+      || invitationVersionOf(refreshed) !== Number(expectedInvitationVersion)) {
+      throw refreshed && refreshed.status !== STATUS.INVITING_PARTNER
+        ? invitationAlreadyRespondedError()
+        : (() => {
+          const err = new Error('对方刚刚更新了约会安排，请查看最新方案后再确认')
+          err.code = 'STALE_INVITATION_VERSION'
+          err.refresh_invitation = true
+          return err
+        })()
+    }
+    await dep('addWithId')('date_coordination_application', {
+      coordination_id: Number(refreshed.id),
+      user_id: Number(actorUserId),
+      coordination_version: Number(nextCoordinationVersion),
+      application: nextApplication,
+      submitted_at: ts,
+      source: 'agent_confirmed_patch',
+      preference_version: Number(nextPreferenceVersion || nextInvitationVersion),
+      preference_evidence: preferenceEvidence || null,
+      accepted_base_invitation_version: Number(acceptedBaseInvitationVersion || 0)
+    }, 'date_coordination_application')
+    const updated = await dep('updateByDoc')('date_coordination', refreshed, {
+      coordination_version: Number(nextCoordinationVersion),
+      invitation_version: Number(nextInvitationVersion),
+      initiator_agreed_invitation_version: Number(nextInvitationVersion),
+      invitation_proposal: invitationProposal,
+      invitation_primary_proposal: nextPrimaryProposal,
+      status: STATUS.INVITING_PARTNER,
+      business_state: 'waiting_partner',
+      recoordination_count: Number(refreshed.recoordination_count || 0),
+      final_proposal_id: 0,
+      last_changed_by_user_id: Number(actorUserId),
+      processing_status: '',
+      processing_version: 0,
+      processing_token: '',
+      processing_attempts: 0,
+      processing_started_at: null,
+      processing_completed_at: null,
+      processing_error_code: '',
+      missing_dimensions: []
+    })
+    const appliedPatch = await dep('updateByDoc')('date_application_patch', patch, {
+      status: 'applied',
+      applied_version: Number(nextCoordinationVersion),
+      applied_at: ts
+    })
+    return { coordination: updated, patch: appliedPatch, idempotent: false }
+  }
+
+  async function memoryCommitPostAcceptApplicationPatch(input = {}) {
+    const current = await dep('byId')('date_coordination', Number(input.coordination.id))
+    const stale = () => attachPublicError(new Error('约会条件已更新，请重新生成修改预览'), 'STALE_COORDINATION_VERSION')
+    if (!current
+      || Number(current.coordination_version) !== Number(input.expectedCoordinationVersion)
+      || String(current.status) !== String(input.expectedStatus)) throw stale()
+    if (typeof input.beforeCommitHook === 'function') await input.beforeCommitHook('post_accept_patch')
+    const refreshed = await dep('byId')('date_coordination', Number(input.coordination.id))
+    if (!refreshed
+      || Number(refreshed.coordination_version) !== Number(input.expectedCoordinationVersion)
+      || String(refreshed.status) !== String(input.expectedStatus)) throw stale()
+    const proposals = await dep('list')('date_coordination_proposal', {
+      coordination_id: Number(refreshed.id),
+      coordination_version: Number(input.expectedCoordinationVersion)
+    }, 20)
+    for (const proposal of proposals.filter((item) => item.status === 'active')) {
+      await dep('updateByDoc')('date_coordination_proposal', proposal, { status: 'superseded' })
+    }
+    const confirmations = await dep('list')('date_coordination_confirmation', {
+      coordination_id: Number(refreshed.id),
+      coordination_version: Number(input.expectedCoordinationVersion)
+    }, 20)
+    for (const confirmation of confirmations) {
+      await dep('updateByDoc')('date_coordination_confirmation', confirmation, { status: 'superseded' })
+    }
+    for (const row of input.nextApplications || []) {
+      await dep('addWithId')('date_coordination_application', row, 'date_coordination_application')
+    }
+    const updated = await dep('updateByDoc')('date_coordination', refreshed, input.coordinationUpdate)
+    const appliedPatch = await dep('updateByDoc')('date_application_patch', input.patch, {
+      status: 'applied',
+      applied_version: Number(input.nextCoordinationVersion),
+      applied_at: dep('now')()
+    })
+    return { coordination: updated, patch: appliedPatch, idempotent: false }
   }
 
   async function applicationsFor(coordinationId) {
@@ -70,14 +305,25 @@ function createDateApplicationPatchHandlers(overrides = {}) {
   async function createPreviewForUser(data, user, session) {
     const coordination = await dep('byId')('date_coordination', Number(data.coordination_id || 0))
     if (!owns(coordination, user && user.id)) throw new Error('无权修改该约会协调')
-    if ([STATUS.CANCELLED, STATUS.CLOSED, STATUS.EXPIRED].includes(coordination.status)) {
-      throw new Error('当前约会协调已经结束，不能修改')
+    if (isExpiredInvitationRow(coordination)) throw invitationExpiredError()
+    if (WRITE_BLOCKED_STATUSES.includes(coordination.status) || !canModifyApplication(coordination, user, { hasOwnApplication: true })) {
+      throw new Error(terminalWriteError(coordination.status))
     }
     const version = Number(coordination.coordination_version || 1)
     const rows = await applicationsFor(coordination.id)
     const mine = latestForUser(rows, user.id, version)
-    if (!mine || !mine.application) throw new Error('请先完成自己的约会偏好表单')
-    const changes = cleanChanges(data.changes)
+    if (!mine || !mine.application) {
+      const isInvitee = Number(user.id) === Number(coordination.user_b_id)
+      if (isInvitee && (coordination.invitation_proposal || latestForUser(rows, coordination.user_a_id, version))) {
+        const initialChanges = unwrapApplicationInput(data.changes)
+        return createInitialPreviewForUser(Object.assign({}, data, {
+          changes: initialChanges,
+          application: initialChanges
+        }), user, session)
+      }
+      throw new Error('请先完成自己的约会偏好表单')
+    }
+    const changes = enrichChangesWithDerivedClears(mine.application, cleanChanges(data.changes))
     const activeProposals = await dep('list')('date_coordination_proposal', {
       coordination_id: Number(coordination.id),
       coordination_version: version
@@ -87,6 +333,51 @@ function createDateApplicationPatchHandlers(overrides = {}) {
       hasActiveProposal: activeProposals.some((item) => item.status === 'active'),
       notifyPartner: true
     })
+    if (coordination.status === STATUS.INVITING_PARTNER && Number(user.id) === Number(coordination.user_a_id)) {
+      const primaryContext = {
+        user_a_id: coordination.user_a_id,
+        user_b_id: coordination.user_b_id
+      }
+      const afterApp = normalizeApplication(Object.assign({}, mine.application, changes), dep('now')())
+      let previous = invitationPrimaryOf(coordination, null, primaryContext)
+      if (!previous || !previous.date) {
+        previous = derivePrimaryFromSingletonPrefs(
+          mine.application,
+          coordination.user_a_id,
+          coordination.user_b_id
+        )
+      }
+      const selection = cleanPrimarySelection(data.primary_selection)
+      const resolution = resolvePrimaryAfterPreferenceChange(previous, afterApp, primaryContext, selection)
+      preview.source_changes = changes
+      preview.primary_selection = selection
+      preview.primary_before = previous || null
+      if (resolution.required) {
+        preview.primary_resolution_required = true
+        preview.primary_resolution = { fields: resolution.fields }
+        preview.resolution_prompt = resolution.prompt
+        preview.invitation_primary_proposal = null
+      } else {
+        preview.primary_resolution_required = false
+        preview.invitation_primary_proposal = resolution.primary
+        preview.primary_after = resolution.primary
+        if (previous && resolution.primary) {
+          const payBefore = paymentFactText(previous, primaryContext)
+          const payAfter = paymentFactText(resolution.primary, primaryContext)
+          if (payBefore !== payAfter) {
+            preview.primary_payment_changed = true
+            preview.primary_payment_before = previous
+            preview.primary_payment_after = resolution.primary
+            preview.primary_payment_before_text = payBefore
+            preview.primary_payment_after_text = payAfter
+            if (!preview.changed_fields) preview.changed_fields = []
+            if (!preview.changed_fields.includes('payment_preference')) {
+              preview.changed_fields.push('payment_preference')
+            }
+          }
+        }
+      }
+    }
     const now = dep('now')()
     const created = await dep('addWithId')('date_application_patch', {
       coordination_id: Number(coordination.id),
@@ -95,9 +386,10 @@ function createDateApplicationPatchHandlers(overrides = {}) {
       source_message_id: Number(data.source_message_id || 0),
       base_version: version,
       operation: 'modify',
-      status: 'pending_confirmation',
+      status: preview.primary_resolution_required ? 'pending_primary_selection' : 'pending_confirmation',
       changes,
       preview,
+      primary_selection: preview.primary_selection || null,
       expires_at: addHours(now, 2)
     }, 'date_application_patch')
     return publicPatch(created)
@@ -106,18 +398,38 @@ function createDateApplicationPatchHandlers(overrides = {}) {
   async function createInitialPreviewForUser(data, user, session) {
     const coordination = await dep('byId')('date_coordination', Number(data.coordination_id || 0))
     if (!owns(coordination, user && user.id)) throw new Error('无权创建该约会申请')
-    if ([STATUS.CANCELLED, STATUS.CLOSED, STATUS.EXPIRED].includes(coordination.status)) {
-      throw new Error('当前约会协调已经结束，不能发送申请')
+    if (WRITE_BLOCKED_STATUSES.includes(coordination.status) || !canModifyApplication(coordination, user, { hasOwnApplication: false })) {
+      throw new Error(terminalWriteError(coordination.status))
     }
     const version = Number(coordination.coordination_version || 1)
     const rows = await applicationsFor(coordination.id)
     const mine = latestForUser(rows, user.id, version)
     if (mine && mine.application) throw new Error('约会申请已经存在，请使用修改预览')
-    const application = normalizeApplication(data.application || data.changes || {}, dep('now')())
+    const initiatorApp = latestForUser(rows, coordination.user_a_id, version)
+    const invitation = invitationProposalOf(coordination, initiatorApp)
+    const rawInput = unwrapApplicationInput(data.application || data.changes || {})
+    const rawKeys = rawInput && typeof rawInput === 'object' && !Array.isArray(rawInput)
+      ? Object.keys(rawInput)
+      : []
+    if (!rawKeys.length) throw new Error('请至少补充一项自己的约会条件')
+    if (rawKeys.some((key) => !PATCHABLE_FIELDS.includes(key))) {
+      throw new Error('约会申请参数格式无效，请重新说明时间或其他条件')
+    }
+    const merged = invitation.areas.length
+      ? mergeInvitationWithOverrides(invitation, rawInput)
+      : rawInput
+    const application = normalizeApplication(merged, dep('now')())
+    const changed = Object.keys(rawInput || {}).filter((key) => (
+      JSON.stringify(rawInput[key]) !== JSON.stringify(invitation[key])
+    ))
+    const evidence = invitation.areas.length ? evidenceFromChanges(changed) : allExplicitEvidence()
     const preview = {
-      before: null,
+      before: invitation.areas.length ? invitation : null,
       after: application,
-      changed_fields: Object.keys(application),
+      changed_fields: changed,
+      preference_evidence: evidence,
+      application_source: invitation.areas.length ? 'invitee_override' : 'invitee_full_form',
+      accepted_base_invitation_version: Number(coordination.invitation_version || coordination.accepted_base_invitation_version || version),
       affects_existing_proposal: false,
       will_notify_partner: true
     }
@@ -137,38 +449,38 @@ function createDateApplicationPatchHandlers(overrides = {}) {
     return publicPatch(created)
   }
 
-  async function notifyPartner(coordination, user, summary, proposalCreated, version) {
+  async function notifyPartner(coordination, user, summary, proposalCreated, version, changeCard) {
     const partnerId = Number(coordination.user_a_id) === Number(user.id)
       ? Number(coordination.user_b_id)
       : Number(coordination.user_a_id)
-    let session = await dep('first')('agent_session', {
-      user_id: partnerId,
-      agent_type: 'date_coordinator',
-      coordination_id: Number(coordination.id)
-    })
-    if (!session) {
-      session = await dep('addWithId')('agent_session', {
-        user_id: partnerId,
-        agent_type: 'date_coordinator',
-        coordination_id: Number(coordination.id),
-        status: 'active',
-        summary: ''
-      }, 'agent_session')
+    if (coordination.status === STATUS.INVITING_PARTNER) {
+      return { partner_id: partnerId, session_id: 0, shareable_summary: summary, skipped: 'waiting_partner_consent' }
     }
-    const content = proposalCreated
-      ? '对方的约会条件发生调整，系统已生成新的候选方案，请查看后确认是否合适。'
-      : '对方的约会条件发生调整，目前还没有完整交集。你可以告诉我哪些时间、区域或活动方便调整。'
-    await dep('addWithId')('agent_message', {
-      session_id: Number(session.id),
-      user_id: partnerId,
-      agent_type: 'date_coordinator',
-      role: 'assistant',
-      sender_type: 'ai',
-      content,
-      coordination_id: Number(coordination.id),
-      coordination_version: Number(version),
-      event_type: 'partner_preference_changed'
-    }, 'agent_message')
+    const published = await dep('publishCoordinationEvent')({
+      coordination,
+      event: {
+        event_type: 'preference_changed',
+        actor_user_id: Number(user.id),
+        coordination_version: Number(version),
+        has_proposal: Boolean(proposalCreated),
+        changed_dimensions: summary.changed_dimensions,
+        change_card: changeCard || null
+      }
+    })
+    try {
+      await dep('writeInboxNotification')({
+        coordination,
+        user_id: partnerId,
+        event_type: 'preference_changed',
+        coordination_version: Number(version),
+        title: '对方更新了可约条件',
+        body: '对方更新了约会方案。请进入协调会话查看具体变更和最新共同进度。',
+        changed_dimensions: summary.changed_dimensions || [],
+        stage: 'preference_changed'
+      })
+    } catch (err) {
+      console.warn('inbox preference notification skipped:', err.message || err)
+    }
     await dep('addWithId')('agent_notification_job', {
       coordination_id: Number(coordination.id),
       user_id: partnerId,
@@ -178,7 +490,8 @@ function createDateApplicationPatchHandlers(overrides = {}) {
       status: 'pending',
       attempts: 0
     }, 'agent_notification_job')
-    return { partner_id: partnerId, session_id: Number(session.id), shareable_summary: summary }
+    const partnerMessage = published.messages.find((item) => Number(item.user_id) === partnerId)
+    return { partner_id: partnerId, session_id: Number(partnerMessage && partnerMessage.session_id || 0), shareable_summary: summary }
   }
 
   async function confirmForUser(data, user) {
@@ -189,10 +502,17 @@ function createDateApplicationPatchHandlers(overrides = {}) {
     if (Number(patch.user_id) !== Number(user && user.id)) throw new Error('无权确认该修改预览')
     const coordination = await dep('byId')('date_coordination', Number(patch.coordination_id))
     if (!owns(coordination, user.id)) throw new Error('无权确认该修改预览')
+    if (isExpiredInvitationRow(coordination)) throw invitationExpiredError()
+    if (!canModifyApplication(coordination, user, { hasOwnApplication: true })) {
+      throw new Error(terminalWriteError(coordination.status))
+    }
     if (patch.status === 'applied') {
       return { patch: publicPatch(patch), coordination_version: Number(patch.applied_version || coordination.coordination_version) }
     }
     if (patch.status === 'applying') throw new Error('修改预览正在处理中，请稍后刷新')
+    if (patch.status === 'pending_primary_selection' || (patch.preview && patch.preview.primary_resolution_required)) {
+      throw primaryResolutionRequiredError(patch.preview && patch.preview.resolution_prompt)
+    }
     if (patch.status !== 'pending_confirmation') throw new Error('修改预览已经失效')
     if (new Date(patch.expires_at).getTime() < dep('now')().getTime()) {
       await dep('updateByDoc')('date_application_patch', patch, { status: 'expired' })
@@ -208,8 +528,15 @@ function createDateApplicationPatchHandlers(overrides = {}) {
       throw new Error('修改预览正在处理中，请稍后刷新')
     }
     if (patch.operation === 'create') {
+      const createSummary = shareableSummary(patch.preview)
       const result = await dep('saveApplicationForUser')(Object.assign({}, patch.preview.after, {
-        coordination_id: Number(coordination.id)
+        coordination_id: Number(coordination.id),
+        preference_evidence: patch.preview.preference_evidence || allExplicitEvidence(),
+        application_source: patch.preview.application_source || 'invitee_override',
+        changed_dimensions: createSummary.changed_dimensions,
+        accepted_base_invitation_version: patch.preview.accepted_base_invitation_version
+          || coordination.accepted_base_invitation_version
+          || coordination.invitation_version
       }), user)
       const appliedPatch = await dep('updateByDoc')('date_application_patch', patch, {
         status: 'applied',
@@ -235,83 +562,241 @@ function createDateApplicationPatchHandlers(overrides = {}) {
     const rows = await applicationsFor(coordination.id)
     const mine = latestForUser(rows, user.id, oldVersion)
     if (!mine) throw new Error('没有可修改的约会申请')
-    const nextApplication = normalizeApplication(Object.assign({}, mine.application, patch.changes), dep('now')())
-    const newVersion = oldVersion + 1
-
-    const proposals = await dep('list')('date_coordination_proposal', {
-      coordination_id: Number(coordination.id),
-      coordination_version: oldVersion
-    }, 20)
-    for (const proposal of proposals.filter((item) => item.status === 'active')) {
-      await dep('updateByDoc')('date_coordination_proposal', proposal, { status: 'superseded' })
+    const nextApplication = normalizeApplication(
+      Object.assign({}, mine.application, enrichChangesWithDerivedClears(mine.application, patch.changes)),
+      dep('now')()
+    )
+    const patchSummary = shareableSummary(patch.preview)
+    if (!canStartAnotherRound(coordination)) {
+      const handedOff = await dep('updateByDoc')('date_coordination', coordination, {
+        status: STATUS.MANUAL_HANDOFF,
+        business_state: 'manual_handoff'
+      })
+      const referredPatch = await dep('updateByDoc')('date_application_patch', patch, {
+        status: 'manual_handoff',
+        applied_version: oldVersion,
+        applied_at: dep('now')()
+      })
+      await dep('publishCoordinationEvent')({
+        coordination: handedOff,
+        event: {
+          event_type: 'manual_handoff',
+          actor_user_id: Number(user.id),
+          coordination_version: oldVersion,
+          round_number: 5
+        }
+      })
+      return {
+        patch: publicPatch(referredPatch),
+        coordination_version: oldVersion,
+        status: handedOff.status,
+        business_state: handedOff.business_state,
+        proposal_generated: false,
+        partner_notified: true
+      }
     }
-    const confirmations = await dep('list')('date_coordination_confirmation', {
-      coordination_id: Number(coordination.id),
-      coordination_version: oldVersion
-    }, 20)
-    for (const confirmation of confirmations) {
-      await dep('updateByDoc')('date_coordination_confirmation', confirmation, { status: 'superseded' })
+    const newVersion = oldVersion + 1
+    const stillInviting = coordination.status === STATUS.INVITING_PARTNER
+      && Number(user.id) === Number(coordination.user_a_id)
+
+    if (stillInviting) {
+      const source = latestForUser(rows, Number(user.id), oldVersion)
+      const nextPreferenceVersion = Number(source && (source.preference_version || source.coordination_version) || oldVersion || 1) + 1
+      const initiatorPreferenceVersion = nextPreferenceVersion
+      const primaryContext = {
+        user_a_id: coordination.user_a_id,
+        user_b_id: coordination.user_b_id
+      }
+      const invitationProposal = publicInvitationProposal(nextApplication)
+      const previous = invitationPrimaryOf(coordination, null, primaryContext)
+        || derivePrimaryFromSingletonPrefs(
+          source && source.application,
+          coordination.user_a_id,
+          coordination.user_b_id
+        )
+      const resolution = resolvePrimaryAfterPreferenceChange(
+        previous,
+        nextApplication,
+        primaryContext,
+        patch.primary_selection || (patch.preview && patch.preview.primary_selection)
+      )
+      if (resolution.required || !resolution.primary) {
+        throw primaryResolutionRequiredError(resolution.prompt)
+      }
+      const nextPrimary = resolution.primary
+      const commitFn = dep('commitPreAcceptInvitationPatch')
+      const beforeCommitHook = dep('beforeCommitHook')
+      const commitInput = {
+        coordination,
+        actorUserId: Number(user.id),
+        expectedCoordinationVersion: oldVersion,
+        expectedInvitationVersion: invitationVersionOf(coordination, source),
+        nextCoordinationVersion: newVersion,
+        nextInvitationVersion: initiatorPreferenceVersion,
+        nextApplication,
+        nextPreferenceVersion,
+        nextPrimaryProposal: nextPrimary,
+        invitationProposal,
+        patchId: Number(patch.id),
+        patchDocId: patch._id,
+        patch,
+        preferenceEvidence: source && source.preference_evidence || allExplicitEvidence(),
+        acceptedBaseInvitationVersion: Number(source && source.accepted_base_invitation_version || coordination.accepted_base_invitation_version || 0),
+        beforeCommitHook: typeof beforeCommitHook === 'function' ? beforeCommitHook : undefined
+      }
+      let committed
+      try {
+        if (typeof commitFn === 'function') {
+          committed = await commitFn(commitInput)
+        } else {
+          committed = await memoryCommitPreAcceptInvitationPatch(commitInput)
+        }
+        if (committed && committed.expired) {
+          if (!committed.idempotent) {
+            try {
+              const existing = await dep('first')('coordination_notification', {
+                coordination_id: Number(committed.coordination.id),
+                user_id: Number(committed.coordination.user_a_id),
+                event_type: 'invitation_expired'
+              })
+              if (!existing) {
+                await dep('writeInboxNotification')({
+                  coordination: committed.coordination,
+                  user_id: Number(committed.coordination.user_a_id),
+                  event_type: 'invitation_expired',
+                  coordination_version: Number(committed.coordination.coordination_version || 1),
+                  title: '约会邀请已结束',
+                  body: invitationExpiredError().message,
+                  stage: 'expired'
+                })
+              }
+            } catch (notifyErr) {
+              console.warn('inbox invitation expired notification skipped:', notifyErr.message || notifyErr)
+            }
+          }
+          throw invitationExpiredError()
+        }
+      } catch (err) {
+        await dep('updateByDoc')('date_application_patch', patch, { status: 'pending_confirmation' })
+        throw err
+      }
+      const summary = shareableSummary(patch.preview)
+      const notification = await notifyPartner(
+        committed.coordination,
+        user,
+        summary,
+        false,
+        newVersion,
+        shareableChangeCard(patch.preview)
+      )
+      return {
+        patch: publicPatch(committed.patch || patch),
+        coordination_version: newVersion,
+        status: committed.coordination.status,
+        business_state: committed.coordination.business_state,
+        proposal_generated: false,
+        partner_notified: true,
+        partner_session_id: notification.session_id
+      }
     }
 
     const participants = [Number(coordination.user_a_id), Number(coordination.user_b_id)]
     const nextApplications = new Map()
+    const nextApplicationRows = []
     for (const participantId of participants) {
       const source = latestForUser(rows, participantId, oldVersion)
       if (!source || !source.application) continue
-      const application = participantId === Number(user.id) ? nextApplication : source.application
-      await dep('addWithId')('date_coordination_application', {
+      const isActor = participantId === Number(user.id)
+      const application = isActor ? nextApplication : source.application
+      const preferenceVersion = isActor
+        ? Number(source.preference_version || source.coordination_version || oldVersion || 1) + 1
+        : Number(source.preference_version || source.coordination_version || oldVersion || 1)
+      nextApplicationRows.push({
         coordination_id: Number(coordination.id),
         user_id: participantId,
         coordination_version: newVersion,
         application,
         submitted_at: dep('now')(),
-        source: participantId === Number(user.id) ? 'agent_confirmed_patch' : 'version_snapshot'
-      }, 'date_coordination_application')
+        source: isActor ? 'agent_confirmed_patch' : 'version_snapshot',
+        preference_version: preferenceVersion,
+        preference_evidence: isActor
+          ? evidenceAfterChanges(source.preference_evidence, patch.preview && patch.preview.changed_fields)
+          : (source.preference_evidence || null),
+        accepted_base_invitation_version: Number(source.accepted_base_invitation_version || coordination.accepted_base_invitation_version || 0)
+      })
       nextApplications.set(participantId, application)
     }
 
-    const applicationA = nextApplications.get(Number(coordination.user_a_id))
-    const applicationB = nextApplications.get(Number(coordination.user_b_id))
-    const overlap = applicationA && applicationB
-      ? computeOverlap(applicationA, applicationB, { version: newVersion })
-      : { proposals: [], missing_dimensions: [] }
-    for (const proposal of overlap.proposals) {
-      await dep('addWithId')('date_coordination_proposal', Object.assign({}, proposal, {
-        coordination_id: Number(coordination.id),
-        status: 'active'
-      }), 'date_coordination_proposal')
-    }
-    const proposalCreated = overlap.proposals.length > 0
+    const hasBothApplications = nextApplications.has(Number(coordination.user_a_id))
+      && nextApplications.has(Number(coordination.user_b_id))
+    const nextRecoordCount = Number(coordination.recoordination_count || 0) + 1
+    const nextCoordination = Object.assign({}, coordination, {
+      coordination_version: newVersion,
+      recoordination_count: nextRecoordCount
+    })
+    const queued = hasBothApplications
+      ? enqueueProcessing(nextCoordination, { version: newVersion, now: dep('now')() })
+      : nextCoordination
     const update = {
       coordination_version: newVersion,
-      status: proposalCreated ? STATUS.WAITING_CONFIRMATIONS : (applicationA && applicationB ? STATUS.NO_OVERLAP : STATUS.COLLECTING_PREFERENCES),
-      business_state: proposalCreated ? 'proposal_generated' : 'waiting_partner',
-      missing_dimensions: overlap.missing_dimensions,
+      recoordination_count: nextRecoordCount,
+      status: hasBothApplications ? queued.status : STATUS.COLLECTING_PREFERENCES,
+      business_state: hasBothApplications
+        ? queued.business_state
+        : (coordination.invitee_intent === 'coordinate' ? 'waiting_invitee_preference' : 'waiting_partner'),
+      processing_status: !hasBothApplications ? '' : queued.processing_status,
+      processing_version: !hasBothApplications ? 0 : queued.processing_version,
+      processing_token: '',
+      processing_attempts: 0,
+      processing_started_at: null,
+      processing_completed_at: null,
+      processing_error_code: '',
+      missing_dimensions: [],
       final_proposal_id: 0,
-      confirmation_deadline_at: proposalCreated ? addHours(dep('now')(), 24) : null,
-      last_changed_by_user_id: Number(user.id)
+      confirmation_deadline_at: null,
+      invitation_deadline_at: coordination.invitation_deadline_at,
+      last_changed_by_user_id: Number(user.id),
+      last_changed_dimensions: patchSummary.changed_dimensions
     }
-    const updatedCoordination = await dep('updateByDoc')('date_coordination', coordination, update)
-    const appliedPatch = await dep('updateByDoc')('date_application_patch', patch, {
-      status: 'applied',
-      applied_version: newVersion,
-      applied_at: dep('now')()
-    })
-    const summary = shareableSummary(patch.preview)
-    await dep('addWithId')('date_coordination_event', {
-      coordination_id: Number(coordination.id),
-      coordination_version: newVersion,
-      event_type: 'preference_changed',
-      actor_user_id: Number(user.id),
-      shareable_summary: summary
-    }, 'date_coordination_event')
-    const notification = await notifyPartner(coordination, user, summary, proposalCreated, newVersion)
+    const commitInput = {
+      coordination,
+      actorUserId: Number(user.id),
+      expectedCoordinationVersion: oldVersion,
+      expectedStatus: coordination.status,
+      nextCoordinationVersion: newVersion,
+      nextApplications: nextApplicationRows,
+      coordinationUpdate: update,
+      patchId: Number(patch.id),
+      patchDocId: patch._id,
+      patch,
+      beforeCommitHook: dep('beforeCommitHook')
+    }
+    const commitFn = dep('commitPostAcceptApplicationPatch')
+    let committed
+    try {
+      committed = typeof commitFn === 'function'
+        ? await commitFn(commitInput)
+        : await memoryCommitPostAcceptApplicationPatch(commitInput)
+    } catch (err) {
+      await dep('updateByDoc')('date_application_patch', patch, { status: 'pending_confirmation' })
+      throw err
+    }
+    const updatedCoordination = committed.coordination
+    const appliedPatch = committed.patch || patch
+    const notification = await notifyPartner(
+      updatedCoordination,
+      user,
+      patchSummary,
+      false,
+      newVersion,
+      shareableChangeCard(patch.preview)
+    )
     return {
       patch: publicPatch(appliedPatch),
       coordination_version: newVersion,
       status: updatedCoordination.status,
       business_state: updatedCoordination.business_state,
-      proposal_generated: proposalCreated,
+      proposal_generated: false,
       partner_notified: true,
       partner_session_id: notification.session_id
     }
@@ -320,7 +805,9 @@ function createDateApplicationPatchHandlers(overrides = {}) {
   async function cancelForUser(data, user) {
     const patch = await dep('byId')('date_application_patch', Number(data.patch_id || data.patchId || 0))
     if (!patch || Number(patch.user_id) !== Number(user && user.id)) throw new Error('无权取消该修改预览')
-    if (patch.status === 'pending_confirmation') await dep('updateByDoc')('date_application_patch', patch, { status: 'cancelled' })
+    if (patch.status === 'pending_confirmation' || patch.status === 'pending_primary_selection') {
+      await dep('updateByDoc')('date_application_patch', patch, { status: 'cancelled' })
+    }
     return publicPatch(patch)
   }
 

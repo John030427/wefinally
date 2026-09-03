@@ -1,0 +1,27 @@
+{
+  "name": "wefinally-agent-graph",
+  "version": "1.0.0",
+  "private": true,
+  "main": "dist/src/cloudFunction.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "node build-dist-package.cjs && tsc -p tsconfig.json && node -e \"const fs=require('fs');const p=require('path');const t=p.join('dist','test');if(fs.existsSync(t))fs.rmSync(t,{recursive:true,force:true})\"",
+    "test": "tsx --test ../../tests/agent-graph/*.test.ts",
+    "check": "npm run build && npm test"
+  },
+  "dependencies": {
+    "@cloudbase/node-sdk": "^3.16.0",
+    "@langchain/core": "1.2.5",
+    "@langchain/langgraph": "1.4.9",
+    "@langchain/langgraph-checkpoint": "1.1.3",
+    "wx-server-sdk": "4.0.2",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "20.19.25",
+    "tsx": "4.23.12",
+    "typescript": "5.9.3"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "branch": "feature/backoffice-simple-web-final",
+  "deploy": false,
+  "selfcheck": "node server/selfcheck/backoffice-simple-web-final.js",
+  "e2e": "npm --prefix server run e2e:wefinally",
+  "layers": {
+    "STATIC_AND_UNIT": "PASS",
+    "SECURITY_NEGATIVE": "PASS",
+    "ROUTE_AUTHORIZATION": "PASS",
+    "RESPONSE_DATA_AUTHORIZATION": "PASS",
+    "E2E": "PASS",
+    "LIVE_MYSQL": "BLOCKED_ENVIRONMENT"
+  },
+  "tests_overall": "PASS_WITH_ENV_BLOCKER",
+  "review_fix": [
+    "REVIEW-01 FIXED",
+    "REVIEW-02 FIXED",
+    "REVIEW-03 FIXED",
+    "REVIEW-04 FIXED",
+    "REVIEW-05 FIXED",
+    "REVIEW-06 FIXED",
+    "REVIEW-07 FIXED"
+  ]
+}

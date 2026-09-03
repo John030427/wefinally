@@ -5,6 +5,8 @@
     "pages/smoke/smoke",
     "pages/agreement/agreement",
     "pages/register/register",
+    "pages/partner-login/partner-login",
+    "pages/partner-invite/partner-invite",
     "pages/divorce-review/divorce-review",
     "pages/match-setting/match-setting",
     "pages/member-application/member-application",
@@ -25,7 +27,8 @@
     "pages/date-feedback/date-feedback",
     "pages/marry-report/marry-report",
     "pages/account-cancel/account-cancel",
-    "pages/rules/rules"
+    "pages/rules/rules",
+    "pages/notifications/notifications"
   ],
   "window": {
     "navigationBarBackgroundColor": "#FF6B8A",
@@ -35,6 +38,7 @@
     "backgroundTextStyle": "dark"
   },
   "tabBar": {
+    "custom": true,
     "color": "#999999",
     "selectedColor": "#FF6B8A",
     "backgroundColor": "#FFFFFF",
@@ -58,8 +62,10 @@
   "sitemapLocation": "sitemap.json",
   "permission": {
     "scope.userLocation": {
-      "desc": "用于线下见面报备与一键呼救定位，仅在你主动操作时使用"
+      "desc": "用于你主动在微信地图中选择线下见面地点"
     }
   },
-  "requiredPrivateInfos": ["chooseLocation", "getLocation", "startLocationUpdate", "onLocationChange"]
+  "requiredPrivateInfos": [
+    "chooseLocation"
+  ]
 }

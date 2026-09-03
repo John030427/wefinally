@@ -12,6 +12,10 @@ const {
   SUBSCRIBE_TMPL_IDS
 } = require('../../utils/constants')
 const { getCooldownRemain, setCooldownEnd, validateTextLength } = require('../../utils/util')
+const {
+  nextMatchSettingAction,
+  matchSettingFailureMessage
+} = require('../../utils/matchSettingFlow')
 
 function normalizeLikeMarryLabel(value) {
   if (value === '未婚') return '仅看未婚'
@@ -46,7 +50,8 @@ Page({
       likeBabyPlan: '',
       likeBabyPlanIndex: -1,
       myValues: '',
-      expectValues: ''
+      expectValues: '',
+      otherRequirements: ''
     },
     myValuesLen: 0,
     expectValuesLen: 0,
@@ -55,6 +60,16 @@ Page({
     appearanceDescriptionLen: 0,
     appearanceWantLen: 0,
     appearanceMaxLen: 500,
+    otherRequirementsLen: 0,
+    otherRequirementsMaxLen: 500,
+    intentConfirmation: null,
+    aiProfile: null,
+    aiConfirmed: false,
+    aiCorrectionMode: false,
+    aiCorrectionText: '',
+    aiProfileVersion: 0,
+    aiFeedbackLoading: false,
+    memberStatus: '',
     textMinLen: TEXT_MIN_LEN,
     textMaxLen: TEXT_MAX_LEN,
     cooldownActive: false,
@@ -64,7 +79,8 @@ Page({
 
   _cooldownTimer: null,
 
-  onLoad() {
+  onLoad(options) {
+    this.focusAiProfile = String((options && options.focus) || '') === 'ai-profile'
     this.initPage()
   },
 
@@ -93,14 +109,16 @@ Page({
     }
 
     try {
-      const [settingData, cooldownData, profileData] = await Promise.all([
+      const [settingData, cooldownData, profileData, aiProfileData] = await Promise.all([
         get(API_PATHS.MATCH_SETTING, {}, { showError: false }).catch(() => null),
         get(API_PATHS.MATCH_SETTING_COOLDOWN, {}, { showError: false }).catch(() => null),
-        get(API_PATHS.USER_PROFILE, {}, { showError: false }).catch(() => null)
+        get(API_PATHS.USER_PROFILE, {}, { showError: false }).catch(() => null),
+        get(API_PATHS.MATCH_AI_PROFILE, {}, { showError: false }).catch(() => null)
       ])
 
       if (settingData) this.fillForm(settingData)
       if (profileData) this.fillAppearance(profileData)
+      if (aiProfileData) this.fillAiProfile(aiProfileData)
 
       const canEditWithoutCooldown = cooldownData && (
         cooldownData.can_edit === true || cooldownData.canEdit === true || cooldownData.can_update === true
@@ -116,6 +134,11 @@ Page({
 
       if (cooldownEnd) this.startCooldownTimer(cooldownEnd)
       this.setData({ pageState: 'success' })
+      if (this.focusAiProfile) {
+        setTimeout(() => {
+          wx.pageScrollTo({ selector: '#ai-profile', duration: 280 })
+        }, 80)
+      }
     } catch (err) {
       const localEnd = wx.getStorageSync(STORAGE_KEYS.MATCH_SETTING_COOLDOWN)
       if (localEnd) this.startCooldownTimer(localEnd)
@@ -147,10 +170,13 @@ Page({
     pick(LIKE_BABY_PLAN_OPTIONS, data.like_baby_plan, 'likeBabyPlan', 'likeBabyPlanIndex')
     form.myValues = data.my_values || data.myValues || data.self_view_text || ''
     form.expectValues = data.expect_values || data.expectValues || data.target_view_text || ''
+    form.otherRequirements = data.other_requirements || data.otherRequirements || ''
     this.setData({
       form,
       myValuesLen: form.myValues.length,
-      expectValuesLen: form.expectValues.length
+      expectValuesLen: form.expectValues.length,
+      otherRequirementsLen: form.otherRequirements.length,
+      intentConfirmation: data.intent_confirmation_required ? (data.intent_profile || null) : null
     })
   },
 
@@ -160,9 +186,79 @@ Page({
     this.setData({
       appearanceDescription,
       appearanceWant,
+      memberStatus: data.member_status || '',
       appearanceDescriptionLen: appearanceDescription.length,
       appearanceWantLen: appearanceWant.length
     })
+  },
+
+  fillAiProfile(data) {
+    if (!data || data.available !== true || !data.presentation) return
+    this.setData({
+      aiProfile: data.presentation,
+      aiConfirmed: data.confirmed === true,
+      aiProfileVersion: Number(data.profile_version || 0),
+      aiCorrectionMode: false,
+      aiCorrectionText: ''
+    })
+  },
+
+  onToggleAiCorrection() {
+    if (this.data.aiFeedbackLoading) return
+    this.setData({ aiCorrectionMode: !this.data.aiCorrectionMode, aiCorrectionText: '' })
+  },
+
+  onAiCorrectionInput(e) {
+    this.setData({ aiCorrectionText: String(e.detail.value || '').slice(0, 200) })
+  },
+
+  async onConfirmAiProfile() {
+    if (this.data.aiFeedbackLoading || !this.data.aiProfile) return
+    this.setData({ aiFeedbackLoading: true })
+    try {
+      const result = await post(API_PATHS.MATCH_AI_PROFILE_CONFIRM, {}, { showError: false })
+      if (result && result.presentation) {
+        this.setData({ aiProfile: result.presentation, aiConfirmed: true, aiProfileVersion: Number(result.profile_version || this.data.aiProfileVersion) })
+      } else {
+        this.setData({ aiConfirmed: true })
+      }
+      wx.showToast({ title: '已记录，谢谢确认', icon: 'success' })
+    } catch (err) {
+      wx.showToast({ title: (err && err.message) || '确认失败，请稍后重试', icon: 'none' })
+    } finally {
+      this.setData({ aiFeedbackLoading: false })
+    }
+  },
+
+  async onSubmitAiCorrection() {
+    const text = String(this.data.aiCorrectionText || '').trim()
+    if (!text) {
+      wx.showToast({ title: '请先填写纠正意见', icon: 'none' })
+      return
+    }
+    if (text.length > 200) {
+      wx.showToast({ title: '纠正意见最多200字', icon: 'none' })
+      return
+    }
+    if (this.data.aiFeedbackLoading) return
+    this.setData({ aiFeedbackLoading: true })
+    try {
+      const result = await post(API_PATHS.MATCH_AI_PROFILE_CORRECT, { correction_text: text }, { showError: false })
+      if (result && result.presentation) {
+        this.setData({
+          aiProfile: result.presentation,
+          aiConfirmed: true,
+          aiProfileVersion: Number(result.profile_version || this.data.aiProfileVersion),
+          aiCorrectionMode: false,
+          aiCorrectionText: ''
+        })
+      }
+      wx.showToast({ title: '已更新AI对你的理解', icon: 'success' })
+    } catch (err) {
+      wx.showToast({ title: (err && err.message) || '提交失败，请稍后重试', icon: 'none' })
+    } finally {
+      this.setData({ aiFeedbackLoading: false })
+    }
   },
 
   startCooldownTimer(cooldownEnd) {
@@ -211,6 +307,11 @@ Page({
     this.setData({ 'form.expectValues': val, expectValuesLen: val.length })
   },
 
+  onOtherRequirementsInput(e) {
+    const val = e.detail.value || ''
+    this.setData({ 'form.otherRequirements': val, otherRequirementsLen: val.length })
+  },
+
   onAppearanceDescriptionInput(e) {
     const val = e.detail.value || ''
     this.setData({ appearanceDescription: val, appearanceDescriptionLen: val.length })
@@ -247,7 +348,55 @@ Page({
       })
       return false
     }
+    if (String(form.otherRequirements || '').trim().length > this.data.otherRequirementsMaxLen) {
+      wx.showToast({ title: '其他补充需求最多500字', icon: 'none' })
+      return false
+    }
     return true
+  },
+
+  async submitApplication() {
+    await post(API_PATHS.MEMBER_APPLICATION_SUBMIT, {}, {
+      showLoading: true,
+      loadingText: '提交审核中...'
+    })
+    if (SUBSCRIBE_TMPL_IDS.length) {
+      wx.requestSubscribeMessage({ tmplIds: SUBSCRIBE_TMPL_IDS, complete: () => {} })
+    }
+    wx.showToast({ title: '申请已提交', icon: 'success' })
+    setTimeout(() => wx.redirectTo({ url: '/pages/member-application/member-application' }), 1000)
+  },
+
+  async onConfirmIntent() {
+    if (!this.data.intentConfirmation || this.data.submitting) return
+    this.setData({ submitting: true })
+    try {
+      await post(API_PATHS.MATCH_INTENT_CONFIRM, {}, { showError: false })
+      const nextAction = nextMatchSettingAction({
+        memberStatus: this.data.memberStatus,
+        intentConfirmationRequired: false
+      })
+      if (nextAction === 'complete') {
+        this.setData({ intentConfirmation: null })
+        wx.showToast({ title: '理解已确认', icon: 'success' })
+        setTimeout(() => wx.navigateBack({ delta: 1 }), 600)
+      } else {
+        await this.submitApplication()
+      }
+    } catch (err) {
+      wx.showModal({
+        title: '提交失败',
+        content: (err && err.message) || '请稍后重试',
+        showCancel: false
+      })
+    } finally {
+      this.setData({ submitting: false })
+    }
+  },
+
+  onEditIntent() {
+    if (this.data.submitting) return
+    this.setData({ intentConfirmation: null })
   },
 
   async onSubmit() {
@@ -255,6 +404,7 @@ Page({
 
     this.setData({ submitting: true })
     const { form } = this.data
+    let stage = 'profile'
 
     try {
       const profile = await put(API_PATHS.USER_PROFILE_UPDATE, {
@@ -264,7 +414,8 @@ Page({
       app.globalData.userInfo = profile
       wx.setStorageSync(STORAGE_KEYS.USER_INFO, profile)
 
-      await post(API_PATHS.MATCH_SETTING, {
+      stage = 'setting'
+      const savedSetting = await post(API_PATHS.MATCH_SETTING, {
         prefer_age: form.preferAge,
         prefer_education: form.preferEducation,
         prefer_height: form.preferHeight,
@@ -272,22 +423,26 @@ Page({
         like_baby_plan: form.likeBabyPlan,
         psych_profile: null,
         my_values: form.myValues.trim(),
-        expect_values: form.expectValues.trim()
+        expect_values: form.expectValues.trim(),
+        other_requirements: form.otherRequirements.trim()
       }, { showLoading: true, loadingText: '保存中...' })
-      await post(API_PATHS.MEMBER_APPLICATION_SUBMIT, {}, {
-        showLoading: true,
-        loadingText: '提交审核中...'
+      const nextAction = nextMatchSettingAction({
+        memberStatus: this.data.memberStatus,
+        intentConfirmationRequired: Boolean(savedSetting && savedSetting.intent_confirmation_required)
       })
-      if (SUBSCRIBE_TMPL_IDS.length) {
-        wx.requestSubscribeMessage({ tmplIds: SUBSCRIBE_TMPL_IDS, complete: () => {} })
+      if (nextAction === 'confirm_intent') {
+        this.setData({ intentConfirmation: savedSetting.intent_profile || null })
+      } else if (nextAction === 'submit_application') {
+        stage = 'application'
+        await this.submitApplication()
+      } else {
+        wx.showToast({ title: '配置已保存', icon: 'success' })
+        setTimeout(() => wx.navigateBack({ delta: 1 }), 600)
       }
-
-      wx.showToast({ title: '申请已提交', icon: 'success' })
-      setTimeout(() => wx.redirectTo({ url: '/pages/member-application/member-application' }), 1000)
     } catch (err) {
       wx.showModal({
         title: '保存失败',
-        content: (err && err.message) || '请稍后重试',
+        content: matchSettingFailureMessage(stage, err),
         showCancel: false
       })
     } finally {

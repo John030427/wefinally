@@ -5,6 +5,8 @@ function safetyPrompt() {
   return '见面请选白天公共场所，提前告知亲友，保管财物，勿轻信任何转账要求。'
 }
 
+const { assertOfflineDatingAllowed } = require('../lib/testFixturePolicy')
+
 function shareToken() {
   return `wf_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`
 }
@@ -39,6 +41,13 @@ async function create(data, wxContext) {
   const loc = normalizeLoc(data)
   const matchUserId = Number(data.match_user_id || data.matchUserId || 0)
   const matchLogId = Number(data.match_log_id || data.matchLogId || 0)
+  const match = matchLogId ? await byId('user_match_log', matchLogId) : null
+  if (!match || Number(match.user_id) !== Number(user.id) || Number(match.match_user_id) !== matchUserId) {
+    throw new Error('仅可从自己的匹配记录创建线下见面报备')
+  }
+  const partner = await byId('user', matchUserId)
+  if (!partner) throw new Error('匹配对象不存在')
+  assertOfflineDatingAllowed(partner)
   const payload = {
     user_id: user.id,
     match_user_id: matchUserId,

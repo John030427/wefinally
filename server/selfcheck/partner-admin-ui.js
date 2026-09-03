@@ -1,0 +1,22 @@
+const assert = require('assert')
+const fs = require('fs')
+const path = require('path')
+
+const html = fs.readFileSync(path.resolve(__dirname, '../public/admin/index.html'), 'utf8')
+const block = html.slice(html.indexOf('async function pgPartners'), html.indexOf('async function pgService'))
+
+assert.ok(html.includes('合伙人审核与管理'))
+assert.ok(block.includes("memberApi('/admin/partner-candidates"))
+assert.ok(block.includes("memberApi('/admin/partners"))
+assert.ok(block.includes('partnerRosterForm'))
+assert.ok(block.includes('partnerImportRows'))
+assert.ok(block.includes('openPartnerCandidate'))
+for (const action of ['approve', 'reject', 'suspend', 'resume', 'unbind', 'revoke']) assert.ok(block.includes(action))
+assert.ok(block.includes("'/admin/partner-candidates/'+id+'/'+action"))
+assert.ok(block.includes("'/admin/partners/'+id+'/'+action"))
+assert.ok(block.includes('partnerActionReason'))
+assert.ok(!block.includes('prompt('))
+assert.ok(block.includes('phone_masked'))
+assert.ok(!block.includes('p.phone ||'))
+
+console.log('PASS admin partner review and roster UI contract')

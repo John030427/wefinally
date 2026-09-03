@@ -1,0 +1,122 @@
+{
+  "adapted": {
+    "ok": true,
+    "status": "ADAPTED",
+    "source_id": "speed-dating-bhargava-dataverse",
+    "dataset_version": "speed-dating-native-v1",
+    "adapter_version": "bhargava-dataverse-v1",
+    "license_status": "APPROVED_EVAL_ONLY",
+    "license_name": "CC0 1.0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "license_confidence": "high",
+    "provenance": {
+      "publisher": "Harvard Dataverse",
+      "persistent_id": "doi:10.7910/DVN/27893",
+      "file_id": 2509001,
+      "file_name": "ReplicationData_Stata12.tab",
+      "authors": [
+        "Bhargava, Saurabh",
+        "Fisman, Ray"
+      ],
+      "citation": "Bhargava, Saurabh; Fisman, Ray, 2014, \"Replication data for: Contrast Effects in Sequential Decisions: Evidence from Speed Dating\", https://doi.org/10.7910/DVN/27893, Harvard Dataverse, V1",
+      "download_url": "https://dataverse.harvard.edu/api/access/datafile/2509001",
+      "note": "Engineering governance audit — not formal legal advice. Dataset-level CC0 on Dataverse; underlying experiment subjects remain real people (PII risk medium)."
+    },
+    "raw_tab_sha256": "8616BD64ADE62C07D8668229C926761ED7A2F59A3F97B8064BD69EFC3E07F81C",
+    "native_csv_sha256": "EFCF36B35604BACAD68DAE8F4D7D9E2FB68A568F2A02AB1966D0D7471F515313",
+    "schema_sha256": "0791444D6BD457A301EC92E903334C739820A270AC38843EBCAF5EEBEAA5719A",
+    "rows_out": 7674,
+    "missing_reverse_dropped": 0,
+    "derived_fields": [
+      "dec_o",
+      "match"
+    ],
+    "omitted_fields": [
+      "attr"
+    ],
+    "omit_reason": {
+      "attr": "POST_OUTCOME_FORBIDDEN — participant post-date attractiveness rating"
+    },
+    "production_model_training_allowed": false,
+    "rag_allowed": false,
+    "use_for_eval": true,
+    "use_for_dev": true,
+    "use_for_training": false,
+    "generated_at": "2026-08-21T09:32:10.270Z",
+    "local_paths": {
+      "raw_tab": "D:\\wefinal\\.worktrees\\wefinally-match-v16\\datasets\\wefinally\\raw\\speed-dating-bhargava-dataverse\\ReplicationData_Stata12.tab",
+      "native_csv": "D:\\wefinal\\.worktrees\\wefinally-match-v16\\datasets\\wefinally\\raw\\speed-dating\\speed-dating-native-iid-pid.csv",
+      "raw_committed": false
+    }
+  },
+  "audit_status": "NATIVE_SCHEMA_AVAILABLE",
+  "gates": {
+    "NATIVE_SCHEMA_AVAILABLE": true,
+    "NATIVE_ROWS_VALID": true,
+    "REVERSE_PAIRING_VALID": true,
+    "TRUE_RECIPROCAL_FEATURES_AVAILABLE": true,
+    "TRUE_RECIPROCAL_MODEL_READY": false,
+    "TRUE_RECIPROCAL_AVAILABLE": true
+  },
+  "identity": {
+    "unique_users": 474,
+    "directed_interactions": 7674,
+    "unique_physical_pairs": 3837,
+    "duplicate_exact": 0,
+    "feature_conflict_duplicates": 0,
+    "outcome_conflict_duplicates": 0,
+    "missing_reverse": 0,
+    "reverse_available": true
+  },
+  "candidate_query_stats": {
+    "n_queries": 474,
+    "candidate_count": {
+      "min": 9,
+      "p10": 10,
+      "median": 18,
+      "mean": 16.19,
+      "p90": 21,
+      "max": 22
+    },
+    "queries_ge2": 474,
+    "queries_ge3": 474,
+    "queries_ge5": 474,
+    "queries_ge10": 436
+  },
+  "split_status": "GROUPED_BY_WAVE",
+  "fresh_sealed_status": "CREATED_UNOPENED",
+  "negative_control_smoke": {
+    "outcome_positive_rate_mutual": 0.1706,
+    "n_pairs": 3353,
+    "controls": {
+      "ALL_NEGATIVE": {
+        "auroc": 0.5,
+        "average_precision": 0.1706,
+        "n": 3353,
+        "positive_rate": 0.1706
+      },
+      "ALL_POSITIVE": {
+        "auroc": 0.5,
+        "average_precision": 0.1706,
+        "n": 3353,
+        "positive_rate": 0.1706
+      },
+      "RANDOM": {
+        "auroc": 0.5034,
+        "average_precision": 0.1721,
+        "n": 3353,
+        "positive_rate": 0.1706
+      },
+      "DETERMINISTIC_BASELINE_SMOKE": {
+        "auroc": 0.5,
+        "average_precision": 0.1706,
+        "n": 3353,
+        "positive_rate": 0.1706
+      }
+    },
+    "note": "Smoke only — not a model tournament",
+    "sealed_pairs_excluded": 484,
+    "sealed_keys_fingerprint": "cd4e5585524e68834559ceaad73f4a2c29b4c5e983a1fc6c1c66699b7a047548"
+  },
+  "generated_at": "2026-08-21T09:32:10.454Z"
+}

@@ -3,6 +3,7 @@ const { API_PATHS } = require('../../utils/constants')
 const { buildFieldExplainItems, buildLocalMatchReport } = require('../../utils/matchReport')
 const { resolveTotalScorePercent } = require('../../utils/matchScore')
 const { buildMatchSummary } = require('../../utils/productExperience')
+const { presentAiMatchReport } = require('../../utils/aiMatchReportPresentation')
 const {
   formatDateOnly,
   getCompatibilityColor,
@@ -46,7 +47,7 @@ function buildReportStatusText(status) {
 function buildReportErrorText(value) {
   const message = String(value || '').toLowerCase()
   if (!message) return 'AI服务暂时不可用'
-  if (message.includes('missing minimax_api_key') || message.includes('disabled')) return 'AI服务配置尚未完成'
+  if (message.includes('missing deepseek_api_key') || message.includes('disabled')) return 'AI服务配置尚未完成'
   if (message.includes('timeout') || message.includes('timed out')) return 'AI服务响应超时'
   if (message.includes('429') || message.includes('rate')) return 'AI服务请求繁忙'
   if (message.includes('401') || message.includes('403')) return 'AI服务鉴权失败'
@@ -73,6 +74,12 @@ function shortDate(value) {
   return formatDateOnly(value)
 }
 
+function nullableNumber(value) {
+  if (value === null || value === undefined || value === '') return null
+  const number = Number(value)
+  return Number.isFinite(number) ? number : null
+}
+
 function selectionMap(items) {
   const map = {}
   ;(items || []).forEach((item) => { map[item] = true })
@@ -86,6 +93,7 @@ Page({
     matchId: '',
     autoReportPending: false,
     detail: null,
+    reportPresentation: { sections: [], summary: '', disclaimer: 'AI 生成内容，仅供参考' },
     compatibilityScore: 0,
     totalScore: 0,
     totalScorePercent: 0,
@@ -210,6 +218,7 @@ Page({
         babyPlan: detail.baby_plan || '--',
         circleName: detail.circle_name || '--',
         matchedUserId: detail.matched_user_id || detail.match_user_id || 0,
+        matchOnlyFixture: detail.match_only_fixture === true,
         matchType: detail.match_type || detail.matchType || '',
         matchDate: shortDate(detail.match_date || detail.matchDate || ''),
         totalScore: Math.round(Number(totalScore) || 0),
@@ -227,6 +236,22 @@ Page({
         psychText: buildPsychText((scoreDetail || {}).side
           ? (scoreDetail || {}).side.psych_score
           : null),
+        semanticScore: nullableNumber(scoreDetail && scoreDetail.mutual_semantic_score) === null
+          ? null : Math.round(nullableNumber(scoreDetail.mutual_semantic_score)),
+        aToBSemanticScore: nullableNumber(scoreDetail && scoreDetail.a_to_b_semantic_score) === null
+          ? null : Math.round(nullableNumber(scoreDetail.a_to_b_semantic_score)),
+        bToASemanticScore: nullableNumber(scoreDetail && scoreDetail.b_to_a_semantic_score) === null
+          ? null : Math.round(nullableNumber(scoreDetail.b_to_a_semantic_score)),
+        semanticStrengths: Array.isArray(scoreDetail && scoreDetail.semantic_strengths)
+          ? scoreDetail.semantic_strengths : [],
+        asymmetricRisks: Array.isArray(scoreDetail && scoreDetail.asymmetric_risks)
+          ? scoreDetail.asymmetric_risks : [],
+        confirmationQuestions: Array.isArray(scoreDetail && scoreDetail.confirmation_questions)
+          ? scoreDetail.confirmation_questions : [],
+        dataCompleteness: nullableNumber(scoreDetail && scoreDetail.data_completeness) === null
+          ? null : Math.round(nullableNumber(scoreDetail.data_completeness) * 100),
+        semanticConfidence: nullableNumber(scoreDetail && scoreDetail.semantic_confidence) === null
+          ? null : Math.round(nullableNumber(scoreDetail.semantic_confidence) * 100),
         aiReportText,
         aiReport: detail.ai_report || detail.aiReport || null,
         localReportText,
@@ -245,6 +270,14 @@ Page({
         lockMsg: detail.message || '开通 VIP 查看完整匹配详情'
       }
 
+      const aiReportPayload = normalized.aiReport
+      const reportPresentation = aiReportPayload
+        ? presentAiMatchReport(aiReportPayload, {
+          forYou: scoreDetail && (scoreDetail.a_to_b_reasons || scoreDetail.for_you),
+          forThem: scoreDetail && (scoreDetail.b_to_a_reasons || scoreDetail.for_them)
+        })
+        : { sections: [], summary: '' }
+
       const numScore = hasScore ? Number(score) : 0
       const numTotalScore = hasTotalScore ? normalized.totalScore : 0
 
@@ -252,6 +285,7 @@ Page({
         pageState: 'success',
         autoReportPending: false,
         detail: normalized,
+        reportPresentation,
         totalScore: numTotalScore,
         totalScorePercent: hasTotalScore ? normalized.totalScorePercent : 0,
         totalScoreText: hasTotalScore ? normalized.totalScoreText : '',

@@ -19,7 +19,36 @@ const createdInvitation = createReminderJob({
   now
 })
 assert.equal(createdInvitation.idempotency_key, 'date:10:3:invitation_created')
-assert.equal(createdInvitation.scheduled_at.toISOString(), now.toISOString())
+assert.equal(createdInvitation.scheduled_at.toISOString(), '2026-07-13T00:00:00.000Z')
+assert.equal(createReminderJob({
+  coordinationId: 11,
+  userId: 4,
+  stage: 'invitation_created',
+  deadlineAt: '2026-07-12T12:00:00Z',
+  now
+}), null)
+
+function addHours(value, hours) {
+  return new Date(new Date(value).getTime() + hours * 60 * 60 * 1000)
+}
+const contractNow = new Date('2026-09-03T12:00:00.000Z')
+const contractDeadline = addHours(contractNow, 48)
+const contractJob = createReminderJob({
+  coordinationId: 88,
+  userId: 2,
+  stage: 'invitation_created',
+  deadlineAt: contractDeadline,
+  now: contractNow
+})
+assert.equal(contractJob.scheduled_at.toISOString(), addHours(contractNow, 24).toISOString())
+assert.equal(contractJob.deadline_at.toISOString(), contractDeadline.toISOString())
+assert.equal(createReminderJob({
+  coordinationId: 89,
+  userId: 2,
+  stage: 'invitation_created',
+  deadlineAt: addHours(contractNow, 24),
+  now: contractNow
+}), null)
 
 assert.equal(typeof processNotificationJobs, 'function')
 
@@ -63,7 +92,7 @@ async function notificationProcessorChecks() {
     updateByDoc: async (name, row, data) => Object.assign(row, data)
   }
   const result = await processNotificationJobs({ deps, limit: 10, now: new Date('2026-07-13T00:00:00Z') })
-  assert.deepEqual(result, { processed: 2, sent: 1, expired: 1, waiting: 0, failed: 0 })
+  assert.deepEqual(result, { processed: 2, sent: 1, expired: 1, waiting: 0, failed: 0, skipped: 0 })
   assert.equal(tables.agent_notification_job[0].status, 'sent')
   assert.equal(tables.agent_notification_job[1].status, 'expired')
   assert.equal(tables.agent_session.length, 1)
@@ -76,6 +105,8 @@ async function notificationProcessorChecks() {
   const apiIndex = fs.readFileSync(path.join(root, 'miniprogram/cloudfunctions/api/index.js'), 'utf8')
   const worker = fs.readFileSync(path.join(root, 'miniprogram/cloudfunctions/report-worker/index.js'), 'utf8')
   assert(apiIndex.includes("case 'processWorkerTasks':"))
+  assert(apiIndex.includes('processCoordinationTasks'))
+  assert(apiIndex.includes('coordination_task_limit'))
   assert(worker.includes("action: 'processWorkerTasks'"))
 }
 

@@ -1,12 +1,13 @@
 const https = require('https')
 const { sanitizeOutput } = require('./safety')
+const cloudbaseAi = require('../lib/cloudbaseAi')
 
-const PROVIDERS = Object.freeze({
-  minimax: {
-    protocol: 'anthropic',
-    key: 'MINIMAX_API_KEY',
-    baseURL: 'https://api.minimaxi.com/anthropic',
-    model: 'MiniMax-M3'
+const LEGACY_PROVIDERS = Object.freeze({
+  deepseek: {
+    protocol: 'openai',
+    key: 'DEEPSEEK_API_KEY',
+    baseURL: 'https://api.deepseek.com',
+    model: 'deepseek-chat'
   }
 })
 
@@ -17,36 +18,36 @@ function envText(env, key) {
 }
 
 function getProviderConfig(env) {
-  const source = env || process.env
-  const provider = 'minimax'
-  const defaults = PROVIDERS[provider]
-  const prefix = provider.toUpperCase()
-  const apiKey = envText(source, defaults.key)
-  const enabledValue = envText(source, 'AGENT_LLM_ENABLED').toLowerCase()
+  const runtime = cloudbaseAi.getAiRuntimeConfig(env)
+  if (runtime.provider === 'deepseek') {
+    const defaults = LEGACY_PROVIDERS.deepseek
+    const prefix = 'DEEPSEEK'
+    const apiKey = runtime.apiKey || envText(env, defaults.key) || envText(env, 'LLM_API_KEY')
+    return {
+      provider: 'deepseek',
+      protocol: defaults.protocol,
+      apiKey,
+      baseURL: runtime.baseURL || (envText(env, `${prefix}_BASE_URL`) || envText(env, 'LLM_BASE_URL') || defaults.baseURL).replace(/\/+$/, ''),
+      model: runtime.model || envText(env, `${prefix}_MODEL`) || envText(env, 'LLM_MODEL') || defaults.model,
+      timeoutMs: runtime.timeoutMs || Math.min(Math.max(Number(envText(env, `${prefix}_TIMEOUT_MS`) || envText(env, 'LLM_TIMEOUT_MS')) || 20000, 1000), 30000),
+      enabled: runtime.enabled
+    }
+  }
   return {
-    provider,
-    protocol: defaults.protocol,
-    apiKey,
-    baseURL: (envText(source, `${prefix}_BASE_URL`) || defaults.baseURL).replace(/\/+$/, ''),
-    model: envText(source, `${prefix}_MODEL`) || defaults.model,
-    timeoutMs: Math.min(Math.max(Number(envText(source, `${prefix}_TIMEOUT_MS`)) || 10000, 1000), 12000),
-    enabled: Boolean(apiKey) && !['false', '0', 'off', 'no'].includes(enabledValue)
+    provider: runtime.provider,
+    protocol: runtime.protocol,
+    group: runtime.group,
+    model: runtime.model,
+    enabled: runtime.enabled,
+    timeoutMs: runtime.timeoutMs
   }
 }
 
 function requestBody(config, input) {
   const prompt = String(input && input.prompt || '').slice(0, 6000)
-  if (config.protocol === 'anthropic') {
-    return {
-      model: config.model,
-      system: DECISION_SYSTEM_PROMPT,
-      max_tokens: 900,
-      temperature: 0.2,
-      messages: [{ role: 'user', content: [{ type: 'text', text: prompt }] }]
-    }
-  }
   return {
     model: config.model,
+    max_tokens: 900,
     temperature: 0.2,
     response_format: { type: 'json_object' },
     messages: [
@@ -57,8 +58,8 @@ function requestBody(config, input) {
 }
 
 function providerEndpoint(config) {
-  return config.protocol === 'anthropic'
-    ? `${config.baseURL}/v1/messages`
+  return /\/chat\/completions$/.test(config.baseURL)
+    ? config.baseURL
     : `${config.baseURL}/chat/completions`
 }
 
@@ -97,12 +98,24 @@ function requestProvider({ config, input }) {
   })
 }
 
+async function requestCloudbaseProvider({ config, input, env }) {
+  const body = requestBody(config, input)
+  const result = await cloudbaseAi.generateText({
+    env,
+    config,
+    messages: body.messages,
+    maxTokens: body.max_tokens,
+    temperature: body.temperature,
+    responseFormat: body.response_format
+  })
+  return {
+    choices: [{ message: { content: result.text } }],
+    metadata: result.metadata
+  }
+}
+
 function contentFromResponse(response) {
   if (response && response.decision) return response.decision
-  const anthropic = response && Array.isArray(response.content)
-    ? response.content.filter((item) => item && item.type === 'text').map((item) => item.text).join('\n')
-    : ''
-  if (anthropic) return anthropic
   return response && response.choices && response.choices[0] && response.choices[0].message
     ? response.choices[0].message.content
     : ''
@@ -156,10 +169,10 @@ function parseDecisionContent(content) {
   throw new Error('provider returned invalid decision JSON')
 }
 
-function normalizeDecision(content, provider) {
+function normalizeDecision(content, provider, metadata) {
   const decision = parseDecisionContent(content)
   const safe = sanitizeOutput(decision && typeof decision === 'object' ? decision : {})
-  return {
+  return Object.assign({
     intent: String(safe.intent || safe.action || 'general').slice(0, 64),
     replyDraft: String(safe.reply_draft || safe.message || '').slice(0, 1200),
     requestedTools: Array.isArray(safe.requested_tools) ? safe.requested_tools.map((item) => String(item).slice(0, 80)).slice(0, 5) : [],
@@ -175,7 +188,7 @@ function normalizeDecision(content, provider) {
     suggestedActions: Array.isArray(safe.suggested_actions) ? safe.suggested_actions.map((item) => String(item).slice(0, 120)).slice(0, 5) : [],
     provider,
     fallback: false
-  }
+  }, metadata ? { aiMetadata: metadata } : {})
 }
 
 function providerErrorCode(error) {
@@ -196,7 +209,7 @@ async function generateDecision(input, dependencies) {
     }
     return {
       intent: 'provider_unavailable',
-      replyDraft: '我暂时无法生成建议，请稍后再试或联系人工客服。',
+      replyDraft: 'AI服务暂时繁忙，请稍后再试。',
       requestedTools: [],
       toolRequest: null,
       riskLevel: 'safe',
@@ -206,18 +219,23 @@ async function generateDecision(input, dependencies) {
       errorCode
     }
   }
-  if (!config.enabled || !config.apiKey) return fallback('provider_disabled')
+  if (!config.enabled) return fallback('provider_disabled')
+  if (config.provider === 'deepseek' && !config.apiKey) return fallback('provider_disabled')
   try {
-    const response = await (deps.request || requestProvider)({ config, input: input || {} })
-    return normalizeDecision(contentFromResponse(response), config.provider)
+    const response = config.protocol === 'cloudbase'
+      ? await (deps.requestCloudbase || requestCloudbaseProvider)({ config, input: input || {}, env: deps.env })
+      : await (deps.request || requestProvider)({ config, input: input || {} })
+    const metadata = response && response.metadata ? response.metadata : null
+    return normalizeDecision(contentFromResponse(response), config.provider, metadata)
   } catch (err) {
     return fallback(providerErrorCode(err))
   }
 }
 
 module.exports = {
-  PROVIDERS,
+  LEGACY_PROVIDERS,
   generateDecision,
   getProviderConfig,
-  requestBody
+  requestBody,
+  requestCloudbaseProvider
 }

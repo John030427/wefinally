@@ -28,8 +28,8 @@
 <body>
   <div class="card">
     <h1>合伙人注册</h1>
-    <p class="sub">注册后默认冻结，需超级管理员审核激活后方可推广分润。<br/>此页面不对普通用户开放。</p>
-    <div class="notice">每位合伙人绑定唯一职业圈层，注册前请确认圈层未被认领。</div>
+    <p class="sub">填写基本信息提交后，等待管理员审核即可登录。<br/>注册成功不会立刻开通权限。</p>
+    <div class="notice">每位合伙人绑定唯一职业圈层。提交后状态为：申请已提交 → 管理员审核 → 可登录。</div>
     <div id="errBox" class="error"></div>
     <div id="okBox" class="success"></div>
     <form id="regForm">
@@ -104,7 +104,7 @@
         const json = await res.json();
         if (json.code !== 0 && json.code !== 200) throw new Error(json.message || '注册失败');
         const data = json.data || {};
-        showOk('注册成功！推广码：' + (data.promote_code || '--') + '。请等待管理员审核激活后登录。');
+        showOk('申请已提交。管理员审核通过后即可登录使用。');
         document.getElementById('regForm').reset();
       } catch (err) {
         showErr(err.message || '注册失败');

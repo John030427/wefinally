@@ -1,0 +1,40 @@
+{
+  "run_id": "ai-interaction-waiting-ux-2026-08-21-gate-fix",
+  "base_branch": "experiment/match-final-staging-v1.8",
+  "base_commit": "bda697189f86f1ccc54b91430b50526fc6cb607a",
+  "branch": "feature/ai-interaction-waiting-ux",
+  "final_commit": "a4ad154baf5925b9c03ddfbc0d1adfcda6478495",
+  "surfaces_found": 7,
+  "surfaces_changed": ["miniprogram/pages/chat", "miniprogram/utils/aiChatWaiting.js"],
+  "shared_component_used": false,
+  "helper_module": "miniprogram/utils/aiChatWaiting.js",
+  "streaming_enabled": false,
+  "loader_completion_gate": "non_empty_content_OR_valid_normalized_patchPreview_plus_min_display_no_generic_fallback",
+  "generic_success_fallback_removed": true,
+  "retry_supported": true,
+  "double_send_guard": true,
+  "timer_cleanup": true,
+  "patch_regression": "PASS",
+  "external_skill_used": false,
+  "dependencies_added": false,
+  "tests": {
+    "ai-chat-waiting-ux": "PASS",
+    "completion_gate_cases": [
+      "EMPTY_REPLY_NO_PATCH_REJECTED",
+      "MALFORMED_REPLY_NO_PATCH_REJECTED",
+      "VALID_TEXT_ACCEPTED",
+      "VALID_PATCH_ONLY_ACCEPTED",
+      "PLATFORM_EMPTY_PRIMARY_VALID_LEGACY_ACCEPTED",
+      "PLATFORM_EMPTY_PRIMARY_EMPTY_LEGACY_REJECTED"
+    ],
+    "agent-ui": "PASS",
+    "miniprogram-source-syntax": "PASS",
+    "date-application-patch": "PASS",
+    "e2e:wefinally": "PASS_14_14"
+  },
+  "deploy_performed": false,
+  "wechat_upload_performed": false,
+  "visual_screenshot": "MANUAL_REQUIRED",
+  "worktree": "D:/wefinal/.worktrees/wefinally-ai-waiting-ux",
+  "generated_at": "2026-08-21T12:45:00.000Z"
+}

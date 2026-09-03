@@ -11,6 +11,32 @@ function orderNo() {
   return `WF${Date.now()}${Math.floor(Math.random() * 100000).toString().padStart(5, '0')}`
 }
 
+function ledgerDocId(idempotencyKey) {
+  return `commission_${String(idempotencyKey || '').replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 100)}`
+}
+
+function buildCommissionLedgerEntry(order, options = {}) {
+  const partnerId = Number(order && order.partner_id || 0)
+  const amount = Number(order && order.partner_commission || 0)
+  if (partnerId <= 0 || !Number.isFinite(amount) || amount <= 0) return null
+  const direction = options.direction === 'debit' ? 'debit' : 'credit'
+  const reference = String(options.reference || order.order_no || '').trim()
+  if (!reference) return null
+  const idempotencyKey = `${direction}:${reference}`
+  return {
+    _id: ledgerDocId(idempotencyKey),
+    idempotency_key: idempotencyKey,
+    partner_id: partnerId,
+    user_id: Number(order.user_id || 0),
+    order_no: String(order.order_no || ''),
+    entry_type: direction === 'debit' ? 'refund_reversal' : 'payment_success',
+    direction,
+    amount: Math.round(amount * 100) / 100,
+    source: direction === 'debit' ? 'wechatpay_refund' : 'wechatpay_success',
+    event_time: options.eventTime || new Date()
+  }
+}
+
 function paidAtFrom(transaction, now) {
   if (transaction && transaction.success_time) {
     const parsed = new Date(transaction.success_time)
@@ -79,7 +105,15 @@ function publicOrder(order) {
 }
 
 function createVipOrderService(deps = cloudDeps()) {
-  const { first, list, addWithId, updateByDoc, col, _, now } = deps
+  const { first, list, addWithId, updateByDoc, col, withCollection, _, now } = deps
+
+  async function ensureCommissionLedger(order, options = {}) {
+    const entry = buildCommissionLedgerEntry(order, options)
+    if (!entry || typeof withCollection !== 'function') return entry
+    const { _id, ...data } = entry
+    await withCollection('partner_commission_ledger', () => col('partner_commission_ledger').doc(_id).set({ data }))
+    return entry
+  }
 
   async function createPendingVipOrder(user, options = {}) {
     return addWithId('user_order', {
@@ -198,6 +232,7 @@ function createVipOrderService(deps = cloudDeps()) {
 
     const latestOrder = await first('user_order', { order_no: transaction.out_trade_no })
     if (Number(latestOrder.vip_granted || 0) === 1) {
+      await ensureCommissionLedger(latestOrder, { eventTime: paidAt })
       return { paid: true, idempotent: true, order: latestOrder }
     }
 
@@ -221,6 +256,7 @@ function createVipOrderService(deps = cloudDeps()) {
       vip_expire_time: expire,
       vip_grant_skipped: isUpdated(userUpdate) ? 0 : 1
     })
+    await ensureCommissionLedger(latestOrder, { eventTime: paidAt })
 
     return { paid: true, idempotent: !isUpdated(userUpdate), order: latestOrder, vip_expire_time: expire }
   }
@@ -241,5 +277,6 @@ module.exports = {
   nextVipExpire,
   validatePaidTransaction,
   publicOrder,
-  normalizeInvoiceInput
+  normalizeInvoiceInput,
+  buildCommissionLedgerEntry
 }

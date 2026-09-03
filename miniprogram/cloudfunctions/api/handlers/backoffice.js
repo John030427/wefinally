@@ -7,17 +7,54 @@ const { reviewMemberApplication } = require('./member')
 const { changeInternalTestVip } = require('./internalTestVip')
 const { changeAbMatchFixture } = require('./abMatchFixture')
 const { createAgentBackofficeService } = require('../agent/backofficeService')
+const { createUserBackofficeService, dispatchUserBackofficeRoute } = require('../agent/userBackofficeService')
+const { buildPartnerDashboard } = require('../lib/partnerDashboardPolicy')
+const { createReferralToken, createReferralScene } = require('../lib/partnerReferralPolicy')
+const { createPartnerAdminService } = require('../lib/partnerAdminService')
+const { createControlledDateScenarioService } = require('../agent/controlledDateScenarioService')
+const { httpMethod, httpPath, queryParameters } = require('../lib/httpEvent')
+const {
+  projectPartnerApplicationItem
+} = require('../lib/privacyMask')
+const {
+  requireStoredAdminRole,
+  authorizeCloudAdminRoute,
+  authorizeCloudAdminResponse
+} = require('../lib/cloudBackofficeRbac')
 
 const AGENT_BACKOFFICE_PATHS = Object.freeze({
   tickets: '/api/admin/agent/tickets',
+  conversations: '/api/admin/agent/conversations',
   knowledge: '/api/admin/knowledge-articles',
   coordinations: '/api/admin/date-coordinations'
 })
 
 let agentBackoffice
+let userBackoffice
+let partnerAdminBackoffice
+let controlledDateScenarios
+
+function controlledDateScenarioService() {
+  if (!controlledDateScenarios) controlledDateScenarios = createControlledDateScenarioService(db)
+  return controlledDateScenarios
+}
+
+function partnerAdminService() {
+  if (!partnerAdminBackoffice) {
+    partnerAdminBackoffice = createPartnerAdminService(db, {
+      phoneSecret: process.env.PARTNER_PHONE_LOOKUP_SECRET || process.env.PARTNER_REFERRAL_SECRET || ''
+    })
+  }
+  return partnerAdminBackoffice
+}
+
+function userService() {
+  if (!userBackoffice) userBackoffice = createUserBackofficeService(db)
+  return userBackoffice
+}
 
 function agentService() {
-  if (!agentBackoffice) agentBackoffice = createAgentBackofficeService(db)
+  if (!agentBackoffice) agentBackoffice = createAgentBackofficeService(db, { userBackoffice: userService() })
   return agentBackoffice
 }
 
@@ -70,7 +107,7 @@ async function actorFrom(event, requiredRole) {
   const row = await db.byId(collection, actor.id)
   if (!row || Number(row.status) !== 1) throw new Error('后台账号已停用')
   return Object.assign({}, actor, {
-    admin_role: actor.role === 'admin' ? (row.role || 'super_admin') : ''
+    admin_role: actor.role === 'admin' ? requireStoredAdminRole(row.role) : ''
   })
 }
 
@@ -80,9 +117,15 @@ async function loginPartner(body) {
   if (!partner || Number(partner.status) !== 1 || !bcrypt.compareSync(String(body.password || ''), partner.password || '')) {
     throw new Error('账号或密码错误')
   }
+  const { maskPhone } = require('../lib/privacyMask')
   return {
     token: signBackofficeToken({ role: 'partner', id: partner.id }, secret()),
-    partner: { id: partner.id, name: partner.name, phone: partner.phone, promote_code: partner.promote_code }
+    partner: {
+      id: partner.id,
+      name: partner.name,
+      phone_masked: maskPhone(partner.phone),
+      promote_code: partner.promote_code
+    }
   }
 }
 
@@ -92,9 +135,10 @@ async function loginAdmin(body) {
   if (!admin || Number(admin.status) !== 1 || !bcrypt.compareSync(String(body.password || ''), admin.password || '')) {
     throw new Error('账号或密码错误')
   }
+  const adminRole = requireStoredAdminRole(admin.role)
   return {
     token: signBackofficeToken({ role: 'admin', id: admin.id }, secret()),
-    admin: { id: admin.id, username: admin.username, role: admin.role || 'super_admin' }
+    admin: { id: admin.id, username: admin.username, role: adminRole }
   }
 }
 
@@ -106,6 +150,11 @@ async function applicationList(actor, status) {
   return Promise.all(rows.map(async (application) => {
     const user = await db.byId('user', application.user_id)
     const partner = await db.byId('partner', application.assigned_partner_id)
+    if (actor.role === 'partner') {
+      return projectPartnerApplicationItem(application, user, {
+        partner_name: partner ? partner.name : ''
+      })
+    }
     const fixture = user ? await db.first('user', {
       ab_test_owner_user_id: user.id,
       is_test_fixture: 1,
@@ -137,27 +186,112 @@ async function applicationList(actor, status) {
 async function inviteAssets(actor) {
   const partner = await db.byId('partner', actor.id)
   const code = partner && partner.promote_code || ''
+  let referral = code
+  let referralScene = ''
+  if (process.env.PARTNER_REFERRAL_SECRET) {
+    try {
+      referral = createReferralToken(actor.id)
+      referralScene = createReferralScene(actor.id)
+    } catch (err) {
+      referral = code
+    }
+  }
   let qrcodeBase64 = ''
-  let qrcodeError = ''
-  try {
-    const result = await cloud.openapi.wxacode.getUnlimited({
-      scene: code,
-      page: 'pages/register/register',
-      checkPath: false,
-      envVersion: process.env.MINIPROGRAM_ENV_VERSION || 'trial'
-    })
-    const buffer = result && (result.buffer || result)
-    if (Buffer.isBuffer(buffer)) qrcodeBase64 = buffer.toString('base64')
-  } catch (err) {
-    qrcodeError = err.message || '小程序码生成失败'
+  let qrcodeError = referralScene ? '' : '合伙人归因签名密钥未配置'
+  if (referralScene) {
+    try {
+      const result = await cloud.openapi.wxacode.getUnlimited({
+        scene: referralScene,
+        page: 'pages/member-application/member-application',
+        checkPath: false,
+        envVersion: process.env.MINIPROGRAM_ENV_VERSION || 'trial'
+      })
+      const buffer = result && (result.buffer || result)
+      if (Buffer.isBuffer(buffer)) qrcodeBase64 = buffer.toString('base64')
+    } catch (err) {
+      qrcodeError = err.message || '小程序码生成失败'
+    }
   }
   return {
     promote_code: code,
-    miniprogram_path: `/pages/register/register?promote_code=${encodeURIComponent(code)}`,
-    scene: code,
+    attribution_token: referral === code ? '' : referral,
+    miniprogram_path: `/pages/member-application/member-application?promote_code=${encodeURIComponent(referral)}`,
+    scene: referralScene,
     qrcode_base64: qrcodeBase64,
     qrcode_error: qrcodeError
   }
+}
+
+async function recordShareEvent(body, actor) {
+  if (!actor || actor.role !== 'partner') throw new Error('无权记录分享行为')
+  const channel = String(body.channel || 'link').trim().slice(0, 32) || 'link'
+  const allowedChannels = new Set(['link', 'code', 'qrcode', 'wechat'])
+  const partner = await db.byId('partner', actor.id)
+  if (!partner || Number(partner.status) !== 1) throw new Error('后台账号已停用')
+  const normalizedChannel = allowedChannels.has(channel) ? channel : 'link'
+  await db.addWithId('partner_share_event', {
+    partner_id: Number(actor.id),
+    event_type: 'share_trigger',
+    channel: normalizedChannel,
+    source: 'partner_dashboard'
+  }, 'partner_share_event')
+  return { recorded: true, channel: normalizedChannel }
+}
+
+function miniPartnerToken(data = {}) {
+  return String(data.__partner_token || data.partner_token || data.__token || '').trim()
+}
+
+async function actorFromMiniProgram(data) {
+  const actor = verifyBackofficeToken(miniPartnerToken(data), secret())
+  if (actor.role !== 'partner') throw new Error('仅合伙人可以使用邀请功能')
+  const partner = await db.byId('partner', actor.id)
+  if (!partner || Number(partner.status) !== 1) throw new Error('后台账号已停用')
+  if (Number(actor.binding_version) > 0 && Number(actor.binding_version) !== Number(partner.binding_version || 1)) {
+    throw new Error('合伙人会话已失效，请重新进入工作台')
+  }
+  return actor
+}
+
+async function partnerLoginForMiniProgram(data) {
+  return loginPartner(data)
+}
+
+async function partnerInviteAssetsForMiniProgram(data) {
+  return inviteAssets(await actorFromMiniProgram(data))
+}
+
+async function recordShareEventForMiniProgram(data) {
+  return recordShareEvent(data, await actorFromMiniProgram(data))
+}
+
+async function partnerDashboardForMiniProgram(data) {
+  return partnerDashboard(await actorFromMiniProgram(data))
+}
+
+async function partnerDashboard(actor) {
+  const partner = await db.byId('partner', actor.id)
+  if (!partner) throw new Error('合伙人不存在')
+  async function safeList(name, query, limit) {
+    try {
+      return await db.list(name, query || {}, limit || 5000)
+    } catch (err) {
+      return []
+    }
+  }
+  const partnerId = Number(actor.id)
+  const [users, orders, withdrawals, attributions, shareEvents, ledger, rules, daily] = await Promise.all([
+    safeList('user', { promote_partner_id: partnerId }, 5000),
+    safeList('user_order', { partner_id: partnerId }, 5000),
+    safeList('partner_withdraw', { partner_id: partnerId }, 5000),
+    safeList('partner_referral_attribution', { partner_id: partnerId }, 5000),
+    safeList('partner_share_event', { partner_id: partnerId }, 5000),
+    safeList('partner_commission_ledger', { partner_id: partnerId }, 5000),
+    safeList('partner_commission_rule', { status: 1 }, 20),
+    safeList('partner_dashboard_daily', { partner_id: partnerId }, 60)
+  ])
+  const rule = rules.sort((left, right) => Number(right.id || 0) - Number(left.id || 0))[0] || null
+  return buildPartnerDashboard({ partner, users, orders, withdrawals, attributions, shareEvents, ledger, rule, daily })
 }
 
 async function reassign(applicationId, body, actor) {
@@ -206,8 +340,9 @@ async function createPartner(body) {
 }
 
 async function handleBackofficeHttp(event = {}) {
-  const method = String(event.httpMethod || '').toUpperCase()
-  const path = String(event.path || event.requestContext?.path || '').replace(/\/$/, '')
+  const method = httpMethod(event)
+  const path = httpPath(event)
+  const query = queryParameters(event)
   if (method === 'OPTIONS') return response(204, {})
   const body = parseBody(event)
   try {
@@ -217,26 +352,52 @@ async function handleBackofficeHttp(event = {}) {
     let actor
     if (/\/api\/partner\//.test(path)) actor = await actorFrom(event, 'partner')
     if (/\/api\/admin\//.test(path)) actor = await actorFrom(event, 'admin')
+    const authorizedOk = (data, message) => ok(
+      actor && actor.role === 'admin' ? authorizeCloudAdminResponse(actor, data) : data,
+      message
+    )
+
+    if (/\/api\/admin\//.test(path)) {
+      authorizeCloudAdminRoute(actor, method, path)
+      const routed = await dispatchUserBackofficeRoute({ method, path, query, body, actor, service: userService() })
+      if (routed.handled) return authorizedOk(routed.data, routed.message)
+    }
 
     if (method === 'GET' && /\/api\/partner\/member-applications$/.test(path)) {
-      return ok({ list: await applicationList(actor, event.queryStringParameters?.status || '') })
+      return authorizedOk({ list: await applicationList(actor, query.status || '') })
     }
+    if (method === 'GET' && /\/api\/partner\/dashboard$/.test(path)) return authorizedOk(await partnerDashboard(actor))
+    if (method === 'POST' && /\/api\/partner\/share-event$/.test(path)) return authorizedOk(await recordShareEvent(body, actor))
     if (method === 'GET' && /\/api\/admin\/member-applications$/.test(path)) {
-      return ok({ list: await applicationList(actor, event.queryStringParameters?.status || '') })
+      return authorizedOk({ list: await applicationList(actor, query.status || '') })
     }
     if (method === 'GET' && path.endsWith(AGENT_BACKOFFICE_PATHS.tickets)) {
-      return ok({ list: await agentService().listTickets(actor, event.queryStringParameters || {}) })
+      return authorizedOk({ list: await agentService().listTickets(actor, query) })
+    }
+    if (method === 'GET' && path.endsWith(AGENT_BACKOFFICE_PATHS.conversations)) {
+      return authorizedOk({ list: await agentService().listConversations(actor, query) })
     }
     if (method === 'GET' && path.endsWith(AGENT_BACKOFFICE_PATHS.knowledge)) {
-      return ok({ list: await agentService().listKnowledge(actor, event.queryStringParameters || {}) })
+      return authorizedOk({ list: await agentService().listKnowledge(actor, query) })
     }
     if (method === 'POST' && path.endsWith(AGENT_BACKOFFICE_PATHS.knowledge)) {
-      return ok(await agentService().saveKnowledge(actor, body), '知识草稿已保存')
+      return authorizedOk(await agentService().saveKnowledge(actor, body), '知识草稿已保存')
     }
     if (method === 'GET' && path.endsWith(AGENT_BACKOFFICE_PATHS.coordinations)) {
-      return ok({ list: await agentService().listCoordinations(actor, event.queryStringParameters || {}) })
+      return authorizedOk({ list: await agentService().listCoordinations(actor, query) })
     }
-    if (method === 'GET' && /\/api\/partner\/invite-assets$/.test(path)) return ok(await inviteAssets(actor))
+    if (method === 'POST' && /\/api\/admin\/controlled-date-scenarios$/.test(path)) {
+      return authorizedOk(await controlledDateScenarioService().createRun(actor, body), '受控约会场景已创建')
+    }
+    let controlledScenario = path.match(/\/api\/admin\/controlled-date-scenarios\/([^/]+)\/advance$/)
+    if (method === 'POST' && controlledScenario) {
+      return authorizedOk(await controlledDateScenarioService().advanceRun(actor, decodeURIComponent(controlledScenario[1])), '受控约会场景已推进')
+    }
+    controlledScenario = path.match(/\/api\/admin\/controlled-date-scenarios\/([^/]+)$/)
+    if (method === 'GET' && controlledScenario) {
+      return authorizedOk(await controlledDateScenarioService().getRun(actor, decodeURIComponent(controlledScenario[1])))
+    }
+    if (method === 'GET' && /\/api\/partner\/invite-assets$/.test(path)) return authorizedOk(await inviteAssets(actor))
 
     let matched = path.match(/\/api\/(partner|admin)\/member-applications\/(\d+)$/)
     if (method === 'GET' && matched) {
@@ -246,7 +407,10 @@ async function handleBackofficeHttp(event = {}) {
         throw new Error('无权查看其他合伙人的会员申请')
       }
       const user = await db.byId('user', application.user_id)
-      return ok({ application, user })
+      if (actor.role === 'partner') {
+        return authorizedOk(projectPartnerApplicationItem(application, user, {}))
+      }
+      return authorizedOk({ application, user })
     }
 
     matched = path.match(/\/api\/(partner|admin)\/member-applications\/(\d+)\/review$/)
@@ -256,10 +420,10 @@ async function handleBackofficeHttp(event = {}) {
         action: body.action,
         note: body.reason || body.note
       }, actor, db)
-      return ok(result, '审核状态已更新')
+      return authorizedOk(result, '审核状态已更新')
     }
     matched = path.match(/\/api\/admin\/member-applications\/(\d+)\/reassign$/)
-    if (method === 'PUT' && matched) return ok(await reassign(Number(matched[1]), body, actor))
+    if (method === 'PUT' && matched) return authorizedOk(await reassign(Number(matched[1]), body, actor))
 
     matched = path.match(new RegExp('/api/admin/users/(\\d+)/test-vip$'))
     if (method === 'POST' && matched) {
@@ -270,7 +434,7 @@ async function handleBackofficeHttp(event = {}) {
         reason: body.reason,
         requestId: body.request_id
       }, actor)
-      return ok(result, body.action === 'revoke' ? '内测 VIP 已撤销' : '内测 VIP 已授权')
+      return authorizedOk(result, body.action === 'revoke' ? '内测 VIP 已撤销' : '内测 VIP 已授权')
     }
 
     matched = path.match(new RegExp('/api/admin/users/(\\d+)/ab-match-fixture$'))
@@ -280,41 +444,85 @@ async function handleBackofficeHttp(event = {}) {
         action: body.action,
         reason: body.reason,
         requestId: body.request_id,
-        runId: body.run_id
+        runId: body.run_id,
+        fixture_journey: body.fixture_journey || body.journey,
+        fixture_mode: body.fixture_mode || body.mode
       }, actor)
-      return ok(result, body.action === 'cleanup' ? 'A/B 测试数据已清理' : 'A/B 测试候选已准备')
+      return authorizedOk(result, body.action === 'cleanup' ? 'A/B 测试数据已清理' : 'A/B 测试候选已准备')
     }
 
+    matched = path.match(/\/api\/admin\/agent\/tickets\/(\d+)$/)
+    if (method === 'GET' && matched) {
+      return authorizedOk(await agentService().ticketDetail(actor, Number(matched[1])))
+    }
+    matched = path.match(/\/api\/admin\/agent\/conversations\/(\d+)$/)
+    if (method === 'GET' && matched) {
+      return authorizedOk(await agentService().conversationDetail(actor, Number(matched[1])))
+    }
+    matched = path.match(/\/api\/admin\/agent\/conversations\/(\d+)\/reply$/)
+    if (method === 'POST' && matched) {
+      return authorizedOk(await agentService().replyConversation(actor, Number(matched[1]), body.content), '人工回复已发送')
+    }
     matched = path.match(/\/api\/admin\/agent\/tickets\/(\d+)\/reply$/)
     if (method === 'POST' && matched) {
-      return ok(await agentService().replyTicket(actor, Number(matched[1]), body.content), '人工回复已发送')
+      return authorizedOk(await agentService().replyTicket(actor, Number(matched[1]), body.content), '人工回复已发送')
     }
     matched = path.match(/\/api\/admin\/agent\/tickets\/(\d+)\/close$/)
     if (method === 'POST' && matched) {
-      return ok(await agentService().closeTicket(actor, Number(matched[1]), body), '人工工单已关闭')
+      return authorizedOk(await agentService().closeTicket(actor, Number(matched[1]), body), '人工工单已关闭')
     }
     matched = path.match(/\/api\/admin\/knowledge-articles\/(\d+)$/)
     if (method === 'PUT' && matched) {
-      return ok(await agentService().saveKnowledge(actor, body, Number(matched[1])), '知识草稿已更新')
+      return authorizedOk(await agentService().saveKnowledge(actor, body, Number(matched[1])), '知识草稿已更新')
     }
     matched = path.match(/\/api\/admin\/knowledge-articles\/(\d+)\/publish$/)
     if (method === 'POST' && matched) {
-      return ok(await agentService().publishKnowledge(actor, Number(matched[1])), '知识文章已发布')
+      return authorizedOk(await agentService().publishKnowledge(actor, Number(matched[1])), '知识文章已发布')
     }
     matched = path.match(/\/api\/admin\/knowledge-articles\/(\d+)\/offline$/)
     if (method === 'POST' && matched) {
-      return ok(await agentService().unpublishKnowledge(actor, Number(matched[1])), '知识文章已下线')
+      return authorizedOk(await agentService().unpublishKnowledge(actor, Number(matched[1])), '知识文章已下线')
+    }
+
+    if (method === 'GET' && /\/api\/admin\/partner-candidates$/.test(path)) {
+      return authorizedOk({ list: await partnerAdminService().listCandidates(actor, query) })
+    }
+    if (method === 'POST' && /\/api\/admin\/partner-candidates\/import$/.test(path)) {
+      return authorizedOk(await partnerAdminService().importRoster(actor, body), '合伙人名单已导入')
+    }
+    if (method === 'POST' && /\/api\/admin\/partner-candidates$/.test(path)) {
+      return authorizedOk(await partnerAdminService().createRosterCandidate(actor, body), '合伙人名单已添加')
+    }
+    matched = path.match(/\/api\/admin\/partner-candidates\/(\d+)$/)
+    if (method === 'GET' && matched) {
+      return authorizedOk(await partnerAdminService().candidateDetail(actor, Number(matched[1])))
+    }
+    matched = path.match(/\/api\/admin\/partner-candidates\/(\d+)\/(approve|reject)$/)
+    if (method === 'POST' && matched) {
+      return authorizedOk(await partnerAdminService().reviewCandidate(actor, Number(matched[1]), {
+        action: matched[2],
+        reason: body.reason,
+        request_id: body.request_id
+      }), matched[2] === 'approve' ? '合伙人申请已通过' : '合伙人申请已拒绝')
+    }
+    matched = path.match(/\/api\/admin\/partners\/(\d+)\/(suspend|resume|unbind|revoke)$/)
+    if (method === 'POST' && matched) {
+      return authorizedOk(await partnerAdminService().changePartner(actor, Number(matched[1]), {
+        action: matched[2],
+        reason: body.reason,
+        request_id: body.request_id
+      }), '合伙人状态已更新')
     }
 
     if (method === 'GET' && /\/api\/admin\/partners$/.test(path)) {
-      return ok({ list: await db.list('partner', {}, 200) })
+      return authorizedOk({ list: await partnerAdminService().listPartners(actor, query) })
     }
-    if (method === 'POST' && /\/api\/admin\/partners$/.test(path)) return ok(await createPartner(body))
+    if (method === 'POST' && /\/api\/admin\/partners$/.test(path)) return authorizedOk(await createPartner(body))
     matched = path.match(/\/api\/admin\/partners\/(\d+)$/)
     if (method === 'PUT' && matched) {
       const partner = await db.byId('partner', Number(matched[1]))
       if (!partner) throw new Error('合伙人不存在')
-      return ok(await db.updateByDoc('partner', partner, {
+      return authorizedOk(await db.updateByDoc('partner', partner, {
         status: body.status === undefined ? partner.status : Number(body.status),
         name: body.name === undefined ? partner.name : String(body.name),
         phone: body.phone === undefined ? partner.phone : String(body.phone)
@@ -322,8 +530,16 @@ async function handleBackofficeHttp(event = {}) {
     }
     return response(404, { code: 404, message: '接口不存在', data: null })
   } catch (err) {
-    return fail(err.message || '后台服务错误', /Token|无权|停用/.test(err.message || '') ? 401 : 400)
+    const explicit = [400, 401, 403, 404].includes(Number(err.code)) ? Number(err.code) : 0
+    const statusCode = explicit || (/Token|停用/.test(err.message || '') ? 401 : (/无权/.test(err.message || '') ? 403 : 400))
+    return fail(err.message || '后台服务错误', statusCode)
   }
 }
 
-module.exports = { handleBackofficeHttp }
+module.exports = {
+  handleBackofficeHttp,
+  partnerLoginForMiniProgram,
+  partnerInviteAssetsForMiniProgram,
+  recordShareEventForMiniProgram,
+  partnerDashboardForMiniProgram
+}

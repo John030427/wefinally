@@ -54,11 +54,9 @@
         <view class="match-stage-note-dot"></view>
         <text>按双方条件依次筛选，不需要反复刷新</text>
       </view>
-      <view wx:if="{{isVip && devMatchStartEnabled}}" class="dev-match-row">
-        <text class="dev-match-label">测试环境</text>
-        <button class="dev-match-btn" loading="{{devMatchStarting}}" bindtap="devStartMatch">立即生成匹配</button>
-      </view>
     </view>
+
+    <qa-match-panel title="内部测试" bind:completed="onQaMatchCompleted" />
 
     <view class="vip-banner card" wx:if="{{!isVip}}">
       <view class="vip-banner-text">开通 VIP 参与每周 2 次 AI 匹配</view>
@@ -128,9 +126,14 @@
 
     <view class="notice card">
       <text class="notice-text">· 系统不支持手动刷新匹配</text>
-      <text class="notice-text" wx:if="{{devMatchStartEnabled}}">· 开发测试按钮仅演示环境显示</text>
       <text class="notice-text">· 用户间无私聊，仅平台一对一奔现对接</text>
-      <button wx:if="{{devMatchStartEnabled}}" class="dev-reset-btn" bindtap="devResetRegistration">开发测试：重新注册用户</button>
     </view>
   </block>
 </view>
+
+<new-match-reveal
+  visible="{{matchRevealVisible}}"
+  match="{{latestMatch}}"
+  bind:view="onMatchRevealView"
+  bind:dismiss="onMatchRevealDismiss"
+/>

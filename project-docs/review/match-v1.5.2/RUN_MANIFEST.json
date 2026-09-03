@@ -1,0 +1,25 @@
+{
+  "run_id": "match-native-id-v1.5.2",
+  "base_commit": "c08f47852ff7c32ae8f19f029b34fdfd6aab1e70",
+  "base_branch": "experiment/match-native-id-v1.5.1",
+  "branch": "experiment/match-native-id-v1.5.2",
+  "final_commit": "ad9778ce07398c832ac5ac2665219e9b160e5751",
+  "prediction_gold_separation": "PASS",
+  "identifier_feature_exclusion": "PASS",
+  "duplicate_semantics": "PASS",
+  "source_match_consistency": "PASS",
+  "native_full_dataset": "BLOCKED",
+  "TRUE_RECIPROCAL_AVAILABLE": false,
+  "TRUE_RECIPROCAL_MODEL_READY": false,
+  "status": "WAITING_NATIVE_ID_DATA",
+  "stop_rule": "No v1.5.3 architecture — await auditable native iid/pid dataset",
+  "source_gate": "REVIEW_REQUIRED",
+  "tests": {
+    "match_eval_v152": "PASS",
+    "match_eval_v151": "PASS",
+    "e2e": "PASS"
+  },
+  "final_review_fix": true,
+  "predictor_receives_identity_metadata": false,
+  "prediction_api_contains_evaluator_gold": false
+}

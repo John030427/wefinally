@@ -1,5 +1,6 @@
 const { get } = require('../../utils/request')
 const { API_PATHS } = require('../../utils/constants')
+const { refreshNotificationBadge } = require('../../utils/notificationBadge')
 const {
   formatDateOnly,
   genderText,
@@ -14,10 +15,29 @@ Page({
   data: {
     pageState: 'loading',
     errorMsg: '',
-    list: []
+    list: [],
+    unreadCount: 0
   },
 
   onShow() {
+    const tabBar = this.getTabBar && this.getTabBar()
+    if (tabBar && typeof tabBar.syncForRoute === 'function') tabBar.syncForRoute('/pages/match-list/match-list')
+    this.loadList()
+    this.loadUnread()
+  },
+
+  async loadUnread() {
+    try {
+      const unread = await refreshNotificationBadge()
+      this.setData({ unreadCount: unread })
+    } catch (err) { /* 未读数加载失败不阻断列表 */ }
+  },
+
+  goNotifications() {
+    wx.navigateTo({ url: '/pages/notifications/notifications' })
+  },
+
+  onQaMatchCompleted() {
     this.loadList()
   },
 
@@ -58,7 +78,8 @@ Page({
           score: score !== null && score !== undefined ? Number(score) : null,
           scoreText: score != null ? getCompatibilityDisplayText(score) : '',
           scoreColor: score != null ? getCompatibilityColor(score) : '',
-          scoreTag: score != null ? getCompatibilityTagClass(score) : ''
+          scoreTag: score != null ? getCompatibilityTagClass(score) : '',
+          testDataBadge: item.test_data_badge || ''
         }
       })
       this.setData({

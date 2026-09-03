@@ -1,0 +1,60 @@
+# SPLIT_MANIFEST
+
+```json
+{
+  "dataset_version": "speed-dating-native-v1",
+  "status": "GROUPED_BY_WAVE",
+  "fresh_sealed_status": "CREATED_UNOPENED",
+  "waves": {
+    "train": [
+      "1",
+      "2",
+      "3",
+      "4",
+      "5",
+      "7",
+      "8",
+      "9",
+      "10",
+      "11",
+      "13",
+      "14",
+      "15"
+    ],
+    "calibration": [
+      "17"
+    ],
+    "dev": [
+      "19"
+    ],
+    "sealed": [
+      "21"
+    ]
+  },
+  "partitions": {
+    "TRAIN": {
+      "name": "TRAIN",
+      "n_pairs": 2988,
+      "canonical_keys_sha256": "d43630e508a2034bb6f485a379a57b78293daef70379934acc46ecc5ca0162a4"
+    },
+    "CALIBRATION": {
+      "name": "CALIBRATION",
+      "n_pairs": 140,
+      "canonical_keys_sha256": "eb56141ae95d006b28a991ca06139e90deed6505d0451935dba0aec6cde77a5e"
+    },
+    "DEV": {
+      "name": "DEV",
+      "n_pairs": 225,
+      "canonical_keys_sha256": "c16bd58ad817efc992bc8408b8502486a9bc8af72bd425a41c3bf9189fd4ea2d"
+    },
+    "SEALED": {
+      "name": "SEALED",
+      "n_pairs": 484,
+      "canonical_keys_sha256": "cd4e5585524e68834559ceaad73f4a2c29b4c5e983a1fc6c1c66699b7a047548"
+    }
+  },
+  "note": "SEALED reserved for v1.7 tournament — no outcome metrics computed in v1.6",
+  "split_manifest_sha256": "F7DBAEC48F2B75C8C686B586BB55D08DC5D625C84A7AEF0A50DFBA5427A61CE6",
+  "generated_at": "2026-08-21T09:32:10.344Z"
+}
+```

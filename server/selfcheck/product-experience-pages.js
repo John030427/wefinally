@@ -71,6 +71,9 @@ function loadPage(relativePath, requestMocks) {
       if (request === '../../utils/util') {
         return require(path.join(root, 'miniprogram/utils/util.js'))
       }
+      if (request === '../../utils/aiMatchReportPresentation') {
+        return require(path.join(root, 'miniprogram/utils/aiMatchReportPresentation.js'))
+      }
       throw new Error(`Unexpected require: ${request}`)
     }
   }
@@ -115,6 +118,8 @@ async function matchDetailChecks() {
   assert.strictEqual(ctx.data.totalScorePercent, 78)
   assert(ctx.data.matchSummary.strengths.some((item) => item.includes('婚育')))
   assert(ctx.data.matchSummary.confirmations.some((item) => item.includes('城市')))
+  assert.strictEqual(ctx.data.matchSummary.hasAiText, true)
+  assert.strictEqual(ctx.data.matchSummary.limitations, undefined)
   assert.strictEqual(ctx.data.showAlgorithmDetails, false)
   ctx.toggleAlgorithmDetails()
   assert.strictEqual(ctx.data.showAlgorithmDetails, true)

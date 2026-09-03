@@ -4,6 +4,7 @@
   "main": "index.js",
   "dependencies": {
     "bcryptjs": "^2.4.3",
+    "@cloudbase/node-sdk": "^3.16.0",
     "ws": "^8.18.0",
     "wx-server-sdk": "4.0.2"
   }

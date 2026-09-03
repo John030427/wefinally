@@ -1,5 +1,6 @@
 const crypto = require('crypto')
 const { MEMBER_STATUS, memberStatus } = require('../lib/memberPolicy')
+const { syntheticWriteDefaults } = require('../lib/testIdentityPolicy')
 
 function defaultDeps() {
   const db = require('../lib/db')
@@ -9,6 +10,7 @@ function defaultDeps() {
     list: db.list,
     addWithId: db.addWithId,
     removeByDoc: db.removeByDoc,
+    updateByDoc: db.updateByDoc,
     now: db.now,
     randomId: () => `ab_${Date.now()}_${crypto.randomBytes(6).toString('hex')}`
   }
@@ -18,6 +20,41 @@ function validateActor(actor) {
   if (!actor || actor.role !== 'admin' || actor.admin_role !== 'super_admin') {
     throw new Error('仅超级管理员可以管理 A/B 测试候选')
   }
+}
+
+const ALLOWED_JOURNEYS = new Set([
+  'accept_direct',
+  'accept',
+  'coordinate',
+  'decline',
+  'reject',
+  'no_response',
+  'accept_no_prefs'
+])
+const INTERNAL_JOURNEYS = new Set([
+  'accept_direct',
+  'accept',
+  'coordinate',
+  'full_coordination',
+  'decline',
+  'reject',
+  'no_response',
+  'accept_no_prefs',
+  'legacy_queue'
+])
+
+function resolveFixtureJourneyInput(input = {}) {
+  const raw = String(input.fixture_journey || input.journey || '').trim().toLowerCase()
+  if (!raw) return 'accept'
+  if (INTERNAL_JOURNEYS.has(raw)) return raw
+  throw new Error('fixture_journey 仅支持 accept_direct、coordinate、decline、no_response、accept_no_prefs，或显式内部值 legacy_queue')
+}
+
+function resolveFixtureModeInput(input = {}) {
+  const raw = String(input.fixture_mode || input.mode || 'auto').trim().toLowerCase()
+  if (!raw || raw === 'auto') return 'auto'
+  if (raw === 'manual_step' || raw === 'manual') return 'manual_step'
+  throw new Error('fixture_mode 仅支持 auto 或 manual_step')
 }
 
 function normalizeInput(input = {}) {
@@ -31,7 +68,20 @@ function normalizeInput(input = {}) {
   if (!reason) throw new Error(action === 'prepare' ? '请填写测试原因' : '请填写清理原因')
   if (requestId.length < 16) throw new Error('请求标识无效')
   if (action === 'cleanup' && runId.length < 16) throw new Error('测试编号无效')
-  return { action, ownerUserId, reason, requestId, runId }
+  const fixtureJourney = action === 'prepare' ? resolveFixtureJourneyInput(input) : ''
+  const fixtureMode = action === 'prepare' ? resolveFixtureModeInput(input) : ''
+  if (action === 'prepare' && fixtureJourney && !ALLOWED_JOURNEYS.has(fixtureJourney) && fixtureJourney !== 'legacy_queue') {
+    throw new Error('fixture_journey 无效')
+  }
+  return {
+    action,
+    ownerUserId,
+    reason,
+    requestId,
+    runId,
+    fixture_journey: fixtureJourney,
+    fixture_mode: fixtureMode
+  }
 }
 
 function heightPreference(value) {
@@ -49,7 +99,7 @@ function activeInternalTestVip(user, now) {
     && new Date(user.vip_expire_time || 0).getTime() > now.getTime()
 }
 
-function fixtureProfile(owner, ownerSetting, runId, now) {
+function fixtureProfile(owner, ownerSetting, runId, now, journey = 'accept', mode = 'auto') {
   const candidateGender = Number(owner.gender) === 1 ? 2 : 1
   const targetAge = Number(ownerSetting.age_min || 20) <= 23
     && Number(ownerSetting.age_max || 65) >= 23
@@ -62,6 +112,9 @@ function fixtureProfile(owner, ownerSetting, runId, now) {
   const candidateHeight = `${candidateHeightMin}-${candidateHeightMax}cm`
   const selfText = String(ownerSetting.target_view_text || '').trim()
   const targetText = String(ownerSetting.self_view_text || '').trim()
+  const resolvedJourney = INTERNAL_JOURNEYS.has(String(journey || '').toLowerCase())
+    ? String(journey).toLowerCase()
+    : 'accept_direct'
   return {
     user: {
       openid: `ab_test_fixture_${runId}`,
@@ -94,10 +147,13 @@ function fixtureProfile(owner, ownerSetting, runId, now) {
       appearance_want_tags: '',
       promote_partner_id: Number(owner.promote_partner_id || 0),
       promote_code: '',
-      is_test_fixture: 1,
-      ab_test_run_id: runId,
-      ab_test_owner_user_id: owner.id,
-      ab_test_expires_at: new Date(now.getTime() + 86400000)
+      ...syntheticWriteDefaults({
+        ownerUserId: owner.id,
+        runId,
+        expiresAt: new Date(now.getTime() + 86400000)
+      }),
+      fixture_journey: resolvedJourney,
+      fixture_mode: String(mode || 'auto').toLowerCase() === 'manual_step' ? 'manual_step' : 'auto'
     },
     setting: {
       age_min: Math.max(18, ownerAge - 2),
@@ -118,6 +174,69 @@ function fixtureProfile(owner, ownerSetting, runId, now) {
       is_test_fixture: 1
     }
   }
+}
+
+function isTaggedTestRow(row, runId) {
+  if (!row) return false
+  if (runId && String(row.ab_test_run_id || row.fixture_run_id || '') === String(runId)) return true
+  return Number(row.is_test_data || row.is_test_fixture || 0) === 1
+}
+
+async function collectTestCoordinations(dep, { ownerUserId, candidateId, runId }) {
+  const asInvitee = await dep('list')('date_coordination', { user_b_id: Number(candidateId) }, 100)
+  const asInitiator = await dep('list')('date_coordination', { user_a_id: Number(candidateId) }, 100)
+  const withRun = await dep('list')('date_coordination', { ab_test_run_id: String(runId) }, 100)
+  const merged = []
+  const seen = new Set()
+  for (const row of [...asInvitee, ...asInitiator, ...withRun]) {
+    if (!row || seen.has(row.id)) continue
+    const involvesFixtureUser = [Number(row.user_a_id), Number(row.user_b_id)].includes(Number(candidateId))
+    const involvesOwnerAndFixture = Number(row.user_a_id) === Number(ownerUserId) && Number(row.user_b_id) === Number(candidateId)
+    if (!involvesFixtureUser && !involvesOwnerAndFixture) continue
+    if (!isTaggedTestRow(row, runId) && String(row.ab_test_run_id || '') !== String(runId)) continue
+    seen.add(row.id)
+    merged.push(row)
+  }
+  return merged
+}
+
+async function closeTestCoordinations(dep, coordinations) {
+  const now = typeof dep('now') === 'function' ? dep('now')() : new Date()
+  let closedCoordinations = 0
+  let closedSessions = 0
+  for (const coordination of coordinations) {
+    if (Number(coordination.is_test_data || 0) !== 1 && !String(coordination.ab_test_run_id || '')) continue
+    if (!['arranged', 'invitation_declined', 'expired', 'cancelled', 'closed', 'manual_handoff'].includes(String(coordination.status || ''))) {
+      await dep('updateByDoc')('date_coordination', coordination, {
+        status: 'closed',
+        business_state: 'cleaned',
+        cleaned_at: now
+      })
+      closedCoordinations += 1
+    }
+    const sessions = await dep('list')('agent_session', { coordination_id: Number(coordination.id) }, 50)
+    for (const session of sessions) {
+      if (!['closed', 'cancelled'].includes(String(session.status || ''))) {
+        await dep('updateByDoc')('agent_session', session, { status: 'closed' })
+        closedSessions += 1
+      }
+    }
+    const jobs = await dep('list')('agent_notification_job', { coordination_id: Number(coordination.id) }, 50)
+    for (const job of jobs) {
+      if (String(job.status || '') === 'pending') {
+        await dep('updateByDoc')('agent_notification_job', job, { status: 'cancelled' })
+      }
+    }
+    const responseJobs = await dep('list')('fixture_response_job', { fixture_user_id: Number(coordination.user_b_id) }, 20)
+    for (const job of responseJobs) {
+      if (Number(job.is_test_data || job.is_test_fixture || 0) === 1 || String(job.ab_test_run_id || '') === String(coordination.ab_test_run_id || '')) {
+        if (String(job.status || '') !== 'delivered') {
+          await dep('updateByDoc')('fixture_response_job', job, { status: 'cancelled' })
+        }
+      }
+    }
+  }
+  return { closed_coordinations: closedCoordinations, closed_sessions: closedSessions }
 }
 
 function createAbMatchFixtureService(overrides = {}) {
@@ -161,10 +280,13 @@ function createAbMatchFixtureService(overrides = {}) {
       || !String(ownerSetting.target_view_text || '').trim()
     ) throw new Error('A账号需先完成匹配偏好和三观资料')
 
+    const journey = String(input.fixture_journey || 'accept').toLowerCase()
+    const fixtureMode = String(input.fixture_mode || 'auto').toLowerCase()
     const activeFixture = await dep('first')('user', {
       ab_test_owner_user_id: owner.id,
       is_test_fixture: 1,
-      status: 1
+      status: 1,
+      fixture_journey: journey
     })
     if (activeFixture) {
       return {
@@ -176,7 +298,7 @@ function createAbMatchFixtureService(overrides = {}) {
     }
 
     const runId = dep('randomId')()
-    const fixture = fixtureProfile(owner, ownerSetting, runId, now)
+    const fixture = fixtureProfile(owner, ownerSetting, runId, now, journey, fixtureMode)
     const candidate = await dep('addWithId')('user', fixture.user, 'user')
     let setting
     try {
@@ -232,7 +354,13 @@ function createAbMatchFixtureService(overrides = {}) {
       ab_test_run_id: input.runId,
       is_test_fixture: 1
     }, 20)
-    const matchLogs = await dep('list')('user_match_log', { ab_test_run_id: input.runId }, 20)
+    const matchLogs = await dep('list')('user_match_log', { ab_test_run_id: input.runId }, 50)
+    const relatedCoordinations = await collectTestCoordinations(dep, {
+      ownerUserId: input.ownerUserId,
+      candidateId: candidate.id,
+      runId: input.runId
+    })
+    const closed = await closeTestCoordinations(dep, relatedCoordinations)
     for (const row of matchLogs) await dep('removeByDoc')('user_match_log', row)
     for (const row of settings) await dep('removeByDoc')('user_match_setting', row)
     await dep('removeByDoc')('user', candidate)
@@ -249,13 +377,17 @@ function createAbMatchFixtureService(overrides = {}) {
       request_id: input.requestId,
       ab_test_run_id: input.runId,
       test_candidate_user_id: candidate.id,
-      removed_match_logs: matchLogs.length
+      removed_match_logs: matchLogs.length,
+      closed_coordinations: closed.closed_coordinations,
+      closed_sessions: closed.closed_sessions
     }, 'member_audit')
     return {
       run_id: input.runId,
       removed_candidate: 1,
       removed_settings: settings.length,
-      removed_match_logs: matchLogs.length
+      removed_match_logs: matchLogs.length,
+      closed_coordinations: closed.closed_coordinations,
+      closed_sessions: closed.closed_sessions
     }
   }
 
@@ -275,5 +407,7 @@ module.exports = {
   createAbMatchFixtureService,
   fixtureProfile,
   normalizeInput,
-  validateActor
+  validateActor,
+  collectTestCoordinations,
+  closeTestCoordinations
 }

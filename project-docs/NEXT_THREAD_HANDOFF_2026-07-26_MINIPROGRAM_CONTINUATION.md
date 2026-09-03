@@ -288,3 +288,33 @@ npm --prefix server run selfcheck:cloud-match
 - 不提交 Git，除非用户之后明确要求。
 - 不修改或删除与当前任务无关的已有改动。
 
+## 10. 2026-08-11 LangGraph 分支进展
+
+当前分支：`feature/langgraph-orchestration`。基线之后的聚焦提交：
+
+```text
+e9eb468 strict workflow contracts
+395f84b privacy-safe DeepSeek boundary
+da0f781 interruptible customer service graph
+a01d231 bilateral date coordination graph
+f04dc5f durable checkpoint entrypoint
+7739d78 safe API bridge and feature flags
+78e27f5 security and recovery contracts
+```
+
+当前可验证能力：
+
+- 客服图可暂停转人工并从持久化 checkpoint 恢复；提示词注入不会按模型的 FAQ 分类放行。
+- 双向协调的 A/B 偏好相互隔离；旧版本确认、重复确认、修改后旧 proposal 失效均有测试。
+- API 只传 HMAC 后的 actor/thread 与脱敏限长内容；工具执行只能经过 `langgraphToolBridge.js`。
+- `LANGGRAPH_ENABLED=false` 保留现有流程；shadow mode 不执行工具；超时、坏响应、坏 checkpoint 均返回稳定错误并回退。
+
+继续部署前必须完成：
+
+1. 为 `date_coordination_application` → `CoordinationPreference` 编写无损映射测试，再允许约会协调 API 切图；当前仍走旧业务流程。
+2. 选择不会引入已知高危传递依赖的 CloudBase collection 运行时适配方式；创建 checkpoint collection、TTL/index 属于部署配置，不得在本地实现阶段擅自写生产环境。
+3. 配置 `LANGGRAPH_ACTOR_SECRET`、DeepSeek key 和 feature flags；不得写入仓库或下发客户端。
+4. 分别部署 `agent-graph`（Node 20.19）与 `api`（现有 Node 16.13），验证跨函数调用、断点恢复、幂等和回退；不能把“部署 api”当成“上传小程序”。
+5. 云函数验证后再单独决定是否上传小程序体验版。
+
+最近验证结果：图函数 30/30 测试通过，构建与生产依赖审计通过；`selfcheck:langgraph` 和第 8 节六组自检全部通过。临时启动 3000 服务后，总入口 `selfcheck` 通过健康检查，但本机没有 MySQL 服务监听 `127.0.0.1:3306`，因此在 `match-psych-report` 的数据库清理步骤以 `ECONNREFUSED` 停止。

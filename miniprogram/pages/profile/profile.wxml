@@ -35,6 +35,8 @@
           </view>
           <view class="user-meta">{{userInfo.display.city}} · {{userInfo.display.education}}</view>
           <view class="user-meta">{{userInfo.display.circleName}} · {{userInfo.display.babyPlan}}</view>
+          <view class="user-edit-link" bindtap="editBaseProfile">编辑 ›</view>
+          <view class="user-support-code">用户ID {{userInfo.support_code || '正在分配'}}</view>
         </view>
       </view>
     </view>
@@ -58,6 +60,24 @@
         <view class="readiness-action secondary" bindtap="editMatchProfile">完善择偶与价值观</view>
       </view>
       <view class="readiness-ready" wx:else>资料会用于硬性筛选和双向评分，你可以随时更新。</view>
+    </view>
+
+    <view class="partner-workspace card state-{{partnerStatus.state}}" bindtap="openPartnerWorkspace">
+      <view>
+        <view class="partner-workspace-kicker">WEFINALLY PARTNER</view>
+        <view class="partner-workspace-title" wx:if="{{partnerStatus.state === 'active'}}">合伙人工作台</view>
+        <view class="partner-workspace-title" wx:elif="{{partnerStatus.state === 'pending'}}">合伙人申请审核中</view>
+        <view class="partner-workspace-title" wx:elif="{{partnerStatus.state === 'needs_verification'}}">合伙人资格待手机号验证</view>
+        <view class="partner-workspace-title" wx:elif="{{partnerStatus.state === 'suspended'}}">合伙人权限已暂停</view>
+        <view class="partner-workspace-title" wx:elif="{{partnerStatus.state === 'rejected'}}">当前没有可激活资格</view>
+        <view class="partner-workspace-title" wx:elif="{{partnerStatus.state === 'revoked'}}">合伙人资格已撤销</view>
+        <view class="partner-workspace-title" wx:else>合作合伙人入口</view>
+        <view class="partner-workspace-desc" wx:if="{{partnerStatus.state === 'active'}}">查看邀请转化、收入与分享素材</view>
+        <view class="partner-workspace-desc" wx:elif="{{partnerStatus.state === 'pending'}}">历史申请正在处理；当前仅开放已有合作名单激活</view>
+        <view class="partner-workspace-desc" wx:elif="{{partnerStatus.review_note}}">{{partnerStatus.review_note}}</view>
+        <view class="partner-workspace-desc" wx:else>已有合作合伙人可输入名单手机号激活</view>
+      </view>
+      <text class="menu-arrow">›</text>
     </view>
 
     <view class="menu-card card">

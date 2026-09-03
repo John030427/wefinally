@@ -1,0 +1,18 @@
+const assert = require('assert')
+const fs = require('fs')
+const path = require('path')
+
+const handler = fs.readFileSync(path.resolve(__dirname, '../../miniprogram/cloudfunctions/api/handlers/match.js'), 'utf8')
+const collections = fs.readFileSync(path.resolve(__dirname, '../../miniprogram/cloudfunctions/api/lib/collections.js'), 'utf8')
+const bootstrap = fs.readFileSync(path.resolve(__dirname, '../../miniprogram/cloudfunctions/api/lib/collectionBootstrapPolicy.js'), 'utf8')
+const claimLibrary = fs.readFileSync(path.resolve(__dirname, '../../miniprogram/cloudfunctions/api/lib/matchClaim.js'), 'utf8')
+assert(handler.includes("transactionDocument('match_claim_audit'"))
+assert(handler.includes('deliverPair'))
+assert(!handler.includes('function matchStateSnapshot'))
+assert(!handler.includes("removeByDoc('match_claim_audit'"))
+assert(claimLibrary.includes("transaction.collection(collections.user).doc(delivery.userDoc._id).update"))
+assert(claimLibrary.includes("transaction.collection(collections.match_claim_audit).doc(delivery.audit._id).set"))
+assert(collections.includes("match_claim_audit: 'match_claim_audits'"))
+assert(bootstrap.includes("'match_claim_audit'"))
+
+console.log('PASS successful match atomically updates both users, logs, claim, and audit')

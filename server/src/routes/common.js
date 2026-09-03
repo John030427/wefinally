@@ -1,6 +1,7 @@
 const express = require('express');
 const pool = require('../config/db');
 const { success, fail } = require('../utils/response');
+const { referralInput } = require('../../../miniprogram/cloudfunctions/api/lib/partnerReferralPolicy');
 const {
   VIP_PRICE,
   VIP_DAYS,
@@ -31,19 +32,31 @@ router.get('/circles', async (req, res, next) => {
 /** GET /api/common/promote-code */
 router.get('/promote-code', async (req, res, next) => {
   try {
-    const code = String(req.query.code || '').trim().toUpperCase();
+    const code = String(req.query.code || '').trim();
     if (!code) {
       return fail(res, '请填写推广码');
     }
+
+    let referral;
+    try {
+      referral = referralInput(code);
+    } catch (err) {
+      return success(res, {
+        valid: false,
+        message: '推广码无效或合伙人未激活',
+      });
+    }
+    const lookup = referral.partnerId ? 'p.id' : 'p.promote_code';
+    const lookupValue = referral.partnerId || referral.code;
 
     const [rows] = await pool.query(
       `SELECT p.id AS partner_id, p.promote_code, p.circle_id,
               oc.circle_name, oc.plate_name
        FROM \`partner\` p
        LEFT JOIN occupation_circle oc ON oc.id = p.circle_id
-       WHERE p.promote_code = ? AND p.status = 1
+       WHERE ${lookup} = ? AND p.status = 1
        LIMIT 1`,
-      [code]
+      [lookupValue]
     );
 
     if (rows.length === 0) {

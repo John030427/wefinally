@@ -71,7 +71,8 @@ const summary = buildMatchSummary({
 })
 assert(summary.strengths.some((item) => item.includes('价值观')))
 assert(summary.confirmations.some((item) => item.includes('城市')))
-assert(summary.limitations.some((item) => item.includes('收入')))
+assert.strictEqual(summary.hasAiText, false)
+assert.strictEqual(summary.limitations, undefined)
 
 const root = path.resolve(__dirname, '../..')
 const read = (file) => fs.readFileSync(path.join(root, file), 'utf8')

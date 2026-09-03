@@ -14,6 +14,7 @@ function envFlag(key) {
 }
 
 async function flagEnabled(key) {
+  // DEV ONLY flag: match_test_run_public_enabled — disable before release (see release-qa-flag-guard.js)
   const fromEnv = envFlag(key)
   if (fromEnv !== undefined) return isTruthy(fromEnv)
   try {

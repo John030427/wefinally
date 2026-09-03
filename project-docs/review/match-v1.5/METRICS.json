@@ -1,0 +1,14 @@
+{
+  "validation_type": "DEV_RETROSPECTIVE",
+  "fresh_sealed": "NO_FRESH_SEALED_AVAILABLE",
+  "TRUE_RECIPROCAL_AVAILABLE": false,
+  "identity_mode": "PAIR_IDENTITY_UNCERTAIN",
+  "ranking_tie_aware": true,
+  "metrics": {
+    "TRUE_RECIPROCAL_AVAILABLE": false,
+    "note": "Reciprocal aggregators not run — native iid/pid required"
+  },
+  "directional": {
+    "note": "No swapped-vector reverse. Waiting native rows for true P(B→A)."
+  }
+}

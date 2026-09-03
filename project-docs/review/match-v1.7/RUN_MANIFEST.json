@@ -1,0 +1,15 @@
+{
+  "run_id": "match-final-tournament-v1.7",
+  "base_branch": "experiment/match-benchmark-resolution-v1.6",
+  "base_commit": "f6ac85133e6841e51d6f7f3e4b7079e4a5b4ec2b",
+  "branch": "experiment/match-final-tournament-v1.7",
+  "final_commit": "9e9ac3e2d5e251eead59ab617a6408ba8b9fc719",
+  "track_a": "STRUCTURED_SMALL_UNCERTAIN_IMPROVEMENT",
+  "structured_winner": "LR_DIRECTIONAL+RECIP_PRODUCT+Platt",
+  "locked_retrospective": "REGRESSION",
+  "track_b": "HY3_NOT_READY",
+  "rag": "RAG_NOT_JUSTIFIED",
+  "final_architecture": "DETERMINISTIC_ONLY_CORE + HY3_COORDINATION_ONLY",
+  "production": "KEEP_CURRENT_PRODUCTION",
+  "generated_at": "2026-08-21T09:52:51.788Z"
+}
