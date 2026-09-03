@@ -1,21 +1,24 @@
 const REMINDER_HOURS = {
-  invitation_created: 48,
+  invitation_created: 24,
   invitation: 24,
   application: 48,
   proposal_generated: 24,
   confirmation: 12
 }
 
+const INVITATION_STAGES = new Set(['invitation_created', 'invitation'])
+
 function createReminderJob({ coordinationId, userId, stage, deadlineAt, now = new Date() }) {
   if (!REMINDER_HOURS[stage]) throw new Error('unsupported reminder stage')
   const deadline = new Date(deadlineAt)
   const scheduled = new Date(deadline.getTime() - REMINDER_HOURS[stage] * 60 * 60 * 1000)
+  if (scheduled <= now) return null
   return {
     coordination_id: Number(coordinationId),
     user_id: Number(userId),
     stage,
     idempotency_key: `date:${coordinationId}:${userId}:${stage}`,
-    scheduled_at: scheduled > now ? scheduled : now,
+    scheduled_at: scheduled,
     deadline_at: deadline,
     status: 'pending',
     attempts: 0
@@ -70,13 +73,14 @@ function notificationDeps() {
     first: db.first,
     list: db.list,
     addWithId: db.addWithId,
-    updateByDoc: db.updateByDoc
+    updateByDoc: db.updateByDoc,
+    byId: db.byId
   }
 }
 
 async function processNotificationJobs({ deps = notificationDeps(), limit = 10, now = new Date() } = {}) {
   const jobs = await deps.list('agent_notification_job', { status: 'pending' }, Math.max(1, Math.min(Number(limit || 10), 20)))
-  const result = { processed: jobs.length, sent: 0, expired: 0, waiting: 0, failed: 0 }
+  const result = { processed: jobs.length, sent: 0, expired: 0, waiting: 0, failed: 0, skipped: 0 }
   for (const job of jobs) {
     const action = classifyJob(job, now)
     if (action === 'wait') {
@@ -89,6 +93,18 @@ async function processNotificationJobs({ deps = notificationDeps(), limit = 10, 
       continue
     }
     try {
+      if (INVITATION_STAGES.has(String(job.stage || ''))) {
+        const coordination = typeof deps.byId === 'function'
+          ? await deps.byId('date_coordination', Number(job.coordination_id))
+          : (typeof deps.first === 'function'
+            ? await deps.first('date_coordination', { id: Number(job.coordination_id) })
+            : null)
+        if (coordination && String(coordination.status || '') !== 'inviting_partner') {
+          await deps.updateByDoc('agent_notification_job', job, { status: 'skipped' })
+          result.skipped += 1
+          continue
+        }
+      }
       let session = await deps.first('agent_session', {
         user_id: Number(job.user_id),
         agent_type: 'date_coordinator',

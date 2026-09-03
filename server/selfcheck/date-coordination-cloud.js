@@ -357,7 +357,9 @@ async function main() {
   assert.strictEqual(deps.rows.agent_notification_job.length, 1)
   assert.strictEqual(deps.rows.agent_notification_job[0].user_id, 2)
   assert.strictEqual(deps.rows.agent_notification_job[0].stage, 'invitation_created')
-  assert.strictEqual(deps.rows.agent_notification_job[0].scheduled_at.toISOString(), NOW.toISOString())
+  // Immediate inbox covers first notice; reminder fires 24h before the 48h invitation deadline.
+  assert.strictEqual(deps.rows.agent_notification_job[0].scheduled_at.toISOString(), '2026-07-13T08:00:00.000Z')
+  assert.strictEqual(deps.rows.agent_notification_job[0].deadline_at.toISOString(), '2026-07-14T08:00:00.000Z')
 
   const invitedDetail = await handlers.detail({ coordination_id: first.id }, { user_id: 2 })
   assert.strictEqual(invitedDetail.can_respond_invitation, true)
