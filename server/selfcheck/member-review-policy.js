@@ -96,7 +96,8 @@ assert.deepStrictEqual(normalizeMatchSettingInput({
   height_max: 180,
   min_education: '本科',
   self_view_text: '我的三观',
-  target_view_text: '期待三观'
+  target_view_text: '期待三观',
+  other_requirements: ''
 })
 
 console.log('PASS member review policy')

@@ -1,0 +1,235 @@
+{
+  "run_id": "match-evo-2026-08-21-overnight",
+  "started_at": "2026-08-20T17:31:00.000Z",
+  "baseline_head": "f0d9c7d4161ef1a6b25d14b825f74948defaf106",
+  "remote_head": "f0d9c7d4161ef1a6b25d14b825f74948defaf106",
+  "branch": "feature/ai-profile-bilateral-coordination",
+  "current_round": 6,
+  "max_rounds": 6,
+  "status": "DONE",
+  "completed_phases": [
+    "git_baseline",
+    "round_00",
+    "rebuild_v13",
+    "split_v13",
+    "round_01"
+  ],
+  "champion": {
+    "name": "LR_MUTUAL",
+    "metrics": {
+      "n": 920,
+      "AUPRC": 0.2782,
+      "AUROC": 0.6274,
+      "MCC": 0.1375,
+      "Precision": 0.2559,
+      "Recall": 0.5511,
+      "F1": 0.3495,
+      "balanced_accuracy": 0.5861,
+      "accuracy": 0.6076,
+      "TP": 97,
+      "one_sided_FP": 0.2022,
+      "P_at_1": 0.3288,
+      "P_at_3": 0.2374,
+      "NDCG_at_1": 0.3288,
+      "NDCG_at_3": 0.3128,
+      "NDCG_at_5": 0.3642,
+      "MRR": 0.4737,
+      "RNDCG": 0.3208,
+      "query_stats": {
+        "n_queries": 73,
+        "min": 10,
+        "median": 14,
+        "mean": 12.6027,
+        "p90": 15,
+        "max": 15,
+        "with_ge2": 73,
+        "with_ge3": 73,
+        "with_ge5": 73,
+        "with_ge10": 73
+      },
+      "Brier": 0.1721,
+      "ECE": 0.1489,
+      "F1_ci95": {
+        "lo": 0.3201,
+        "hi": 0.3963,
+        "method": "bootstrap_wave_cluster",
+        "rounds": 200
+      },
+      "directional_ranking": {
+        "precision_at_1": 0.589,
+        "precision_at_3": 0.4749,
+        "ndcg_at_1": 0.589,
+        "ndcg_at_3": 0.5,
+        "ndcg_at_5": 0.5173,
+        "MRR": 0.6987
+      },
+      "failure_types": {
+        "FALSE_NEGATIVE_MUTUAL": 79,
+        "LOW_SCORE_TRUE_POSITIVE": 79,
+        "ONE_SIDED_FALSE_POSITIVE": 186,
+        "FALSE_POSITIVE_MUTUAL": 96
+      }
+    },
+    "reason": "improved AUPRCΔ=0.0633 MCCΔ=0.0715"
+  },
+  "champion_metrics": {
+    "n": 920,
+    "AUPRC": 0.2782,
+    "AUROC": 0.6274,
+    "MCC": 0.1375,
+    "Precision": 0.2559,
+    "Recall": 0.5511,
+    "F1": 0.3495,
+    "balanced_accuracy": 0.5861,
+    "accuracy": 0.6076,
+    "TP": 97,
+    "one_sided_FP": 0.2022,
+    "P_at_1": 0.3288,
+    "P_at_3": 0.2374,
+    "NDCG_at_1": 0.3288,
+    "NDCG_at_3": 0.3128,
+    "NDCG_at_5": 0.3642,
+    "MRR": 0.4737,
+    "RNDCG": 0.3208,
+    "query_stats": {
+      "n_queries": 73,
+      "min": 10,
+      "median": 14,
+      "mean": 12.6027,
+      "p90": 15,
+      "max": 15,
+      "with_ge2": 73,
+      "with_ge3": 73,
+      "with_ge5": 73,
+      "with_ge10": 73
+    },
+    "Brier": 0.1721,
+    "ECE": 0.1489,
+    "F1_ci95": {
+      "lo": 0.3201,
+      "hi": 0.3963,
+      "method": "bootstrap_wave_cluster",
+      "rounds": 200
+    },
+    "directional_ranking": {
+      "precision_at_1": 0.589,
+      "precision_at_3": 0.4749,
+      "ndcg_at_1": 0.589,
+      "ndcg_at_3": 0.5,
+      "ndcg_at_5": 0.5173,
+      "MRR": 0.6987
+    },
+    "failure_types": {
+      "FALSE_NEGATIVE_MUTUAL": 79,
+      "LOW_SCORE_TRUE_POSITIVE": 79,
+      "ONE_SIDED_FALSE_POSITIVE": 186,
+      "FALSE_POSITIVE_MUTUAL": 96
+    }
+  },
+  "rejected_experiments": [
+    {
+      "round": 2,
+      "name": "LR_DIR_MIN",
+      "reason": "no_pareto_gain"
+    },
+    {
+      "round": 2,
+      "name": "LR_DIR_GEOM",
+      "reason": "no_pareto_gain"
+    },
+    {
+      "round": 2,
+      "name": "GBDT_DIR_PRODUCT",
+      "reason": "no_pareto_gain"
+    },
+    {
+      "round": 2,
+      "name": "GBDT_DIR_MIN",
+      "reason": "no_pareto_gain"
+    },
+    {
+      "round": 2,
+      "name": "GBDT_MUTUAL",
+      "reason": "no_pareto_gain"
+    },
+    {
+      "round": 3,
+      "name": "LR_MUTUAL_PLATT",
+      "reason": "calibration_no_clear_gain"
+    },
+    {
+      "round": 4,
+      "name": "EXP_4A_MIN",
+      "reason": "no_meaningful_DEV_gain"
+    },
+    {
+      "round": 4,
+      "name": "EXP_4B_PRODUCT",
+      "reason": "no_meaningful_DEV_gain"
+    },
+    {
+      "round": 4,
+      "name": "EXP_4C_GBDT_MIN",
+      "reason": "no_meaningful_DEV_gain"
+    },
+    {
+      "round": 5,
+      "name": "EXP_5_ENSEMBLE",
+      "reason": "no_meaningful_DEV_gain"
+    },
+    {
+      "round": 5,
+      "name": "EXP_5_ASYMMETRY_PENALTY",
+      "reason": "no_meaningful_DEV_gain"
+    },
+    {
+      "round": 6,
+      "name": "EXP_6_HIGH_PREC_THRESH",
+      "reason": "no_meaningful_DEV_gain"
+    }
+  ],
+  "blockers": [
+    {
+      "type": "HY3",
+      "status": "BLOCKED_BY_EXTERNAL_MANUAL_ACTION"
+    },
+    {
+      "type": "RAG",
+      "status": "RAG_UNDERPOWERED",
+      "note": "Speed Dating rag=false; no legal RAG corpus forced"
+    }
+  ],
+  "local_commits": [],
+  "sealed_test_status": "CONSUMED_FINAL_TEST",
+  "audit_test_v1_2": "RETIRED_AS_AUDIT_ONLY",
+  "notes": "User dirty files left untouched; no reset/push/deploy",
+  "updated_at": "2026-08-20T17:37:01.491Z",
+  "data": {
+    "encounters": 8378,
+    "pairs": 8306,
+    "quarantined": 32,
+    "stats": {
+      "n_queries": 549,
+      "min": 5,
+      "p10": 8,
+      "median": 16,
+      "mean": 15.188,
+      "p90": 21,
+      "max": 22,
+      "with_ge2": 549,
+      "with_ge3": 549,
+      "with_ge5": 549,
+      "with_ge10": 462
+    },
+    "identityMode": "IDENTITY_RECONSTRUCTED_FROM_PREMATCH_FINGERPRINT"
+  },
+  "split_counts": {
+    "TRAIN_CORE": 4882,
+    "CALIBRATION": 1530,
+    "DEV": 920,
+    "SEALED_TEST": 1046
+  },
+  "SEALED_TEST_CONSUMED_AT": "2026-08-20T17:37:01.489Z",
+  "production_recommendation": "KEEP_CURRENT_PRODUCTION",
+  "sealed_conclusion": "NO_CLEAR_IMPROVEMENT"
+}

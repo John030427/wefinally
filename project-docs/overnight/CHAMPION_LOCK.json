@@ -1,0 +1,69 @@
+{
+  "locked_at": "2026-08-20T17:37:01.266Z",
+  "model_name": "LR_MUTUAL",
+  "feature_schema_hash": "6bc57a7eba69906a",
+  "threshold": 0.3,
+  "calibrator": {
+    "a": 0.6280182082199643,
+    "b": -1.1417053740271612,
+    "type": "platt"
+  },
+  "DEV_metrics": {
+    "n": 920,
+    "AUPRC": 0.2782,
+    "AUROC": 0.6274,
+    "MCC": 0.1375,
+    "Precision": 0.2559,
+    "Recall": 0.5511,
+    "F1": 0.3495,
+    "balanced_accuracy": 0.5861,
+    "accuracy": 0.6076,
+    "TP": 97,
+    "one_sided_FP": 0.2022,
+    "P_at_1": 0.3288,
+    "P_at_3": 0.2374,
+    "NDCG_at_1": 0.3288,
+    "NDCG_at_3": 0.3128,
+    "NDCG_at_5": 0.3642,
+    "MRR": 0.4737,
+    "RNDCG": 0.3208,
+    "query_stats": {
+      "n_queries": 73,
+      "min": 10,
+      "median": 14,
+      "mean": 12.6027,
+      "p90": 15,
+      "max": 15,
+      "with_ge2": 73,
+      "with_ge3": 73,
+      "with_ge5": 73,
+      "with_ge10": 73
+    },
+    "Brier": 0.1721,
+    "ECE": 0.1489,
+    "F1_ci95": {
+      "lo": 0.3201,
+      "hi": 0.3963,
+      "method": "bootstrap_wave_cluster",
+      "rounds": 200
+    },
+    "directional_ranking": {
+      "precision_at_1": 0.589,
+      "precision_at_3": 0.4749,
+      "ndcg_at_1": 0.589,
+      "ndcg_at_3": 0.5,
+      "ndcg_at_5": 0.5173,
+      "MRR": 0.6987
+    },
+    "failure_types": {
+      "FALSE_NEGATIVE_MUTUAL": 79,
+      "LOW_SCORE_TRUE_POSITIVE": 79,
+      "ONE_SIDED_FALSE_POSITIVE": 186,
+      "FALSE_POSITIVE_MUTUAL": 96
+    }
+  },
+  "selection_reason": "improved AUPRCΔ=0.0633 MCCΔ=0.0715",
+  "git_head": "f0d9c7d4161ef1a6b25d14b825f74948defaf106",
+  "rag_version": "none",
+  "note": "Locked before SEALED; no further changes"
+}

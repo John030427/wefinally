@@ -1,0 +1,15 @@
+const assert = require('assert')
+const fs = require('fs')
+const path = require('path')
+
+const html = fs.readFileSync(path.resolve(__dirname, '../public/partner/index.html'), 'utf8')
+assert(html.includes("const CLOUD_ONLY_ALLOWED_PAGES = ['dashboard'].concat(CLOUD_ONLY_PAGES);"))
+assert(html.includes('function renderCloudDashboard'))
+assert(html.includes('metrics.attributed_registrations'))
+assert(html.includes('metrics.pending_amount'))
+assert(html.includes('rule.refund_adjustment'))
+assert(html.includes('trends.days_7'))
+assert(html.includes('trends.days_30'))
+assert(html.includes('行为事件，不等于注册人数'))
+
+console.log('PASS CloudBase partner dashboard renders metrics, rules and 7/30-day trends')

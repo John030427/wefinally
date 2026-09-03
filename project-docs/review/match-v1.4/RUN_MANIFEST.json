@@ -1,0 +1,191 @@
+{
+  "run_id": "match-reciprocal-v1.4",
+  "base_commit": "073f0973d4216af1f3fb882478613865438742d6",
+  "branch": "experiment/match-reciprocal-v1.4",
+  "final_commit": "463b34d3118f2cee45f9093226eef7c1c081fd8f",
+  "source_status": "speed-dating REVIEW_REQUIRED sandbox rag=false",
+  "dataset_counts": {
+    "raw": 8378,
+    "encounters": 8378
+  },
+  "split_counts": {
+    "TRAIN_CORE": 4882,
+    "CALIBRATION": 1530,
+    "DEV": 920,
+    "SEALED_TEST": 1046
+  },
+  "integrity_status": "INTEGRITY_PASS_FIXTURE_PROXY",
+  "metric_audit_status": "FIXED_MIXED_TIES",
+  "identity_audit_status": "UNCERTAIN",
+  "candidate_query_stats": {
+    "n_queries": 73,
+    "min": 10,
+    "median": 14,
+    "mean": 12.6027,
+    "p90": 15,
+    "max": 15,
+    "with_ge2": 73,
+    "with_ge3": 73,
+    "with_ge5": 73,
+    "with_ge10": 73
+  },
+  "experiment_count": 12,
+  "champion": {
+    "champion_display_name": "NO_CLEAR_CHAMPION",
+    "model_family": "NO_CLEAR_CHAMPION",
+    "model_variant": "NO_CLEAR_CHAMPION",
+    "artifact_path": "datasets/wefinally/eval/predictions/match-reciprocal-v1.4/",
+    "artifact_sha256": "c1953dc376665100",
+    "feature_schema_sha256": "55cd0e18bb59a7ee",
+    "calibrator": null,
+    "threshold": 0.35,
+    "training_split": "TRAIN_CORE",
+    "calibration_split": "CALIBRATION",
+    "selection_split": "DEV",
+    "metrics": {
+      "n": 920,
+      "AUROC": 0.5666,
+      "AVERAGE_PRECISION": 0.2438,
+      "PR_AUC_TRAPEZOID": 0.2392,
+      "AUPRC": 0.2438,
+      "MCC": 0.072,
+      "Precision": 0.2061,
+      "Recall": 0.8466,
+      "F1": 0.3315,
+      "one_sided_FP": 0.4326,
+      "P_at_1": 0.2603,
+      "P_at_3": 0.2374,
+      "NDCG_at_3": 0.2711,
+      "NDCG_at_5": 0.3088,
+      "MRR": 0.408,
+      "RNDCG": 0.2657,
+      "Brier": 0.3941,
+      "ECE": 0.4879,
+      "query_stats": {
+        "n_queries": 73,
+        "min": 10,
+        "median": 14,
+        "mean": 12.6027,
+        "p90": 15,
+        "max": 15,
+        "with_ge2": 73,
+        "with_ge3": 73,
+        "with_ge5": 73,
+        "with_ge10": 73
+      },
+      "failure_types": {
+        "ONE_SIDED_FALSE_POSITIVE": 398,
+        "FALSE_NEGATIVE_MUTUAL": 27,
+        "HIGH_SCORE_FALSE_POSITIVE": 144,
+        "FALSE_POSITIVE_MUTUAL": 176
+      }
+    },
+    "mapping_note": "Explicit name == predictor; no LR_MUTUAL alias ambiguity"
+  },
+  "baseline_metrics": {
+    "B": {
+      "n": 920,
+      "AUROC": 0.5666,
+      "AVERAGE_PRECISION": 0.2438,
+      "PR_AUC_TRAPEZOID": 0.2392,
+      "AUPRC": 0.2438,
+      "MCC": 0.072,
+      "Precision": 0.2061,
+      "Recall": 0.8466,
+      "F1": 0.3315,
+      "one_sided_FP": 0.4326,
+      "P_at_1": 0.2603,
+      "P_at_3": 0.2374,
+      "NDCG_at_3": 0.2711,
+      "NDCG_at_5": 0.3088,
+      "MRR": 0.408,
+      "RNDCG": 0.2657,
+      "Brier": 0.3941,
+      "ECE": 0.4879,
+      "query_stats": {
+        "n_queries": 73,
+        "min": 10,
+        "median": 14,
+        "mean": 12.6027,
+        "p90": 15,
+        "max": 15,
+        "with_ge2": 73,
+        "with_ge3": 73,
+        "with_ge5": 73,
+        "with_ge10": 73
+      },
+      "failure_types": {
+        "ONE_SIDED_FALSE_POSITIVE": 398,
+        "FALSE_NEGATIVE_MUTUAL": 27,
+        "HIGH_SCORE_FALSE_POSITIVE": 144,
+        "FALSE_POSITIVE_MUTUAL": 176
+      }
+    },
+    "C": {
+      "n": 920,
+      "AUROC": 0.6196,
+      "AVERAGE_PRECISION": 0.2574,
+      "PR_AUC_TRAPEZOID": 0.2532,
+      "AUPRC": 0.2574,
+      "MCC": 0.0233,
+      "Precision": 0.1935,
+      "Recall": 0.9545,
+      "F1": 0.3218,
+      "one_sided_FP": 0.5174,
+      "P_at_1": 0.2466,
+      "P_at_3": 0.2603,
+      "NDCG_at_3": 0.3039,
+      "NDCG_at_5": 0.3583,
+      "MRR": 0.4247,
+      "RNDCG": 0.2752,
+      "Brier": 0.4882,
+      "ECE": 0.5732,
+      "query_stats": {
+        "n_queries": 73,
+        "min": 10,
+        "median": 14,
+        "mean": 12.6027,
+        "p90": 15,
+        "max": 15,
+        "with_ge2": 73,
+        "with_ge3": 73,
+        "with_ge5": 73,
+        "with_ge10": 73
+      },
+      "failure_types": {
+        "ONE_SIDED_FALSE_POSITIVE": 476,
+        "HIGH_SCORE_FALSE_POSITIVE": 453,
+        "FALSE_NEGATIVE_MUTUAL": 8,
+        "LOW_SCORE_TRUE_POSITIVE": 6,
+        "FALSE_POSITIVE_MUTUAL": 224
+      }
+    }
+  },
+  "hy3_status": "BLOCKED_BY_EXTERNAL_MANUAL_ACTION",
+  "rag_status": "RAG_NOT_TESTED_MEANINGFULLY",
+  "fresh_sealed_status": "NO_FRESH_SEALED_AVAILABLE",
+  "tests": {
+    "metrics_v14": "PASS",
+    "review_fix_v14": "PASS",
+    "match_eval_integrity": "PASS",
+    "experience_learning_guard": "PASS",
+    "e2e_wefinally": "PASS_15_15",
+    "e2e_realworld": "PASS"
+  },
+  "blockers": [
+    "HY3_CREDS"
+  ],
+  "generated_at": "2026-08-21T07:50:02.019Z",
+  "review_fix": "v1.4-review-fix",
+  "calibration_provenance_status": "FIXED",
+  "sealed_physical_isolation": "FIXED",
+  "sha_consistency_note": "final_commit equals git tip at commit time; review_fix_code_commit is the substantive fix. Git cannot embed a commit hash inside the same commit tree without rewrite.",
+  "review_fix_code_commit": "463b34d3118f2cee45f9093226eef7c1c081fd8f",
+  "sha_consistency": {
+    "local_equals_remote": true,
+    "final_commit_meaning": "substantive review-fix commit (not floating docs tip)",
+    "prior_bug": "RUN_MANIFEST kept f34501c after docs tip 66cbe21",
+    "resolved_by": "final_commit now pinned to review-fix code commit; tip always git rev-parse HEAD"
+  },
+  "bundle_tip_at_write": "4dafb8c60e9ab85d4bda9d737966de172020011c"
+}

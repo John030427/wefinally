@@ -1,3 +1,7 @@
 {
-  "navigationBarTitleText": "AI匹配"
+  "navigationBarTitleText": "AI匹配",
+  "usingComponents": {
+    "qa-match-panel": "/components/qa-match-panel/qa-match-panel",
+    "new-match-reveal": "/components/new-match-reveal/new-match-reveal"
+  }
 }

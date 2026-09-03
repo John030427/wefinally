@@ -12,5 +12,12 @@
     "value": "true",
     "enabled": true,
     "description": "Demo only: grant VIP after tapping purchase when real WeChat Pay is not configured."
+  },
+  {
+    "_id": "match_test_run_public_enabled",
+    "key": "match_test_run_public_enabled",
+    "value": "false",
+    "enabled": false,
+    "description": "DEV ONLY: expose QA match simulator to all testers when true. Must be false before experience/audit/release."
   }
 ]

@@ -13,6 +13,16 @@
       <view class="review-note">{{detail.review_note}}</view>
     </view>
 
+    <view class="invite-card" wx:if="{{detail.member_status === 'pending_review'}}">
+      <view class="invite-eyebrow">已有合伙人邀请？</view>
+      <view class="invite-title">填写邀请码，加快确认归属</view>
+      <view class="invite-desc">也可以直接打开合伙人发来的微信邀请链接，链接会自动带入邀请凭证。</view>
+      <input class="invite-input" value="{{referralInput}}" maxlength="50" placeholder="请输入邀请码" bindinput="onReferralInput" />
+      <view wx:if="{{referralMessage}}" class="invite-message">{{referralMessage}}</view>
+      <button class="invite-button" loading="{{bindingReferral}}" disabled="{{bindingReferral || detail.invitation_bound}}" bindtap="bindReferral">{{detail.invitation_bound ? '邀请关系已绑定' : '确认接受邀请'}}</button>
+      <view class="invite-safe">普通公开邀请码只绑定审核归属；合伙人签名微信邀请校验通过后可直接成为正式会员。</view>
+    </view>
+
     <view class="actions">
       <button wx:if="{{detail.member_status === 'pending_profile' || detail.member_status === 'need_more_info'}}" class="primary" bindtap="goProfile">补充个人资料</button>
       <button wx:if="{{detail.member_status === 'pending_profile' || detail.member_status === 'need_more_info'}}" class="secondary" bindtap="goComplete">补充匹配资料并提交</button>
@@ -20,6 +30,7 @@
       <button wx:if="{{detail.member_status === 'rejected' && detail.can_submit}}" class="primary" loading="{{submitting}}" bindtap="resubmit">重新提交申请</button>
       <button wx:if="{{detail.member_status === 'approved'}}" class="primary" bindtap="goVip">购买 VIP</button>
       <button class="secondary" bindtap="goService">联系平台客服</button>
+      <button class="secondary" open-type="contact">联系微信人工客服</button>
     </view>
   </block>
 </view>

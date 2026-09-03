@@ -5,17 +5,26 @@ const STORAGE_KEYS = {
   AGREEMENT_ACCEPTED: 'wf_agreement_accepted',
   MATCH_SETTING_COOLDOWN: 'wf_match_setting_cooldown',
   PROMOTE_CODE: 'wf_promote_code',
+  PARTNER_TOKEN: 'wf_partner_token',
+  PARTNER_INFO: 'wf_partner_info',
   TRUST_ONBOARDING: 'wf_trust_onboarding_v1'
 }
 
 const API_PATHS = {
   WX_LOGIN: '/api/auth/wx-login',
   REGISTER: '/api/user/register',
+  QA_REGISTRATION_RESET: '/api/user/qa-registration-reset',
   USER_PROFILE: '/api/user/profile',
   USER_PROFILE_UPDATE: '/api/user/profile',
   MATCH_SETTING: '/api/match/setting',
+  MATCH_INTENT_CONFIRM: '/api/match/intent/confirm',
+  MATCH_AI_PROFILE: '/api/match/ai-profile',
+  MATCH_AI_PROFILE_CONFIRM: '/api/match/ai-profile/confirm',
+  MATCH_AI_PROFILE_CORRECT: '/api/match/ai-profile/correct',
   MATCH_SETTING_COOLDOWN: '/api/match/setting/cooldown',
   MATCH_START: '/api/match/start',
+  MATCH_QA_REAL_DEVICE_START: '/api/match/qa-real-device/start',
+  MATCH_QA_PAIR_RESET: '/api/match/qa-pair-reset',
   MATCH_LIST: '/api/match/list',
   MATCH_DETAIL: '/api/match/detail',
   MATCH_HANDOFF: '/api/match/handoff',
@@ -25,6 +34,8 @@ const API_PATHS = {
   MATCH_REPORT_TASK_STATUS: '/api/match/report-tasks/status',
   MATCH_REPORT_TASK_RETRY: '/api/match/report-tasks/retry',
   MATCH_LATEST: '/api/match/latest',
+  MATCH_TEST_RUNS: '/api/match/test-runs',
+  MATCH_TEST_RUN_EXECUTE: '/api/match/test-runs',
   VIP_INFO: '/api/vip/info',
   VIP_PURCHASE: '/api/vip/purchase',
   ORDER_STATUS: '/api/order/status',
@@ -36,6 +47,9 @@ const API_PATHS = {
   CHAT_HISTORY: '/api/chat/history',
   AGENT_SESSIONS: '/api/agent/sessions',
   DATE_COORDINATIONS: '/api/date-coordinations',
+  NOTIFICATIONS: '/api/notifications',
+  NOTIFICATIONS_UNREAD: '/api/notifications/unread',
+  NOTIFICATIONS_READ: '/api/notifications/read',
   DATE_FEEDBACK: '/api/date-feedback',
   ACCOUNT_CANCEL: '/api/user/cancel',
   RULES: '/api/platform/rules',
@@ -48,7 +62,8 @@ const API_PATHS = {
   DIVORCE_REVIEW: '/api/user/divorce-review',
   DIVORCE_REVIEW_STATUS: '/api/user/divorce-review/status',
   MEMBER_APPLICATION: '/api/member/application',
-  MEMBER_APPLICATION_SUBMIT: '/api/member/application/submit'
+  MEMBER_APPLICATION_SUBMIT: '/api/member/application/submit',
+  MEMBER_APPLICATION_REFERRAL: '/api/member/application/referral'
 }
 
 const GENDER_OPTIONS = ['男', '女']
@@ -61,6 +76,11 @@ const CITY_OPTIONS = [
   '北京', '上海', '广州', '深圳', '杭州', '成都', '重庆', '武汉',
   '南京', '西安', '苏州', '天津', '长沙', '郑州', '青岛', '厦门'
 ]
+
+// Province → city cascade; keep CITY_OPTIONS for legacy screens.
+const { listProvinces, listCities, resolveRegion, legacyCityOptions } = require('./chinaRegions')
+const PROVINCE_OPTIONS = listProvinces()
+const MAX_IDENTITY_TAGS = 3
 const AGE_RANGE_OPTIONS = ['20-25岁', '25-30岁', '30-35岁', '35-40岁', '40-45岁', '45岁以上']
 const HEIGHT_RANGE_OPTIONS = ['140-150cm', '150-160cm', '160-170cm', '170-180cm', '180-190cm', '190cm以上']
 const LIKE_MARRY_OPTIONS = ['仅看未婚', '可接受离异']
@@ -108,6 +128,12 @@ module.exports = {
   BABY_PLAN_OPTIONS,
   HOUSE_CAR_OPTIONS,
   CITY_OPTIONS,
+  PROVINCE_OPTIONS,
+  MAX_IDENTITY_TAGS,
+  listProvinces,
+  listCities,
+  resolveRegion,
+  legacyCityOptions,
   AGE_RANGE_OPTIONS,
   HEIGHT_RANGE_OPTIONS,
   LIKE_MARRY_OPTIONS,

@@ -54,11 +54,14 @@ function request(options) {
             : (/DATABASE_COLLECTION_NOT_EXIST|database collection not exists|ResourceNotFound/i.test(rawMsg)
               ? '功能数据正在初始化，请稍后再试'
               : (rawMsg || '服务暂时不可用，请稍后重试'))
+          const routeMissing = /接口不存在|route not found|unknown route/i.test(rawMsg)
           if (showError) wx.showToast({ title: msg, icon: 'none' })
           return Promise.reject({
             code: (err && err.code) || -2,
             message: msg,
             type: (err && err.type) || 'cloud',
+            routeMissing,
+            deploymentMismatch: routeMissing,
             detail: err
           })
         })

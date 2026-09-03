@@ -1,3 +1,5 @@
+const { referralInput } = require('./partnerReferralPolicy')
+
 const MEMBER_STATUS = Object.freeze({
   PENDING_PROFILE: 'pending_profile',
   PENDING_REVIEW: 'pending_review',
@@ -104,9 +106,11 @@ function nextMemberStatus(currentStatus, action) {
 }
 
 async function resolveInvitation(code, first) {
-  const normalized = String(code || '').trim().toUpperCase()
-  if (!normalized) throw new Error('邀请制注册需要有效邀请码')
-  const partner = await first('partner', { promote_code: normalized, status: 1 })
+  const referral = referralInput(code)
+  if (!referral.code && !referral.partnerId) return null
+  const partner = referral.partnerId
+    ? await first('partner', { id: referral.partnerId, status: 1 })
+    : await first('partner', { promote_code: referral.code, status: 1 })
   if (!partner) throw new Error('邀请码无效或已停用')
   return partner
 }
@@ -128,7 +132,8 @@ function normalizeMatchSettingInput(data = {}) {
     height_max: Number(data.height_max || height.max) || null,
     min_education: data.min_education || data.prefer_education || '',
     self_view_text: data.self_view_text || data.my_values || '',
-    target_view_text: data.target_view_text || data.expect_values || ''
+    target_view_text: data.target_view_text || data.expect_values || '',
+    other_requirements: String(data.other_requirements || data.otherRequirements || '').trim().slice(0, 500)
   }
 }
 

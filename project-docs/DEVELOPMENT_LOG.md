@@ -4,6 +4,298 @@
 
 ---
 
+## 2026-09-02 — 真机约会协调时间继承修复与 QA 软重置
+
+### 类型
+Bug 修复 / AI 协调 / 小程序 UI / QA 工具
+
+### 根因与修复
+- 线上新协调轮次中，受邀方修改日期/时间段时继承了发起方旧 `start_time`，触发“具体时间与所选时间段不一致”；并非旧匹配记录继续运行。现修改时间范围但未给出具体时刻时主动清空旧时刻并引导补充。
+- 可修正的申请校验错误过去被包装成 `SERVER_ERROR`。现仅对白名单业务错误返回安全、可操作提示，内部错误仍保持隐藏。
+- 客户端切换协调 ID 时清空上一轮表单状态，避免日期、时间、场地跨轮次污染。
+- 双真机 QA cohort 新增“重置本轮”：保留历史审计，软关闭当前协调及关联待处理记录，允许两个测试账号重新发起。
+
+### 验证与交接
+- 新增时间依赖、跨轮次表单隔离、QA 权限/软重置/路由/UI 契约自检。
+- Cursor 审查范围、AI 协调与 AI 报告检查项、Git 和 CloudBase 工具流程记录于 `HANDOFF_2026-09-02_DATE_COORDINATION_QA_RESET.md`。
+- 本条记录生成时尚未部署云函数、尚未上传微信测试版。
+
+---
+
+## 2026-09-01 — AI 报告精简、协调聊天布局与日期覆盖修复
+
+### 类型
+Bug 修复 / 小程序 UI / 约会协调
+
+### 根因与修复
+- 匹配详情不再展示面向实现的“数据限制”区块，报告展示统一保留 01–05 的用户可读结论。
+- AI 协调员回复与申请预览此前处于同一横向 flex 行，预览卡会把回复气泡挤成逐字换行；现改为机器人消息纵向堆叠，预览卡在回复下方展示。
+- 受邀方只补充时间时，模型可能把约会字段多包一层 `application`。旧后端未解包且未拒绝未知字段，最终静默继承发起方旧日期。现统一解包受控字段、拒绝空或未知结构，并确保显式时间覆盖邀请时间。
+
+### 验证与边界
+- 线上只读证据确认：AI 文案已识别新日期，但旧预览保存了发起方日期，属于服务端参数归一化缺口，不是客户端缓存。
+- 回归覆盖嵌套 `application`、受邀方部分覆盖、报告隐藏和聊天纵向布局。
+- 不批量修改生产数据；既有错误协调记录需通过新的业务流程重新提交，不能直接改库。
+
+---
+
+## 2026-08-21 — Overnight Match Evolution v1.3
+
+### 类型
+真实候选排序 / 密封集 / ML 基线 / 校准 / 多轮 DEV 进化
+
+### 完成
+- Fingerprint 重建 iid/pid → ranking median candidates=16（全局）/ DEV≈14
+- Wave 级 TRAIN/CAL/DEV/SEALED；v1.2 frozen-gold 降级为 AUDIT_TEST
+- LR/GBDT 离线沙箱；校准与阈值；Rounds 1–6；SEALED 一次性评测
+- Champion DEV=`LR_MUTUAL`；SEALED `NO_CLEAR_IMPROVEMENT` → `KEEP_CURRENT_PRODUCTION`
+- HY3: BLOCKED_BY_EXTERNAL_MANUAL_ACTION；RAG_UNDERPOWERED
+- 报告：`WORK_REPORT_OVERNIGHT_MATCH_EVOLUTION.md`
+
+### 验证
+- match-eval-integrity PASS；guard PASS；e2e 15/15；realworld PASS
+- 未 push / 未部署 / 未上传微信
+
+---
+
+## 2026-08-21 — Match Evaluation Integrity v1.2
+
+### 类型
+评测诚信 / Feature–Gold 隔离 / 负对照 / 真实排序语义
+
+### 完成
+- 根因：v1.1 `predictMutual` 直接读 gold 决策 → A–E 全满分假象
+- `matchViews` / `predictMatch` / `scoreMatch`；预测产物 JSONL+SHA256 后再 join gold
+- `selfcheck:match-eval-integrity`；`INTEGRITY_PASS_FIXTURE_PROXY`
+- 排序：当前 frozen-gold id 候选集 size=1 → P@K/NDCG=`NOT_APPLICABLE`
+- 报告：`WORK_REPORT_MATCH_EVAL_INTEGRITY_V1_2.md` + `datasets/wefinally/reports/match-*-v1.2*`
+
+### 验证
+- match-eval-integrity PASS；guard PASS；e2e 15/15 PASS
+- 未 push / 未部署 / 未上传微信
+
+---
+
+## 2026-08-21 — Experience Learning v1.1
+
+### 类型
+真实数据 / 真实双边结果 / 诚实 provenance / failure mining / hy3 诚实阻断
+
+### 完成
+- V1_REALITY_CHECK：22 条 stress → `synthetic-profile-stress-v1`；CPED demote REVIEW_REQUIRED
+- Figshare 6429443：CC BY 4.0 license gate PASS；本机下载 HTTP 403 → BLOCKED_BY_EXTERNAL_NETWORK（未伪造数据）
+- Speed Dating sandbox：8378 GOLD_OBSERVED；frozen-gold match=1154；wave split
+- StackExchange：AND-tag 修复；691 questions；SILVER_WEAK
+- label_quality + frozen-gold/silver/synthetic-regression；reciprocal metrics A–E
+- Failure mining 修复；RAG_NEGATIVE_TRANSFER 报告；live hy3 仍诚实 BLOCKED
+- 报告：`WORK_REPORT_EXPERIENCE_LEARNING_V1_1.md` + `datasets/wefinally/reports/*-v1.1*`
+
+### 验证
+- guard PASS；e2e 15/15 PASS；realworld PASS
+- 未 push / 未部署 / 未上传微信
+
+---
+
+## 2026-08-20 — Experience Learning Layer v1
+
+### 类型
+离线经验学习层：来源治理、合法接入、PII、案例、RAG、冻结评测、报告
+
+### 完成
+- `datasets/wefinally/source-registry.yaml` + source-audit；Reddit / 世纪佳缘阻断
+- `server/data/wefinally/` CLI 与 `data:wefinally:*` 脚本；CPED / StackExchange / CGSS manual / blocked stubs
+- Profile / Match / Coordination case schema、实体安全 split、BM25 RAG、`FROZEN_TEST_NOT_RETRIEVABLE`
+- 版本化 prompts：`server/ai/prompts/{profile,match,coordination}/`
+- `selfcheck:experience-learning-guard`；`e2e:wefinally:realworld`；Cursor skill
+- 报告：`WORK_REPORT_EXPERIENCE_LEARNING_LAYER_V1.md` + `datasets/wefinally/reports/*`
+
+### 验证
+- `data:wefinally:all` 完成；guard PASS；`e2e:wefinally` 15/15 PASS
+- Live hy3：无凭据时 `BLOCKED_BY_EXTERNAL_MANUAL_ACTION`
+- 未部署生产、未上传微信版、未提交凭据
+
+---
+
+## 2026-08-20 — Local Multi-User AI E2E Lab
+
+### 类型
+本地多用户 E2E 实验室 + 资料编辑/AI 指纹修复 + 回归自检
+
+### 完成
+- 新增 `server/e2e/wefinally/`：memoryDb、serviceFactory、18 personas、14 scenarios、artifact reporter
+- npm：`e2e:wefinally`、`e2e:wefinally:live`、`selfcheck:e2e-release-guard`
+- 产品：profile 页「个人资料」入口；register 编辑 income；`updateProfile` 标记 AI profile stale；扩展 `MEANINGFUL_SOURCE_KEYS`
+- 回归：`agent.createSession` 允许 initiator 在 `collecting_initiator` 开协调员会话（UI 策略不变）
+- 文档：`.cursor/skills/wefinally-e2e/SKILL.md`、`WORK_REPORT_LOCAL_MULTI_USER_AI_E2E_LAB.md`
+
+### 验证
+- `e2e:wefinally` 14/14 PASS；`selfcheck:agent` + baseline selfchecks PASS
+- Live hy3 smoke：无 CloudBase 凭据时 BLOCKED（不崩溃）
+
+---
+
+## 2026-08-19 — Date Invitation Prelaunch Final
+
+### 类型
+上线前最后一轮后端收尾 + 测试 + CloudBase api 部署 + 文档
+
+### 目的
+1. CloudBase transaction 内写 EXPIRED 再 throw 会 rollback，导致客户端 INVITATION_EXPIRED 但库仍 INVITING_PARTNER
+2. A 在等待 B 时用 AI 改 Preference，旧 Primary 失效后不能无声错位或只报 PRIMARY_PROPOSAL_REQUIRED
+
+### 完成
+- Transaction：deadline 后 `persistExpiredInvitationRecord` 并 **return expired**，handler 在 commit 之后 throw
+- 已 EXPIRED 重试仍返回 INVITATION_EXPIRED，不是 ALREADY_RESPONDED
+- Preference 变更后逐维同步 Primary；唯一值自动推导；多选 `pending_primary_selection` + Chat 选择卡
+- `primary_selection` 后端校验；未完成 resolution 不 apply patch
+- Contract v6：`expired_transaction_commit` / `primary_proposal_resolution`
+- TEST 61–75；TEST 25–60 无回归
+- 报告：`project-docs/WORK_REPORT_DATE_INVITATION_PRELAUNCH_FINAL.md`
+
+### 验证
+专项 selfcheck PASS；CloudBase `api` 干净 staging code-only 更新后 config v6 PASS；agent-graph 未改未部署，health PASS
+
+### 未做
+- Live LangGraph manual smoke
+- 微信视觉验收
+- Subscribe Template ID
+- 体验版上传
+- 未 merge main；未 force push
+
+本轮后停止后端架构迭代。
+
+---
+
+## 2026-08-19 — Date Invitation Atomicity Final Fix
+
+### 类型
+上线前并发一致性收尾 + 测试 + CloudBase api 部署 + 文档
+
+### 目的
+把 INVITING_PARTNER 阶段变成原子状态机：A pre-accept patch 与 B accept/coordinate/decline/expire 争夺同一份 Invitation State，禁止旧异步写把终态撕回 inviting_partner。
+
+### 完成
+- Production：`commitPreAcceptInvitationPatch` / `commitInvitationResponse` / 既有 `commitDirectInvitationAccept` 全部走 `db.runTransaction`
+- Selfcheck：in-memory CAS + `beforeCommitHook` barrier；TEST 45–60 用真实 handlers 并发
+- `primaryFitsPreference` 校验 payment；payment patch 同步 Neutral Primary
+- 所有 invitation transaction 内二次校验 deadline
+- Contract v5：`invitation_atomic_transitions` / `invitation_response_version_cas` / `pre_accept_patch_cas`
+- 报告：`project-docs/WORK_REPORT_DATE_INVITATION_ATOMICITY_FINAL_FIX.md`
+
+### 验证
+相关 selfcheck PASS；CloudBase `api` 从干净 staging 目录 code-only 更新后 config v5 PASS；agent-graph 未改未部署，health PASS；Live Graph Smoke MANUAL_REQUIRED
+
+### 未做
+- 微信开发者工具视觉验收
+- Live LangGraph NL Patch E2E
+- 未上传微信体验/正式版；未 merge main；未 force push
+
+---
+
+## 2026-08-19 — Date Coordination Code Review Fix Round
+
+### 类型
+上线前 Code Review 修复 + 测试 + CloudBase 部署 + 文档
+
+### 目的
+在不推翻「第一次约会邀请 + AI 协调」产品方向的前提下，修掉 Direct Accept 偷偷选第一个、支付视角歧义、invitation_version 宽松默认、并发非 CAS、pre-accept 消耗协商轮次、时间格式与 LangGraph mock/live 混淆等问题。
+
+### 完成
+- Preference vs Primary Invitation Proposal；Direct Accept 只接受完整 primary
+- 共享方案中性支付 `payment_mode` / `payer_user_id`；Invitation / Proposal Card 展示费用方式
+- accept 强制 `invitation_version`；`commitDirectInvitationAccept` CAS + idempotent
+- INVITING_PARTNER 下编辑不增加 `recoordination_count`
+- 统一日期格式；TEST 25–44；contract version 4
+- 报告：`project-docs/WORK_REPORT_DATE_COORDINATION_REVIEW_FIX_ROUND.md`
+
+### 验证
+相关 selfcheck PASS；CloudBase `api` 从函数目录 code-only 更新后 config v4 PASS；agent-graph health PASS；Live Graph Smoke MANUAL_REQUIRED
+
+### 未做
+- 微信开发者工具视觉验收
+- 真实 CloudBase NL Patch live smoke
+- 未上传微信体验/正式版；未 merge main；未 force push
+
+---
+
+## 2026-08-19 — 第一次约会邀请 / AI 双边协调产品化
+
+### 类型
+产品化改造 + 测试 + CloudBase 部署 + 文档
+
+### 目的
+把约会协调从「双方各填一张完整申请表再比对」改成：A 发出第一次约会邀请 + 建议方案；B 可直接接受、和 AI 协调局部差异、或这次暂不方便。事实用卡片，AI 只负责沟通。
+
+### 完成
+- Invitation Proposal + `invitation_version`；A 在 INVITING_PARTNER 可 AI patch，状态不变
+- B 直接接受当前 invitation version → ARRANGED；stale version 拒绝并刷新
+- B「和 AI 协调」进入双边协调，不复制 A 整表为 B 明确填写；支持 partial override evidence
+- B「这次暂不方便」→ INVITATION_DECLINED；NO RESPONSE ≠ DECLINE；超时 EXPIRED
+- 同一 Date Coordination 页按 ViewModel 渲染 Invitation / Shared / Proposal / Result Card
+- Fixture：`accept_direct` / `coordinate` / `decline` / `no_response` / `accept_no_prefs` + AUTO / MANUAL_STEP
+- 报告：`project-docs/WORK_REPORT_FIRST_DATE_INVITATION_AI_COORDINATION.md`
+
+### 验证
+selfcheck:agent / langgraph / synthetic-coordination / ai-profile-bilateral / cloud-match / member / ai-report / safety PASS  
+agent-graph `npm run check` PASS  
+CloudBase `api` / `agent-graph` 代码更新后 ping + health PASS
+
+### 未做
+- 微信开发者工具视觉验收（pending_manual_visual_verification）
+- 未上传微信正式版 / 体验版
+- 未 merge main、未 force push
+- 无破坏性 database migration
+
+---
+
+## 2026-08-18 — Date Coordination / LangGraph / Fixture / Notification 逻辑审计修复
+
+### 类型
+修复 + 测试 + 文档
+
+### 目的
+验证并修复邀请态被 pre-accept patch 破坏、LangGraph 重复业务真相、Fixture 旅程冲突、以及通知部署诊断不清的问题。不是重新设计产品。
+
+### 完成
+- 统一 `dateCoordinationAccessPolicy`：inviting_partner 仅 initiator 可 AI chat / 改自己的申请；terminal 全写守卫含 ARRANGED
+- A 在 INVITING_PARTNER 确认 patch 后 status 仍为 waiting_partner；B 仍可 accept/reject
+- LangGraph 只消费 backend `canonicalOverlap` + `ownPreference` + DB `confirmationSnapshot`
+- Fixture：`fixture_journey` 进入 normalize；ACCEPT/REJECT 可并存；cleanup 关闭测试 coordination；`manual_step` 可停步
+- `/api/common/config` capabilities；通知页识别 CloudBase route missing
+- 报告：`project-docs/WORK_REPORT_DATE_COORDINATION_LOGIC_AUDIT_FIX.md`
+
+### 验证
+selfcheck:agent / langgraph / synthetic-coordination / ai-profile-bilateral / cloud-match / member / safety / ai-report PASS  
+agent-graph `npm run check` PASS
+
+### 未做
+- 微信开发者工具视觉验收（pending_manual_visual_verification）
+- 未 push / merge / deploy / 上传小程序 / 生产 migration
+
+---
+
+## 2026-08-18 — 真实 UI + LangGraph 约会协调 Fixture 主路径
+
+### 类型
+修复 + E2E + 文档
+
+### 目的
+测试用户走与生产一致的 Match Detail → 申请约会 → 真实 coordinationId → LangGraph date_coordinator；取消「虚拟体验 / 排队刷新」作为主路径。
+
+### 完成
+- `syntheticPartnerJourney`：accept/reject 调用真实 respondInvitation / saveApplication / confirmProposal；区域妥协走真实 patch
+- Match Detail / Date Coordination 统一生产 UI；弱「测试数据」badge
+- 记录 Tab 未读红点；REJECT inbox 安全文案；declined 禁止 AI session
+- 我的 →「AI 对你的理解」入口
+- `selfcheck/real-ui-fixture-date-langgraph-e2e.js` PASS
+- 报告：`project-docs/WORK_REPORT_REAL_UI_LANGGRAPH_DATE_E2E.md`
+
+### 未做
+- 微信开发者工具真机视觉验收（pending_manual_visual_verification）
+- 未 push / merge / deploy / 上传小程序
+
+---
+
 ## 2026-06-29 — 第一阶段：文档体系搭建
 
 ### 类型
@@ -1212,3 +1504,371 @@ Bug 验证 / 云端只读审计 / 测试夹具 / 隐私加固
 - 六组总自检全部通过；归档 CloudBase 交付报告后产生的旧路径断言已同步到 `project-docs/archive/audits/`。
 - `server/selfcheck/partner-dashboard.js` 语法检查和 `git diff --check` 通过。
 - 首次基线使用独立临时 Git 仓库生成，不改写当前 `feature/ai-agent-system` 的 90 个旧提交和脏工作树。
+- 安全基线已推送到私有仓库 `John030427/wefinally` 的 `main`，提交为 `7d8d7549b5a5e5e4cd8905c44a7b47906e3d614e`，远端与本地快照 SHA 一致。
+- `Todou-er` 已接受邀请并具有 `write` 权限。
+- `main` 已要求 PR、1 人审批、对话解决和线性历史，禁止强推/删除并对管理员生效；仅允许 Squash 合并，合并后自动删除分支。
+- 已启用漏洞提醒和自动安全修复。
+
+## 2026-08-10 — 本地管理后台连接 CloudBase
+
+### 类型
+后台接入 / 鉴权隔离 / 云端版本核对
+
+### 修改目的
+- 为本地管理后台增加仅连接 CloudBase 的运行模式，避免本地夹具与真实云端数据混用。
+- 复用 CloudBase 现有管理员登录和业务 API，不在浏览器保存云端密钥，不让前端直接访问数据库。
+- 保留原有本地开发模式，便于继续使用脱敏夹具做界面和流程开发。
+
+### 结果
+- 新增 `npm run admin:cloudbase`，服务仅监听 `127.0.0.1`，并将后台请求指向已绑定环境的 CloudBase HTTP 访问服务。
+- CloudBase 模式只开放已迁移页面，登录态改用 `sessionStorage`，退出浏览器会话后自动失效。
+- 登录页、顶部环境标识和云端接口过旧提示已区分本地模式与真实环境。
+- CORS 预检通过；浏览器打开 `http://127.0.0.1:3107/admin` 正常，控制台无警告或错误；未提交真实管理员密码。
+- 只读核对发现线上 `api` 云函数尚缺少当前客服工作台所需的会话列表、会话详情、统一时间线和人工回复接口，因此连接层已完成，但完整客服功能需要在明确授权后部署当前云函数版本。
+
+### 测试与边界
+- [x] `npm run selfcheck:cloudbase-admin`
+- [x] 后台内联脚本语法检查
+- [x] `npm run selfcheck:agent`
+- [x] `npm run selfcheck:safety`
+- [x] `git diff --check`
+- 未部署云函数、未写入生产数据库、未提交 Git、未保存管理员口令。
+
+## 2026-08-10 — 管理员与合伙人后台 CloudBase 接入上线
+
+### 类型
+云函数部署 / 后台接入 / 角色权限隔离
+
+### 修改目的
+- 在用户明确授权后，将当前 `api` 云函数代码部署到既有 CloudBase 环境。
+- 让管理员后台与合伙人后台使用同一个云端业务 API，同时保持 `admin` / `partner` 的服务端权限边界。
+- 修复 CloudBase 服务地址重复拼接 `/api` 导致请求落到 `/api/api/...` 的连接错误。
+
+### 结果
+- `api` Event 云函数已更新，运行时仍为 `Nodejs16.13`，环境变量、网关和支付配置未改动。
+- 部署后函数状态为 `Active`，只读 `ping` 返回目标环境 `cloud1-d4gy8l52g08bba326`。
+- 管理员会话与合伙人申请接口的无凭据请求均返回 `401 后台Token无效`，确认新路由和角色鉴权已生效且未返回业务数据。
+- 本地连接器同时提供 `http://127.0.0.1:3107/admin` 与 `http://127.0.0.1:3107/partner`。
+- 合伙人 CloudBase 专用模式使用 `sessionStorage`，复用单次云端登录 Token，仅开放已迁移的“用户审核、推广工具”。看板、订单、提现仍依赖旧本地 MySQL，暂未暴露；提现迁移需要单独设计事务与幂等控制。
+
+### 测试与边界
+- [x] 交接第 8 节六组 selfcheck 全部通过。
+- [x] `npm --prefix server run selfcheck:cloudbase-admin`
+- [x] `npm --prefix server run selfcheck:cloudbase-partner`
+- [x] 管理员与合伙人登录页浏览器验证，控制台无警告或错误。
+- 未上传小程序客户端、未修改生产数据库、未提交 Git、未提交真实后台账号密码。
+
+## 2026-08-11 — LangGraph 客服与双向约会协调本地候选
+
+### 类型
+AI 编排 / 人工介入 / 安全边界 / 本地发布候选
+
+### 实现
+- 新增独立 `Nodejs20.19` TypeScript `agent-graph` 函数源码，固定使用 `@langchain/langgraph@1.4.9`。
+- 客服图支持普通咨询、投诉/支付争议转人工、提示词注入拦截、`interrupt()` 暂停及跨图实例恢复。
+- 双向约会图以确定性代码计算时间、行政区、场所类型、时长和预算交集；任一方修改后版本递增，旧 proposal 和双方旧确认立即失效。
+- 新增 CloudBase collection 抽象的 checkpoint saver：文档键不可猜测，write 幂等，限定 `wf_thread_`，保存过期时间，并可在新实例恢复。
+- API 侧新增 HMAC actor/thread 标识、严格结果 DTO、超时/不可用回退、shadow mode 和 8 项精确工具白名单。平台客服可通过默认关闭的开关接入；模型和图节点不直接访问业务数据库。
+
+### 安全与验证
+- 图函数 30 项测试通过（包括读取层主动忽略已过期 checkpoint），TypeScript 严格构建通过，生产依赖 `npm audit --omit=dev` 为 0。
+- `selfcheck:langgraph` 以及 Agent、安全、AI 报告、支付、会员、匹配六组基线全部通过。
+- 对抗测试覆盖伪造 actor/thread、任意工具、跨协调任务、旧版本、重复恢复、坏 checkpoint、手机号/OpenID/密钥泄漏、函数超时和不可用回退。
+- 最终验证时已临时启动 `localhost:3000`，总入口通过健康检查和纯逻辑匹配断言，随后因本机没有监听 `127.0.0.1:3306` 的 MySQL 服务，在 `match-psych-report` 清理步骤以 `ECONNREFUSED` 停止；逐组代码自检没有失败。
+- 变更扫描只命中测试中的明确假手机号/OpenID/密钥/私钥标记夹具，未发现真实凭据。
+
+### 部署边界
+- 当前未部署 `agent-graph`、未更新线上 `api`、未上传小程序客户端、未写生产数据库。
+- `LANGGRAPH_ENABLED` 默认关闭；`LANGGRAPH_SHADOW_MODE` 不执行工具。
+- 约会协调图已实现并测试，但 API 暂不切流，直到旧 `date_coordination_application` 字段到新偏好 schema 的无损映射有独立测试。
+- 未将 `wx-server-sdk@4.0.2` 加入新图函数，因为它固定的 CloudBase SDK 依赖链仍包含审计为高危的旧依赖。部署前必须确定安全的运行时数据库适配方式，并完成 collection、TTL/index、环境变量和真实云函数恢复验证。
+- `api` 云函数部署与小程序客户端上传是两个独立发布动作，必须分别验证和授权。
+
+---
+
+## 2026-08-16 — agent-graph 测试外移后 requireFromAgentGraph 缺失修复
+
+### 类型
+Bug修复 / 测试
+
+### 修改目的
+`fec4215`（修复微信开发者工具"非法的文件 / import.meta outside module"上传报错）将 agent-graph 的 8 个测试从 `cloudfunctions/agent-graph/test/` 外移至 `miniprogram/tests/agent-graph/`，同时把 4 个测试文件的 `import ... from '@langchain/langgraph'` 改写为 `requireFromAgentGraph('@langchain/langgraph')`，但从未定义该全局函数，导致 `checkpoint / customerService / dateCoordination / index` 四个测试文件在模块加载期直接 `ReferenceError` 整包失败，`npm run check` 从 33 项通过退化为 13 通过 / 4 文件失败。
+
+### 涉及文件
+- `miniprogram/tests/agent-graph/agentGraphRequire.ts`（新增：createRequire 锚定 `cloudfunctions/agent-graph/package.json`，兼容 tsx CJS/ESM 两种形态）
+- `miniprogram/tests/agent-graph/checkpoint.test.ts`
+- `miniprogram/tests/agent-graph/customerService.test.ts`
+- `miniprogram/tests/agent-graph/dateCoordination.test.ts`
+- `miniprogram/tests/agent-graph/index.test.ts`
+
+### 测试
+- [x] `npm --prefix miniprogram/cloudfunctions/agent-graph run check`：33/33 通过（build + tsc + tsx --test）
+- [x] 六组 server selfcheck（agent / safety / ai-report / cloudpay / member / cloud-match）复跑全绿
+
+### 备注
+提交 `7bffc93`（分支 `feature/partner-gated-aigc-plan`）。用户既有 dirty 文件未纳入提交；本会话另产出 `project-docs/HANDOFF_2026-08-16.md` 交接文档。
+
+---
+
+## 2026-08-24 — Cloud 后台 RBAC fail-closed 收口
+
+### 类型
+安全加固 / 权限与隐私 / 自检
+
+### 修改目的
+- 移除 Cloud 与 Express 管理员缺失/未知角色自动提升为 `super_admin` 的运行时 fallback。
+- 在真实 Cloud 后台 dispatcher 的所有 `/api/admin/*` 业务分发前执行集中式角色、方法和路径授权。
+- 对 lower-role Cloud 响应统一删除身份标识、原始 AI、私密协调、匹配设置、snapshot、隐私审计和测试元数据，并遮罩手机号。
+
+### 测试
+- [x] 真实 `handleBackofficeHttp` 攻击用例先红后绿，missing/unknown/越权均为 403。
+- [x] customer_service、auditor、finance、super_admin 的实际允许路由通过。
+- [x] 指定发布对抗、后台、会员、安全、Agent Core 和 E2E 回归通过；E2E 14/14。
+- [x] 外部 AI 与 CloudBase AI 调用均为 0。
+- [ ] live MySQL：本机 `127.0.0.1:3306` 未监听，标记 `BLOCKED_ENVIRONMENT`。
+
+### 备注
+未部署、未上传小程序、未写生产数据。完整证据位于 `project-docs/review/cloud-backoffice-rbac-final/`。
+
+---
+
+## 2026-08-30 — 真机资料重录、隔离匹配资料与新结果动画
+
+### 类型
+受控 QA / 注册流程 / 匹配隔离 / 首页体验
+
+### 实现
+- 首页既有“内部 QA”区域新增“重新注册测试资料”，仅显式 `qa_test_run_enabled` 或 `internal_qa` 账号可调用；云端再次校验权限、确认文字和请求 ID。
+- 真机重录不伪造 OpenID、不删除用户；保留审核、VIP、订单和推广归属，清空择偶配置与冷却，通过一次性 `registration_replay_pending` 让原微信身份重新进入注册页，并记录审计。
+- 为真机重录账号写入独立 QA 匹配组；正式批处理和手动候选选择均限制同组互配，防止测试账号误配正式用户。
+- 新增首页新匹配揭示动画。最新匹配日期已到且当前账号尚未看过该匹配 ID 时出现，支持“立即查看”和关闭；已看状态按用户 ID 本地隔离。
+- 新增两组可直接真机录入的资料：一组双向通过质量门槛，一组双向触发年龄硬拒绝。
+
+### 验证与边界
+- 专项自检覆盖 QA 权限、重录补丁、候选组隔离、延迟打开动画、已看去重，以及匹配/硬拒绝资料的真实算法断言。
+- 六组发布基线均通过：`selfcheck:agent`、`selfcheck:safety`、`selfcheck:ai-report`、`selfcheck:cloudpay`、`selfcheck:member`、`selfcheck:cloud-match`。
+- CloudBase 审查确认：重录接口只信任 `getWXContext()` 对应当前用户；客户端不直写数据库；用户、择偶配置与请求审计在同一 CloudBase 事务内提交；响应不返回其他用户 OpenID。
+- 未部署云函数、未上传小程序、未写生产数据库。
+
+---
+
+## 2026-08-30 — QA 跨轮复测与注册/导航体验收口
+
+### 类型
+受控 QA / 匹配幂等边界 / 小程序 UI / 后台验收
+
+### 实现
+- 每次 QA 账号成功完成资料重录后，由服务端生成独立 `qa_match_run_id` 和时间边界；双方同组且都在旧 claim 之后完成重录时，可忽略旧 claim 进行新一轮真机互配。
+- 正式账号、缺少 QA 权限/cohort/run/time 的记录继续 fail-closed；新交付 claim 写入 canonical `qa_match_run_key`，同一轮仍禁止重复匹配，旧记录不删除。
+- 注册页补充身份从最多 40 个平铺标签改为可搜索、按板块分组的底部抽屉，最多两个；保存合同继续使用 `secondary_circle_ids`。
+- 原生无图标 tabBar 改为微信 custom tabBar，三个固定路由使用统一线性 mask 图标、品牌选中色与底部安全区。
+- 匹配结果揭晓中，“立即查看”永久已看但 storage 失败不阻断详情；“稍后再看”只在当前小程序进程内收起，下一次冷启动仍提醒。
+- CloudBase Admin Web 的会话列表、详情时间线、人工回复和脱敏提示经远端只读检查与源码合同测试确认；只补上线清单，没有扩大 RBAC。
+- 独立只读 subagent 找出同日 claim scope 与 A-B/A-C 用户互斥风险；最终 pair marker 按双方 run、user marker 按各自 run，固定历史 marker 在原子事务内再次 fail-closed，并统一正式 worker/手动 Cloud 路径。
+- 新 UI 合同测试已进入 GitHub Actions；E2E 邀约日期从真实墙钟改为固定实验基准，消除跨日期后 14 天窗口漂移。
+
+### 验证与边界
+- 专项 Red/Green 覆盖跨轮 QA/同轮 QA/正式账号、身份搜索与上限、tab 路由与图标合同、揭晓 view/dismiss/storage 语义。
+- CloudBase 静态后台 `/admin/` 在 2026-08-30 只读返回 200，远端页面包含客服工作台、会话详情和回复入口；未读取真实用户会话内容。
+- 短域名仅建议 `admin.<已持有且已备案主域>` 的占位形式；未购买域名、未改 DNS/CORS/证书、未部署。
+- 微信开发者工具与两台真机的最终视觉/手势验证保留为人工验收，不能由源码检查替代。
+
+---
+
+## 2026-09-01 — QA 资料重录独立全局开关
+
+### 类型
+受控 QA / 权限开关 / 云函数
+
+### 实现
+- 新增独立系统配置 `qa_registration_replay_public_enabled`，与“测试下一轮匹配”的全局开关分离。
+- 开关启用时，所有当前小程序用户可看到“重新注册测试资料”；重置接口仍校验微信云函数调用者身份、确认文字和请求 ID。
+- 用户确认重录后才写入显式 `qa_test_run_enabled` 并进入独立 `qa-real-device-registration-v1` cohort，避免仅展示入口就污染正式匹配池。
+
+### 验证与边界
+- 专项自检先红后绿，覆盖生产账号在开关关闭/开启时的权限差异及确认后 QA 标记。
+- 该开关仅用于当前真机测试，测试结束后应关闭；关闭入口不会删除既有 QA 账号或测试审计记录。
+
+---
+
+## 2026-09-01 — 工作地区级联与待审核邀请补绑
+
+### 类型
+注册体验 / 会员审核 / 合伙人邀请 / 小程序 UI
+
+### 实现
+- 注册页将“工作省份”和“工作城市”合并为微信原生全国 `region` 省市级联选择器，继续保存省市名称与行政区编码，不改变画像、匹配和 RAG 字段合同。
+- 待审核页增加邀请码确认卡；普通公开邀请码只绑定审核归属并分配给对应合伙人，签名微信邀请凭证校验通过后沿用既有自动审核规则。
+- 合伙人微信分享路径和小程序码落点统一为会员申请页；未注册用户先保存邀请凭证并回到微信登录/注册流程，已注册待审核用户在页面主动确认后绑定。
+- 邀请关系按用户锁定，不允许更换合伙人；用户、申请、归因和审计写入在 CloudBase 事务中完成。
+- 审查加固：申请自身的分配/邀请归属也纳入锁定，签名邀请自动通过前重新检查资料完整性，普通码与签名链接重复请求不重复写审计；退出登录清理待处理邀请码，Cloud 与 Server 统一 query/scene 分享合同。
+
+### 验证与边界
+- 新增地区选择器、会员邀请绑定、待审核页面交互专项自检；公开码、签名链接、幂等和锁定边界均有覆盖。
+- 未部署云函数、未上传小程序客户端、未写生产数据库；需在代码审核后分别执行云函数发布与微信开发者工具上传。
+
+---
+
+## 2026-09-01 — 已审核账号重录后的匹配配置保存修复
+
+### 类型
+Bug 修复 / QA 资料重录 / 会员状态机 / 小程序错误可观测性
+
+### 根因与修复
+- QA 资料重录按既有产品合同保留审核、VIP、订单和推广归属，因此完成重录后账号仍为 `approved`。
+- 匹配设置页在保存配置后未复用“已审核账号无需再次提交会员申请”的分支，错误地调用会员申请接口；后端拒绝重复申请，客户端统一显示 `SERVER_ERROR`。
+- 新增纯流程决策：需要确认 AI 意图时进入确认、未审核账号提交申请、已审核账号保存成功后直接返回。
+- 保存链路记录当前阶段；失败弹窗会区分基础资料、匹配配置和会员申请，避免再次只显示无定位信息的通用错误。
+
+### 验证与边界
+- 专项自检先以缺少流程模块失败，再验证已审核重录账号不会调用 `/api/member/application/submit`，待审核账号合同保持不变。
+- `node --check` 与 `selfcheck:member` 通过。
+- 未改变邀请码锁定归因、会员审核规则、生产数据或匹配算法；未部署云函数、未上传小程序客户端。
+
+---
+
+## 2026-09-02 — LangGraph 无交集反提案协商修复
+
+### 类型
+LangGraph 协商状态机 / 约会协调 / 小程序 UI / 站内提醒
+
+### 根因与修复
+- 后端能正确保存受邀方的“周日下午”新偏好，但 `no_overlap` 处理只保留了缺失维度，没有将“对方新提出的可行候选”投影为可操作的共享状态。
+- 新增受控反提案策略：仅当当前版本只存在时间冲突、且最近修改者是对方时，向当前用户输出一个结构化候选时间，不暴露对方其他原始回答。
+- LangGraph 新增 `review_counter_offer` 节点，优先反馈“对方提出了新的候选时间”，而不再退化成泛化的“缺资料/无交集”提示。
+- 协调页新增反提案卡片和“接受这个时间”操作；接受仍走申请修改预览、版本检查、CAS 确认和重新计算，不由模型直接写数据。
+- 新版本无交集处理会向需要回应的一方写入站内提醒，并将脱敏候选时间同步到其独立协调员会话。
+
+### 验证与边界
+- 新增专项自检，覆盖男方可见、女方不会看到自己的反提案、接受时保留原有时间、LangGraph 动作路由、消息投影和小程序接口合同。
+- Agent Graph TypeScript 构建与 39 项测试、`selfcheck:agent`、`selfcheck:safety`、小程序 JavaScript 语法检查均通过。
+- 未直接修改生产数据；云函数部署与小程序上传仍是两个独立发布动作。
+
+---
+
+## 2026-09-02 — 约会协商升级为完整方案与多路径状态机
+
+### 类型
+产品语义修正 / LangGraph 状态机 / 结构化反提案 / 小程序 UI
+
+### 根因与修复
+- 修正“接受周日”等同于把周日追加到本人可接受范围的误区：短句“周日”只表示时间调整，不能推断用户同时接受地点、活动、预算等其他条件。
+- 协商流程明确为三条主路径：受邀方可直接接受发起人的完整方案；只提交希望调整的字段并继承原方案其余字段；或完整填写自己的可接受范围，再由双方确定性交集算法生成方案。
+- 当对方提出单一、明确且可基于完整邀请解释的调整时，服务端生成结构化完整反提案，逐项展示“原安排 → 新安排”以及保持不变的字段；接受时只替换明确变更的维度，不扩大用户范围，也不由模型直接写正式方案。
+- 对多时间段、范围表达或缺少完整基础方案等歧义场景，LangGraph 进入 `clarify_scope`，先询问具体调整范围；模型只负责理解和反馈，版本校验、CAS、权限、字段继承及最终交集继续由确定性后端执行。
+- 协调页将入口调整为“接受完整方案 / 只调整部分安排 / 这次暂不方便”，并提供完整范围填写作为备选；聊天补丁预览明确标注本次调整项、保持不变项和确认后才通知对方。
+
+### 验证与边界
+- Agent Graph 构建及 40 项测试通过，覆盖含糊表达澄清、结构化反提案、多字段调整、直接邀请和双方确认。
+- `selfcheck:agent`、`selfcheck:safety`、`selfcheck:ai-report`、`selfcheck:cloudpay`、`selfcheck:member`、`selfcheck:cloud-match` 以及结构化反提案专项自检均通过。
+- 本次未部署云函数、未上传小程序、未写生产数据库；`miniprogram/project.config.json` 的既有本地改动未纳入本次提交。
+
+### 云函数部署记录（2026-09-02）
+- 目标环境：`cloud1-d4gy8l52g08bba326`（上海，状态 `NORMAL`）。
+- 按依赖顺序更新 Event 云函数 `agent-graph`、`api`，仅替换代码包；运行时、环境变量、权限、触发器和网关配置均未修改。
+- `agent-graph` 更新请求 `8719c7de-68fb-4ce9-9a71-d3609a6e64ac`，恢复为 `Active/Available` 后健康调用返回 `status=ok`，调用请求 `1cc7b3b4-2104-4f6d-aa5a-61f87e7df7c5`。
+- `api` 更新请求 `5594cb58-6f50-4e2f-8a2e-f4b7dc41d8d7`，恢复为 `Active/Available` 后 `ping` 返回 `pong` 与目标环境 ID，调用请求 `478eed3a-346d-4dfc-9688-8f084fc31745`。
+- 未上传小程序客户端、未写生产数据库；要在真机看到本次 UI 变化，仍需单独上传新的小程序体验版。
+
+---
+
+## 2026-09-02 — AI 协调送达闭环与双真机重复匹配
+
+### 类型
+LangGraph 契约修复 / AI 约会协调 / 小程序确认卡 / QA 重复匹配
+
+### 根因与修复
+- 修复 `api` 新版共享协调状态与 `agent-graph` 严格输入契约不一致的问题；补齐完整邀请卡、未解决维度、结构化反提案、协调路径和基础方案可用性字段，同时保留旧时间反提案兼容。
+- 将模型已有的 `generate_partner_notification` 意图接入确定性后端：先生成“调整项 / 保持不变项 / 完整安排”询问预览，用户确认后才写入对方独立协调会话与站内通知；版本或方案令牌变化时预览自动失效。
+- 对方可在 AI 协调会话中直接接受结构化调整；接受操作仍通过申请补丁预览、版本校验与正式确认链路执行，模型不直接写正式业务状态；对方也可继续输入其他时间或安排形成下一轮预览。
+- 聊天 UI 增加询问预览和对方回应卡，避免再次出现模型文本声称“已发送”但后台没有送达记录的假完成。
+- 双真机 QA 匹配增加“再来一轮真机互配”：两个测试账号分别开启新轮次后才重新互配，旧匹配日志保留，不删除历史数据，也不影响正式匹配池。
+
+### 验证与边界
+- Agent Graph 合同测试新增真实 `api` 共享状态样本；Agent 会话自检覆盖询问预览、确认送达、对方接受和隐私投影；QA 自检覆盖新轮次 run id、已匹配账号隔离与 UI 入口。
+- Agent Graph `npm run check`（构建及 41 项测试）通过；`selfcheck:agent`、`selfcheck:safety`、`selfcheck:ai-report`、`selfcheck:cloudpay`、`selfcheck:member`、`selfcheck:cloud-match` 全部通过。
+- 未改变正式匹配评分、RAG 语料、会员、支付或邀请归因规则。
+- 云函数部署和小程序体验版上传仍按独立发布动作执行并分别记录。
+
+### 云函数部署记录（2026-09-02）
+- 源分支 `fix/date-counter-offer-negotiation`，实现提交 `7c934c3`；目标环境 `cloud1-d4gy8l52g08bba326`（上海）。
+- `agent-graph` 代码更新请求 `4549586e-fc86-4cc6-b7d6-d152be189cb6`，恢复为 `Active/Available`；健康调用返回 `status=ok`，请求 `f9224e7d-12ec-4e70-85d0-8c386f38cd99`。
+- `api` 代码更新请求 `26dc4129-12eb-43a7-91e4-cfc59decf766`，恢复为 `Active/Available`；`ping` 返回 `pong` 与目标环境 ID，请求 `bab59eb4-b154-4cf2-b723-9fc3d64ae6e0`。
+- 本次只替换云函数代码包，未修改运行时、环境变量、权限、触发器或生产数据；尚未上传小程序体验版。
+
+---
+
+## 2026-09-02 — 可赴约完整方案、会话变更卡与到场会合
+
+### 类型
+约会协调产品升级 / LangGraph 状态机 / 小程序 UI / 到场安全
+
+### 根因与修复
+- 将模糊时间段升级为版本化完整方案合同：新方案必须包含具体钟点、活动场地与公共集合点；“晚上 8 点”规范化为 `20:00` 和 `night`，不再只保留含糊的 evening。
+- 增加活动与场地一致性校验；“看电影 + 星巴克”不会再静默组成错误方案，系统会要求补充具体电影院，并允许把星巴克明确作为集合点。
+- 协调页顶部固定展示当前有效版本的完整方案，聊天会话用结构化卡片说明“原方案 → 新方案”和最新完整安排；聊天负责解释与通知，方案卡作为唯一事实来源。
+- 对方确认过的关键方案发生变化时继续沿用协调版本、补丁预览与双方重新确认；旧版会话继续按旧合同读取，不因新字段上线而被删除或强制改写。
+- 安排完成后开放到场会合：双方可主动提供非敏感穿搭/手持物提示、确认到达、反馈暂未找到、双向确认见面或报告现场不符；AI 只负责转达，不共享实时定位，也不声称验证现实身份。
+- LangGraph 增加具体时间、活动场地、集合点的缺失/冲突状态和澄清节点；权限、版本、交集、写入与安全校验仍由确定性后端负责。
+
+### 验证与边界
+- 新版精确方案限定为单个候选日期、单个时间段、单个区域和单个活动，避免“多范围 + 一组具体钟点/地点”产生归属不明；旧版范围方案继续按原合同读取。
+- 到场提示改为双方各自维护的可选字段，不参与方案就绪和交集判断；禁止联系方式、单位、学校、住址、账号和数字等敏感内容。
+- 现场不符由任一方报告后会全局暂停该次会合，并阻断继续确认见面；后续恢复需走人工安全处理，不能由另一方继续点击绕过。
+- 对已确认后发生的方案修改，申请快照、旧提案/确认失效、协调版本推进和补丁落库统一进入事务并再次校验版本，避免并发确认旧方案。
+- 新增专项自检覆盖 `20:00` 归一化、电影与星巴克冲突、新旧合同混用、不同到场提示不参与方案交集、隐私过滤、并发版本竞争、到达/见面/现场不符状态和小程序 UI/路由合同。
+- 独立架构审查发现的版本竞态、现场不符绕过、到场提示隐私和新旧合同混用问题已在发布前修复。
+- Agent Graph TypeScript 构建及 41 项测试通过；`selfcheck:agent`、`selfcheck:safety`、`selfcheck:ai-report`、`selfcheck:cloudpay`、`selfcheck:member`、`selfcheck:cloud-match` 全部通过。
+- 本次未修改正式匹配评分、RAG 语料、会员、支付或邀请归因规则；`miniprogram/project.config.json` 的既有本地改动不纳入提交。
+- 云函数部署与微信小程序体验版上传是独立发布动作；本记录先提交实现，云端更新结果在部署后追加。
+
+### 云函数部署记录（2026-09-02）
+- 源分支 `fix/date-counter-offer-negotiation`，实现提交 `e5b8006`；目标环境 `cloud1-d4gy8l52g08bba326`（上海）。
+- `agent-graph` 代码更新请求 `fbfde89d-3359-427a-a61a-26795bce4986`，恢复为 `Active/Available`；以 `operation=health` 调用返回 `status=ok`、`runtime=langgraph`，请求 `1ccf3e16-6efb-4e73-a83a-a2b95fd5275d`。
+- `api` 代码更新请求 `9e312921-c715-45bb-a8d0-9697e53b7ece`，恢复为 `Active/Available`；`ping` 返回 `pong` 与目标环境 ID，请求 `16d08473-de39-4ee0-8b43-7ae930bab1a4`。
+- 本次只替换两个既有 Event 云函数的代码包，未修改运行时、环境变量、权限、触发器、网关或生产数据库；尚未上传小程序体验版。
+
+---
+
+## 2026-09-02 — 双端约会发起、现场位置与到达消息修复
+
+### 类型
+双真机流程修复 / 到场会合 / 会话实时同步 / 小程序 UI
+
+### 根因与修复
+- 同一匹配双方共用活动协调任务；一方只打开页面就会留下空草稿，另一方再次点击“申请第一次约会”时复用了该草稿，却仍被标记为受邀方，导致表单隐藏。现在空草稿可由最后实际进入申请流程的一方在事务内接手；一旦任一方已经提交，角色不再改变。
+- “公共集合点”不再是完整方案必填项，改为可选的“初步会合范围”。最终方案仍必须明确具体时间与活动场地；双方到场后可再主动同步“吧台旁、靠窗座位”等公共场所内位置。
+- 到达位置与穿搭提示分离：现场位置禁止联系方式、单位、学校、住址、账号和数字；AI 仅转达用户主动填写的内容，不提供实时定位，也不验证现实身份。
+- 到达事件继续写入双方各自的协调员会话，并固定选择最新未关闭会话，避免历史重复会话导致消息写到旧会话；AI 协调会话前台每 4 秒刷新，方案页会合阶段每 6 秒刷新。
+
+### 验证与边界
+- 新增/更新自检覆盖空草稿双向接手、集合范围选填、到达现场位置投影、双方消息写入、最新会话选择和客户端刷新合同。
+- `selfcheck:agent` 与 Agent Graph 41 项构建测试通过；发布前仍需运行其余五组总门禁。
+- 未修改匹配、RAG、会员、支付、邀请归因或数据库集合结构；云函数已按下述记录部署，未上传小程序体验版、未写生产数据。
+
+### 云函数部署记录（2026-09-02）
+- 源分支 `fix/date-counter-offer-negotiation`，实现提交 `f1ca287`；目标环境 `cloud1-d4gy8l52g08bba326`（上海，状态 `NORMAL`）。
+- `agent-graph` 代码更新请求 `a0a6a834-b7b5-45ad-a456-1e89c1a9c4fd`，恢复为 `Active/Available`；以 `operation=health` 调用返回 `status=ok`、`runtime=langgraph`，请求 `a34e3937-6b0f-4a11-9dc5-c3d83fd8826b`。
+- `api` 代码更新请求 `81416418-bf31-4860-8c33-58a79af60094`，恢复为 `Active/Available`；`ping` 返回 `pong` 与目标环境 ID，请求 `4e5cd9d4-3d89-4486-b267-4d3bfc1830d4`。
+- 本次只替换两个既有 Event 云函数的代码包，运行时保持 `agent-graph=Nodejs20.19`、`api=Nodejs16.13`；未修改环境变量、权限、触发器、网关或生产数据库，尚未上传小程序体验版。
+
+---
+
+## 2026-09-03 — 协调会话单例、通知已读水位与发布自检修复
+
+### 类型
+并发可靠性 / CloudBase 事务 / 测试可信度 / 云函数发布
+
+### 根因与修复
+- Cursor 已将协调事件、投影消息和通知创建改为幂等事务，但会话仍使用 `list -> add`，同一事件并发时两个参与者会生成四个活跃会话。新增 `agent_session_dedupe` 稳定事务锁，首次使用优先接管已有未关闭会话。
+- 通知创建与未读递增已原子化，但标记已读仍在事务外逐条更新并用旧 cursor 回写。新增事务化 `markCoordinationNotificationsSeen`，小程序携带 `through_notification_id` 可见水位，水位之后到达的新通知不会被误读或丢计数。
+- 修复公共错误响应把业务错误字符串误写入 `code` 的问题；`code` 恢复为数字状态，`error` 保持稳定业务码。
+- 修复通知并发测试悬空 Promise 导致 Node 静默退出、后半段断言未执行的问题，并更新两个已过期的 fixture/UI 自检合同。
+
+### 验证与部署
+- 六组发布基线 `agent / safety / ai-report / cloudpay / member / cloud-match` 全部通过；反提案、QA 重置、发布保护专项与 JavaScript 语法检查通过。
+- 发布代码提交 `d5f2e408259047dd4d747905fac387d22a89b7ff` 已先推送到 `origin/fix/date-counter-offer-negotiation`，远程 SHA 一致。
+- 由该提交的干净 `git archive` 更新 CloudBase 环境 `cloud1-d4gy8l52g08bba326` 的既有 `api` Event 函数；状态恢复 `Active/Available`，运行时保持 `Nodejs16.13`，修改时间 `2026-09-03 19:31:00`。
+- `ping` 返回 `pong` 与正确环境；无凭证 worker 冒烟返回数字 `403` 和 `WORKER_AUTH_FAILED`，确认新版错误合同已生效。
+- 未改环境变量、权限、触发器、运行时或生产数据；未上传微信小程序体验版。后续可靠性规划见 `project-docs/DATE_COORDINATION_RELIABILITY_ARCHITECTURE_2026-09-03.md`。
+

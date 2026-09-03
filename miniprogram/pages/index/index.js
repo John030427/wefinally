@@ -2,6 +2,14 @@ const { get, post } = require('../../utils/request')
 const { API_PATHS, MATCH_SCHEDULE, GUANGDONG_110_DEFAULT } = require('../../utils/constants')
 const { formatDateOnly, getNextMatchTime, genderText, calcAge, getCompatibilityDisplayText } = require('../../utils/util')
 const { buildProfileReadiness, buildJourneyState } = require('../../utils/productExperience')
+const {
+  seenStorageKey,
+  createRevealSessionState,
+  dismissForSession,
+  shouldRevealLatestMatch
+} = require('../../utils/matchResultReveal')
+
+let revealSessionState = createRevealSessionState()
 
 Page({
   data: {
@@ -13,13 +21,17 @@ Page({
     scheduleDesc: MATCH_SCHEDULE.desc,
     latestMatch: null,
     hasLatest: false,
-    devMatchStartEnabled: false,
-    devMatchStarting: false,
     readiness: null,
-    journeyState: null
+    journeyState: null,
+    matchRevealVisible: false,
+    matchRevealStorageKey: '',
+    sessionDismissedMatchIds: revealSessionState.dismissedMatchIds
   },
 
   onShow() {
+    const tabBar = this.getTabBar && this.getTabBar()
+    if (tabBar && typeof tabBar.syncForRoute === 'function') tabBar.syncForRoute('/pages/index/index')
+    this.setData({ sessionDismissedMatchIds: revealSessionState.dismissedMatchIds })
     this.checkAuthAndLoad()
   },
 
@@ -42,37 +54,29 @@ Page({
     }
 
     const next = getNextMatchTime()
-    const apiBase = (app.globalData && app.globalData.API_BASE_URL) || ''
-    const localApi = /\/\/(127\.0\.0\.1|localhost|192\.168\.|10\.|172\.(1[6-9]|2\d|3[0-1])\.)/.test(apiBase)
     this.setData({
-      nextMatchText: next ? next.text : '每周三、周五 00:00',
-      devMatchStartEnabled: Boolean(app.globalData.DEV_MATCH_BUTTON_ENABLED || localApi)
+      nextMatchText: next ? next.text : '每周三、周五 00:00'
     })
 
     try {
-      const commonConfig = await get(API_PATHS.COMMON_CONFIG, {}, { showError: false }).catch(() => null)
-      const demoFlags = commonConfig && commonConfig.demo ? commonConfig.demo : {}
       const profile = await get(API_PATHS.USER_PROFILE, {}, { showError: false })
       const latest = await get(API_PATHS.MATCH_LATEST, {}, { showError: false }).catch(() => null)
 
       const isVip = profile && (profile.isVip || profile.is_vip === 1)
-      let latestMatch = null
-      if (latest && (latest.id || latest.matchId)) {
-        const age = latest.age || calcAge(latest.birth_year)
-        const score = latest.view_similarity !== null && latest.view_similarity !== undefined
-          ? latest.view_similarity
-          : (latest.compatibilityScore !== null && latest.compatibilityScore !== undefined ? latest.compatibilityScore : null)
-        latestMatch = {
-          id: latest.id || latest.matchId,
-          matchType: latest.match_type || latest.matchType || '',
-          matchDate: formatDateOnly(latest.match_date || latest.matchDate),
-          score,
-          scoreText: getCompatibilityDisplayText(score !== null && score !== undefined ? score : 0),
-          gender: genderText(latest.gender),
-          ageText: latest.age_band || (age === '--' ? '--' : `${age}岁`),
-          city: latest.city || '--'
-        }
+      const latestMatch = this.normalizeLatestMatch(latest)
+      const matchRevealStorageKey = seenStorageKey(profile)
+      let seenMatchId = ''
+      try {
+        seenMatchId = matchRevealStorageKey ? wx.getStorageSync(matchRevealStorageKey) : ''
+      } catch (error) {
+        console.warn('match reveal seen state unavailable:', error && error.message ? error.message : error)
       }
+      const matchRevealVisible = shouldRevealLatestMatch({
+        latest: latestMatch,
+        seenMatchId,
+        sessionDismissedMatchIds: this.data.sessionDismissedMatchIds,
+        now: new Date()
+      })
 
       const readiness = buildProfileReadiness(profile)
       const journeyState = buildJourneyState({
@@ -92,7 +96,8 @@ Page({
         hasLatest: !!latestMatch,
         readiness,
         journeyState,
-        devMatchStartEnabled: Boolean(app.globalData.DEV_MATCH_BUTTON_ENABLED || localApi || demoFlags.matchStartEnabled)
+        matchRevealVisible,
+        matchRevealStorageKey
       })
     } catch (err) {
       this.setData({
@@ -104,6 +109,24 @@ Page({
 
   onRetry() {
     this.loadPage()
+  },
+
+  normalizeLatestMatch(latest) {
+    if (!latest || (!latest.id && !latest.matchId)) return null
+    const age = latest.age || calcAge(latest.birth_year)
+    const score = latest.view_similarity !== null && latest.view_similarity !== undefined
+      ? latest.view_similarity
+      : (latest.compatibilityScore !== null && latest.compatibilityScore !== undefined ? latest.compatibilityScore : null)
+    return {
+      id: latest.id || latest.matchId,
+      matchType: latest.match_type || latest.matchType || '',
+      matchDate: formatDateOnly(latest.match_date || latest.matchDate),
+      score,
+      scoreText: getCompatibilityDisplayText(score !== null && score !== undefined ? score : 0),
+      gender: genderText(latest.gender),
+      ageText: latest.age_band || (age === '--' ? '--' : `${age}岁`),
+      city: latest.city || '--'
+    }
   },
 
   goMatchSetting() {
@@ -124,6 +147,35 @@ Page({
     wx.navigateTo({ url: `/pages/match-detail/match-detail?id=${latestMatch.id}` })
   },
 
+  markLatestMatchSeen() {
+    const { latestMatch, matchRevealStorageKey } = this.data
+    try {
+      if (latestMatch && latestMatch.id && matchRevealStorageKey) {
+        wx.setStorageSync(matchRevealStorageKey, String(latestMatch.id))
+      }
+    } catch (error) {
+      console.warn('match reveal seen state was not persisted:', error && error.message ? error.message : error)
+    }
+    this.setData({ matchRevealVisible: false })
+  },
+
+  onMatchRevealView() {
+    this.markLatestMatchSeen()
+    this.goMatchDetail()
+  },
+
+  onMatchRevealDismiss() {
+    const latest = this.data.latestMatch
+    revealSessionState = dismissForSession(
+      revealSessionState,
+      latest && latest.id
+    )
+    this.setData({
+      matchRevealVisible: false,
+      sessionDismissedMatchIds: revealSessionState.dismissedMatchIds
+    })
+  },
+
   goRules() {
     wx.navigateTo({ url: '/pages/rules/rules' })
   },
@@ -138,64 +190,12 @@ Page({
     wx.navigateTo({ url: state.url })
   },
 
+  onQaMatchCompleted() {
+    this.loadPage()
+  },
+
   goLoveAdvisor() {
     wx.navigateTo({ url: '/pages/love-advisor/love-advisor' })
-  },
-
-  async devStartMatch() {
-    if (this.data.devMatchStarting) return
-    this.setData({ devMatchStarting: true })
-    try {
-      const result = await post(API_PATHS.MATCH_START, {
-        allow_rematch: false,
-        allow_quality_fallback: true,
-        reset_user_batch: true,
-        dev_seed_current_user_candidates: true
-      }, { showLoading: true, loadingText: '正在匹配...' })
-      const matched = result.matched || 0
-      if (matched > 0 && result.match_id) {
-        wx.showToast({ title: '匹配完成，生成报告中', icon: 'none' })
-        wx.navigateTo({ url: `/pages/match-detail/match-detail?id=${result.match_id}&autoReport=1` })
-      } else {
-        wx.showToast({ title: '暂无可用候选', icon: 'none' })
-        this.loadPage()
-      }
-    } catch (err) {
-      wx.showModal({
-        title: '测试匹配未开启',
-        content: (err && err.message) || '后端需设置 DEV_MATCH_START_ENABLED=true 后重启',
-        showCancel: false
-      })
-    } finally {
-      this.setData({ devMatchStarting: false })
-    }
-  },
-
-  devResetRegistration() {
-    const app = getApp()
-    const openid = `uat_register_${Date.now()}`
-    if (!app.resetLocalForRegistration) {
-      wx.showModal({ title: '当前版本不支持', content: '请在 Console 使用 getApp().resetLocalForRegistration()', showCancel: false })
-      return
-    }
-    const result = app.resetLocalForRegistration(openid)
-    if (result && result.ok === false) {
-      wx.showModal({ title: '重置失败', content: result.message || '请稍后重试', showCancel: false })
-    }
-  },
-
-  getLocationForSos() {
-    return new Promise((resolve) => {
-      if (!wx.getLocation) {
-        resolve({})
-        return
-      }
-      wx.getLocation({
-        type: 'gcj02',
-        success: (r) => resolve({ lat: r.latitude, lng: r.longitude }),
-        fail: () => resolve({})
-      })
-    })
   },
 
   callPolice() {
@@ -253,8 +253,7 @@ Page({
 
   async recordHomeSos(location) {
     try {
-      const loc = location || await this.getLocationForSos()
-      await post(API_PATHS.MEET_SOS, loc, { showError: false })
+      await post(API_PATHS.MEET_SOS, location || {}, { showError: false })
     } catch (err) {}
   },
 

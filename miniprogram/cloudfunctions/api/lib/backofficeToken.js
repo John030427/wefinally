@@ -11,11 +11,13 @@ function signature(payload, secret) {
 }
 
 function signBackofficeToken(actor, secret, ttlSeconds = 7 * 86400, nowSeconds = Math.floor(Date.now() / 1000)) {
-  const payload = Buffer.from(JSON.stringify({
+  const claims = {
     role: actor.role,
     id: Number(actor.id),
     exp: nowSeconds + ttlSeconds
-  })).toString('base64url')
+  }
+  if (Number(actor.binding_version) > 0) claims.binding_version = Number(actor.binding_version)
+  const payload = Buffer.from(JSON.stringify(claims)).toString('base64url')
   return `${payload}.${signature(payload, secret)}`
 }
 
@@ -34,7 +36,9 @@ function verifyBackofficeToken(token, secret, nowSeconds = Math.floor(Date.now()
   }
   if (!data.exp || data.exp < nowSeconds) throw new Error('后台Token已过期')
   if (!['partner', 'admin'].includes(data.role) || !Number(data.id)) throw new Error('后台Token无效')
-  return { role: data.role, id: Number(data.id), exp: Number(data.exp) }
+  const actor = { role: data.role, id: Number(data.id), exp: Number(data.exp) }
+  if (Number(data.binding_version) > 0) actor.binding_version = Number(data.binding_version)
+  return actor
 }
 
 module.exports = { signBackofficeToken, verifyBackofficeToken }

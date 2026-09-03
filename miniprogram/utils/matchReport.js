@@ -95,6 +95,25 @@ function buildFieldExplainItems(scoreDetail) {
   const side = (scoreDetail && scoreDetail.side) || {}
   if (!REPORT_ITEMS.some((item) => hasDimensionSource(side, item.key))) return []
   return REPORT_ITEMS.map((item, index) => {
+    const dim = side.dimensions && side.dimensions[item.key]
+    const insufficient = Boolean(
+      dim
+      && (dim.status === 'not_compared' || dim.compared === false || dim.raw_score == null)
+    )
+    if (insufficient) {
+      return {
+        ...item,
+        index,
+        score: null,
+        scoreText: '—',
+        percent: 0,
+        status: 'not_compared',
+        insufficient: true,
+        level: '资料不足',
+        explain: '该维度缺少可比较资料，不计入契合分，也不显示进度条。',
+        expanded: false
+      }
+    }
     const score = dimensionScore(side, item.key)
     const percent = item.max ? Math.min(100, Math.round((score / item.max) * 100)) : 0
     return {
@@ -103,6 +122,8 @@ function buildFieldExplainItems(scoreDetail) {
       score,
       scoreText: formatScore(score),
       percent,
+      status: 'compared',
+      insufficient: false,
       level: reportLevel(percent),
       explain: explainText(item, percent),
       expanded: false

@@ -108,7 +108,7 @@ function buildJourneyState(input) {
       'review_match',
       '当前 · 有一份新结果',
       '先看为什么匹配',
-      '重点核对优势、差异和数据限制，再决定是否推进',
+      '重点核对优势和差异，再决定是否推进',
       '查看匹配理由',
       `/pages/match-detail/match-detail?id=${data.latestMatch.id || data.latestMatch.matchId}`
     )
@@ -200,17 +200,14 @@ function buildMatchSummary(detail) {
         .map((item) => `${item.label}需要进一步确认`)
     )
   ).slice(0, 3)
-  const limitations = uniqueText(
-    report.data_limitations
-      || report.dataLimitations
-      || scoreDetail.data_limitations
-      || scoreDetail.dataLimitations
-      || []
-  ).slice(0, 3)
   return {
     strengths: strengths.length ? strengths : ['基础条件通过双方硬性筛选'],
     confirmations: confirmations.length ? confirmations : ['仍需通过真实沟通确认相处感受'],
-    limitations: limitations.length ? limitations : ['结果来自已填写资料，不代表现实关系结论']
+    hasAiText: Boolean((report.strengths && report.strengths.length)
+      || (report.differences && report.differences.length)
+      || (report.risks && report.risks.length)
+      || report.summary
+      || report.ai_report_text)
   }
 }
 

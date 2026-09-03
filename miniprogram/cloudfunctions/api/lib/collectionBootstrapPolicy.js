@@ -1,6 +1,8 @@
 const BOOTSTRAP_COLLECTIONS = new Set([
   'system_counters',
+  'user_evidence_chunk',
   'agent_session',
+  'agent_session_dedupe',
   'agent_message',
   'agent_run',
   'agent_tool_audit',
@@ -16,8 +18,28 @@ const BOOTSTRAP_COLLECTIONS = new Set([
   'date_coordination_confirmation',
   'date_application_patch',
   'date_coordination_event',
+  'date_coordination_event_dedupe',
   'match_experience_feedback',
-  'date_experience_feedback'
+  'date_experience_feedback',
+  'match_claim',
+  'match_claim_audit',
+  'match_batch_run',
+  'fixture_response_job',
+  'controlled_date_scenario_run',
+  'qa_pair_reset_run',
+  'qa_pair_reset_audit',
+  'coordination_notification',
+  'coordination_notification_dedupe',
+  'agent_message_dedupe',
+  'user_notification_cursor',
+  'partner_commission_ledger',
+  'partner_commission_rule',
+  'partner_dashboard_daily',
+  'partner_referral_attribution',
+  'partner_share_event',
+  'partner_candidate',
+  'partner_binding',
+  'partner_audit_log'
 ])
 
 function canBootstrapCollection(name) {

@@ -1,0 +1,29 @@
+{
+  "run_id": "match-native-id-v1.5",
+  "base_commit": "47a13d92b11bf6127520a0beb7c6df3bade34e1a",
+  "base_branch": "experiment/match-reciprocal-v1.4",
+  "branch": "experiment/match-native-id-v1.5",
+  "final_commit": "2c87e8959c739071b8918fe23fc437064375652b",
+  "validation_type": "DEV_RETROSPECTIVE",
+  "fresh_sealed": "NO_FRESH_SEALED_AVAILABLE",
+  "ranking_tie_aware": true,
+  "TRUE_RECIPROCAL_AVAILABLE": false,
+  "identity_mode": "PAIR_IDENTITY_UNCERTAIN",
+  "native_data_status": "WAITING_NATIVE_ID_DATA",
+  "source_status": "speed-dating REVIEW_REQUIRED sandbox rag=false",
+  "directed_rows_native": null,
+  "true_physical_pairs": null,
+  "reverse_pair_rate": null,
+  "v14_reciprocal_claims": "INVALIDATED_AS_TRUE_RECIPROCAL",
+  "production": "KEEP_CURRENT_PRODUCTION",
+  "hy3": "BLOCKED_BY_EXTERNAL_MANUAL_ACTION",
+  "tests": {
+    "match_eval_v15": "PASS",
+    "metrics_v14": "PASS",
+    "review_fix_v14": "PASS",
+    "match_eval_integrity": "PASS",
+    "experience_learning_guard": "PASS",
+    "e2e_wefinally": "PASS_15_15",
+    "e2e_realworld": "PASS"
+  }
+}

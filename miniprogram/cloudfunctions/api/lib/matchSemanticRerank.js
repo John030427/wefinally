@@ -1,0 +1,274 @@
+const RERANK_VERSION = 'match_semantic_rerank_v1'
+const INTERNAL_REF_MAP = Symbol('semanticInternalRefMap')
+const { sanitizeSupplement } = require('./intentProfile')
+const { CHUNK_CATEGORIES } = require('./matchEvidenceChunks')
+const ALLOWED_EVIDENCE_TAGS = new Set([
+  'bilateral_score',
+  'psych_compatibility',
+  'life_plan_alignment',
+  'preference_coverage',
+  'appearance_preference',
+  'missing_evidence'
+])
+const FORBIDDEN_OUTPUT_PATTERN = /(?:1[3-9]\d{9}|[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}|\b(?:openid|unionid|session[_ -]?key|token)\b|手机号|手机号码|微信号|联系方式|精确地址)/i
+
+function integer(value, min, max, label) {
+  const number = Number(value)
+  if (!Number.isInteger(number) || number < min || number > max) throw new Error(`${label}无效`)
+  return number
+}
+
+function score(value, label) {
+  const number = Number(value)
+  if (!Number.isFinite(number) || number < 0 || number > 100) throw new Error(`${label}无效`)
+  return number
+}
+
+function confidence(value, label) {
+  let number = Number(value)
+  if (!Number.isFinite(number) || number < 0 || number > 100) throw new Error(`${label}无效`)
+  if (number > 1) number /= 100
+  return number
+}
+
+function normalizedMutualScore(item) {
+  const scoreA = Number(item && item.scoreA && item.scoreA.normalizedTotal || 0)
+  const scoreB = Number(item && item.scoreB && item.scoreB.normalizedTotal || 0)
+  if (scoreA > 0 && scoreB > 0) return Math.round((2 * scoreA * scoreB) / (scoreA + scoreB))
+  return Math.max(0, Math.min(100, Math.round(Number(item && item.mutualScore || 0))))
+}
+
+function safeText(value, maxLength = 120) {
+  return sanitizeSupplement(value)
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, maxLength)
+}
+
+function safeItems(value) {
+  const values = Array.isArray(value) ? value : []
+  return values.map((item) => {
+    const text = typeof item === 'string' ? item : (item && item.value)
+    return safeText(text, 80)
+  }).filter(Boolean).slice(0, 8)
+}
+
+function safeEvidence(value) {
+  const values = Array.isArray(value) ? value : []
+  return values.map((item) => safeText(item && (item.excerpt || item.value), 120))
+    .filter(Boolean)
+    .slice(0, 8)
+}
+
+function intentSummary(profile) {
+  const input = profile || {}
+  return {
+    must_have: safeItems(input.must_have),
+    preferences: safeItems(input.preferences),
+    values: safeItems(input.values),
+    lifestyle: safeItems(input.lifestyle),
+    appearance_preferences: safeItems(input.appearance_preferences),
+    deal_breakers: safeItems(input.deal_breakers),
+    uncertainties: safeItems(input.uncertainties),
+    contradictions: safeItems(input.contradictions),
+    evidence: safeEvidence(input.evidence),
+    profile_confidence: confidence(input.profile_confidence === undefined ? 0 : input.profile_confidence, '画像置信度')
+  }
+}
+
+function retrievalEvidence(side) {
+  return ((side && side.top_evidence) || []).map((item) => ({
+    evidence_key: safeText(item.evidence_key, 100),
+    category: safeText(item.category, 40),
+    score: Math.max(0, Math.min(100, Math.round(Number(item.score || 0)))),
+    evidence_text: safeText(item.evidence_text, 180),
+    query_evidence_key: safeText(item.query_evidence_key, 100),
+    query_category: safeText(item.query_category, 40),
+    query_evidence_text: safeText(item.query_evidence_text, 180)
+  })).filter((item) => item.evidence_key && item.query_evidence_key && item.evidence_text && item.query_evidence_text)
+}
+
+function retrievalConflicts(side, allowedKeys) {
+  const allowed = new Set(allowedKeys)
+  return ((side && side.conflict_signals) || []).map((item) => ({
+    code: safeText(item && item.code, 60),
+    evidence_keys: (Array.isArray(item && item.evidence_keys) ? item.evidence_keys : [])
+      .map((key) => safeText(key, 100))
+      .filter((key) => allowed.has(key))
+  })).filter((item) => item.code && item.evidence_keys.length)
+}
+
+function buildSemanticRerankRequest(input = {}) {
+  const topK = integer(input.topK === undefined ? 10 : input.topK, 1, 50, 'Top-K')
+  const candidates = (Array.isArray(input.candidates) ? input.candidates : [])
+    .filter((item) => item && item.quality && item.quality.pass === true)
+    .slice(0, topK)
+  if (!candidates.length) throw new Error('没有通过确定性质量门槛的候选')
+
+  const internalByRef = new Map()
+  const safeCandidates = candidates.map((item, index) => {
+    if (item.internalUserId === null || item.internalUserId === undefined) throw new Error('候选内部映射缺失')
+    const ref = `candidate_${index + 1}`
+    internalByRef.set(ref, item.internalUserId)
+    const allowedEvidenceKeys = Array.isArray(item.allowedEvidenceKeys) ? item.allowedEvidenceKeys.slice(0, 24) : []
+    return {
+      candidate_ref: ref,
+      algorithm_rank: index + 1,
+      side_a_percent: Math.max(0, Math.min(100, Math.round(Number(item.scoreA && item.scoreA.normalizedTotal || 0)))),
+      side_b_percent: Math.max(0, Math.min(100, Math.round(Number(item.scoreB && item.scoreB.normalizedTotal || 0)))),
+      mutual_score_percent: normalizedMutualScore(item),
+      view_similarity: Math.max(0, Math.min(100, Math.round(Number(item.viewSimilarity || 0)))),
+      retrieval_a_to_b: Math.max(0, Math.min(100, Math.round(Number(item.retrieval && item.retrieval.a_to_b && item.retrieval.a_to_b.score || 0)))),
+      retrieval_b_to_a: Math.max(0, Math.min(100, Math.round(Number(item.retrieval && item.retrieval.b_to_a && item.retrieval.b_to_a.score || 0)))),
+      retrieval_mutual: Math.max(0, Math.min(100, Math.round(Number(item.retrieval && item.retrieval.mutual_score || 0)))),
+      allowed_evidence_keys: allowedEvidenceKeys,
+      retrieved_evidence: {
+        a_to_b: retrievalEvidence(item.retrieval && item.retrieval.a_to_b),
+        b_to_a: retrievalEvidence(item.retrieval && item.retrieval.b_to_a)
+      },
+      conflict_signals: {
+        a_to_b: retrievalConflicts(item.retrieval && item.retrieval.a_to_b, allowedEvidenceKeys),
+        b_to_a: retrievalConflicts(item.retrieval && item.retrieval.b_to_a, allowedEvidenceKeys)
+      },
+      missing_categories: {
+        a_to_b: ((item.retrieval && item.retrieval.a_to_b && item.retrieval.a_to_b.missing_categories) || []).filter((key) => CHUNK_CATEGORIES.includes(key)),
+        b_to_a: ((item.retrieval && item.retrieval.b_to_a && item.retrieval.b_to_a.missing_categories) || []).filter((key) => CHUNK_CATEGORIES.includes(key))
+      },
+      intent_a: intentSummary(item.intentA),
+      intent_b: intentSummary(item.intentB),
+      supplement_a: safeText(item.supplementA, 240),
+      supplement_b: safeText(item.supplementB, 240)
+    }
+  })
+  const request = {
+    version: RERANK_VERSION,
+    task: 'semantic_rerank_only',
+    constraints: {
+      may_reorder_only: true,
+      database_access: false,
+      database_write: false,
+      direct_identity_access: false,
+      reject_unknown_candidate_ref: true,
+      reject_unknown_evidence_key: true
+    },
+    candidates: safeCandidates
+  }
+  Object.defineProperty(request, INTERNAL_REF_MAP, {
+    value: internalByRef,
+    enumerable: false,
+    writable: false
+  })
+  return request
+}
+
+function textList(value, label) {
+  if (!Array.isArray(value) || value.length > 6) throw new Error(`${label}无效`)
+  const values = value.map((item) => String(item || '').trim().slice(0, 80)).filter(Boolean)
+  if (values.some((item) => FORBIDDEN_OUTPUT_PATTERN.test(item))) throw new Error(`${label}包含隐私信息`)
+  return values
+}
+
+function validateSemanticRerankResponse(response, request) {
+  if (!response || response.version !== RERANK_VERSION) throw new Error('语义重排响应版本无效')
+  const internalByRef = request && request[INTERNAL_REF_MAP]
+  if (!(internalByRef instanceof Map)) throw new Error('语义重排请求映射无效')
+  if (!Array.isArray(response.ranking) || response.ranking.length !== internalByRef.size) throw new Error('语义重排候选数量无效')
+  const refs = new Set()
+  const ranks = new Set()
+  const validated = response.ranking.map((item) => {
+    const row = item || {}
+    const candidateRef = String(row.candidate_ref || '').trim()
+    if (!internalByRef.has(candidateRef)) throw new Error('语义重排包含未知候选引用')
+    if (refs.has(candidateRef)) throw new Error('语义重排候选引用重复')
+    refs.add(candidateRef)
+    const rank = integer(row.rank, 1, internalByRef.size, '语义重排名次')
+    if (ranks.has(rank)) throw new Error('语义重排名次重复')
+    ranks.add(rank)
+    const evidenceTags = textList(row.evidence_tags, '语义重排证据')
+      .filter((tag) => ALLOWED_EVIDENCE_TAGS.has(tag))
+    const allowedKeys = new Set(
+      ((request.candidates || []).find((candidate) => candidate.candidate_ref === candidateRef) || {}).allowed_evidence_keys || []
+    )
+    const strengthKeys = textList(row.strength_evidence_keys || [], '优势证据键')
+      .filter((key) => allowedKeys.has(key))
+    const riskKeys = textList(row.risk_evidence_keys || [], '风险证据键')
+      .filter((key) => allowedKeys.has(key))
+    if (Array.isArray(row.strength_evidence_keys) && row.strength_evidence_keys.some((key) => !allowedKeys.has(String(key || '').trim()))) {
+      throw new Error('语义重排包含检索结果外 evidence_key')
+    }
+    if (Array.isArray(row.risk_evidence_keys) && row.risk_evidence_keys.some((key) => !allowedKeys.has(String(key || '').trim()))) {
+      throw new Error('语义重排包含检索结果外 evidence_key')
+    }
+    const mutualStrengths = textList(row.mutual_strengths, '共同满足点')
+    const asymmetricRisks = textList(row.asymmetric_risks, '不对称风险')
+    if (mutualStrengths.length && !strengthKeys.length) throw new Error('语义重排优势判断缺少 evidence_key')
+    if (asymmetricRisks.length && !riskKeys.length) throw new Error('语义重排风险判断缺少 evidence_key')
+    const missingCategories = textList(row.missing_categories || [], '缺失证据分类')
+      .filter((key) => CHUNK_CATEGORIES.includes(key))
+    if (Array.isArray(row.missing_categories) && row.missing_categories.some((key) => !CHUNK_CATEGORIES.includes(String(key || '').trim()))) {
+      throw new Error('语义重排包含未知缺失证据分类')
+    }
+    return {
+      internalUserId: internalByRef.get(candidateRef),
+      candidateRef,
+      rank,
+      aToBSemanticScore: score(row.a_to_b_semantic_score, 'A到B语义分'),
+      bToASemanticScore: score(row.b_to_a_semantic_score, 'B到A语义分'),
+      mutualSemanticScore: score(row.mutual_semantic_score, '双向语义分'),
+      mutualStrengths,
+      asymmetricRisks,
+      confirmationQuestions: textList(row.confirmation_questions, '待确认问题'),
+      evidenceTags,
+      strengthEvidenceKeys: strengthKeys,
+      riskEvidenceKeys: riskKeys,
+      missingCategories,
+      dataCompleteness: confidence(row.data_completeness, '数据完整度'),
+      confidence: confidence(row.confidence, '语义重排置信度')
+    }
+  })
+  return validated.sort((left, right) => left.rank - right.rank)
+}
+
+function mergeSemanticRerank(ranked, validated, options = {}) {
+  const minConfidence = Number.isFinite(Number(options.minConfidence)) ? Number(options.minConfidence) : 0.65
+  const maxWeight = Number.isFinite(Number(options.maxWeight)) ? Math.max(0, Math.min(0.2, Number(options.maxWeight))) : 0.2
+  const rows = Array.isArray(validated) ? validated : []
+  if (!rows.length || rows.some((row) => Number(row.confidence) < minConfidence)) {
+    return { applied: false, reason: 'low_confidence', ranked: Array.isArray(ranked) ? ranked : [] }
+  }
+  const byUserId = new Map(rows.map((row) => [String(row.internalUserId), row]))
+  const merged = (Array.isArray(ranked) ? ranked : []).map((item) => {
+    const internalUserId = item && item.internalUserId !== undefined
+      ? item.internalUserId
+      : (item && item.candidate && item.candidate.id)
+    const row = byUserId.get(String(internalUserId))
+    if (!row) return item
+    const base = normalizedMutualScore(item)
+    const semantic = Number(row.mutualSemanticScore || 0)
+    return Object.assign({}, item, {
+      ai_rank: row.rank,
+      ai_weight: maxWeight,
+      a_to_b_semantic_score: row.aToBSemanticScore,
+      b_to_a_semantic_score: row.bToASemanticScore,
+      mutual_semantic_score: row.mutualSemanticScore,
+      semantic_strengths: row.mutualStrengths,
+      asymmetric_risks: row.asymmetricRisks,
+      confirmation_questions: row.confirmationQuestions,
+      semantic_strength_evidence_keys: row.strengthEvidenceKeys,
+      semantic_risk_evidence_keys: row.riskEvidenceKeys,
+      semantic_missing_categories: row.missingCategories,
+      semantic_confidence: row.confidence,
+      semantic_score: base + ((semantic - base) * maxWeight)
+    })
+  })
+  merged.sort((left, right) => Number(right.semantic_score || right.mutualScore || 0) - Number(left.semantic_score || left.mutualScore || 0))
+  return { applied: true, reason: '', ranked: merged }
+}
+
+module.exports = {
+  RERANK_VERSION,
+  buildSemanticRerankRequest,
+  validateSemanticRerankResponse,
+  mergeSemanticRerank,
+  normalizedMutualScore
+}

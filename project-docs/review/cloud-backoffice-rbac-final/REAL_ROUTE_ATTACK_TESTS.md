@@ -1,0 +1,26 @@
+# Real Route Attack Tests
+
+测试入口：`node server/selfcheck/cloud-backoffice-rbac-final.js`。
+
+该脚本直接调用真实 `handleBackofficeHttp`，使用合成签名后台 Token 和内存数据库适配器；不会访问 CloudBase、不会写生产数据。修复前首个用例实际返回 `200`，证明 missing-role fail-open；修复后结果如下：
+
+| 用例 | 结果 |
+|---|---|
+| `CLOUD_MISSING_ADMIN_ROLE_DENIED` | PASS / 403 |
+| `CLOUD_UNKNOWN_ADMIN_ROLE_DENIED` | PASS / 403 |
+| `CLOUD_FINANCE_MEMBER_REVIEW_DENIED` | PASS / 403 |
+| `CLOUD_FINANCE_PARTNER_CREATE_DENIED` | PASS / 403 |
+| `CLOUD_CUSTOMER_SERVICE_MEMBER_REVIEW_DENIED` | PASS / 403 |
+| `CLOUD_CUSTOMER_SERVICE_PARTNER_MUTATION_DENIED` | PASS / 403 |
+| `CLOUD_AUDITOR_FINANCE_DENIED` | PASS / 403 |
+| `CLOUD_AUDITOR_PARTNER_MUTATION_DENIED` | PASS / 403 |
+| `CLOUD_SUPER_ADMIN_EXPECTED_ACCESS` | PASS / 200 |
+| `CLOUD_AUDITOR_MEMBER_REVIEW_ALLOWED` | PASS / 200 |
+| `CLOUD_FINANCE_ORDER_ALLOWED` | PASS / 200 |
+| `CLOUD_CUSTOMER_SERVICE_ORDER_ALLOWED` | PASS / 200 |
+| `CLOUD_CUSTOMER_SERVICE_SERVICE_ALLOWED` | PASS / 200 |
+| `CLOUD_AUDITOR_SAFE_USER_READ_ALLOWED` | PASS / 200 |
+| `CLOUD_AUDITOR_SAFE_PARTNER_READ_ALLOWED` | PASS / 200 |
+| `CLOUD_RESPONSE_DATA_RBAC` | PASS |
+
+另覆盖 Cloud 登录缺失/未知角色拒绝、Express 运行时无角色兜底、SQL 历史迁移显式存在，以及 Agent/User 服务被直接调用时的缺失/未知角色拒绝。

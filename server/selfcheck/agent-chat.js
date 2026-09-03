@@ -1,6 +1,7 @@
 const assert = require('assert')
 const { createAgentHandlers } = require('../../miniprogram/cloudfunctions/api/handlers/agent')
 const { AGENT_TYPES } = require('../../miniprogram/cloudfunctions/api/agent/types')
+const { buildDateCoordinationGraphInput } = require('../../miniprogram/cloudfunctions/api/agent/dateCoordinationGraphState')
 
 function fakeDeps() {
   const tables = {
@@ -25,7 +26,22 @@ function fakeDeps() {
     user_match_log: [{ id: 10, user_id: 1, match_user_id: 2, status: 'matched' }],
     date_coordination: [
       { id: 50, user_a_id: 1, user_b_id: 2, status: 'collecting_preferences', coordination_version: 1 },
-      { id: 51, user_a_id: 1, user_b_id: 2, status: 'collecting_initiator', business_state: 'created', coordination_version: 1 }
+      { id: 51, user_a_id: 1, user_b_id: 2, status: 'collecting_initiator', business_state: 'created', coordination_version: 1 },
+      {
+        id: 52,
+        user_a_id: 1,
+        user_b_id: 2,
+        status: 'no_overlap',
+        business_state: 'coordinating',
+        coordination_version: 2,
+        missing_dimensions: ['time'],
+        last_changed_by_user_id: 1,
+        last_changed_dimensions: ['time'],
+        invitation_primary_proposal: {
+          date: '2026-07-18', period: 'afternoon', area: '福田区', activity: '咖啡',
+          budget: '100-200', payment_mode: 'aa', payer_user_id: 0, duration: '1-2h'
+        }
+      }
     ],
     date_coordination_application: [{
       id: 60,
@@ -43,17 +59,61 @@ function fakeDeps() {
         other_requirements: '',
         share_message: ''
       }
+    }, {
+      id: 61,
+      coordination_id: 50,
+      user_id: 2,
+      coordination_version: 1,
+      application: {
+        availability: [{ date: '2026-07-18', periods: ['afternoon'] }],
+        areas: ['福田区'],
+        activities: ['咖啡'],
+        budget: '100-200',
+        payment_preference: 'aa',
+        duration: '1-2h',
+        transport_constraints: '不公开的交通信息',
+        other_requirements: '不公开的自由文本',
+        share_message: '不公开的留言'
+      }
+    }, {
+      id: 62,
+      coordination_id: 52,
+      user_id: 1,
+      coordination_version: 2,
+      preference_evidence: { availability: 'explicit' },
+      application: {
+        availability: [{ date: '2026-07-20', periods: ['afternoon'] }],
+        areas: ['福田区'], activities: ['咖啡'], budget: '100-200',
+        payment_preference: 'aa', duration: '1-2h'
+      }
+    }, {
+      id: 63,
+      coordination_id: 52,
+      user_id: 2,
+      coordination_version: 2,
+      preference_evidence: { availability: 'explicit' },
+      application: {
+        availability: [{ date: '2026-07-18', periods: ['afternoon'] }],
+        areas: ['福田区'], activities: ['咖啡'], budget: '100-200',
+        payment_preference: 'aa', duration: '1-2h'
+      }
     }],
     date_coordination_proposal: [],
     date_coordination_confirmation: [],
     date_application_patch: [],
     date_coordination_event: [],
-    agent_notification_job: []
+    agent_notification_job: [],
+    coordination_notification: []
   }
   let id = 100
   const match = (row, query) => Object.keys(query || {}).every((key) => row[key] === query[key])
   const deps = {
+    unitMode: true,
     tables,
+    env: {},
+    async invokeGraphFunction() {
+      throw new Error('graph should be disabled by default')
+    },
     now: () => new Date('2026-07-12T10:00:00.000Z'),
     async currentUser(wxContext) {
       return tables.user.find((row) => row.openid === wxContext.OPENID)
@@ -75,6 +135,15 @@ function fakeDeps() {
     async updateByDoc(name, doc, data) {
       Object.assign(doc, data, { update_time: deps.now() })
       return doc
+    },
+    async notifyInbox(input) {
+      return deps.addWithId('coordination_notification', {
+        coordination_id: Number(input.coordination.id),
+        user_id: Number(input.user_id),
+        event_type: input.event_type,
+        title: input.title,
+        body: input.body
+      })
     },
     async claimPendingPatch(patch) {
       const current = tables.date_application_patch.find((row) => Number(row.id) === Number(patch.id))
@@ -106,7 +175,7 @@ function fakeDeps() {
           },
           riskLevel: 'safe',
           suggestedActions: ['confirm_application'],
-          provider: 'minimax',
+          provider: 'deepseek',
           fallback: false
         }
       }
@@ -118,7 +187,7 @@ function fakeDeps() {
           toolRequest: null,
           riskLevel: 'safe',
           suggestedActions: [],
-          provider: 'minimax',
+          provider: 'deepseek',
           fallback: false
         }
       }
@@ -130,7 +199,7 @@ function fakeDeps() {
           toolRequest: null,
           riskLevel: 'safe',
           suggestedActions: [],
-          provider: 'minimax',
+          provider: 'deepseek',
           fallback: false
         }
       }
@@ -145,7 +214,31 @@ function fakeDeps() {
           toolRequest: { tool: 'create_date_application_patch', arguments: { activities: ['咖啡'] } },
           riskLevel: 'safe',
           suggestedActions: ['confirm_patch'],
-          provider: 'minimax',
+          provider: 'deepseek',
+          fallback: false
+        }
+      }
+      if (input.message === '请继续协调方案') {
+        return {
+          intent: 'coordinate_date',
+          replyDraft: '我会继续根据双方已提交的信息协调。',
+          requestedTools: [],
+          toolRequest: null,
+          riskLevel: 'safe',
+          suggestedActions: [],
+          provider: 'deepseek',
+          fallback: false
+        }
+      }
+      if (input.message === '询问对方周日下午可以吗') {
+        return {
+          intent: 'generate_partner_notification',
+          replyDraft: '已生成询问预览。',
+          requestedTools: ['generate_partner_notification'],
+          toolRequest: { tool: 'generate_partner_notification', arguments: {} },
+          riskLevel: 'safe',
+          suggestedActions: ['confirm_partner_inquiry'],
+          provider: 'deepseek',
           fallback: false
         }
       }
@@ -191,6 +284,38 @@ function fakeDeps() {
 }
 
 async function main() {
+  const venueGraph = buildDateCoordinationGraphInput({
+    id: 500,
+    user_a_id: 1,
+    user_b_id: 2,
+    status: 'inviting_partner',
+    coordination_version: 1
+  }, [{
+    user_id: 1,
+    coordination_version: 1,
+    application: {
+      availability: [{ date: '2026-07-18', periods: ['afternoon'] }],
+      areas: ['龙岗区'],
+      activities: ['吃饭'],
+      budget: '100-200',
+      payment_preference: 'aa',
+      duration: '1-2h',
+      start_time: '16:00',
+      area_hint: '大运中心',
+      activity_detail: '椰子鸡',
+      activity_venue: '',
+      venue_resolution: {
+        status: 'needs_specific_venue',
+        missing_fields: ['activity_venue']
+      }
+    }
+  }], { id: 1 })
+  assert.strictEqual(venueGraph.partyAState.venueStatus, 'needs_specific_venue')
+  assert.strictEqual(venueGraph.partyAState.areaHint, '大运中心')
+  assert.strictEqual(venueGraph.partyAState.activityDetail, '椰子鸡')
+  assert.deepStrictEqual(venueGraph.partyAState.missingFields, ['activity_venue'])
+  assert.strictEqual(JSON.stringify(venueGraph).includes('openid'), false)
+
   const deps = fakeDeps()
   const handlers = createAgentHandlers(deps)
   const contextA = { OPENID: 'user-a' }
@@ -204,6 +329,7 @@ async function main() {
   const coordinator = await handlers.createSession({ agent_type: AGENT_TYPES.DATE_COORDINATOR, coordination_id: 50 }, contextA)
   const coordinatorB = await handlers.createSession({ agent_type: AGENT_TYPES.DATE_COORDINATOR, coordination_id: 50 }, contextB)
   const initialCoordinator = await handlers.createSession({ agent_type: AGENT_TYPES.DATE_COORDINATOR, coordination_id: 51 }, contextA)
+  const inquiryCoordinator = await handlers.createSession({ agent_type: AGENT_TYPES.DATE_COORDINATOR, coordination_id: 52 }, contextA)
   assert.strictEqual(platformAgain.id, platform.id)
   assert.notStrictEqual(platform.id, love.id)
   assert.strictEqual(coordinator.coordination_id, 50)
@@ -228,8 +354,92 @@ async function main() {
   assert.strictEqual(coordinatorReply.tool, 'get_date_coordination_status')
   assert.strictEqual(JSON.stringify(coordinatorReply).includes('user_a_id'), false)
 
+  deps.env.LANGGRAPH_ENABLED = 'true'
+  deps.env.LANGGRAPH_ACTOR_SECRET = 'selfcheck-secret'
+  const dateGraphPayloads = []
+  deps.invokeGraphFunction = async (name, payload) => {
+    assert.strictEqual(name, 'agent-graph')
+    dateGraphPayloads.push(payload)
+    return {
+      result: {
+        success: true,
+        data: {
+          status: 'awaiting_confirmation',
+          threadId: payload.threadId,
+          phase: 'awaiting_confirmation',
+          replyDraft: '已找到双方都可以接受的方案，等待双方确认。',
+          pendingAction: null,
+          coordinationVersion: 1
+        }
+      }
+    }
+  }
+  const dateGraphReply = await handlers.send({ session_id: coordinator.id, message: '请继续协调方案' }, contextA)
+  const dateGraphReplyB = await handlers.send({ session_id: coordinatorB.id, message: '请继续协调方案' }, contextB)
+  const dateGraphPayload = dateGraphPayloads[0]
+  assert.strictEqual(dateGraphPayload.mode, 'date_coordination')
+  assert.strictEqual(dateGraphPayload.coordinationId, 50)
+  assert.strictEqual(dateGraphPayload.coordinationVersion, 1)
+  assert.strictEqual(dateGraphPayload.party, 'A')
+  assert.deepStrictEqual(dateGraphPayload.ownPreference.dateWindows, ['2026-07-18:afternoon'])
+  assert.deepStrictEqual(dateGraphPayload.partyAState.dateWindows, ['2026-07-18:afternoon'])
+  assert.deepStrictEqual(dateGraphPayload.partyBState.dateWindows, [])
+  assert.deepStrictEqual(dateGraphPayload.partyBState.regions, [])
+  assert.deepStrictEqual(dateGraphPayload.partyBState.venueTypes, [])
+  assert.strictEqual(dateGraphPayload.canonicalOverlap.source, 'backend')
+  // LangGraph is now the primary coordinator interaction layer for direct answers
+  assert.strictEqual(dateGraphReply.provider, 'langgraph')
+  assert.strictEqual(dateGraphReplyB.provider, 'langgraph')
+  // A and B use separate private threads (per-party privacy)
+  assert.notStrictEqual(dateGraphPayloads[1].threadId, dateGraphPayload.threadId)
+  assert.notStrictEqual(dateGraphPayloads[1].actorRef, dateGraphPayload.actorRef)
+  assert.strictEqual(dateGraphPayloads[1].party, 'B')
+  assert(deps.tables.agent_run.some((row) => row.provider === 'langgraph' && row.session_id === coordinator.id))
+  const graphJson = JSON.stringify(dateGraphPayload)
+  for (const forbidden of ['share_message', 'other_requirements', 'transport_constraints', '不公开', 'openid', 'phone']) {
+    assert.strictEqual(graphJson.includes(forbidden), false)
+  }
+  deps.invokeGraphFunction = async () => { throw new Error('graph offline') }
+  await handlers.send({ session_id: coordinator.id, message: '现在协调状态怎么样？' }, contextA)
+  assert(deps.tables.agent_run.some((row) => row.provider === 'langgraph'
+    && row.session_id === coordinator.id
+    && row.status === 'fallback'
+    && row.error_code === 'graph_unavailable'))
+  deps.env.LANGGRAPH_ENABLED = 'false'
+
+  const inquiryPreview = await handlers.send({
+    session_id: inquiryCoordinator.id,
+    message: '询问对方周日下午可以吗'
+  }, contextA)
+  assert.strictEqual(inquiryPreview.requires_confirmation, true)
+  assert.strictEqual(inquiryPreview.partner_inquiry_preview.status, 'pending_confirmation')
+  assert.deepStrictEqual(inquiryPreview.partner_inquiry_preview.changes.map((item) => item.label), ['时间'])
+  assert(inquiryPreview.partner_inquiry_preview.unchanged_text.includes('区域'))
+  assert.strictEqual(deps.tables.coordination_notification.length, 0)
+
+  const inquirySent = await handlers.send({
+    session_id: inquiryCoordinator.id,
+    message: '确认询问对方'
+  }, contextA)
+  assert.strictEqual(inquirySent.partner_notified, true)
+  assert.strictEqual(deps.tables.coordination_notification.length, 1)
+  assert.strictEqual(deps.tables.coordination_notification[0].user_id, 2)
+  const partnerInquirySession = deps.tables.agent_session.find((row) => (
+    row.user_id === 2 && row.coordination_id === 52
+  ))
+  assert(partnerInquirySession)
+  assert(deps.tables.agent_message.some((row) => (
+    row.session_id === partnerInquirySession.id && row.partner_inquiry
+  )))
+  const inquiryAccepted = await handlers.send({
+    session_id: partnerInquirySession.id,
+    message: '接受这份调整'
+  }, contextB)
+  assert.strictEqual(inquiryAccepted.accepted, true)
+  assert.strictEqual(inquiryAccepted.tool, 'accept_partner_counter_proposal')
+
   const patchReply = await handlers.send({ session_id: coordinator.id, message: '不想看电影了，帮我改成咖啡' }, contextA)
-  assert.strictEqual(patchReply.provider, 'minimax')
+  assert.strictEqual(patchReply.provider, 'deepseek')
   assert.strictEqual(patchReply.requires_confirmation, true)
   assert.strictEqual(patchReply.patch_preview.status, 'pending_confirmation')
   assert.deepStrictEqual(patchReply.patch_preview.preview.before.activities, ['电影'])
@@ -279,6 +489,31 @@ async function main() {
   deps.tables.knowledge_article = []
   const platformNoKnowledge = await handlers.send({ session_id: platform.id, message: '平台收费说明' }, contextA)
   assert.strictEqual(platformNoKnowledge.knowledge_limited, true)
+
+  deps.env.LANGGRAPH_ENABLED = 'true'
+  deps.env.LANGGRAPH_ACTOR_SECRET = 'selfcheck-secret'
+  deps.invokeGraphFunction = async (name, payload) => {
+    assert.strictEqual(name, 'agent-graph')
+    assert.strictEqual(payload.mode, 'customer_service')
+    assert.match(payload.actorRef, /^usr_[a-f0-9]{32}$/)
+    assert.match(payload.threadId, /^wf_thread_[a-f0-9]{32}$/)
+    return {
+      result: {
+        success: true,
+        data: {
+          status: 'completed',
+          threadId: payload.threadId,
+          phase: 'completed',
+          replyDraft: '这是 LangGraph 客服回复。',
+          pendingAction: null
+        }
+      }
+    }
+  }
+  const graphReply = await handlers.send({ session_id: platform.id, message: '介绍一下平台规则' }, contextA)
+  assert.strictEqual(graphReply.provider, 'langgraph')
+  assert.strictEqual(graphReply.reply, '这是 LangGraph 客服回复。')
+  deps.env.LANGGRAPH_ENABLED = 'false'
 
   const loveReply = await handlers.send({ session_id: love.id, message: '想聊聊初次见面' }, contextA)
   assert(loveReply.reply.includes('轻松话题'))

@@ -1,4 +1,5 @@
 const { first, list } = require('../lib/db')
+const { referralInput } = require('../lib/partnerReferralPolicy')
 const { demoFlags } = require('../lib/flags')
 
 const defaultCircles = [
@@ -28,15 +29,23 @@ async function circles() {
 }
 
 async function promoteCode(data) {
-  const code = String(data.code || '').trim().toUpperCase()
+  const code = String(data.code || '').trim()
   if (!code) throw new Error('请填写推广码')
-  const partner = await first('partner', { promote_code: code, status: 1 })
+  let referral
+  try {
+    referral = referralInput(code)
+  } catch (err) {
+    return { valid: false, message: '推广码无效或合伙人未激活' }
+  }
+  const partner = referral.partnerId
+    ? await first('partner', { id: referral.partnerId, status: 1 })
+    : await first('partner', { promote_code: referral.code, status: 1 })
   if (!partner) {
     return { valid: false, message: '推广码无效或合伙人未激活' }
   }
   return {
     valid: true,
-    message: `已识别 ${partner.name || '合伙人'} 推广码`,
+    message: '已识别合伙人推广码',
     partner_id: partner.id,
     circle_id: partner.circle_id
   }
@@ -80,7 +89,32 @@ async function config() {
       desc: '每周三、周五 0:00 系统自动空投 1 位匹配对象，无手动刷新'
     },
     safety: safetyConfig(),
-    demo: await demoFlags()
+    demo: await demoFlags(),
+    api_schema_version: 2,
+    date_coordination_contract_version: 6,
+    ai_provider_contract_version: 1,
+    ai_runtime: {
+      provider: 'cloudbase',
+      model: 'hy3',
+      cloudbase_ai_provider: true,
+      hy3_enabled: true
+    },
+    capabilities: {
+      notifications: true,
+      date_coordinator_pre_accept_chat: true,
+      bilateral_coordination: true,
+      first_date_invitation: true,
+      invitation_direct_accept: true,
+      invitation_coordinate: true,
+      invitation_primary_proposal: true,
+      direct_accept_cas: true,
+      neutral_payment_proposal: true,
+      invitation_atomic_transitions: true,
+      invitation_response_version_cas: true,
+      pre_accept_patch_cas: true,
+      expired_transaction_commit: true,
+      primary_proposal_resolution: true
+    }
   }
 }
 

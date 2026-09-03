@@ -83,6 +83,23 @@ async function run() {
   assert.strictEqual(eligibility.coordination_id, 20)
   assert.strictEqual(eligibility.proposal_date, '2026-07-26')
 
+  deps.now = () => new Date('2026-07-26T16:20:00.000Z')
+  deps.rows.date_coordination_proposal[0].date = '2026-07-27'
+  deps.rows.date_coordination_proposal[0].period = 'afternoon'
+  deps.rows.date_coordination_proposal[0].duration = '1-2h'
+  const sameDayEarly = await handlers.dateEligibility({ match_log_id: 10 }, { userId: 1 })
+  assert.strictEqual(sameDayEarly.can_submit, false)
+  assert.match(sameDayEarly.reason, /预计结束/)
+
+  deps.now = () => new Date('2026-07-27T12:00:00.000Z')
+  const afterAfternoonEnds = await handlers.dateEligibility({ match_log_id: 10 }, { userId: 1 })
+  assert.strictEqual(afterAfternoonEnds.can_submit, true)
+
+  deps.now = () => new Date('2026-07-27T08:00:00.000Z')
+  deps.rows.date_coordination_proposal[0].date = '2026-07-26'
+  const afterMeetingDay = await handlers.dateEligibility({ match_log_id: 10 }, { userId: 1 })
+  assert.strictEqual(afterMeetingDay.can_submit, true)
+
   const dateSaved = await handlers.saveDate({
     match_log_id: 10,
     met_status: 'met',

@@ -11,6 +11,10 @@ const agent = require('./agent')
 const dateCoordination = require('./dateCoordination')
 const dateApplicationPatch = require('./dateApplicationPatch')
 const experienceFeedback = require('./experienceFeedback')
+const backoffice = require('./backoffice')
+const notifications = require('./notifications')
+const partnerOnboarding = require('./partnerOnboardingCloud')
+const qaPairReset = require('./qaPairReset')
 
 function methodOf(value) {
   return String(value || 'GET').toUpperCase()
@@ -32,6 +36,10 @@ function route(method, path) {
   const exact = `${method} ${path}`
   const map = {
     'POST /api/auth/wx-login': auth.wxLogin,
+    'POST /api/auth/partner-login': backoffice.partnerLoginForMiniProgram,
+    'GET /api/partner/onboarding/status': partnerOnboarding.status,
+    'POST /api/partner/activation': partnerOnboarding.activate,
+    'POST /api/partner/session': partnerOnboarding.session,
     'GET /api/common/circles': common.circles,
     'GET /api/common/promote-code': common.promoteCode,
     'GET /api/common/stats': common.marryStat,
@@ -44,6 +52,7 @@ function route(method, path) {
     'GET /api/user/profile': user.getProfile,
     'PUT /api/user/profile': user.updateProfile,
     'POST /api/user/register': user.register,
+    'POST /api/user/qa-registration-reset': user.resetQaRegistration,
     'POST /api/user/marry-report': user.marryReport,
     'POST /api/user/cancel': user.cancel,
     'POST /api/user/claim-free': user.claimFree,
@@ -51,10 +60,18 @@ function route(method, path) {
     'POST /api/user/divorce-review': user.submitDivorceReview,
     'GET /api/member/application': member.status,
     'POST /api/member/application/submit': member.submit,
+    'POST /api/member/application/referral': member.bindReferral,
     'GET /api/match/setting': match.getSetting,
     'POST /api/match/setting': match.saveSetting,
+    'POST /api/match/intent/confirm': match.confirmIntent,
+    'GET /api/match/ai-profile': match.getAiProfile,
+    'POST /api/match/ai-profile/confirm': match.confirmAiProfile,
+    'POST /api/match/ai-profile/correct': match.correctAiProfile,
     'GET /api/match/setting/cooldown': match.cooldown,
     'POST /api/match/start': match.start,
+    'POST /api/match/qa-real-device/start': match.startQaRealDeviceMatch,
+    'POST /api/match/qa-pair-reset': qaPairReset.reset,
+    'POST /api/match/test-runs': match.create,
     'POST /api/match/report': match.generateReport,
     'POST /api/match/report-tasks': reportTask.create,
     'GET /api/match/report-tasks/status': reportTask.status,
@@ -66,6 +83,9 @@ function route(method, path) {
     'GET /api/match/feedback': experienceFeedback.getMatch,
     'POST /api/match/feedback': experienceFeedback.saveMatch,
     'GET /api/date-feedback': experienceFeedback.getDate,
+    'POST /api/notifications/read': notifications.read,
+    'GET /api/notifications/unread': notifications.unread,
+    'GET /api/notifications': notifications.getList,
     'POST /api/date-feedback': experienceFeedback.saveDate,
     'GET /api/vip/info': vip.info,
     'POST /api/vip/purchase': vip.purchase,
@@ -77,11 +97,15 @@ function route(method, path) {
     'POST /api/agent/sessions': agent.createSession,
     'POST /api/agent/human-tickets': agent.createHumanTicket,
     'POST /api/date-coordinations': dateCoordination.create,
+    'POST /api/date-coordinations/fixture-applications': dateCoordination.submitFixtureApplication,
     'POST /api/meet/create': meet.create,
     'POST /api/meet/sos': meet.homeSos,
     'GET /api/meet/existing': meet.existing,
     'GET /api/meet/list': meet.meetList
   }
+  if (exact === 'GET /api/partner/invite-assets') return backoffice.partnerInviteAssetsForMiniProgram
+  if (exact === 'GET /api/partner/dashboard') return backoffice.partnerDashboardForMiniProgram
+  if (exact === 'POST /api/partner/share-event') return backoffice.recordShareEventForMiniProgram
   if (map[exact]) return map[exact]
 
   let m = path.match(/^\/api\/agent\/sessions\/(\d+)\/messages$/)
@@ -89,6 +113,8 @@ function route(method, path) {
   if (method === 'POST' && m) return withParams(agent.send, { id: Number(m[1]), session_id: Number(m[1]) })
   m = path.match(/^\/api\/date-coordinations\/(\d+)$/)
   if (method === 'GET' && m) return withParams(dateCoordination.detail, { id: Number(m[1]), coordination_id: Number(m[1]) })
+  m = path.match(/^\/api\/date-coordinations\/fixture-responses\/(\d+)$/)
+  if (method === 'GET' && m) return withParams(dateCoordination.fixtureResponse, { id: Number(m[1]), job_id: Number(m[1]) })
   m = path.match(/^\/api\/date-coordinations\/(\d+)\/invitation-response$/)
   if (method === 'POST' && m) return withParams(dateCoordination.respondInvitation, { coordination_id: Number(m[1]) })
   m = path.match(/^\/api\/date-coordinations\/(\d+)\/application$/)
@@ -105,6 +131,10 @@ function route(method, path) {
     coordination_id: Number(m[1]),
     patch_id: Number(m[2])
   })
+  m = path.match(/^\/api\/date-coordinations\/(\d+)\/counter-offer\/accept$/)
+  if (method === 'POST' && m) return withParams(dateCoordination.acceptCounterOffer, {
+    coordination_id: Number(m[1])
+  })
   m = path.match(/^\/api\/date-coordinations\/(\d+)\/proposals\/(\d+)\/confirm$/)
   if (method === 'POST' && m) return withParams(dateCoordination.confirmProposal, {
     coordination_id: Number(m[1]),
@@ -112,6 +142,14 @@ function route(method, path) {
   })
   m = path.match(/^\/api\/date-coordinations\/(\d+)\/recoordinate$/)
   if (method === 'POST' && m) return withParams(dateCoordination.recoordinate, { coordination_id: Number(m[1]) })
+  m = path.match(/^\/api\/date-coordinations\/(\d+)\/retry-processing$/)
+  if (method === 'POST' && m) return withParams(dateCoordination.retryProcessing, { coordination_id: Number(m[1]) })
+  m = path.match(/^\/api\/date-coordinations\/(\d+)\/advance-synthetic$/)
+  if (method === 'POST' && m) return withParams(dateCoordination.advanceSynthetic, { coordination_id: Number(m[1]) })
+  m = path.match(/^\/api\/date-coordinations\/(\d+)\/meeting-check-in$/)
+  if (method === 'POST' && m) return withParams(dateCoordination.meetingCheckIn, { coordination_id: Number(m[1]) })
+  m = path.match(/^\/api\/date-coordinations\/(\d+)\/qa-reset$/)
+  if (method === 'POST' && m) return withParams(dateCoordination.qaReset, { coordination_id: Number(m[1]) })
   m = path.match(/^\/api\/meet\/share\/([^/]+)$/)
   if (method === 'GET' && m) return withParams(meet.shareDetail, { token: m[1] })
   m = path.match(/^\/api\/meet\/(\d+)$/)
@@ -124,6 +162,11 @@ function route(method, path) {
   if (method === 'POST' && m) return withParams(meet.cancel, { id: Number(m[1]) })
   m = path.match(/^\/api\/meet\/(\d+)\/sos$/)
   if (method === 'POST' && m) return withParams(meet.sos, { id: Number(m[1]) })
+  m = path.match(/^\/api\/match\/test-runs\/(\d+)\/execute$/)
+  if (method === 'POST' && m) return withParams(match.execute, { id: Number(m[1]) })
+  m = path.match(/^\/api\/match\/test-runs\/(\d+)$/)
+  if (method === 'GET' && m) return withParams(match.get, { id: Number(m[1]) })
+  if (method === 'GET' && path === '/api/match/test-runs') return match.get
   m = path.match(/^\/api\/match\/(\d+)$/)
   if (method === 'GET' && m) return withParams(match.detail, { id: Number(m[1]) })
 

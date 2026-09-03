@@ -15,56 +15,159 @@
   </block>
 
   <block wx:else>
+    <view class="user-id-bar">
+      <view class="user-id-copy-row">
+        <view class="user-id-label">用户ID</view>
+        <view wx:if="{{supportCodeState === 'ready'}}" class="user-id-code">{{supportCode}}</view>
+        <view wx:elif="{{supportCodeState === 'loading'}}" class="user-id-state">加载中...</view>
+        <view wx:else class="user-id-state user-id-error">{{supportCodeError || '加载失败'}}</view>
+        <button wx:if="{{supportCodeState === 'ready'}}" class="user-id-copy" bindtap="copySupportCode">复制</button>
+        <button wx:elif="{{supportCodeState === 'error'}}" class="user-id-copy" bindtap="retrySupportCode">重试</button>
+      </view>
+      <view class="user-id-help">咨询账号问题时，可向客服提供此编号快速查询</view>
+    </view>
     <scroll-view class="chat-scroll" scroll-y scroll-into-view="{{scrollToView}}" scroll-with-animation>
       <view class="chat-tip">{{agentType === 'love_advisor' ? '温和陪伴，信息有限时会明确说明知识不足' : (agentType === 'date_coordinator' ? '只说明共同进度，不展示对方原始回答' : '优先处理平台业务咨询')}}</view>
+      <view class="ai-disclaimer">🤖 AI 生成回复仅供参考，重要事项请以官方客服确认为准</view>
       <view
         id="msg-{{item.id}}"
         class="msg-row {{item.isBot ? 'msg-bot' : 'msg-user'}}"
         wx:for="{{messages}}"
         wx:key="id"
       >
-        <view class="msg-bubble">
-          <text class="msg-text">{{item.content}}</text>
+        <!-- Generating placeholder (same bubble slot) -->
+        <view wx:if="{{item.isBot && item.status === 'generating'}}" class="msg-bubble msg-bubble-generating">
+          <view class="gen-row">
+            <view class="gen-ring" aria-hidden="true"></view>
+            <view class="gen-copy">
+              <text class="gen-primary">{{item.waitingText || item.waitingPrimary || '正在思考…'}}</text>
+              <text class="gen-label">AI生成中</text>
+            </view>
+          </view>
           <text class="msg-time">{{item.timeText}}</text>
         </view>
-        <view wx:if="{{item.patchPreview}}" class="patch-preview-card">
-          <view class="patch-preview-title">{{item.patchPreview.operation === 'create' ? '💌 约会申请发送预览' : '💗 约会条件修改预览'}}</view>
-          <view class="patch-change" wx:for="{{item.patchPreview.changes}}" wx:key="field">
-            <view class="patch-field">{{item.label}}</view>
-            <view wx:if="{{item.patchPreview.operation === 'create'}}" class="patch-value-row"><text class="patch-value-label">待发送</text><text class="patch-value after">{{item.after}}</text></view>
-            <block wx:else>
-              <view class="patch-value-row"><text class="patch-value-label">修改前</text><text class="patch-value before">{{item.before}}</text></view>
-              <view class="patch-value-row"><text class="patch-value-label">修改后</text><text class="patch-value after">{{item.after}}</text></view>
-            </block>
-          </view>
-          <view wx:if="{{item.patchPreview.operation === 'create'}}" class="patch-notice">📌 这是待发送申请，当前尚未通知对方。</view>
-          <view wx:elif="{{item.patchPreview.affectsExistingProposal}}" class="patch-notice">📌 影响现有方案，确认后会重新为你们匹配。</view>
-          <view wx:else class="patch-notice">📌 不影响现有方案，会保留当前匹配进度。</view>
-          <view wx:if="{{item.patchPreview.willNotifyPartner}}" class="patch-notice">💌 确认后将通知对方。</view>
-          <view wx:else class="patch-notice">💌 这次修改不会主动通知对方。</view>
-          <view wx:if="{{item.patchPreview.requiresConfirmation && item.patchPreview.status === 'pending_confirmation'}}" class="patch-actions">
-            <button class="patch-confirm" data-patch-id="{{item.patchPreview.id}}" data-message-id="{{item.id}}" bindtap="onConfirmPatch" disabled="{{patchSubmitting}}" loading="{{patchSubmitting}}">{{item.patchPreview.operation === 'create' ? '确认发送' : '确认修改'}}</button>
-            <button class="patch-cancel" data-patch-id="{{item.patchPreview.id}}" data-message-id="{{item.id}}" bindtap="onCancelPatch" disabled="{{patchSubmitting}}">{{item.patchPreview.operation === 'create' ? '暂不发送' : '暂不修改'}}</button>
-          </view>
-          <view wx:elif="{{item.patchPreview.status === 'applied'}}" class="patch-status">{{item.patchPreview.operation === 'create' ? '已确认发送' : '已确认修改'}}</view>
-          <view wx:elif="{{item.patchPreview.status === 'cancelled'}}" class="patch-status">{{item.patchPreview.operation === 'create' ? '已暂不发送' : '已暂不修改'}}</view>
+
+        <!-- Error + retry (same bubble slot) -->
+        <view wx:elif="{{item.isBot && item.status === 'error'}}" class="msg-bubble msg-bubble-error">
+          <text class="msg-text error-text">{{item.errorText || '回复生成失败'}}</text>
+          <button
+            class="retry-btn"
+            data-message-id="{{item.id}}"
+            bindtap="retryAiMessage"
+            disabled="{{sending}}"
+          >重新生成</button>
+          <text class="msg-time">{{item.timeText}}</text>
         </view>
-        <button wx:if="{{item.handoff && item.handoff.provider === 'wechat_kf'}}" class="human-service-btn" open-type="contact">联系微信客服</button>
-        <button wx:if="{{item.handoff && item.handoff.provider === 'wecom'}}" class="human-service-btn" data-message-id="{{item.id}}" bindtap="openHumanService">打开企业微信客服</button>
+
+        <!-- Completed assistant / user content -->
+        <block wx:else>
+          <view class="msg-bubble {{item.isBot && item.reveal ? 'msg-bubble-reveal' : ''}}">
+            <text class="msg-text">{{item.content}}</text>
+            <text class="msg-time">{{item.timeText}}</text>
+          </view>
+          <view wx:if="{{item.isBot && item.status === 'completed' && item.coordinationUpdateCard}}" class="coordination-update-card">
+            <view class="coordination-update-kicker">约会协调更新</view>
+            <view class="patch-preview-title">{{item.coordinationUpdateCard.title}}</view>
+            <view class="patch-change" wx:for="{{item.coordinationUpdateCard.changes}}" wx:for-item="change" wx:key="label">
+              <view class="patch-field">{{change.label}}</view>
+              <view class="patch-value-row"><text class="patch-value-label">原方案</text><text class="patch-value before">{{change.beforeText}}</text></view>
+              <view class="patch-value-row"><text class="patch-value-label">新方案</text><text class="patch-value after">{{change.afterText}}</text></view>
+            </view>
+            <view wx:if="{{item.coordinationUpdateCard.hasPlan}}" class="chat-plan-facts">
+              <view class="chat-plan-row" wx:if="{{item.coordinationUpdateCard.timeText}}"><text>时间</text><text>{{item.coordinationUpdateCard.timeText}}</text></view>
+              <view class="chat-plan-row" wx:if="{{item.coordinationUpdateCard.activityText}}"><text>活动</text><text>{{item.coordinationUpdateCard.activityText}}</text></view>
+              <view class="chat-plan-row" wx:if="{{item.coordinationUpdateCard.venueText}}"><text>活动场地</text><text>{{item.coordinationUpdateCard.venueText}}</text></view>
+              <view class="chat-plan-row" wx:if="{{item.coordinationUpdateCard.meetPointText}}"><text>初步会合范围</text><text>{{item.coordinationUpdateCard.meetPointText}}</text></view>
+              <view class="chat-plan-row" wx:if="{{item.coordinationUpdateCard.areaText}}"><text>区域</text><text>{{item.coordinationUpdateCard.areaText}}</text></view>
+            </view>
+          </view>
+          <view wx:if="{{item.isBot && item.status === 'completed' && item.patchPreview}}" class="patch-preview-card">
+            <view class="patch-preview-title">{{item.patchPreview.title}}</view>
+            <view wx:if="{{item.patchPreview.partialOverride}}" class="patch-scope-note">只调整下面列出的项目；其余项目沿用你刚看到的完整邀请方案。</view>
+            <view class="patch-change" wx:for="{{item.patchPreview.changes}}" wx:for-item="change" wx:key="field">
+              <view class="patch-field">{{change.label}}</view>
+              <view wx:if="{{item.patchPreview.operation === 'create'}}" class="patch-value-row"><text class="patch-value-label">待发送</text><text class="patch-value after">{{change.after}}</text></view>
+              <block wx:else>
+                <view class="patch-value-row"><text class="patch-value-label">修改前</text><text class="patch-value before">{{change.before}}</text></view>
+                <view class="patch-value-row"><text class="patch-value-label">修改后</text><text class="patch-value after">{{change.after}}</text></view>
+              </block>
+            </view>
+            <view wx:if="{{item.patchPreview.partialOverride && item.patchPreview.inheritedText}}" class="patch-inherited">保持不变：{{item.patchPreview.inheritedText}}</view>
+            <view wx:if="{{item.patchPreview.operation === 'create'}}" class="patch-notice">当前只是预览，确认前不会通知对方。</view>
+            <view wx:elif="{{item.patchPreview.affectsExistingProposal}}" class="patch-notice">这会影响现有方案，确认后将重新计算。</view>
+            <view wx:else class="patch-notice">这次修改会保留当前协调进度。</view>
+            <view wx:if="{{item.patchPreview.willNotifyPartner}}" class="patch-notice">确认后将通知对方，但只发送脱敏后的变更提醒。</view>
+            <view wx:else class="patch-notice">这次修改不会主动通知对方。</view>
+            <view wx:if="{{item.patchPreview.primaryResolutionRequired && item.patchPreview.status === 'pending_primary_selection'}}" class="primary-resolution">
+              <view class="patch-notice">{{item.patchPreview.resolutionPrompt}}</view>
+              <view wx:for="{{item.patchPreview.primaryResolutionFields}}" wx:for-item="resField" wx:key="field">
+                <view class="patch-field">本次建议{{resField.label}}需要确认</view>
+                <view class="primary-choice-row">
+                  <view
+                    class="primary-choice"
+                    wx:for="{{resField.options}}"
+                    wx:for-item="opt"
+                    wx:key="key"
+                    data-message-id="{{item.id}}"
+                    data-field="{{resField.field}}"
+                    data-value="{{opt.value}}"
+                    data-date="{{opt.date}}"
+                    data-period="{{opt.period}}"
+                    bindtap="onSelectPrimaryResolution"
+                  >{{opt.label}}</view>
+                </view>
+              </view>
+            </view>
+            <view wx:if="{{item.patchPreview.requiresConfirmation && item.patchPreview.status === 'pending_confirmation'}}" class="patch-actions">
+              <button class="patch-confirm" data-patch-id="{{item.patchPreview.id}}" data-message-id="{{item.id}}" bindtap="onConfirmPatch" disabled="{{patchSubmitting}}" loading="{{patchSubmitting}}">{{item.patchPreview.confirmLabel}}</button>
+              <button class="patch-cancel" data-patch-id="{{item.patchPreview.id}}" data-message-id="{{item.id}}" bindtap="onCancelPatch" disabled="{{patchSubmitting}}">{{item.patchPreview.cancelLabel}}</button>
+            </view>
+            <view wx:if="{{item.patchPreview.primaryResolutionRequired && item.patchPreview.status === 'pending_primary_selection'}}" class="patch-actions">
+              <button class="patch-cancel" data-patch-id="{{item.patchPreview.id}}" data-message-id="{{item.id}}" bindtap="onCancelPatch" disabled="{{patchSubmitting}}">暂不修改</button>
+            </view>
+            <view wx:elif="{{item.patchPreview.status === 'applied'}}" class="patch-status">{{item.patchPreview.operation === 'create' ? '已确认发送' : '已确认修改'}}</view>
+            <view wx:elif="{{item.patchPreview.status === 'cancelled'}}" class="patch-status">{{item.patchPreview.operation === 'create' ? '已暂不发送' : '已暂不修改'}}</view>
+          </view>
+          <view wx:if="{{item.isBot && item.status === 'completed' && item.partnerInquiryPreview}}" class="patch-preview-card partner-inquiry-card">
+            <view class="patch-preview-title">{{item.partnerInquiryPreview.title}}</view>
+            <view class="patch-scope-note">{{item.partnerInquiryPreview.body}}</view>
+            <view class="patch-change" wx:for="{{item.partnerInquiryPreview.changes}}" wx:for-item="change" wx:key="label">
+              <view class="patch-field">{{change.label}}</view>
+              <view class="patch-value-row"><text class="patch-value-label">原方案</text><text class="patch-value before">{{change.beforeText}}</text></view>
+              <view class="patch-value-row"><text class="patch-value-label">拟询问</text><text class="patch-value after">{{change.afterText}}</text></view>
+            </view>
+            <view wx:if="{{item.partnerInquiryPreview.unchangedText}}" class="patch-inherited">保持不变：{{item.partnerInquiryPreview.unchangedText}}</view>
+            <view class="patch-notice">完整安排：{{item.partnerInquiryPreview.timeText}} · {{item.partnerInquiryPreview.activityText}} · {{item.partnerInquiryPreview.venueText || '活动场地待确认'}} · 集合于{{item.partnerInquiryPreview.meetPointText || '待确认'}} · {{item.partnerInquiryPreview.areaText}}</view>
+            <view class="patch-notice">确认前不会通知对方；发送后对方可以接受或继续调整。</view>
+            <view wx:if="{{item.partnerInquiryPreview.status === 'pending_confirmation'}}" class="patch-actions">
+              <button class="patch-confirm" data-action="confirm" bindtap="onPartnerInquiryAction" disabled="{{sending}}">{{item.partnerInquiryPreview.confirmLabel}}</button>
+              <button class="patch-cancel" data-action="cancel" bindtap="onPartnerInquiryAction" disabled="{{sending}}">{{item.partnerInquiryPreview.cancelLabel}}</button>
+            </view>
+            <view wx:elif="{{item.partnerInquiryPreview.status === 'sent' && item.partnerInquiryPreview.incoming}}" class="patch-actions">
+              <button class="patch-confirm" data-action="accept" bindtap="onPartnerInquiryAction" disabled="{{sending}}">接受这份调整</button>
+            </view>
+            <view wx:elif="{{item.partnerInquiryPreview.status === 'sent'}}" class="patch-status">已发送给对方</view>
+            <view wx:elif="{{item.partnerInquiryPreview.status === 'accepted'}}" class="patch-status">已接受并重新计算</view>
+            <view wx:elif="{{item.partnerInquiryPreview.status === 'cancelled'}}" class="patch-status">已取消</view>
+            <view wx:elif="{{item.partnerInquiryPreview.status === 'expired'}}" class="patch-status">方案已更新，请重新生成询问</view>
+          </view>
+          <button wx:if="{{item.isBot && item.status === 'completed' && item.handoff && item.handoff.provider === 'wechat_kf'}}" class="human-service-btn" open-type="contact">联系微信客服</button>
+          <button wx:if="{{item.isBot && item.status === 'completed' && item.handoff && item.handoff.provider === 'wecom'}}" class="human-service-btn" data-message-id="{{item.id}}" bindtap="openHumanService">打开企业微信客服</button>
+        </block>
       </view>
     </scroll-view>
 
     <view class="chat-input-bar safe-bottom">
       <input
         class="chat-input"
-        placeholder="输入您的问题..."
+        placeholder="{{coordinatorReadOnly ? '当前结果仅供查看' : (coordinatorMeetingMode ? '例如：我到了 / 对方穿什么' : '输入您的问题...')}}"
         value="{{inputText}}"
         bindinput="onInput"
         confirm-type="send"
         bindconfirm="onSend"
-        disabled="{{sending}}"
+        disabled="{{sending || coordinatorReadOnly}}"
       />
-      <button class="send-btn" bindtap="onSend" disabled="{{sending || !inputText}}" loading="{{sending}}">发送</button>
+      <button class="send-btn" bindtap="onSend" disabled="{{sending || coordinatorReadOnly || !inputText}}">{{sending ? '发送中' : '发送'}}</button>
     </view>
   </block>
 </view>

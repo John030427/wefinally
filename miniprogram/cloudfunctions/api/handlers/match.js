@@ -1,10 +1,46 @@
-const { first, list, byId, addWithId, updateByDoc, authError, now } = require('../lib/db')
+const {
+  first,
+  list,
+  byId,
+  nextId,
+  addWithId,
+  updateByDoc,
+  authError,
+  now,
+  listChunksByOwnerIds,
+  upsertChunk,
+  disableChunks
+} = require('../lib/db')
 const { currentUser } = require('./user')
 const { isVipActive, ageBand, dateOnly } = require('../lib/format')
 const { flagEnabled } = require('../lib/flags')
 const { MEMBER_STATUS, memberStatus, canUseMatching, normalizeMatchSettingInput } = require('../lib/memberPolicy')
 const { rankCandidates, scoreDetailFor } = require('../lib/matchPolicy')
+const { compileIntentProfile, normalizeMode } = require('../lib/intentProfile')
+const {
+  compileAiMatchProfile,
+  shouldInvalidateAiMatchProfile,
+  sourceFingerprint,
+  applyAiProfileCorrection
+} = require('../lib/aiMatchProfile')
+const { presentAiMatchProfile } = require('../lib/aiMatchProfilePresentation')
+const { canonicalPairKey, deliverPair, createCloudClaimStore, CLAIM_STATUS } = require('../lib/matchClaim')
+const { shanghaiBusinessClock } = require('../lib/businessClock')
+const { indexClaimsForMatching } = require('../lib/matchCycleService')
+const { semanticRerank, intentMatchGate } = require('../lib/semanticMatchService')
+const { syncUserCorpus, loadCorpusForUserIds } = require('../lib/matchRagCorpus')
 const reportTask = require('./reportTask')
+const { isMatchOnlyFixture, canUseFixtureForMatch, canEnterFormalCandidatePool } = require('../lib/testFixturePolicy')
+const { fixtureSceneBadge } = require('../lib/syntheticPartnerJourney')
+const { createMatchTestRunHandlers } = require('../lib/matchTestRunService')
+const { sharesCandidateCohort } = require('../lib/matchCohortPolicy')
+const {
+  qaRunKey,
+  shouldBlockUserForClaim,
+  shouldExcludeHistoricalClaims
+} = require('../lib/qaRegistrationReplayPolicy')
+const { resolveQaTestRunEnabled } = require('../lib/qaAccessPolicy')
+const { readiness, enrollmentPatch, isReadyPartner } = require('../lib/qaRealDeviceMatchPolicy')
 
 function parseJson(value) {
   if (!value) return null
@@ -14,6 +50,24 @@ function parseJson(value) {
   } catch (err) {
     return null
   }
+}
+
+function ragCorpusRepository() {
+  return { listChunksByOwnerIds, upsertChunk, disableChunks, now }
+}
+
+function loadRagCorpus(userIds) {
+  return loadCorpusForUserIds(userIds, ragCorpusRepository())
+}
+
+function classifyRagSyncError(error) {
+  const message = String(error && error.message || '').toLowerCase()
+  const code = String(error && (error.code || error.class) || '').toLowerCase()
+  if ((code.includes('invalid') || code.includes('schema'))
+    || message.includes('无效') || message.includes('invalid') || message.includes('schema')) {
+    return 'corpus_invalid'
+  }
+  return 'corpus_unavailable'
 }
 
 function settingDefaults(row) {
@@ -30,6 +84,9 @@ function settingDefaults(row) {
     like_house_car: '',
     self_view_text: '',
     target_view_text: '',
+    other_requirements: '',
+    intent_profile_json: null,
+    intent_profile_confirmed_at: null,
     last_edit_time: null
   }
 }
@@ -47,6 +104,17 @@ function fallbackMatchReportText(viewer, partner) {
     `${eduText}外貌期待只作为自述与偏好的契合参考，不做颜值判断，也不会向对方展示原文。`,
     '建议第一次对接先让客服协助确认三个问题：未来一到三年的城市安排、见面时间和公共场所选择、双方对婚育节奏与父母边界的基本想法。'
   ].join('\n\n')
+}
+
+async function transactionDocument(name, prefix, data) {
+  const id = await nextId(name)
+  const timestamp = now()
+  return Object.assign({}, data, {
+    _id: `${prefix || name}_${id}`,
+    id,
+    create_time: data.create_time || timestamp,
+    update_time: data.update_time || timestamp
+  })
 }
 
 function withReportStatus(scoreDetail, status, report) {
@@ -124,7 +192,7 @@ function hasScoreDetailSide(scoreDetail) {
 function buildDemoScoreDetail(viewer, partner, options) {
   const totalScore = Number((options && options.totalScore) || 88)
   return {
-    version: 'algo_evidence_v2',
+    version: 'algo_evidence_v3',
     algorithm_rank: options && options.algorithmRank ? options.algorithmRank : 1,
     ai_rank: null,
     ai_weight: 0,
@@ -150,9 +218,38 @@ function ensureScoreDetailDimensions(scoreDetail, row, viewer, partner) {
   })
 }
 
+function withSemanticRerankDetail(scoreDetail, best, reranked) {
+  const baseNormalizedTotal = Number(scoreDetail.normalized_total || scoreDetail.normalizedTotal || 0)
+  const semanticScore = Number(best && best.canonical_score)
+  const finalMatchScore = reranked && reranked.applied === true && Number.isFinite(semanticScore)
+    ? Math.max(0, Math.min(100, Math.round(semanticScore)))
+    : Math.max(0, Math.min(100, Math.round(baseNormalizedTotal)))
+  return Object.assign({}, scoreDetail, {
+    base_normalized_total: baseNormalizedTotal,
+    final_match_score: finalMatchScore,
+    normalized_total: finalMatchScore,
+    normalizedTotal: finalMatchScore,
+    ai_rerank: {
+      applied: Boolean(reranked && reranked.applied),
+      reason: reranked && reranked.reason || '',
+      model: reranked && reranked.model || ''
+    },
+    rag: reranked && reranked.rag ? Object.assign({}, reranked.rag) : null
+  })
+}
+
 async function getSetting(data, wxContext) {
   const user = await currentUser(wxContext)
-  return settingDefaults(await first('user_match_setting', { user_id: user.id }))
+  const setting = settingDefaults(await first('user_match_setting', { user_id: user.id }))
+  const intentProfile = parseJson(setting.intent_profile_json)
+  return Object.assign(setting, {
+    intent_profile: intentProfile,
+    intent_confirmation_required: Boolean(
+      intentProfile
+      && intentProfile.mode === 'confirm'
+      && !setting.intent_profile_confirmed_at
+    )
+  })
 }
 
 async function cooldown(data, wxContext) {
@@ -175,7 +272,7 @@ async function saveSetting(data, wxContext) {
   const user = await currentUser(wxContext)
   const existing = await first('user_match_setting', { user_id: user.id })
   const normalized = normalizeMatchSettingInput(data)
-  const payload = {
+  const canonicalPayload = {
     user_id: user.id,
     age_min: normalized.age_min,
     age_max: normalized.age_max,
@@ -189,11 +286,191 @@ async function saveSetting(data, wxContext) {
     like_house_car: data.like_house_car || '',
     self_view_text: normalized.self_view_text,
     target_view_text: normalized.target_view_text,
+    other_requirements: normalized.other_requirements,
     psych_profile_json: data.psych_profile_json || data.psych_profile || null,
     last_edit_time: memberStatus(user) === MEMBER_STATUS.APPROVED ? now() : null
   }
-  if (existing) return updateByDoc('user_match_setting', existing, payload)
-  return addWithId('user_match_setting', payload, 'match_setting')
+  let saved = existing
+    ? await updateByDoc('user_match_setting', existing, canonicalPayload)
+    : await addWithId('user_match_setting', canonicalPayload, 'match_setting')
+
+  let intentProfile = null
+  let aiMatchProfile = null
+  let derivedProfileDegraded = false
+  let intentAlreadyConfirmed = false
+  try {
+    intentProfile = compileIntentProfile(Object.assign({}, user, normalized, {
+      mode: normalizeMode()
+    }))
+    const intentProfileJson = JSON.stringify(intentProfile)
+    intentAlreadyConfirmed = Boolean(
+      existing && existing.intent_profile_confirmed_at && existing.intent_profile_json === intentProfileJson
+    )
+    const profileSource = Object.assign({}, user, normalized, {
+      identity_tags: user.identity_tags,
+      secondary_circle_ids: user.secondary_circle_ids
+    })
+    const existingAi = existing && existing.ai_match_profile_json
+      ? (typeof existing.ai_match_profile_json === 'string'
+        ? (() => { try { return JSON.parse(existing.ai_match_profile_json) } catch (e) { return null } })()
+        : existing.ai_match_profile_json)
+      : null
+    aiMatchProfile = (!existingAi || shouldInvalidateAiMatchProfile(existingAi, profileSource))
+      ? compileAiMatchProfile(profileSource, {
+        intent: intentProfile,
+        profile_version: Number(existing && existing.profile_version || 0) + 1,
+        confirmed_by_user: intentAlreadyConfirmed,
+        corrections: (existingAi && existingAi.corrections) || (existing && existing.ai_profile_corrections) || []
+      })
+      : existingAi
+    saved = await updateByDoc('user_match_setting', saved, {
+      intent_profile_json: intentProfileJson,
+      intent_profile_confirmed_at: intentAlreadyConfirmed ? existing.intent_profile_confirmed_at : null,
+      ai_match_profile_json: aiMatchProfile,
+      ai_match_profile_version: Number(aiMatchProfile.profile_version || 1),
+      ai_match_profile_source_version: aiMatchProfile.source_profile_version || sourceFingerprint(profileSource),
+      ai_match_profile_status: 'ready',
+      ai_match_profile_generated_at: aiMatchProfile.generated_at || now(),
+      profile_version: Number(aiMatchProfile.profile_version || 1)
+    })
+  } catch (error) {
+    derivedProfileDegraded = true
+    console.error(`[match-setting] derived profile degraded code=${String(error && error.code || 'unknown').slice(0, 64)}`)
+    try {
+      saved = await updateByDoc('user_match_setting', saved, {
+        ai_match_profile_status: 'degraded',
+        ai_match_profile_error: 'derived_profile_unavailable'
+      })
+    } catch (markError) { /* canonical settings are already durable */ }
+  }
+  // Keep the owner-scoped sparse corpus synchronized with the canonical
+  // settings write. Retrieval callers use the same repository contract. A
+  // missing corpus collection must not turn a successful settings save into a
+  // failed user request, and the returned diagnostic is deliberately bounded.
+  let ragSync = { synced: true, reason: '' }
+  try {
+    await syncUserCorpus(user, saved, ragCorpusRepository())
+  } catch (error) {
+    ragSync = { synced: false, reason: classifyRagSyncError(error) }
+  }
+  return Object.assign(saved, {
+    intent_profile: intentProfile,
+    ai_match_profile: aiMatchProfile,
+    intent_confirmation_required: Boolean(intentProfile && intentProfile.requires_confirmation && !intentAlreadyConfirmed),
+    derived_profile_degraded: derivedProfileDegraded,
+    rag_sync: ragSync
+  })
+}
+
+async function confirmIntent(data, wxContext) {
+  const user = await currentUser(wxContext)
+  const setting = await first('user_match_setting', { user_id: user.id })
+  if (!setting || !setting.intent_profile_json) throw new Error('请先保存匹配设置')
+  const profile = parseJson(setting.intent_profile_json)
+  if (!profile || profile.mode !== 'confirm') throw new Error('当前无需确认 AI 理解')
+  const confirmedAt = now()
+  await updateByDoc('user_match_setting', setting, {
+    intent_profile_confirmed_at: confirmedAt
+  })
+  return {
+    confirmed: true,
+    confirmed_at: confirmedAt,
+    intent_profile: profile
+  }
+}
+
+function parseAiProfilePayload(value) {
+  if (!value) return null
+  if (typeof value === 'object' && !Array.isArray(value)) return value
+  try {
+    const parsed = JSON.parse(value)
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null
+  } catch (error) {
+    return null
+  }
+}
+
+async function getAiProfile(data, wxContext) {
+  const user = await currentUser(wxContext)
+  const setting = await first('user_match_setting', { user_id: user.id })
+  if (!setting || !setting.ai_match_profile_json) {
+    return { available: false, presentation: null, confirmed: false, profile_version: 0, corrections: [] }
+  }
+  const profile = parseAiProfilePayload(setting.ai_match_profile_json)
+  return {
+    available: true,
+    presentation: presentAiMatchProfile(profile),
+    confirmed: Boolean(setting.ai_match_profile_confirmed_at || (profile && profile.confirmed_by_user)),
+    confirmed_at: setting.ai_match_profile_confirmed_at || null,
+    profile_version: Number(setting.ai_match_profile_version || (profile && profile.profile_version) || 0),
+    corrections: Array.isArray(setting.ai_profile_corrections)
+      ? setting.ai_profile_corrections.map((item) => String(item && item.text || '').slice(0, 200))
+      : [],
+    source_profile_version: String(setting.ai_match_profile_source_version || (profile && profile.source_profile_version) || '')
+  }
+}
+
+async function confirmAiProfile(data, wxContext) {
+  const user = await currentUser(wxContext)
+  const setting = await first('user_match_setting', { user_id: user.id })
+  if (!setting) throw new Error('请先保存匹配设置')
+  const profile = parseAiProfilePayload(setting.ai_match_profile_json)
+  if (!profile) throw new Error('AI 理解尚未生成，请先保存匹配设置')
+  const confirmedAt = now()
+  const patched = Object.assign({}, profile, { confirmed_by_user: true })
+  await updateByDoc('user_match_setting', setting, {
+    ai_match_profile_json: patched,
+    ai_match_profile_confirmed_at: confirmedAt,
+    ai_match_profile_status: 'ready'
+  })
+  return {
+    confirmed: true,
+    confirmed_at: confirmedAt,
+    presentation: presentAiMatchProfile(patched),
+    profile_version: Number(setting.ai_match_profile_version || patched.profile_version || 1)
+  }
+}
+
+async function correctAiProfile(data, wxContext) {
+  const user = await currentUser(wxContext)
+  const setting = await first('user_match_setting', { user_id: user.id })
+  if (!setting) throw new Error('请先保存匹配设置')
+  const correctionText = String(data.correction_text || data.text || '').trim()
+  if (!correctionText) throw new Error('请填写纠正意见')
+  if (correctionText.length > 200) throw new Error('纠正意见最多200字')
+  let profile = parseAiProfilePayload(setting.ai_match_profile_json)
+  if (!profile) {
+    const intentProfile = parseJson(setting.intent_profile_json) || compileIntentProfile(Object.assign({}, user, setting, { mode: 'automatic' }))
+    profile = compileAiMatchProfile(Object.assign({}, user, setting), {
+      intent: intentProfile,
+      profile_version: Number(setting.profile_version || 0) + 1,
+      confirmed_by_user: true
+    })
+  }
+  const corrected = applyAiProfileCorrection(profile, { text: correctionText }, { now: now() })
+  const corrections = Array.isArray(setting.ai_profile_corrections) ? setting.ai_profile_corrections.slice() : []
+  corrections.push({
+    text: correctionText,
+    created_at: now(),
+    evidence_key: `user_correction.${corrected.correction_count || 1}`
+  })
+  const updated = await updateByDoc('user_match_setting', setting, {
+    ai_match_profile_json: corrected,
+    ai_match_profile_version: Number(corrected.profile_version || 1),
+    ai_match_profile_source_version: String(corrected.source_profile_version || setting.ai_match_profile_source_version || ''),
+    ai_match_profile_status: 'ready',
+    ai_match_profile_confirmed_at: setting.ai_match_profile_confirmed_at || now(),
+    ai_profile_corrections: corrections,
+    profile_version: Number(corrected.profile_version || 1)
+  })
+  return {
+    corrected: true,
+    presentation: presentAiMatchProfile(corrected),
+    profile_version: corrected.profile_version,
+    previous_version: Number(profile.profile_version || 1),
+    evidence_key: `user_correction.${corrected.correction_count || 1}`,
+    corrections: corrections.map((item) => String(item.text || '').slice(0, 200))
+  }
 }
 
 async function formatMatch(row, viewer) {
@@ -242,7 +519,10 @@ async function formatMatch(row, viewer) {
     ai_report_task: taskView,
     local_report_text: localReportText,
     matched_user_id: row.match_user_id,
-    match_user_id: row.match_user_id
+    match_user_id: row.match_user_id,
+    match_only_fixture: isMatchOnlyFixture(partner),
+    test_data_badge: fixtureSceneBadge(partner),
+    fixture_journey: Number(partner.is_test_fixture || 0) === 1 ? String(partner.fixture_journey || '') : ''
   }
   if (!vip) return base
   return Object.assign(base, {
@@ -369,16 +649,40 @@ async function start(data, wxContext) {
     throw err
   }
   const user = await currentUser(wxContext)
+  return executeImmediateMatch(data, user)
+}
+
+async function executeImmediateMatch(data, user, options = {}) {
   if (!canUseMatching({ member_status: memberStatus(user), vipActive: isVipActive(user) })) {
     throw authError(memberStatus(user) === MEMBER_STATUS.APPROVED ? '请先开通 VIP' : '会员审核通过后才能进入匹配流程')
   }
+  const currentSetting = await first('user_match_setting', { user_id: user.id })
+  const intentGate = intentMatchGate(currentSetting)
+  if (intentGate) {
+    const err = new Error(intentGate.message)
+    err.code = intentGate.code
+    err.clarification_questions = intentGate.clarification_questions
+    throw err
+  }
+  const clock = shanghaiBusinessClock(now())
+  const allClaims = await list('match_claim', { status: CLAIM_STATUS }, 500)
   const existingMatches = await list('user_match_log', { user_id: user.id }, 100)
-  const seenPartnerIds = {}
+  const { historicalClaimsByPair } = indexClaimsForMatching(allClaims, clock.matchCycleId || '')
   existingMatches.forEach((row) => {
-    seenPartnerIds[Number(row.match_user_id)] = true
+    try {
+      const pairKey = String(row.pair_key || canonicalPairKey(user.id, row.match_user_id))
+      if (!historicalClaimsByPair.has(pairKey)) historicalClaimsByPair.set(pairKey, [])
+      historicalClaimsByPair.get(pairKey).push(Object.assign({}, row, { pair_key: pairKey }))
+    } catch (err) { /* malformed historical rows remain unavailable candidates */ }
   })
+  const allowedCandidateIds = new Set((options.candidateIds || []).map((id) => Number(id)))
   const candidates = (await list('user', { status: 1 }, 100))
     .filter((item) => memberStatus(item) === MEMBER_STATUS.APPROVED)
+    .filter((item) => isVipActive(item, now()))
+    .filter((item) => canEnterFormalCandidatePool(item))
+    .filter((item) => canUseFixtureForMatch(user, item, now()))
+    .filter((item) => sharesCandidateCohort(user, item))
+    .filter((item) => !allowedCandidateIds.size || allowedCandidateIds.has(Number(item.id)))
   if (data.dev_seed_current_user_candidates && candidates.length === 0) {
     candidates.push(await seedDemoCandidate(user))
   }
@@ -387,10 +691,63 @@ async function start(data, wxContext) {
   settingRows.forEach((setting) => {
     settingsByUserId[String(setting.user_id)] = setting
   })
-  const blockedIds = new Set(Object.keys(seenPartnerIds).map(Number))
+  const claims = allClaims
+  const claimBlockedIds = []
+  if (clock.isMatchDay && clock.matchCycleId) {
+    const usersById = new Map([[Number(user.id), user]])
+    candidates.forEach((candidate) => usersById.set(Number(candidate.id), candidate))
+    claims.forEach((claim) => {
+      if (String(claim.match_cycle_id || '') === clock.matchCycleId && !Number(claim.qa_cycle || 0)) {
+        ;[Number(claim.user_id), Number(claim.match_user_id)].forEach((id) => {
+          const claimedUser = usersById.get(id)
+          if (!claimedUser || shouldBlockUserForClaim(claim, claimedUser)) claimBlockedIds.push(id)
+        })
+      }
+    })
+  }
+  if (claimBlockedIds.includes(Number(user.id))) {
+    return {
+      matched: 0,
+      users: 0,
+      evaluated_candidates: 0,
+      message: '本轮已成功匹配，请等待下一匹配窗口'
+    }
+  }
+  const blockedIds = new Set(claimBlockedIds)
   const ranked = rankCandidates(user, candidates, settingsByUserId, { blockedIds })
-  const best = ranked.find((item) => item.quality.pass)
-  if (!best) {
+    .filter((item) => {
+      try {
+        const pairClaims = historicalClaimsByPair.get(canonicalPairKey(user.id, item.candidate.id)) || []
+        return !shouldExcludeHistoricalClaims(pairClaims, user, item.candidate)
+      } catch (err) {
+        return false
+      }
+    })
+  // Legacy contract: const reranked = await semanticRerank(ranked, user, settingsByUserId)
+  const reranked = await semanticRerank(ranked, user, settingsByUserId, {
+    loadCorpus: loadRagCorpus
+  })
+  if (!reranked || reranked.applied !== true) {
+    const rerankReason = reranked && reranked.reason || 'ai_rerank_unavailable'
+    if (rerankReason === 'no_candidates') {
+      return {
+        matched: 0,
+        users: ranked.length + 1,
+        evaluated_candidates: ranked.length,
+        reason_code: 'no_qualified_candidates',
+        message: '暂无新的可用候选'
+      }
+    }
+    return {
+      matched: 0,
+      users: ranked.length + 1,
+      evaluated_candidates: ranked.length,
+      reason_code: rerankReason,
+      message: 'AI匹配暂不可用，请稍后重试'
+    }
+  }
+  const eligible = reranked.ranked.filter((item) => item.quality.pass)
+  if (!eligible.length) {
     return {
       matched: 0,
       users: ranked.length + 1,
@@ -399,64 +756,230 @@ async function start(data, wxContext) {
       message: ranked.length ? '本轮暂无通过严格质量门槛的匹配' : '暂无新的可用候选'
     }
   }
-  const partner = best.candidate
-  const abTestRunId = String(partner.ab_test_run_id || '')
   const today = dateOnly(new Date())
-  const detailJsonA = scoreDetailFor(best, 'a', ranked.indexOf(best) + 1)
-  const detailJsonB = scoreDetailFor(best, 'b', ranked.indexOf(best) + 1)
-  const logA = await addWithId('user_match_log', {
-    user_id: user.id,
-    match_user_id: partner.id,
-    view_similarity: best.viewSimilarity,
-    total_score: best.scoreA.total,
-    score_detail_json: JSON.stringify(detailJsonA),
-    score_version: 'algo_evidence_v2',
-    ai_report_text: '',
-    ai_report_status: 0,
-    ai_report_error: '',
-    ai_report_time: null,
-    local_report_text: fallbackMatchReportText(user, partner),
-    match_date: today,
-    match_type: abTestRunId ? 'A/B内测' : '双向算法测试',
-    ab_test_run_id: abTestRunId
-  }, 'match_log')
-  const logB = await addWithId('user_match_log', {
-    user_id: partner.id,
-    match_user_id: user.id,
-    view_similarity: best.viewSimilarity,
-    total_score: best.scoreB.total,
-    score_detail_json: JSON.stringify(detailJsonB),
-    score_version: 'algo_evidence_v2',
-    ai_report_text: '',
-    ai_report_status: 0,
-    ai_report_error: '',
-    ai_report_time: null,
-    local_report_text: fallbackMatchReportText(partner, user),
-    match_date: today,
-    match_type: abTestRunId ? 'A/B内测' : '双向算法测试',
-    ab_test_run_id: abTestRunId
-  }, 'match_log')
-  await reportTask.ensureTaskForMatch(logA, 'auto')
+  const claimStore = createCloudClaimStore()
+  for (let index = 0; index < eligible.length; index += 1) {
+    const best = eligible[index]
+    const partner = best.candidate
+    const pairKey = canonicalPairKey(user.id, partner.id)
+    const qaMatchRunKey = qaRunKey(user, partner)
+    const claimInput = {
+      userId: user.id,
+      partnerId: partner.id,
+      requestId: String(data.request_id || `match:${user.id}:${Date.now()}`),
+      matchCycleId: clock.matchCycleId || '',
+      qaMatchRunKey,
+      qaUserRunId: qaMatchRunKey ? user.qa_match_run_id : '',
+      qaPartnerRunId: qaMatchRunKey ? partner.qa_match_run_id : ''
+    }
+    const abTestRunId = String(partner.ab_test_run_id || '')
+    const algorithmRank = ranked.findIndex((item) => Number(item.candidate.id) === Number(partner.id)) + 1
+    const detailJsonA = withSemanticRerankDetail(Object.assign(scoreDetailFor(best, 'a', algorithmRank), {
+        ai_rank: best.ai_rank || null,
+        ai_weight: best.ai_weight || 0,
+        semantic_score: best.semantic_score || null,
+        a_to_b_semantic_score: best.a_to_b_semantic_score || null,
+        b_to_a_semantic_score: best.b_to_a_semantic_score || null,
+        mutual_semantic_score: best.mutual_semantic_score || null,
+        semantic_strengths: best.semantic_strengths || [],
+        semantic_confidence: best.semantic_confidence || null,
+        data_completeness: best.data_completeness || null,
+        asymmetric_risks: best.asymmetric_risks || [],
+        confirmation_questions: best.confirmation_questions || [],
+        semantic_strength_evidence_keys: best.semantic_strength_evidence_keys || [],
+        semantic_risk_evidence_keys: best.semantic_risk_evidence_keys || [],
+        semantic_missing_categories: best.semantic_missing_categories || [],
+        bilateral_fit: best.bilateral_fit || null,
+        bilateral_mutual_score: best.bilateral_fit ? Number(best.bilateral_fit.mutual_score || 0) : null
+    }), best, reranked)
+    const detailJsonB = withSemanticRerankDetail(Object.assign(scoreDetailFor(best, 'b', algorithmRank), {
+        ai_rank: best.ai_rank || null,
+        ai_weight: best.ai_weight || 0,
+        semantic_score: best.semantic_score || null,
+        a_to_b_semantic_score: best.a_to_b_semantic_score || null,
+        b_to_a_semantic_score: best.b_to_a_semantic_score || null,
+        mutual_semantic_score: best.mutual_semantic_score || null,
+        semantic_strengths: best.semantic_strengths || [],
+        semantic_confidence: best.semantic_confidence || null,
+        data_completeness: best.data_completeness || null,
+        asymmetric_risks: best.asymmetric_risks || [],
+        confirmation_questions: best.confirmation_questions || [],
+        semantic_strength_evidence_keys: best.semantic_strength_evidence_keys || [],
+        semantic_risk_evidence_keys: best.semantic_risk_evidence_keys || [],
+        semantic_missing_categories: best.semantic_missing_categories || [],
+        bilateral_fit: best.bilateral_fit || null,
+        bilateral_mutual_score: best.bilateral_fit ? Number(best.bilateral_fit.mutual_score || 0) : null
+    }), best, reranked)
+    const logA = await transactionDocument('user_match_log', 'match_log', {
+        user_id: user.id,
+        match_user_id: partner.id,
+        view_similarity: best.viewSimilarity,
+        total_score: best.scoreA.total,
+        score_detail_json: JSON.stringify(detailJsonA),
+        score_version: 'algo_evidence_v3',
+        ai_report_text: '',
+        ai_report_status: 0,
+        ai_report_error: '',
+        ai_report_time: null,
+        local_report_text: fallbackMatchReportText(user, partner),
+        match_date: today,
+        match_type: options.matchType || (abTestRunId ? 'A/B内测' : '双向算法测试'),
+        ab_test_run_id: abTestRunId,
+      pair_key: pairKey
+    })
+    const logB = await transactionDocument('user_match_log', 'match_log', {
+        user_id: partner.id,
+        match_user_id: user.id,
+        view_similarity: best.viewSimilarity,
+        total_score: best.scoreB.total,
+        score_detail_json: JSON.stringify(detailJsonB),
+        score_version: 'algo_evidence_v3',
+        ai_report_text: '',
+        ai_report_status: 0,
+        ai_report_error: '',
+        ai_report_time: null,
+        local_report_text: fallbackMatchReportText(partner, user),
+        match_date: today,
+        match_type: options.matchType || (abTestRunId ? 'A/B内测' : '双向算法测试'),
+        ab_test_run_id: abTestRunId,
+      pair_key: pairKey
+    })
+    const deliveredAt = now()
+    const claimAudit = await transactionDocument('match_claim_audit', 'match_audit', {
+      request_id: claimInput.requestId,
+      pair_key: pairKey,
+      user_id: user.id,
+      match_user_id: partner.id,
+      status: 'matched',
+      action: 'claim_and_deliver',
+      ...(reranked && reranked.rag ? { rag: Object.assign({}, reranked.rag) } : {}),
+      ...(qaMatchRunKey ? { qa_match_run_key: qaMatchRunKey } : {})
+    })
+    const delivery = await deliverPair(Object.assign({}, claimInput, {
+      logA,
+      logB,
+      audit: claimAudit,
+      userDoc: user,
+      partnerDoc: partner,
+      userPatch: {
+        match_status: 'matched',
+        matched_partner_id: partner.id,
+        matched_at: deliveredAt,
+        update_time: deliveredAt
+      },
+      partnerPatch: {
+        match_status: 'matched',
+        matched_partner_id: user.id,
+        matched_at: deliveredAt,
+        update_time: deliveredAt
+      }
+    }), claimStore)
+    if (!delivery.delivered) continue
+    const deliveredLog = delivery.replayed
+      ? await byId('user_match_log', delivery.claim.match_log_ids.a)
+      : logA
+    if (deliveredLog) await reportTask.ensureTaskForMatch(deliveredLog, 'auto').catch(() => null)
+    return {
+      matched: 1,
+      users: ranked.length + 1,
+      evaluated_candidates: ranked.length,
+      match_id: deliveredLog ? deliveredLog.id : delivery.claim.match_log_ids.a,
+      match_user_id: partner.id,
+      view_similarity: best.viewSimilarity,
+      mutual_score: best.mutualScore,
+      pair_key: delivery.claim.pair_key,
+      algorithm_version: 'algo_evidence_v3'
+    }
+  }
   return {
-    matched: 1,
+    matched: 0,
     users: ranked.length + 1,
     evaluated_candidates: ranked.length,
-    match_id: logA.id,
-    match_user_id: partner.id,
-    view_similarity: best.viewSimilarity,
-    mutual_score: best.mutualScore,
-    algorithm_version: 'algo_evidence_v2'
+    message: '可用候选已被其他匹配占用，请稍后再试'
   }
+}
+
+async function startQaRealDeviceMatch(data, wxContext) {
+  const user = await currentUser(wxContext)
+  const publicEnabled = await flagEnabled('match_test_run_public_enabled')
+  if (!resolveQaTestRunEnabled(user, publicEnabled)) {
+    const error = new Error('仅测试账号可以运行双真机互配')
+    error.code = 403
+    throw error
+  }
+  const setting = await first('user_match_setting', { user_id: user.id })
+  const currentReadiness = readiness(user, setting, now())
+  if (!currentReadiness.ready) {
+    return {
+      matched: 0,
+      status: currentReadiness.code,
+      missing_fields: currentReadiness.missing,
+      message: currentReadiness.message
+    }
+  }
+
+  const restartRound = data.restart_round === true || data.restartRound === true
+  if (String(user.match_status || '') === 'matched' && !restartRound) {
+    return {
+      matched: 0,
+      status: 'new_round_required',
+      message: '当前轮次已经匹配完成；如需再次测试，请点击“再来一轮真机互配”'
+    }
+  }
+  const patch = enrollmentPatch(user, now(), { forceNewRound: restartRound })
+  const enrolledUser = patch ? await updateByDoc('user', user, patch) : user
+  const allUsers = await list('user', { status: 1 }, 200)
+  const allSettings = await list('user_match_setting', {}, 500)
+  const settingsByUserId = {}
+  allSettings.forEach((row) => { settingsByUserId[String(row.user_id)] = row })
+  const readyPartners = allUsers.filter((candidate) => (
+    isReadyPartner(enrolledUser, candidate, settingsByUserId[String(candidate.id)], now())
+  ))
+  if (!readyPartners.length) {
+    return {
+      matched: 0,
+      status: 'waiting_partner',
+      enrolled: true,
+      message: '本机已准备好，请在另一台手机补齐资料后点击“两台真机互配测试”'
+    }
+  }
+
+  const result = await executeImmediateMatch({
+    request_id: String(data.request_id || `qa-real-device:${user.id}:${Date.now()}`)
+  }, enrolledUser, {
+    candidateIds: readyPartners.map((partner) => partner.id),
+    matchType: '双真机QA匹配'
+  })
+  return Object.assign({ status: result && Number(result.matched) === 1 ? 'matched' : 'no_match' }, result)
 }
 
 module.exports = {
   getSetting,
   cooldown,
   saveSetting,
+  confirmIntent,
+  getAiProfile,
+  confirmAiProfile,
+  correctAiProfile,
   latest,
   matchList,
   detail,
   handoff,
   generateReport,
-  start
+  start,
+  startQaRealDeviceMatch,
+  ...createMatchTestRunHandlers({
+    currentUser,
+    first,
+    list,
+    byId,
+    addWithId,
+    acquireRun: require('../lib/db').acquireMatchTestRun,
+    claimRun: require('../lib/db').claimMatchTestRun,
+    completeRun: require('../lib/db').completeMatchTestRun,
+    now,
+    publicEnabled: () => flagEnabled('match_test_run_public_enabled'),
+    semanticRerank,
+    loadCorpus: loadRagCorpus
+  })
 }
