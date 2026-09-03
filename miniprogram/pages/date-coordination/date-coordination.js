@@ -21,6 +21,7 @@ const PUBLIC_ERROR_COPY = {
   UNSAFE_ARRIVAL_HINT: '到场识别提示包含不安全内容，请改成穿搭颜色或手持物',
   UNSAFE_ARRIVAL_POSITION: '现场位置包含不安全内容，请只填写公共场所位置',
   ACTIVITY_VENUE_CONFLICT: '活动场地与活动类型不一致，请重新填写',
+  DATE_VENUE_NEEDS_CLARIFICATION: '具体门店还未确认，请先和 AI 继续协调',
   COUNTER_OFFER_STALE: '对方刚更新了调整方案，请先看一下最新版本',
   COORDINATION_FINALIZED: '本轮协调已结束，不能继续修改安排',
   QA_RESET_CONFIRM_REQUIRED: '请先确认重置文案后再试',
@@ -59,6 +60,24 @@ function periodForTime(value) {
   if (hour < 17) return 'afternoon'
   if (hour < 19) return 'evening'
   return 'night'
+}
+
+function deriveVenueClarification(form) {
+  const value = String(form && form.activity_venue || '').trim()
+  const activity = String(form && form.activities && form.activities[0] || '').trim()
+  if (!value || !activity) return null
+  const concrete = /(?:店|餐厅|饭店|餐馆|影城|影院|电影院|美术馆|博物馆|展馆|桌游馆)$/.test(value)
+    || (/(?:星巴克|瑞幸|喜茶|奈雪|太二|海底捞|润园四季|百老汇|英皇)/.test(value)
+      && !/^(?:星巴克|瑞幸|喜茶|奈雪|太二|海底捞|润园四季|百老汇|英皇)$/.test(value))
+  if (concrete) return null
+  const activityDetail = /^(?:椰子鸡|火锅|烤肉|烧烤|粤菜|川菜|湘菜|日料|西餐|披萨|牛排|海鲜)$/.test(value)
+    ? value
+    : activity
+  return {
+    areaHint: activityDetail === value ? '' : value,
+    activityDetail,
+    missingText: '还需要确认具体门店'
+  }
 }
 
 function normalizeCoordination(data) {
@@ -258,6 +277,7 @@ Page({
     selectedDate: '',
     areaText: '',
     form: createEmptyDateCoordinationForm(),
+    venueClarificationCard: null,
     primaryProposal: {
       date: '',
       period: '',
@@ -641,6 +661,7 @@ Page({
     const synced = syncPrimaryProposal(nextForm, this.data.primaryProposal)
     this.setData({
       'form.activities': next,
+      venueClarificationCard: deriveVenueClarification(nextForm),
       selection: buildSelection(nextForm),
       primaryProposal: synced.primaryProposal,
       primaryOptions: synced.primaryOptions
@@ -648,7 +669,14 @@ Page({
   },
 
   onInput(e) {
-    this.setData({ [`form.${e.currentTarget.dataset.key}`]: e.detail.value })
+    const key = e.currentTarget.dataset.key
+    const value = e.detail.value
+    if (key === 'activity_venue') {
+      const nextForm = Object.assign({}, this.data.form, { activity_venue: value })
+      this.setData({ 'form.activity_venue': value, venueClarificationCard: deriveVenueClarification(nextForm) })
+      return
+    }
+    this.setData({ [`form.${key}`]: value })
   },
 
   onAreasInput(e) {
@@ -813,11 +841,7 @@ Page({
       wx.showToast({ title: '请补充具体时间和活动场地', icon: 'none', duration: 3000 })
       return
     }
-    if (this.data.form.activities.length === 1 && this.data.form.activities[0] === '电影'
-      && !/电影院|影城|影院/.test(String(this.data.form.activity_venue || ''))) {
-      wx.showToast({ title: '看电影需要填写具体电影院；咖啡店可作为集合点', icon: 'none', duration: 3000 })
-      return
-    }
+    const needsVenueClarification = Boolean(this.data.venueClarificationCard)
     const wasInitiatorDraft = this.data.coordination && this.data.coordination.status === 'collecting_initiator'
     let invitationPrimaryProposal = null
     if (wasInitiatorDraft) {
@@ -868,6 +892,9 @@ Page({
         title: wasInitiatorDraft ? '已保存偏好，正在邀请对方' : '已提交约会偏好',
         icon: 'success'
       })
+      if (wasInitiatorDraft && needsVenueClarification) {
+        setTimeout(() => this.goCoordinator(), 300)
+      }
     } catch (err) {
       this.notifyActionError(err, '提交失败，请重试')
     } finally {

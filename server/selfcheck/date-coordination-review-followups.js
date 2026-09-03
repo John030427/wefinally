@@ -385,6 +385,17 @@ async function main() {
   assert(agentSource.includes('区域或活动类型可以先形成待完善邀请'))
   assert(agentSource.includes('最终确认仍必须补齐具体门店'))
 
+  const datePageJs = read('miniprogram/pages/date-coordination/date-coordination.js')
+  const datePageWxml = read('miniprogram/pages/date-coordination/date-coordination.wxml')
+  const datePageWxss = read('miniprogram/pages/date-coordination/date-coordination.wxss')
+  assert(datePageJs.includes('deriveVenueClarification'))
+  assert(datePageJs.includes('DATE_VENUE_NEEDS_CLARIFICATION'))
+  assert(!datePageJs.includes("this.data.form.activities[0] === '电影'"))
+  assert(datePageWxml.includes('venueClarificationCard'))
+  assert(datePageWxml.includes('想去哪里 / 吃什么'))
+  assert(datePageWxml.includes('发送邀请并继续完善'))
+  assert(datePageWxss.includes('.venue-clarification-card'))
+
   const appWxss = read('miniprogram/app.wxss')
   const usedTokens = new Set()
   for (const file of [

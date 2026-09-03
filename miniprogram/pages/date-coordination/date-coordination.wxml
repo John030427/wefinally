@@ -273,8 +273,14 @@
         <view class="field-help">粗时间段用于寻找共同空档，具体时间用于最终赴约。</view>
       </view>
       <view class="form-item">
-        <view class="form-label required">活动场地</view>
-        <input class="input field-input" maxlength="80" placeholder="例如：万象天地百老汇影城" value="{{form.activity_venue}}" data-key="activity_venue" bindinput="onInput" />
+        <view class="form-label required">想去哪里 / 吃什么</view>
+        <input class="input field-input" maxlength="80" placeholder="例如：大运中心附近、椰子鸡或具体门店" value="{{form.activity_venue}}" data-key="activity_venue" bindinput="onInput" />
+        <view class="venue-clarification-card" wx:if="{{venueClarificationCard}}">
+          <view class="venue-clarification-title">AI 会继续帮你完善</view>
+          <view class="venue-clarification-row" wx:if="{{venueClarificationCard.areaHint}}">大致区域：{{venueClarificationCard.areaHint}}</view>
+          <view class="venue-clarification-row">活动偏好：{{venueClarificationCard.activityDetail}}</view>
+          <view class="venue-clarification-missing">{{venueClarificationCard.missingText}}，发送后可在协调会话中补充。</view>
+        </view>
       </view>
       <view class="form-item">
         <view class="form-label">初步会合范围（选填）</view>
@@ -293,7 +299,7 @@
       </view>
       <view class="form-item"><view class="form-label">其他要求</view><textarea class="textarea" maxlength="100" placeholder="选填，告诉平台你在意的安排" value="{{form.other_requirements}}" data-key="other_requirements" bindinput="onInput"></textarea></view>
       <view class="public-note">建议选择白天、公共场所，尊重彼此的边界和节奏。</view>
-      <button class="primary-btn full-btn" bindtap="submitApplication" loading="{{pendingAction === 'submit'}}" disabled="{{pendingAction}}">{{coordination.status === 'collecting_initiator' ? '发送第一次约会邀请' : '提交我的安排'}}</button>
+      <button class="primary-btn full-btn" bindtap="submitApplication" loading="{{pendingAction === 'submit'}}" disabled="{{pendingAction}}">{{coordination.status === 'collecting_initiator' ? (venueClarificationCard ? '发送邀请并继续完善' : '发送第一次约会邀请') : '提交我的安排'}}</button>
     </view>
 
     <view class="optional-form-entry" wx:if="{{showOptionalFullForm && !showApplicationForm}}">
