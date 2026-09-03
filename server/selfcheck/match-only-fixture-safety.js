@@ -49,7 +49,7 @@ assert(!detailPage.includes('fixtureSimulation=1'))
 
 const dateView = read('miniprogram/pages/date-coordination/date-coordination.wxml')
 assert(dateView.includes('和 AI 约会协调员沟通'))
-assert(dateView.includes('对方暂未接受本次约会邀请'))
+assert(dateView.includes('约会邀请已发送。当前正在等待对方回应。'))
 assert(dateView.includes("coordinationId && showCoordinatorCta"))
 
 async function main() {

@@ -133,6 +133,7 @@ async function main() {
     publishCoordinationEvent(raceInput, raceDeps)
   ])
   assert.strictEqual(raceDeps.tables.date_coordination_event.length, 1)
+  assert.strictEqual(raceDeps.tables.agent_session.length, 2, 'concurrent publish must keep one active session per participant')
   assert.strictEqual(raceDeps.tables.agent_message.filter((row) => row.coordination_event_key).length, 2)
   assert.strictEqual([left, right].filter((result) => result.duplicate).length, 1)
   assert.strictEqual([left, right].filter((result) => result.created).length, 1)

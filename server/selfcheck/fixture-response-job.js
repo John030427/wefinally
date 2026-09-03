@@ -173,6 +173,7 @@ async function main() {
   assert.strictEqual(dueRows[0].id, 999)
 
   const realPair = createDateCoordinationHandlers({
+    unitMode: true,
     currentUser: async () => qa,
     byId: async (name, id) => name === 'user' && Number(id) === 11 ? real : (name === 'user_match_log' ? { id: 7, user_id: 10, match_user_id: 11 } : null),
     first: async (name) => name === 'date_coordination' ? null : (name === 'user_match_log' ? { id: 7, user_id: 10, match_user_id: 11 } : null),

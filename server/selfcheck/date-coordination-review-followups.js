@@ -36,6 +36,8 @@ async function main() {
   assert.strictEqual(canBootstrapCollection('date_coordination_event_dedupe'), true)
   assert.strictEqual(collections.agent_message_dedupe, 'agent_message_dedupes')
   assert.strictEqual(canBootstrapCollection('agent_message_dedupe'), true)
+  assert.strictEqual(collections.agent_session_dedupe, 'agent_session_dedupes')
+  assert.strictEqual(canBootstrapCollection('agent_session_dedupe'), true)
 
   assert.strictEqual(typeof buildDateCoordinationDefaultDeps, 'function', 'defaultDeps must be exported for production wiring checks')
   const dateCoordinationSource = read('miniprogram/cloudfunctions/api/handlers/dateCoordination.js')

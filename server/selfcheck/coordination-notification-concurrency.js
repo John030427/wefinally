@@ -17,7 +17,7 @@ const {
   buildResumeSummary,
   chooseAdjustmentParty
 } = require('../../miniprogram/cloudfunctions/api/lib/coordinationConcurrency')
-const { notifyInbox } = require('../../miniprogram/cloudfunctions/api/lib/coordinationInbox')
+const { notifyInbox, markSeen } = require('../../miniprogram/cloudfunctions/api/lib/coordinationInbox')
 
 function createBarrier(size) {
   let count = 0
@@ -113,7 +113,6 @@ async function main() {
   }
   let nextId = 1
   const now = () => new Date('2026-09-03T12:00:00.000Z')
-  const barrier = createBarrier(2)
   const input = {
     coordination: { id: 12, coordination_version: 10 },
     user_id: 3,
@@ -123,10 +122,9 @@ async function main() {
     body: '请打开约会协调页确认方案'
   }
 
-  // Race-prone check-then-insert must fail under a shared barrier.
+  // The memory fallback must still keep duplicate notifications idempotent.
   const raceDeps = {
     first: async (name, query) => {
-      await barrier()
       return (tables[name] || []).find((row) => Object.keys(query).every((key) => row[key] === query[key])) || null
     },
     addWithId: async (name, data) => {
@@ -175,7 +173,8 @@ async function main() {
       const existingClaim = claims.get(digest)
       if (existingClaim) {
         const stored = await Promise.resolve(existingClaim)
-        return { created: false, notification: stored }
+        const cursor = tables.user_notification_cursor.find((item) => Number(item.user_id) === Number(notification.user_id))
+        return { created: false, notification: stored, unread_count: Number(cursor && cursor.unread_count || 0) }
       }
       let resolveClaim
       const claimPromise = new Promise((resolve) => { resolveClaim = resolve })
@@ -187,9 +186,15 @@ async function main() {
         idempotency_key: key,
         notification_id: row.id
       })
+      tables.user_notification_cursor.push({
+        id: nextId++,
+        _id: `user_notification_cursor_${nextId}`,
+        user_id: Number(notification.user_id),
+        unread_count: 1
+      })
       resolveClaim(row)
       claims.set(digest, row)
-      return { created: true, notification: row }
+      return { created: true, notification: row, unread_count: 1 }
     }
   }
   const [left, right] = await Promise.all([
@@ -210,10 +215,8 @@ async function main() {
     coordination_notification_dedupe: []
   }
   let diffId = 1
-  const diffBarrier = createBarrier(2)
   const diffDeps = {
     first: async (name, query) => {
-      if (name === 'user_notification_cursor') await diffBarrier()
       return (diffTables[name] || []).find((row) => Object.keys(query).every((key) => row[key] === query[key])) || null
     },
     addWithId: async (name, data) => {
@@ -314,6 +317,27 @@ async function main() {
     [txnFirst.unread_count, txnSecond.unread_count].sort((a, b) => a - b),
     [1, 2]
   )
+
+  // Production mark-read must delegate notification rows and cursor changes to
+  // one atomic operation. The helper result preserves a notification that
+  // arrived while the visible snapshot was being marked read.
+  const seenTables = {
+    coordination_notification: [{ id: 1, _id: 'notification_1', user_id: 3, read_at: null }],
+    user_notification_cursor: [{ id: 1, _id: 'cursor_1', user_id: 3, unread_count: 1 }]
+  }
+  let atomicSeenCalled = 0
+  const seenResult = await markSeen({
+    first: async (name, query) => seenTables[name].find((row) => Object.keys(query).every((key) => row[key] === query[key])) || null,
+    list: async (name, query) => seenTables[name].filter((row) => Object.keys(query).every((key) => row[key] === query[key])),
+    updateByDoc: async (_name, row, data) => Object.assign(row, data),
+    now,
+    markCoordinationNotificationsSeen: async () => {
+      atomicSeenCalled += 1
+      return { updated: 1, unread: 1 }
+    }
+  }, 3, {})
+  assert.strictEqual(atomicSeenCalled, 1)
+  assert.deepStrictEqual(seenResult, { updated: 1, unread: 1 })
 
   const inboxSource = fs.readFileSync(path.join(__dirname, '../../miniprogram/cloudfunctions/api/lib/coordinationInbox.js'), 'utf8')
   assert(inboxSource.includes('createCoordinationNotificationOnce'))

@@ -523,9 +523,10 @@ exports.main = async (event = {}) => {
     const publicCode = declaredPublicCode(err)
     if (publicCode) {
       const publicMessage = String(err.publicMessage || err.message || publicCode).slice(0, 40)
+      const numericCode = Number(err && err.code)
       return {
         success: false,
-        code: publicCode,
+        code: numericCode === 403 ? 403 : (numericCode === 400 ? 400 : 500),
         error: publicCode,
         message: publicMessage
       }

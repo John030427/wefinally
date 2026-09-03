@@ -16,7 +16,7 @@
       <view class="notify-title">协调提醒{{unreadCount ? (unreadCount + " 条未读") : ""}}</view>
       <button class="notify-mark-all" bindtap="onMarkAllRead" wx:if="{{unreadCount}}">全部已读</button>
     </view>
-    <view class="notify-item card" wx:for="{{list}}" wx:key="id" bindtap="onTapItem" data-coordination-id="{{item.coordinationId}}">
+    <view class="notify-item card" wx:for="{{list}}" wx:key="id" bindtap="onTapItem" data-coordination-id="{{item.coordinationId}}" data-coordination-version="{{item.coordinationVersion}}" data-notification-id="{{item.id}}">
       <view class="notify-icon">{{item.icon}}</view>
       <view class="notify-body">
         <view class="notify-title-row">

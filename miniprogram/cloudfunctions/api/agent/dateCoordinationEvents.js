@@ -8,6 +8,7 @@ function defaultDeps() {
     list: db.list,
     addWithId: db.addWithId,
     now: db.now,
+    ensureCoordinationAgentSession: db.ensureCoordinationAgentSession,
     createCoordinationEventOnce: db.createCoordinationEventOnce,
     createAgentMessageOnce: db.createAgentMessageOnce
   }
@@ -58,6 +59,43 @@ function attachMemoryIdempotentCreates(deps) {
       resultField: 'event',
       missingKeyMessage: '协调事件缺少幂等键'
     })
+  }
+  if (typeof deps.ensureCoordinationAgentSession !== 'function') {
+    if (!deps.__coordSessionQueues) deps.__coordSessionQueues = new Map()
+    deps.ensureCoordinationAgentSession = async ({ user_id, coordination_id, agent_type = 'date_coordinator' }) => {
+      const key = `${Number(user_id)}:${String(agent_type)}:${Number(coordination_id)}`
+      const previous = deps.__coordSessionQueues.get(key) || Promise.resolve()
+      let release
+      const gate = new Promise((resolve) => { release = resolve })
+      deps.__coordSessionQueues.set(key, previous.catch(() => {}).then(() => gate))
+      await previous.catch(() => {})
+      try {
+        const query = {
+          user_id: Number(user_id),
+          agent_type: String(agent_type),
+          coordination_id: Number(coordination_id)
+        }
+        const sessions = typeof deps.list === 'function'
+          ? await deps.list('agent_session', query, 100)
+          : (deps.tables && Array.isArray(deps.tables.agent_session)
+              ? deps.tables.agent_session.filter((row) => Object.keys(query).every((field) => row[field] === query[field]))
+              : [await deps.first('agent_session', Object.assign({}, query, { status: 'active' }))].filter(Boolean))
+        const current = sessions
+          .filter((row) => !['closed', 'cancelled'].includes(String(row.status || '')))
+          .sort((a, b) => Number(b.id || 0) - Number(a.id || 0))[0] || null
+        if (current) return { created: false, session: current }
+        const session = await deps.addWithId('agent_session', {
+          user_id: Number(user_id),
+          agent_type: String(agent_type),
+          coordination_id: Number(coordination_id),
+          status: 'active',
+          summary: ''
+        }, 'agent_session')
+        return { created: true, session }
+      } finally {
+        release()
+      }
+    }
   }
   if (typeof deps.createAgentMessageOnce !== 'function') {
     deps.createAgentMessageOnce = memoryCreateOnce(deps, {
@@ -132,15 +170,15 @@ async function ensureSession(deps, coordination, userId, options = {}) {
   if (!session && typeof deps.list !== 'function') {
     session = await deps.first('agent_session', Object.assign({}, query, { status: 'active' }))
   }
-  if (!session) {
-    if (!allowCreate) return null
-    session = await deps.addWithId('agent_session', {
-      user_id: Number(userId),
-      agent_type: 'date_coordinator',
-      coordination_id: Number(coordination.id),
+  if (!session && !allowCreate) return null
+  if (allowCreate && typeof deps.ensureCoordinationAgentSession === 'function') {
+    const ensured = await deps.ensureCoordinationAgentSession(query)
+    session = ensured.session
+  } else if (!session) {
+    session = await deps.addWithId('agent_session', Object.assign({}, query, {
       status: 'active',
       summary: ''
-    }, 'agent_session')
+    }), 'agent_session')
   }
   return session
 }

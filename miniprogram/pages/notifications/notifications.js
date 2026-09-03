@@ -48,6 +48,7 @@ Page({
       const list = raw.map((item) => ({
         id: item.id,
         coordinationId: item.coordination_id,
+        coordinationVersion: item.coordination_version,
         icon: EVENT_ICONS[item.event_type] || '📣',
         title: item.title || '约会协调有新进展',
         body: item.body || '请进入查看最新安排。',
@@ -73,7 +74,8 @@ Page({
 
   async onMarkAllRead() {
     try {
-      await post(API_PATHS.NOTIFICATIONS_READ, {}, { showError: false })
+      const throughNotificationId = this.data.list.reduce((max, item) => Math.max(max, Number(item.id || 0)), 0)
+      await post(API_PATHS.NOTIFICATIONS_READ, { through_notification_id: throughNotificationId }, { showError: false })
       await refreshNotificationBadge()
       this.load()
       wx.showToast({ title: '已全部标记为已读', icon: 'success' })
@@ -90,7 +92,11 @@ Page({
       return
     }
     try {
-      await post(API_PATHS.NOTIFICATIONS_READ, { coordination_id: coordinationId }, { showError: false })
+      await post(API_PATHS.NOTIFICATIONS_READ, {
+        coordination_id: coordinationId,
+        coordination_version: Number(item.coordinationVersion || 0),
+        through_notification_id: Number(item.notificationId || 0)
+      }, { showError: false })
     } catch (err) { /* 标记已读失败不阻断跳转 */ }
     wx.navigateTo({ url: '/pages/date-coordination/date-coordination?coordinationId=' + coordinationId })
   }

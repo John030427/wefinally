@@ -1310,6 +1310,84 @@ async function createCoordinationNotificationOnce(notification = {}) {
   }))))
 }
 
+async function markCoordinationNotificationsSeen(input = {}) {
+  const userId = Number(input.user_id || 0)
+  if (!Number.isSafeInteger(userId) || userId <= 0) throw new Error('标记已读缺少用户')
+  const coordinationId = Number(input.coordination_id || 0)
+  const coordinationVersion = Number(input.coordination_version || 0)
+  const throughNotificationId = Number(input.through_notification_id || 0)
+  return withCollection('coordination_notification', () => withCollection('user_notification_cursor', () => db.runTransaction(async (rawTransaction) => {
+    const adapter = transactionAdapter(rawTransaction)
+    const query = { user_id: userId }
+    if (coordinationId > 0) query.coordination_id = coordinationId
+    const rows = await adapter.list('coordination_notification', query, coordinationId > 0 ? 100 : 200)
+    const pending = rows.filter((row) => {
+      if (row.read_at) return false
+      if (coordinationVersion > 0 && Number(row.coordination_version || 0) > coordinationVersion) return false
+      if (throughNotificationId > 0 && Number(row.id || 0) > throughNotificationId) return false
+      return true
+    })
+    const readAt = now()
+    for (const row of pending) {
+      await adapter.updateByDoc('coordination_notification', row, { read_at: readAt })
+    }
+    const cursor = await adapter.first('user_notification_cursor', { user_id: userId })
+    if (!cursor) return { updated: pending.length, unread: 0 }
+    const unread = Math.max(0, Number(cursor.unread_count || 0) - pending.length)
+    const seenEventId = pending.reduce((max, row) => Math.max(max, Number(row.coordination_event_id || 0)), Number(cursor.last_seen_coordination_event_id || 0))
+    await adapter.updateByDoc('user_notification_cursor', cursor, {
+      unread_count: unread,
+      last_seen_coordination_event_id: seenEventId,
+      last_seen_coordination_version: coordinationVersion || Number(cursor.last_seen_coordination_version || 0)
+    })
+    return { updated: pending.length, unread }
+  })))
+}
+
+async function ensureCoordinationAgentSession(input = {}) {
+  const userId = Number(input.user_id || 0)
+  const coordinationId = Number(input.coordination_id || 0)
+  const agentType = String(input.agent_type || 'date_coordinator').trim()
+  if (!Number.isSafeInteger(userId) || userId <= 0 || !Number.isSafeInteger(coordinationId) || coordinationId <= 0) {
+    throw new Error('协调会话缺少用户或任务')
+  }
+  const key = `coordination-session:${userId}:${agentType}:${coordinationId}`
+  const digest = crypto.createHash('sha256').update(key).digest('hex')
+  return withCollection('agent_session_dedupe', () => withCollection('agent_session', () => db.runTransaction(async (rawTransaction) => {
+    const adapter = transactionAdapter(rawTransaction)
+    const lock = await adapter.byDocId('agent_session_dedupe', digest)
+    if (lock && lock.session_key && String(lock.session_key) !== key) {
+      throw new Error('协调会话键哈希冲突')
+    }
+    const lockedSession = lock && lock.session_id
+      ? await adapter.byId('agent_session', Number(lock.session_id))
+      : null
+    if (lockedSession && !['closed', 'cancelled'].includes(String(lockedSession.status || ''))) {
+      return { created: false, session: lockedSession }
+    }
+    const existing = (await adapter.list('agent_session', {
+      user_id: userId,
+      agent_type: agentType,
+      coordination_id: coordinationId
+    }, 100))
+      .filter((row) => !['closed', 'cancelled'].includes(String(row.status || '')))
+      .sort((a, b) => Number(b.id || 0) - Number(a.id || 0))[0] || null
+    const session = existing || await adapter.addWithId('agent_session', {
+      user_id: userId,
+      agent_type: agentType,
+      coordination_id: coordinationId,
+      status: 'active',
+      summary: ''
+    }, 'agent_session')
+    await adapter.setByDocId('agent_session_dedupe', digest, {
+      session_key: key,
+      session_id: Number(session.id),
+      create_time: lock && lock.create_time || now()
+    })
+    return { created: !existing, session }
+  })))
+}
+
 async function createRecordOnceInTransaction({
   key,
   dataCollection,
@@ -1412,6 +1490,8 @@ module.exports = {
   commitInvitationResponse,
   claimDateCoordinationDraft,
   createCoordinationNotificationOnce,
+  markCoordinationNotificationsSeen,
+  ensureCoordinationAgentSession,
   createCoordinationEventOnce,
   createAgentMessageOnce,
   commitPreAcceptInvitationPatch,

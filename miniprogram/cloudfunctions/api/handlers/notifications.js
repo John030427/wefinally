@@ -17,7 +17,8 @@ async function read(data, wxContext) {
   const deps = defaultDeps()
   const result = await markSeen(deps, user.id, {
     coordination_id: Number(data.coordination_id || data.coordinationId || 0),
-    coordination_version: Number(data.coordination_version || data.coordinationVersion || 0)
+    coordination_version: Number(data.coordination_version || data.coordinationVersion || 0),
+    through_notification_id: Number(data.through_notification_id || data.throughNotificationId || 0)
   })
   return Object.assign({ ok: true }, result, { unread_count: await unreadCount(deps, user.id) })
 }

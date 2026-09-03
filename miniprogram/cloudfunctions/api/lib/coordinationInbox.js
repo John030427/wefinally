@@ -23,6 +23,7 @@ function defaultDeps() {
     addWithId: db.addWithId,
     updateByDoc: db.updateByDoc,
     createCoordinationNotificationOnce: db.createCoordinationNotificationOnce,
+    markCoordinationNotificationsSeen: db.markCoordinationNotificationsSeen,
     now: db.now,
     config: notifyConfig(process.env),
     sendSubscribeMessage: async (payload) => {
@@ -216,6 +217,14 @@ async function unreadCount(deps, user_id) {
 
 async function markSeen(deps, user_id, options = {}) {
   const userId = Number(user_id)
+  if (typeof deps.markCoordinationNotificationsSeen === 'function') {
+    return deps.markCoordinationNotificationsSeen({
+      user_id: userId,
+      coordination_id: Number(options.coordination_id || 0),
+      coordination_version: Number(options.coordination_version || 0),
+      through_notification_id: Number(options.through_notification_id || 0)
+    })
+  }
   const cursor = await deps.first('user_notification_cursor', { user_id: userId })
   const coordinationId = Number(options.coordination_id || 0)
   const coordinationVersion = Number(options.coordination_version || 0)
