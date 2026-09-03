@@ -23,6 +23,7 @@ const DURATIONS = ['about-1h', '1-2h', '2-3h', 'flexible']
 const {
   PLAN_CONTRACT_VERSION,
   normalizeMeetingPlanFields,
+  venueResolution,
   activityVenueConflict
 } = require('./meetingPlanPolicy')
 
@@ -107,7 +108,10 @@ function normalizeApplication(input = {}, now = new Date()) {
     if (normalized.availability[0].periods[0] !== meetingPlan.period) {
       throw new Error('具体时间与所选时间段不一致')
     }
-    const venueConflict = activityVenueConflict(normalized.activities[0], meetingPlan.activity_venue)
+    const resolution = venueResolution(normalized.activities[0], meetingPlan.activity_venue)
+    const venueConflict = resolution.status === 'resolved'
+      ? activityVenueConflict(normalized.activities[0], resolution.activity_venue)
+      : null
     if (venueConflict) {
       const error = new Error(venueConflict.message)
       error.code = venueConflict.code
@@ -116,7 +120,10 @@ function normalizeApplication(input = {}, now = new Date()) {
     Object.assign(normalized, {
       contract_version: PLAN_CONTRACT_VERSION,
       start_time: meetingPlan.start_time,
-      activity_venue: meetingPlan.activity_venue,
+      activity_venue: resolution.activity_venue,
+      area_hint: resolution.area_hint,
+      activity_detail: resolution.activity_detail,
+      venue_resolution: resolution,
       meet_point: meetingPlan.meet_point,
       arrival_hint: meetingPlan.arrival_hint
     })

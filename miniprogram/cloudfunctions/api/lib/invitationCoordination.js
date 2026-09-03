@@ -110,6 +110,11 @@ function publicInvitationProposal(application = {}) {
       contract_version: PLAN_CONTRACT_VERSION,
       start_time: meetingPlan.start_time,
       activity_venue: meetingPlan.activity_venue,
+      area_hint: String(application.area_hint || ''),
+      activity_detail: String(application.activity_detail || ''),
+      venue_resolution: application.venue_resolution && typeof application.venue_resolution === 'object'
+        ? application.venue_resolution
+        : undefined,
       meet_point: meetingPlan.meet_point
     })
   }
@@ -260,6 +265,11 @@ function publicPrimaryProposal(input = {}, context = {}) {
       contract_version: PLAN_CONTRACT_VERSION,
       start_time: meetingPlan.start_time,
       activity_venue: meetingPlan.activity_venue,
+      area_hint: String(input.area_hint || ''),
+      activity_detail: String(input.activity_detail || ''),
+      venue_resolution: input.venue_resolution && typeof input.venue_resolution === 'object'
+        ? input.venue_resolution
+        : undefined,
       meet_point: meetingPlan.meet_point
     })
   }
@@ -285,12 +295,31 @@ function isPrimaryProposalComplete(proposal) {
   return planReadiness(proposal).ready
 }
 
+function isPrimaryProposalDraftComplete(proposal) {
+  if (!proposal) return false
+  const paymentOk = proposal.payment_mode === 'aa'
+    || proposal.payment_mode === 'flexible'
+    || (proposal.payment_mode === 'single_payer' && Number(proposal.payer_user_id) > 0)
+  const baseComplete = Boolean(
+    proposal.date
+    && PERIODS.includes(proposal.period)
+    && proposal.area
+    && proposal.activity
+    && proposal.budget
+    && proposal.duration
+    && paymentOk
+  )
+  if (!baseComplete) return false
+  if (Number(proposal.contract_version || 1) < PLAN_CONTRACT_VERSION) return true
+  return Boolean(proposal.start_time)
+}
+
 function preferenceHasSlot(prefs, date, period) {
   return (prefs.availability || []).some((item) => item.date === date && (item.periods || []).includes(period))
 }
 
 function primaryFitsPreferenceExceptPayment(primary, prefs) {
-  if (!isPrimaryProposalComplete(primary) || !prefs) return false
+  if (!isPrimaryProposalDraftComplete(primary) || !prefs) return false
   if (!preferenceHasSlot(prefs, primary.date, primary.period)) return false
   if (!(prefs.areas || []).includes(primary.area)) return false
   if (!(prefs.activities || []).includes(primary.activity)) return false
@@ -534,24 +563,14 @@ function resolvePrimaryInvitationProposal(input = {}, prefs, context = {}) {
     input.invitation_primary_proposal || input.primary_proposal || input.primary || null,
     context
   )
-  if (explicit && Number(explicit.contract_version || 1) >= PLAN_CONTRACT_VERSION) {
-    const readiness = planReadiness(explicit)
-    if (!readiness.ready) {
-      throw primaryProposalIncompleteError(
-        readiness.conflict
-          ? readiness.conflict.message
-          : '请补充具体时间和活动场地后再发送邀请'
-      )
-    }
-  }
-  if (explicit && isPrimaryProposalComplete(explicit)) {
+  if (explicit && isPrimaryProposalDraftComplete(explicit)) {
     if (prefs && !primaryFitsPreference(explicit, prefs, context)) {
       throw primaryProposalRequiredError('本次建议安排必须落在你的可接受范围内')
     }
     return explicit
   }
   const derived = derivePrimaryFromSingletonPrefs(prefs, context.user_a_id, context.user_b_id)
-  if (derived && isPrimaryProposalComplete(derived)) return derived
+  if (derived && isPrimaryProposalDraftComplete(derived)) return derived
   throw primaryProposalRequiredError()
 }
 
@@ -595,7 +614,12 @@ function buildInvitationCard(primaryOrPrefs = {}, version = 1, options = {}) {
   )
   return {
     invitation_version: Number(version || 1),
-    primary_complete: complete,
+    primary_complete: isPrimaryProposalDraftComplete(primary),
+    final_ready: readiness.ready,
+    venue_status: readiness.venue_resolution && readiness.venue_resolution.status || (readiness.ready ? 'resolved' : 'needs_specific_venue'),
+    venue_guidance: readiness.venue_resolution && readiness.venue_resolution.status === 'needs_specific_venue'
+      ? '已记录大致区域或活动类型，还需要确认具体门店'
+      : '',
     time_text: primary && primary.date
       ? formatPlanTime(primary.date, primary.period, primary.start_time)
       : (prefs ? formatAvailabilityRange(prefs.availability) : '待确认'),
@@ -1033,6 +1057,7 @@ module.exports = {
   publicInvitationProposal,
   publicPrimaryProposal,
   isPrimaryProposalComplete,
+  isPrimaryProposalDraftComplete,
   preferenceNeedsExplicitPrimary,
   derivePrimaryFromSingletonPrefs,
   resolvePrimaryInvitationProposal,

@@ -1,7 +1,7 @@
 const assert = require('assert')
 const fs = require('fs')
 const path = require('path')
-const { STATUS, nextStatus, computeOverlap } = require('../../miniprogram/cloudfunctions/api/lib/dateCoordinationPolicy')
+const { STATUS, nextStatus, computeOverlap, normalizeApplication } = require('../../miniprogram/cloudfunctions/api/lib/dateCoordinationPolicy')
 const {
   canOpenCoordinatorChat,
   canModifyApplication,
@@ -207,6 +207,31 @@ function patchHandlersFor(pair) {
 }
 
 async function main() {
+  const unresolvedApplication = normalizeApplication(app({
+    contract_version: 2,
+    activities: ['吃饭'],
+    start_time: '18:00',
+    activity_venue: '大运中心'
+  }), NOW)
+  assert.strictEqual(unresolvedApplication.venue_resolution.status, 'needs_specific_venue')
+  assert.strictEqual(unresolvedApplication.area_hint, '大运中心')
+  assert.strictEqual(unresolvedApplication.activity_detail, '吃饭')
+  const unresolvedPrimary = resolvePrimaryInvitationProposal({
+    invitation_primary_proposal: primaryOf({
+      contract_version: 2,
+      activity: '吃饭',
+      start_time: '18:00',
+      activity_venue: '',
+      area_hint: '大运中心',
+      activity_detail: '吃饭',
+      venue_resolution: unresolvedApplication.venue_resolution
+    })
+  }, unresolvedApplication, { user_a_id: 1, user_b_id: 2 })
+  const unresolvedCard = buildInvitationCard(unresolvedPrimary, 1, { user_a_id: 1, user_b_id: 2 })
+  assert.strictEqual(unresolvedCard.primary_complete, true)
+  assert.strictEqual(unresolvedCard.final_ready, false)
+  assert.strictEqual(unresolvedCard.venue_status, 'needs_specific_venue')
+
   assert.strictEqual(nextStatus(STATUS.INVITING_PARTNER, 'accept_invitation'), STATUS.ARRANGED)
   assert.strictEqual(nextStatus(STATUS.INVITING_PARTNER, 'coordinate_invitation'), STATUS.COLLECTING_PREFERENCES)
   assert.strictEqual(resolveFixtureJourneyName('accept'), 'accept_direct')

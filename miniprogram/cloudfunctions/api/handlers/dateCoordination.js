@@ -48,6 +48,7 @@ const {
   invitationPrimaryOf,
   resolvePrimaryInvitationProposal,
   isPrimaryProposalComplete,
+  isPrimaryProposalDraftComplete,
   allExplicitEvidence,
   buildSharedCoordinationState,
   buildProposalCard,
@@ -661,6 +662,9 @@ function createDateCoordinationHandlers(overrides = {}) {
         user_b_id: coordination.user_b_id
       })
       if (!isPrimaryProposalComplete(primary)) {
+        if (isPrimaryProposalDraftComplete(primary)) {
+          throw businessError('DATE_VENUE_NEEDS_CLARIFICATION', '具体门店还未确认，请先和 AI 继续协调')
+        }
         const err = new Error('当前建议安排不完整，请先和 AI 协调其他安排，或等待发起方更新方案')
         err.code = 'PRIMARY_PROPOSAL_INCOMPLETE'
         throw err

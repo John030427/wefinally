@@ -27,6 +27,7 @@ const ACTIVITY_DETAIL_RULES = Object.freeze({
 })
 
 const CONCRETE_VENUE_RULE = /(?:店|餐厅|饭店|餐馆|影城|影院|电影院|美术馆|博物馆|展馆|桌游馆)$/
+const BRANDED_VENUE_RULE = /(?:星巴克|瑞幸|喜茶|奈雪|太二|海底捞|润园四季|百老汇|英皇)/
 const AREA_HINT_RULE = /(?:附近|商圈|中心|广场|街区|片区|新区|区)$/
 
 function text(value, maxLength) {
@@ -130,7 +131,9 @@ function venueResolution(activity, input) {
     missing_fields: ['activity_venue']
   })
   if (!value) return unresolved('', normalizedActivity)
-  if (CONCRETE_VENUE_RULE.test(value)) {
+  const brandedWithLocation = BRANDED_VENUE_RULE.test(value)
+    && !/^(?:星巴克|瑞幸|喜茶|奈雪|太二|海底捞|润园四季|百老汇|英皇)$/.test(value)
+  if (CONCRETE_VENUE_RULE.test(value) || brandedWithLocation) {
     return {
       status: 'resolved',
       area_hint: '',
