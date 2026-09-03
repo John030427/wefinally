@@ -170,12 +170,12 @@ async function claimTask(task) {
   return res.stats && res.stats.updated ? attemptId : ''
 }
 
-async function persistOptionalReportAudit(task, attemptId, result, retention, generatedAt) {
+async function persistOptionalReportAudit(task, attemptId, result, retention, generatedAt, deps = {}) {
+  const writeCol = deps.col || col
   try {
-    await col('ai_report_task').where({ _id: task._id, attempt_id: attemptId }).update({ data: {
+    await writeCol('ai_report_task').where({ _id: task._id, attempt_id: attemptId }).update({ data: {
       input_snapshot: databaseSafe(result.input_snapshot),
       input_expires_at: retention.input_expires_at,
-      report_expires_at: retention.report_expires_at,
       update_time: generatedAt
     } })
   } catch (err) {
@@ -183,17 +183,27 @@ async function persistOptionalReportAudit(task, attemptId, result, retention, ge
   }
 }
 
-async function processOne(task) {
-  const attemptId = await claimTask(task)
+async function processOne(task, overrides = {}) {
+  const api = {
+    claimTask,
+    byId,
+    first,
+    col,
+    now,
+    generateStructuredMatchReports,
+    persistOptionalReportAudit,
+    ...overrides
+  }
+  const attemptId = await api.claimTask(task)
   if (!attemptId) return false
   try {
-    const matchA = await byId('user_match_log', task.match_log_ids.a)
-    const matchB = task.match_log_ids.b ? await byId('user_match_log', task.match_log_ids.b) : null
-    const userA = await byId('user', task.user_ids.a)
-    const userB = await byId('user', task.user_ids.b)
+    const matchA = await api.byId('user_match_log', task.match_log_ids.a)
+    const matchB = task.match_log_ids.b ? await api.byId('user_match_log', task.match_log_ids.b) : null
+    const userA = await api.byId('user', task.user_ids.a)
+    const userB = await api.byId('user', task.user_ids.b)
     if (!matchA || !userA || !userB) throw new Error('report input missing')
-    const settingA = await first('user_match_setting', { user_id: Number(userA.id) })
-    const settingB = await first('user_match_setting', { user_id: Number(userB.id) })
+    const settingA = await api.first('user_match_setting', { user_id: Number(userA.id) })
+    const settingB = await api.first('user_match_setting', { user_id: Number(userB.id) })
     const input = {
       users: {
         a: Object.assign({}, userA, settingA || {}),
@@ -205,10 +215,10 @@ async function processOne(task) {
       }
     }
     const started = Date.now()
-    const result = await generateStructuredMatchReports(input)
-    const generatedAt = now()
+    const result = await api.generateStructuredMatchReports(input)
+    const generatedAt = api.now()
     const retention = retentionDates(generatedAt)
-    await col('ai_report_task').where({ _id: task._id, attempt_id: attemptId }).update({ data: {
+    await api.col('ai_report_task').where({ _id: task._id, attempt_id: attemptId }).update({ data: {
       status: STATUS.SUCCEEDED,
       reports_json: JSON.stringify(databaseSafe(result.reports)),
       model_name: result.model,
@@ -216,19 +226,21 @@ async function processOne(task) {
       generation_duration_ms: Date.now() - started,
       error_code: '',
       error_message: '',
+      input_expires_at: retention.input_expires_at,
+      report_expires_at: retention.report_expires_at,
       update_time: generatedAt
     } })
-    await persistOptionalReportAudit(task, attemptId, result, retention, generatedAt)
+    await api.persistOptionalReportAudit(task, attemptId, result, retention, generatedAt, api)
   } catch (err) {
     const failure = classifyError(err)
     const attempts = Number(task.attempt_count || 0) + 1
     const autoRetry = failure.retryable && attempts < MAX_ATTEMPTS
-    await col('ai_report_task').where({ _id: task._id, attempt_id: attemptId }).update({ data: {
+    await api.col('ai_report_task').where({ _id: task._id, attempt_id: attemptId }).update({ data: {
       status: autoRetry ? STATUS.QUEUED : STATUS.FAILED,
       error_code: failure.code,
       error_message: failure.message,
       next_retry_at: autoRetry ? new Date(Date.now() + attempts * 60000) : null,
-      update_time: now()
+      update_time: api.now()
     } })
   }
   return true
@@ -272,23 +284,30 @@ async function processQueuedTasks(limit) {
   return { processed, recovered, cleanup }
 }
 
-async function cleanupExpiredTasks() {
-  const current = now()
-  const input = await col('ai_report_task').where({
-    input_expires_at: db.command.lte(current)
+async function cleanupExpiredTasks(overrides = {}) {
+  const api = {
+    col,
+    now,
+    command: db.command,
+    ...overrides
+  }
+  const current = api.now()
+  const input = await api.col('ai_report_task').where({
+    input_expires_at: api.command.lte(current)
   }).update({ data: { input_snapshot: null, input_expires_at: null, update_time: current } })
-  const reports = await col('ai_report_task').where({
+  const reports = await api.col('ai_report_task').where({
     status: STATUS.SUCCEEDED,
-    report_expires_at: db.command.lte(current)
+    report_expires_at: api.command.lte(current)
   }).update({ data: {
     status: STATUS.EXPIRED,
     reports: null,
+    reports_json: null,
     report_expires_at: null,
     update_time: current
   } })
-  const cancelled = await col('ai_report_task').where({
+  const cancelled = await api.col('ai_report_task').where({
     status: STATUS.CANCELLED,
-    delete_after: db.command.lte(current)
+    delete_after: api.command.lte(current)
   }).remove()
   return {
     inputs_redacted: Number(input.stats && input.stats.updated || 0),
@@ -297,4 +316,15 @@ async function cleanupExpiredTasks() {
   }
 }
 
-module.exports = { create, status, retry, ensureTaskForMatch, findTaskForMatch, publicTask, processQueuedTasks, cleanupExpiredTasks, STATUS }
+module.exports = {
+  create,
+  status,
+  retry,
+  ensureTaskForMatch,
+  findTaskForMatch,
+  publicTask,
+  processQueuedTasks,
+  cleanupExpiredTasks,
+  processOne,
+  STATUS
+}
