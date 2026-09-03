@@ -143,7 +143,10 @@ async function main() {
   assert(!matchDetail.includes('虚拟体验对象'), 'Match Detail must not use virtual-experience CTA card')
   assert(matchDetail.includes('测试数据'))
   assert(dateView.includes('和 AI 约会协调员沟通'))
-  assert(dateView.includes('对方暂未接受本次约会邀请'))
+  assert(
+    dateJs.includes('对方暂未接受本次约会邀请') || dateView.includes('对方暂未接受本次约会邀请'),
+    'declined invitation copy must remain visible to users'
+  )
   assert(dateView.includes('约会邀请已发送'))
   assert(dateJs.includes('agentType=date_coordinator&coordinationId='))
   assert(dateJs.includes('can_open_coordinator_chat'))
@@ -183,6 +186,8 @@ async function main() {
     unitMode: true,
     currentUser, first: db.first, list: db.list, byId: db.byId, addWithId: db.addWithId, updateByDoc: db.updateByDoc,
     claimPendingPatch: db.claimPendingPatch, now: db.now,
+    notifyInbox: writeInbox,
+    publishCoordinationEvent: publishEvent,
     env: Object.assign({}, process.env, { LANGGRAPH_ENABLED: 'false' }),
     generateDecision: chain([{
       intent: 'modify_date_application',

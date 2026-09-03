@@ -22,6 +22,7 @@ function defaultDeps() {
     list: db.list,
     addWithId: db.addWithId,
     updateByDoc: db.updateByDoc,
+    createCoordinationNotificationOnce: db.createCoordinationNotificationOnce,
     now: db.now,
     config: notifyConfig(process.env),
     sendSubscribeMessage: async (payload) => {
@@ -34,6 +35,49 @@ function defaultDeps() {
       })
     }
   }
+}
+
+function memoryCreateCoordinationNotificationOnce(deps) {
+  if (!deps.__coordNotificationClaims) deps.__coordNotificationClaims = new Map()
+  return async function createOnce(notification) {
+    const key = String(notification.idempotency_key || '')
+    if (!key) {
+      const record = await deps.addWithId('coordination_notification', Object.assign({}, notification, {
+        read_at: notification.read_at === undefined ? null : notification.read_at
+      }), 'coordination_notification')
+      return { created: true, notification: record }
+    }
+    const claims = deps.__coordNotificationClaims
+    if (claims.has(key)) {
+      const stored = await Promise.resolve(claims.get(key))
+      return { created: false, notification: stored }
+    }
+    let resolveClaim
+    const pending = new Promise((resolve) => { resolveClaim = resolve })
+    claims.set(key, pending)
+    try {
+      const record = await deps.addWithId('coordination_notification', Object.assign({}, notification, {
+        read_at: notification.read_at === undefined ? null : notification.read_at
+      }), 'coordination_notification')
+      claims.set(key, record)
+      resolveClaim(record)
+      return { created: true, notification: record }
+    } catch (err) {
+      claims.delete(key)
+      resolveClaim(null)
+      throw err
+    }
+  }
+}
+
+function resolveCreateOnce(deps) {
+  if (typeof deps.createCoordinationNotificationOnce === 'function') {
+    return deps.createCoordinationNotificationOnce.bind(deps)
+  }
+  if (typeof deps.addWithId === 'function') {
+    return memoryCreateCoordinationNotificationOnce(deps)
+  }
+  throw new Error('站内通知缺少原子创建依赖')
 }
 
 function safeSummary(input) {
@@ -73,9 +117,21 @@ async function notifyInbox(input = {}, overrides) {
     }
     return { queued: false, stale: true, expected_version: notification.expected_coordination_version, current_version: currentVersion }
   }
-  const record = await deps.addWithId('coordination_notification', Object.assign({}, notification, {
-    read_at: null
-  }), 'coordination_notification')
+  const createOnce = resolveCreateOnce(deps)
+  const created = await createOnce(Object.assign({}, notification, { read_at: null }))
+  const record = created.notification
+  if (!created.created) {
+    const cursor = typeof deps.first === 'function'
+      ? await deps.first('user_notification_cursor', { user_id })
+      : null
+    return {
+      queued: false,
+      stale: false,
+      duplicate: true,
+      notification_id: Number((record && record.id) || 0),
+      unread_count: Number((cursor && cursor.unread_count) || 0)
+    }
+  }
   let cursor = await deps.first('user_notification_cursor', { user_id })
   const nextCursor = applyUnreadCursor(cursor || { user_id }, record)
   if (cursor) {

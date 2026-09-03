@@ -1241,7 +1241,8 @@ async function commitCoordinationConfirmation(coordination, proposal, input = {}
       ? await adapter.updateByDoc('date_coordination', current, {
         status: 'arranged',
         business_state: 'completed',
-        final_proposal_id: Number(storedProposal.id)
+        final_proposal_id: Number(storedProposal.id),
+        confirmation_deadline_at: null
       })
       : current
     return { coordination: updated, confirmation, arranged, idempotent: false }
@@ -1252,6 +1253,34 @@ function authError(message) {
   const err = new Error(message || '登录已过期，请重新登录')
   err.code = 401
   return err
+}
+
+async function createCoordinationNotificationOnce(notification = {}) {
+  const key = String(notification.idempotency_key || '')
+  if (!key) throw new Error('站内通知缺少幂等键')
+  const digest = crypto.createHash('sha256').update(key).digest('hex')
+  return withCollection('coordination_notification_dedupe', () => withCollection('coordination_notification', () => db.runTransaction(async (rawTransaction) => {
+    const adapter = transactionAdapter(rawTransaction)
+    const existingLock = await adapter.byDocId('coordination_notification_dedupe', digest)
+    if (existingLock) {
+      if (existingLock.idempotency_key && String(existingLock.idempotency_key) !== key) {
+        throw new Error('站内通知幂等键哈希冲突')
+      }
+      const existingNotification = existingLock.notification_id
+        ? await adapter.byId('coordination_notification', Number(existingLock.notification_id))
+        : null
+      if (existingNotification) return { created: false, notification: existingNotification }
+    }
+    const stored = await adapter.addWithId('coordination_notification', Object.assign({}, notification, {
+      read_at: notification.read_at === undefined ? null : notification.read_at
+    }), 'coordination_notification')
+    await adapter.setByDocId('coordination_notification_dedupe', digest, {
+      idempotency_key: key,
+      notification_id: Number(stored.id),
+      create_time: stored.create_time || now()
+    })
+    return { created: true, notification: stored }
+  })))
 }
 
 module.exports = {
@@ -1291,6 +1320,7 @@ module.exports = {
   commitDirectInvitationAccept,
   commitInvitationResponse,
   claimDateCoordinationDraft,
+  createCoordinationNotificationOnce,
   commitPreAcceptInvitationPatch,
   commitPostAcceptApplicationPatch,
   authError,

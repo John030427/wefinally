@@ -845,7 +845,7 @@ function createDateCoordinationHandlers(overrides = {}) {
 
   function patchHelpers() {
     const { createDateApplicationPatchHandlers } = require('./dateApplicationPatch')
-    return createDateApplicationPatchHandlers({
+    const patchDeps = {
       first: dep('first'),
       list: dep('list'),
       byId: dep('byId'),
@@ -854,14 +854,29 @@ function createDateCoordinationHandlers(overrides = {}) {
       now: dep('now'),
       publishCoordinationEvent: (input) => dep('publishCoordinationEvent')(input),
       writeInboxNotification: (input) => dep('writeInboxNotification')(input),
-      saveApplicationForUser: (data, user) => saveApplicationForUser(data, user),
-      claimPendingPatch: overrides.claimPendingPatch || (async (patch) => {
+      saveApplicationForUser: (data, user) => saveApplicationForUser(data, user)
+    }
+    if (unitMode) patchDeps.unitMode = true
+    const claimPendingPatchDep = dep('claimPendingPatch')
+    if (typeof claimPendingPatchDep === 'function') {
+      patchDeps.claimPendingPatch = claimPendingPatchDep
+    } else {
+      patchDeps.claimPendingPatch = async (patch) => {
         const current = await dep('byId')('date_application_patch', Number(patch.id))
         if (!current || current.status !== 'pending_confirmation') return false
         await dep('updateByDoc')('date_application_patch', current, { status: 'applying' })
         return true
-      })
-    })
+      }
+    }
+    const commitPreAcceptInvitationPatchDep = dep('commitPreAcceptInvitationPatch')
+    const commitPostAcceptApplicationPatchDep = dep('commitPostAcceptApplicationPatch')
+    if (typeof commitPreAcceptInvitationPatchDep === 'function') {
+      patchDeps.commitPreAcceptInvitationPatch = commitPreAcceptInvitationPatchDep
+    }
+    if (typeof commitPostAcceptApplicationPatchDep === 'function') {
+      patchDeps.commitPostAcceptApplicationPatch = commitPostAcceptApplicationPatchDep
+    }
+    return createDateApplicationPatchHandlers(patchDeps)
   }
 
   async function maybeAdvanceSyntheticPartner(coordination, options = {}) {

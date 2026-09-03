@@ -52,6 +52,7 @@ module.exports = {
   date_coordination_event: 'date_coordination_events',
   user_identity_tag: 'user_identity_tags',
   coordination_notification: 'coordination_notifications',
+  coordination_notification_dedupe: 'coordination_notification_dedupes',
   user_notification_cursor: 'user_notification_cursors',
   match_experience_feedback: 'match_experience_feedback',
   date_experience_feedback: 'date_experience_feedback',

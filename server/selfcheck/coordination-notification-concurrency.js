@@ -1,6 +1,7 @@
 const assert = require('assert')
 const fs = require('fs')
 const path = require('path')
+const crypto = require('crypto')
 const {
   buildInAppNotification,
   isNotificationStale,
@@ -16,6 +17,18 @@ const {
   buildResumeSummary,
   chooseAdjustmentParty
 } = require('../../miniprogram/cloudfunctions/api/lib/coordinationConcurrency')
+const { notifyInbox } = require('../../miniprogram/cloudfunctions/api/lib/coordinationInbox')
+
+function createBarrier(size) {
+  let count = 0
+  let release
+  const ready = new Promise((resolve) => { release = resolve })
+  return async function enter() {
+    count += 1
+    if (count >= size) release()
+    await ready
+  }
+}
 
 async function main() {
   const note = buildInAppNotification({
@@ -92,6 +105,107 @@ async function main() {
   const reportWxml = fs.readFileSync(path.join(__dirname, '../../miniprogram/pages/match-detail/match-detail.wxml'), 'utf8')
   assert(reportWxml.includes('AI 生成内容，仅供参考'))
   assert(reportWxml.includes('reportPresentation'))
+
+  const tables = {
+    coordination_notification: [],
+    user_notification_cursor: [],
+    coordination_notification_dedupe: []
+  }
+  let nextId = 1
+  const now = () => new Date('2026-09-03T12:00:00.000Z')
+  const barrier = createBarrier(2)
+  const input = {
+    coordination: { id: 12, coordination_version: 10 },
+    user_id: 3,
+    event_type: 'PROPOSAL_READY',
+    coordination_version: 10,
+    title: '有新方案待确认',
+    body: '请打开约会协调页确认方案'
+  }
+
+  // Race-prone check-then-insert must fail under a shared barrier.
+  const raceDeps = {
+    first: async (name, query) => {
+      await barrier()
+      return (tables[name] || []).find((row) => Object.keys(query).every((key) => row[key] === query[key])) || null
+    },
+    addWithId: async (name, data) => {
+      const row = Object.assign({ id: nextId++, _id: `${name}_${nextId}` }, data)
+      tables[name].push(row)
+      return row
+    },
+    updateByDoc: async (_name, row, data) => Object.assign(row, data),
+    now,
+    config: { wechatEnabled: false, templateIds: [] },
+    sendSubscribeMessage: async () => ({ sent: false, reason: 'disabled' })
+  }
+  const raced = await Promise.all([
+    notifyInbox(input, raceDeps),
+    notifyInbox(input, raceDeps)
+  ])
+  assert.strictEqual(
+    tables.coordination_notification.length,
+    1,
+    `concurrent notifyInbox must keep one notification, got ${tables.coordination_notification.length}`
+  )
+  assert.strictEqual(raced.filter((item) => item.duplicate).length, 1)
+
+  // Atomic helper path: shared sync claim + barrier still yields one row.
+  tables.coordination_notification.length = 0
+  tables.user_notification_cursor.length = 0
+  tables.coordination_notification_dedupe.length = 0
+  nextId = 1
+  const barrier2 = createBarrier(2)
+  const claims = new Map()
+  const atomicDeps = {
+    first: async (name, query) => (tables[name] || []).find((row) => Object.keys(query).every((key) => row[key] === query[key])) || null,
+    addWithId: async (name, data) => {
+      const row = Object.assign({ id: nextId++, _id: `${name}_${nextId}` }, data)
+      tables[name].push(row)
+      return row
+    },
+    updateByDoc: async (_name, row, data) => Object.assign(row, data),
+    now,
+    config: { wechatEnabled: false, templateIds: [] },
+    sendSubscribeMessage: async () => ({ sent: false, reason: 'disabled' }),
+    createCoordinationNotificationOnce: async (notification) => {
+      await barrier2()
+      const key = String(notification.idempotency_key || '')
+      const digest = crypto.createHash('sha256').update(key).digest('hex')
+      const existingClaim = claims.get(digest)
+      if (existingClaim) {
+        const stored = await Promise.resolve(existingClaim)
+        return { created: false, notification: stored }
+      }
+      let resolveClaim
+      const claimPromise = new Promise((resolve) => { resolveClaim = resolve })
+      claims.set(digest, claimPromise)
+      const row = Object.assign({ id: nextId++, _id: `coordination_notification_${nextId}` }, notification, { read_at: null })
+      tables.coordination_notification.push(row)
+      tables.coordination_notification_dedupe.push({
+        _id: digest,
+        idempotency_key: key,
+        notification_id: row.id
+      })
+      resolveClaim(row)
+      claims.set(digest, row)
+      return { created: true, notification: row }
+    }
+  }
+  const [left, right] = await Promise.all([
+    notifyInbox(input, atomicDeps),
+    notifyInbox(input, atomicDeps)
+  ])
+  assert.strictEqual(tables.coordination_notification.length, 1)
+  assert.strictEqual([left, right].filter((item) => item.duplicate).length, 1)
+  assert.strictEqual(tables.coordination_notification_dedupe.length, 1)
+
+  const inboxSource = fs.readFileSync(path.join(__dirname, '../../miniprogram/cloudfunctions/api/lib/coordinationInbox.js'), 'utf8')
+  assert(inboxSource.includes('createCoordinationNotificationOnce'))
+  assert(!/idempotency_key && typeof deps\.first === 'function'/.test(inboxSource))
+  const dbSource = fs.readFileSync(path.join(__dirname, '../../miniprogram/cloudfunctions/api/lib/db.js'), 'utf8')
+  assert(dbSource.includes('async function createCoordinationNotificationOnce'))
+  assert(dbSource.includes('coordination_notification_dedupe'))
 
   console.log('PASS coordination concurrency + notification + UI contracts')
 }

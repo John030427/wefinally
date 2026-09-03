@@ -174,6 +174,8 @@ async function main() {
     unitMode: true,
     currentUser, first: db.first, list: db.list, byId: db.byId, addWithId: db.addWithId, updateByDoc: db.updateByDoc,
     claimPendingPatch: db.claimPendingPatch, now,
+    notifyInbox: writeInbox,
+    publishCoordinationEvent: publishEvent,
     env: Object.assign({}, process.env, { LANGGRAPH_ENABLED: 'false' }),
     generateDecision: chain([{
       intent: 'modify_date_application',
