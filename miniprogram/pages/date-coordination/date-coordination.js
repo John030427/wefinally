@@ -1,6 +1,49 @@
 const { get, post, put } = require('../../utils/request')
 const { API_PATHS } = require('../../utils/constants')
-const { createEmptyDateCoordinationForm, mergeCoordinationForm } = require('./formState')
+const { createEmptyDateCoordinationForm, mergeCoordinationForm, preserveArrivalHint } = require('./formState')
+const {
+  periodLabel,
+  coordinationStatusCopy,
+  coordinationResultBody
+} = require('../../utils/dateCoordinationLabels')
+
+const EMPTY_PRIMARY = { date: '', period: '', area: '', activity: '' }
+const PUBLIC_ERROR_COPY = {
+  STALE_INVITATION_VERSION: '对方刚刚更新了约会安排，请查看最新方案后再确认。',
+  INVALID_INVITATION_VERSION: '这份邀请已更新，请刷新后查看最新内容',
+  INVITATION_ALREADY_RESPONDED: '对方刚刚回应了邀请，请查看最新协调状态。',
+  INVITATION_EXPIRED: '本次约会邀请已结束，请查看最新状态。',
+  PRIMARY_PROPOSAL_REQUIRED: '请明确选择本次建议安排',
+  PRIMARY_PROPOSAL_INCOMPLETE: '当前建议安排不完整，请先补齐后再提交',
+  PRIMARY_RESOLUTION_REQUIRED: '请先选择本次建议安排',
+  INVALID_PRIMARY_SELECTION: '请重新选择本次建议安排',
+  STALE_COORDINATION_VERSION: '协调状态刚刚发生变化，请查看最新进度。',
+  UNSAFE_ARRIVAL_HINT: '到场识别提示包含不安全内容，请改成穿搭颜色或手持物',
+  UNSAFE_ARRIVAL_POSITION: '现场位置包含不安全内容，请只填写公共场所位置',
+  ACTIVITY_VENUE_CONFLICT: '活动场地与活动类型不一致，请重新填写',
+  COUNTER_OFFER_STALE: '对方刚更新了调整方案，请先看一下最新版本',
+  COORDINATION_FINALIZED: '本轮协调已结束，不能继续修改安排',
+  QA_RESET_CONFIRM_REQUIRED: '请先确认重置文案后再试',
+  QA_RESET_FORBIDDEN: '当前账号无权重置本轮协调'
+}
+const REFRESH_ERROR_CODES = {
+  STALE_INVITATION_VERSION: true,
+  INVALID_INVITATION_VERSION: true,
+  INVITATION_ALREADY_RESPONDED: true,
+  INVITATION_EXPIRED: true,
+  STALE_COORDINATION_VERSION: true,
+  COUNTER_OFFER_STALE: true,
+  COORDINATION_FINALIZED: true
+}
+
+function errorCodeOf(err) {
+  return String((err && (err.code || err.error || err.error_code || err.errorCode)) || '')
+}
+
+function publicErrorToast(err, fallback) {
+  const code = errorCodeOf(err)
+  return PUBLIC_ERROR_COPY[code] || (err && err.message) || fallback || '操作失败，请重试'
+}
 
 function dateText(date) {
   const y = date.getFullYear()
@@ -31,23 +74,24 @@ function buildCoordinationDisplay(coordination) {
   const role = String(coordination && coordination.role || '')
   const hasOwnApplication = Boolean(coordination && coordination.my_application)
   const vm = coordination && coordination.view_model ? coordination.view_model : {}
-  const labels = {
-    collecting_initiator: '填写第一次约会建议',
-    inviting_partner: role === 'invitee' ? '请回应邀请' : '等待对方回应',
+  const labels = Object.assign({}, {
+    collecting_initiator: coordinationStatusCopy('collecting_initiator'),
+    inviting_partner: role === 'invitee' ? '请回应邀请' : coordinationStatusCopy('inviting_partner'),
     collecting_preferences: role === 'initiator' && coordination.invitee_intent === 'coordinate' && !(coordination.participant_progress || []).find((item) => item.side === 'partner' && item.application_submitted)
       ? '对方正在补充安排'
-      : '双方协调中',
-    computing_overlap: processingStatus === 'processing' ? '处理中' : (processingStatus === 'failed' ? '处理失败' : '待处理'),
-    waiting_confirmations: '等待双方确认',
-    no_overlap: '还需要继续协调',
-    replanning: '请和AI协调员沟通',
-    arranged: '双方已确认',
-    invitation_declined: '对方暂未接受',
-    manual_handoff: '已转人工协助',
-    expired: '邀请已结束',
-    cancelled: '已结束',
-    closed: '已结束'
-  }
+      : coordinationStatusCopy('collecting_preferences'),
+    computing_overlap: processingStatus === 'processing' ? '处理中' : (processingStatus === 'failed' ? '处理失败' : coordinationStatusCopy('computing_overlap')),
+    waiting_confirmations: coordinationStatusCopy('waiting_confirmations'),
+    no_overlap: coordinationStatusCopy('no_overlap'),
+    replanning: coordinationStatusCopy('replanning'),
+    arranged: coordinationStatusCopy('arranged'),
+    invitation_declined: coordinationStatusCopy('invitation_declined'),
+    manual_handoff: coordinationStatusCopy('manual_handoff'),
+    expired: coordinationStatusCopy('expired'),
+    cancelled: coordinationStatusCopy('cancelled'),
+    closed: coordinationStatusCopy('closed'),
+    proposing: coordinationStatusCopy('proposing')
+  })
   const showCoordinatorCta = status === 'collecting_initiator'
     ? false
     : (vm.show_coordinator_cta !== undefined
@@ -125,13 +169,36 @@ function buildPrimaryOptions(form) {
   const slots = []
   ;(form.availability || []).forEach((item) => {
     ;(item.periods || []).forEach((period) => {
-      slots.push({ date: item.date, period, key: `${item.date}|${period}` })
+      slots.push({
+        date: item.date,
+        period,
+        periodText: periodLabel(period),
+        key: `${item.date}|${period}`
+      })
     })
   })
   const areas = form.areas || []
   const activities = form.activities || []
   const needsExplicit = slots.length > 1 || areas.length > 1 || activities.length > 1
   return { slots, areas, activities, needsExplicit }
+}
+
+function withPeriodTexts(form) {
+  const next = Object.assign({}, form || createEmptyDateCoordinationForm())
+  next.availability = (next.availability || []).map((item) => Object.assign({}, item, {
+    periodsText: (item.periods || []).map(periodLabel).filter(Boolean).join('、')
+  }))
+  return next
+}
+
+function serializeApplication(form) {
+  const payload = Object.assign({}, form || {})
+  payload.availability = (payload.availability || []).map((item) => ({
+    date: item.date,
+    periods: item.periods || []
+  }))
+  delete payload.periodsText
+  return payload
 }
 
 function syncPrimaryProposal(form, currentPrimary) {
@@ -208,44 +275,44 @@ Page({
       periods: {}
     },
     periodOptions: [
-      { value: 'morning', label: '🌤 上午' },
-      { value: 'afternoon', label: '☀️ 午后' },
-      { value: 'evening', label: '🌇 傍晚' },
-      { value: 'night', label: '🌙 晚上' }
+      { value: 'morning', label: '上午' },
+      { value: 'afternoon', label: '下午' },
+      { value: 'evening', label: '傍晚' },
+      { value: 'night', label: '晚上' }
     ],
     activityOptions: [
-      { value: '咖啡', label: '☕ 咖啡' },
-      { value: '吃饭', label: '🍽 吃饭' },
-      { value: '奶茶', label: '🧋 奶茶' },
-      { value: '散步', label: '🚶 散步' },
-      { value: '看展', label: '🖼 看展' },
-      { value: '电影', label: '🎬 电影' },
-      { value: '桌游', label: '🎲 桌游' }
+      { value: '咖啡', label: '咖啡' },
+      { value: '吃饭', label: '吃饭' },
+      { value: '奶茶', label: '奶茶' },
+      { value: '散步', label: '散步' },
+      { value: '看展', label: '看展' },
+      { value: '电影', label: '电影' },
+      { value: '桌游', label: '桌游' }
     ],
     budgetOptions: [
-      { value: 'under-50', label: '💵 50元以内' },
-      { value: '50-100', label: '💰 50-100元' },
-      { value: '100-200', label: '💳 100-200元' },
-      { value: 'over-200', label: '✨ 200元以上' },
-      { value: 'flexible', label: '🌈 灵活' }
+      { value: 'under-50', label: '50元以内' },
+      { value: '50-100', label: '50-100元' },
+      { value: '100-200', label: '100-200元' },
+      { value: 'over-200', label: '200元以上' },
+      { value: 'flexible', label: '灵活' }
     ],
     paymentOptions: [
-      { value: 'aa', label: '🤝 接受AA' },
-      { value: 'partner_pays', label: '🎁 希望对方请客' },
-      { value: 'self_pays', label: '🙋 我愿意请客' },
-      { value: 'flexible', label: '🌈 都可以' }
+      { value: 'aa', label: '接受AA' },
+      { value: 'partner_pays', label: '希望对方请客' },
+      { value: 'self_pays', label: '我愿意请客' },
+      { value: 'flexible', label: '都可以' }
     ],
     durationOptions: [
-      { value: 'about-1h', label: '⏱ 1小时左右' },
-      { value: '1-2h', label: '🕐 1-2小时' },
-      { value: '2-3h', label: '🕑 2-3小时' },
-      { value: 'flexible', label: '🌈 灵活' }
+      { value: 'about-1h', label: '1小时左右' },
+      { value: '1-2h', label: '1-2小时' },
+      { value: '2-3h', label: '2-3小时' },
+      { value: 'flexible', label: '灵活' }
     ],
     proposal: null,
     counterOfferCard: null,
-    acceptingCounterOffer: false,
-    submitting: false,
-    responding: false
+    pendingAction: '',
+    arrivalHintFocused: false,
+    lastServerArrivalHint: ''
   },
 
   onLoad(options) {
@@ -333,13 +400,26 @@ Page({
       || coordination.proposal
       || (coordination.proposals || [])[0]
       || null
-    const currentPlanCard = proposal
-      || (coordination.counter_offer_card && coordination.counter_offer_card.proposal_card)
-      || coordination.invitation_card
-      || null
+    const currentPlanCard = proposal || coordination.invitation_card || null
     const coordinationDisplay = buildCoordinationDisplay(coordination)
-    const form = mergeCoordinationForm(this.data.form, application, coordinationChanged)
-    const synced = syncPrimaryProposal(form, this.data.primaryProposal)
+    const serverArrivalHint = String(application.arrival_hint || '')
+    let form = mergeCoordinationForm(this.data.form, application, coordinationChanged)
+    form = preserveArrivalHint(form, this.data.form, {
+      focused: Boolean(this.data.arrivalHintFocused),
+      lastServerValue: this.data.lastServerArrivalHint || ''
+    })
+    form = withPeriodTexts(form)
+    const primaryBase = coordinationChanged ? EMPTY_PRIMARY : this.data.primaryProposal
+    const synced = syncPrimaryProposal(form, primaryBase)
+    const nextArrivalPosition = coordinationChanged
+      ? String(coordination.meeting_checkin && coordination.meeting_checkin.my_arrival_position || '')
+      : (this.data.arrivalPosition || String(coordination.meeting_checkin && coordination.meeting_checkin.my_arrival_position || ''))
+    const resultCard = coordination.view_model && coordination.view_model.result_card
+      ? Object.assign({}, coordination.view_model.result_card, {
+        body: coordination.view_model.result_card.body
+          || coordinationResultBody(coordination.status)
+      })
+      : null
     this.setData({
       coordinationId: String(id),
       coordination,
@@ -350,16 +430,18 @@ Page({
       showAcceptInvitation: Boolean(coordinationDisplay.showAcceptInvitation),
       showCoordinateInstead: Boolean(coordinationDisplay.showCoordinateInstead),
       showDecline: Boolean(coordinationDisplay.showDecline),
-      showApplicationForm: Boolean(coordinationDisplay.showApplicationForm) || Boolean(this.data.showOptionalForm && coordinationDisplay.showOptionalFullForm),
+      showApplicationForm: Boolean(coordinationDisplay.showApplicationForm) || Boolean(!coordinationChanged && this.data.showOptionalForm && coordinationDisplay.showOptionalFullForm),
       showOptionalFullForm: Boolean(coordinationDisplay.showOptionalFullForm),
+      showOptionalForm: coordinationChanged ? false : this.data.showOptionalForm,
       invitationCard: coordination.invitation_card || null,
       sharedCoordination: coordination.shared_coordination || null,
       counterOfferCard: coordination.counter_offer_card || null,
       proposalCard: proposal,
       currentPlanCard,
       meetingCheckin: coordination.meeting_checkin || null,
-      arrivalPosition: this.data.arrivalPosition || String(coordination.meeting_checkin && coordination.meeting_checkin.my_arrival_position || ''),
-      resultCard: coordination.view_model && coordination.view_model.result_card || null,
+      arrivalPosition: nextArrivalPosition,
+      lastServerArrivalHint: serverArrivalHint,
+      resultCard,
       coordinatorHeroText: coordinationDisplay.coordinatorHeroText,
       form,
       selection: buildSelection(form),
@@ -440,7 +522,7 @@ Page({
       const result = await get(`${API_PATHS.DATE_COORDINATIONS}/fixture-responses/${job.id}`, {}, { showError: false })
       this.applyFixtureSimulation(result)
     } catch (err) {
-      if (!isSilent) wx.showToast({ title: (err && err.message) || '刷新失败', icon: 'none' })
+      if (!isSilent) wx.showToast({ title: publicErrorToast(err, '刷新失败'), icon: 'none' })
     } finally {
       this.setData({ refreshingFixture: false })
     }
@@ -471,7 +553,7 @@ Page({
       const result = await get(`${API_PATHS.DATE_COORDINATIONS}/${this.data.coordinationId}`, {}, { showError: false })
       this.applyCoordination(normalizeCoordination(result))
     } catch (err) {
-      if (!isSilent) wx.showToast({ title: (err && err.message) || '刷新失败', icon: 'none' })
+      if (!isSilent) wx.showToast({ title: publicErrorToast(err, '刷新失败'), icon: 'none' })
     } finally {
       this.setData({ refreshingCoordination: false })
     }
@@ -495,7 +577,7 @@ Page({
           wx.showToast({ title: '本轮已重置', icon: 'success' })
           setTimeout(() => wx.navigateBack({ delta: 1 }), 500)
         } catch (err) {
-          wx.showToast({ title: (err && err.message) || '重置失败，请重试', icon: 'none', duration: 3000 })
+          wx.showToast({ title: publicErrorToast(err, '重置失败，请重试'), icon: 'none', duration: 3000 })
         } finally {
           this.setData({ resettingQaCoordination: false })
         }
@@ -511,11 +593,11 @@ Page({
       date: value,
       periods: previous && previous.periods && previous.periods.length ? [previous.periods[0]] : defaultSlot.periods
     }]
-    const nextForm = Object.assign({}, this.data.form, { availability: nextAvailability })
+    const nextForm = withPeriodTexts(Object.assign({}, this.data.form, { availability: nextAvailability }))
     const synced = syncPrimaryProposal(nextForm, this.data.primaryProposal)
     this.setData({
       selectedDate: value,
-      'form.availability': nextAvailability,
+      'form.availability': nextForm.availability,
       selection: buildSelection(nextForm),
       primaryProposal: synced.primaryProposal,
       primaryOptions: synced.primaryOptions
@@ -525,10 +607,10 @@ Page({
   removeAvailability(e) {
     const value = e.currentTarget.dataset.value
     const availability = (this.data.form.availability || []).filter((item) => item.date !== value)
-    const nextForm = Object.assign({}, this.data.form, { availability })
+    const nextForm = withPeriodTexts(Object.assign({}, this.data.form, { availability }))
     const synced = syncPrimaryProposal(nextForm, this.data.primaryProposal)
     this.setData({
-      'form.availability': availability,
+      'form.availability': nextForm.availability,
       selection: buildSelection(nextForm),
       primaryProposal: synced.primaryProposal,
       primaryOptions: synced.primaryOptions
@@ -542,10 +624,10 @@ Page({
       if (item.date !== date) return item
       return Object.assign({}, item, { periods: [period] })
     })
-    const nextForm = Object.assign({}, this.data.form, { availability })
+    const nextForm = withPeriodTexts(Object.assign({}, this.data.form, { availability }))
     const synced = syncPrimaryProposal(nextForm, this.data.primaryProposal)
     this.setData({
-      'form.availability': availability,
+      'form.availability': nextForm.availability,
       selection: buildSelection(nextForm),
       primaryProposal: synced.primaryProposal,
       primaryOptions: synced.primaryOptions
@@ -613,11 +695,11 @@ Page({
         ? Object.assign({}, item, { periods: [period] })
         : item
     ))
-    const nextForm = Object.assign({}, this.data.form, { start_time: startTime, availability })
+    const nextForm = withPeriodTexts(Object.assign({}, this.data.form, { start_time: startTime, availability }))
     const synced = syncPrimaryProposal(nextForm, this.data.primaryProposal)
     this.setData({
       'form.start_time': startTime,
-      'form.availability': availability,
+      'form.availability': nextForm.availability,
       selection: buildSelection(nextForm),
       primaryProposal: synced.primaryProposal,
       primaryOptions: synced.primaryOptions
@@ -632,6 +714,20 @@ Page({
     this.setData({ arrivalPosition: e.detail.value })
   },
 
+  onArrivalHintFocus() {
+    this.setData({ arrivalHintFocused: true })
+  },
+
+  onArrivalHintBlur() {
+    this.setData({ arrivalHintFocused: false })
+  },
+
+  notifyActionError(err, fallback) {
+    const code = errorCodeOf(err)
+    wx.showToast({ title: publicErrorToast(err, fallback), icon: 'none', duration: 3000 })
+    if (REFRESH_ERROR_CODES[code]) this.refreshCoordination()
+  },
+
   async updateArrivalHint() {
     if (!this.data.form.arrival_hint) {
       wx.showToast({ title: '请先填写到场识别提示', icon: 'none' })
@@ -641,8 +737,8 @@ Page({
   },
 
   async submitMeetingAction(action, extra) {
-    if (!this.data.coordinationId || this.data.submitting) return
-    this.setData({ submitting: true })
+    if (!this.data.coordinationId || this.data.pendingAction) return
+    this.setData({ pendingAction: action })
     try {
       const result = await post(`${API_PATHS.DATE_COORDINATIONS}/${this.data.coordinationId}/meeting-check-in`, Object.assign({ action }, extra || {}), { showError: false })
       this.setData({ meetingCheckin: result })
@@ -655,9 +751,9 @@ Page({
       }[action] || '状态已更新'
       wx.showToast({ title: message, icon: action === 'mismatch' ? 'none' : 'success', duration: 2500 })
     } catch (err) {
-      wx.showToast({ title: (err && err.message) || '操作失败，请重试', icon: 'none', duration: 3000 })
+      this.notifyActionError(err, '操作失败，请重试')
     } finally {
-      this.setData({ submitting: false })
+      this.setData({ pendingAction: '' })
     }
   },
 
@@ -678,10 +774,10 @@ Page({
   },
 
   async respondInvitation(e) {
-    if (this.data.responding) return
+    if (this.data.pendingAction) return
     const decision = String(e.currentTarget.dataset.decision || '')
     if (!['accept', 'coordinate', 'decline'].includes(decision)) return
-    this.setData({ responding: true })
+    this.setData({ pendingAction: decision })
     try {
       const payload = {
         decision,
@@ -695,22 +791,9 @@ Page({
       this.applyCoordination(normalizeCoordination(result))
       if (decision === 'coordinate') this.goCoordinator()
     } catch (err) {
-      const code = err && (err.code || err.error_code || err.errorCode)
-      const message = (err && err.message) || '操作失败，请重试'
-      if (code === 'STALE_INVITATION_VERSION' || /刚刚更新了约会安排|请查看最新方案/.test(message)) {
-        wx.showToast({ title: '对方刚刚更新了约会安排，请查看最新方案后再确认。', icon: 'none', duration: 3000 })
-        this.refreshCoordination()
-      } else if (code === 'INVITATION_EXPIRED' || /暂未得到回应|邀请已结束/.test(message)) {
-        wx.showToast({ title: '本次约会邀请已结束，请查看最新状态。', icon: 'none', duration: 3000 })
-        this.refreshCoordination()
-      } else if (code === 'INVITATION_ALREADY_RESPONDED' || /刚刚回应了邀请|查看最新协调状态/.test(message)) {
-        wx.showToast({ title: '对方刚刚回应了邀请，请查看最新协调状态。', icon: 'none', duration: 3000 })
-        this.refreshCoordination()
-      } else {
-        wx.showToast({ title: message, icon: 'none', duration: 3000 })
-      }
+      this.notifyActionError(err, '操作失败，请重试')
     } finally {
-      this.setData({ responding: false })
+      this.setData({ pendingAction: '' })
     }
   },
 
@@ -723,7 +806,7 @@ Page({
   },
 
   async submitApplication() {
-    if (this.data.submitting) return
+    if (this.data.pendingAction) return
     if (!this.data.form.availability.length || !this.data.form.areas.length || !this.data.form.activities.length ||
       !this.data.form.budget || !this.data.form.payment_preference || !this.data.form.duration ||
       !this.data.form.start_time || !this.data.form.activity_venue) {
@@ -763,19 +846,19 @@ Page({
         payment_preference: this.data.form.payment_preference
       }
     }
-    this.setData({ submitting: true })
+    this.setData({ pendingAction: 'submit' })
     try {
       if (this.fixtureDraft && this.data.coordination && this.data.coordination.test_simulation) {
         const result = await post(`${API_PATHS.DATE_COORDINATIONS}/fixture-applications`, {
           match_log_id: this.fixtureDraft.match_log_id,
           match_user_id: this.fixtureDraft.match_user_id,
-          application: this.data.form
+          application: serializeApplication(this.data.form)
         }, { showError: false })
         this.applyFixtureSimulation(result)
         wx.showToast({ title: '约会申请已提交', icon: 'success' })
         return
       }
-      const payload = Object.assign({}, this.data.form)
+      const payload = serializeApplication(this.data.form)
       if (invitationPrimaryProposal) {
         payload.invitation_primary_proposal = invitationPrimaryProposal
       }
@@ -786,9 +869,9 @@ Page({
         icon: 'success'
       })
     } catch (err) {
-      wx.showToast({ title: (err && err.message) || '提交失败，请重试', icon: 'none' })
+      this.notifyActionError(err, '提交失败，请重试')
     } finally {
-      this.setData({ submitting: false })
+      this.setData({ pendingAction: '' })
     }
   },
 
@@ -798,8 +881,8 @@ Page({
 
   async acceptCounterOffer() {
     const offer = this.data.counterOfferCard
-    if (!offer || this.data.acceptingCounterOffer) return
-    this.setData({ acceptingCounterOffer: true })
+    if (!offer || this.data.pendingAction) return
+    this.setData({ pendingAction: 'accept' })
     try {
       const result = await post(`${API_PATHS.DATE_COORDINATIONS}/${this.data.coordinationId}/counter-offer/accept`, {
         coordination_version: Number(offer.coordination_version || this.data.coordination.coordination_version),
@@ -808,10 +891,9 @@ Page({
       this.applyCoordination(normalizeCoordination(result))
       wx.showToast({ title: '已接受调整，正在生成方案', icon: 'success' })
     } catch (err) {
-      wx.showToast({ title: (err && err.message) || '接受失败，请刷新后重试', icon: 'none', duration: 3000 })
-      this.refreshCoordination(true)
+      this.notifyActionError(err, '接受失败，请刷新后重试')
     } finally {
-      this.setData({ acceptingCounterOffer: false })
+      this.setData({ pendingAction: '' })
     }
   },
 
@@ -820,8 +902,8 @@ Page({
   },
 
   async respondToProposal(decision) {
-    if (!this.data.proposal || this.data.submitting) return
-    this.setData({ submitting: true })
+    if (!this.data.proposal || this.data.pendingAction) return
+    this.setData({ pendingAction: decision })
     try {
       const proposalId = this.data.proposal.id || this.data.proposal.proposal_id
       const result = await post(`${API_PATHS.DATE_COORDINATIONS}/${this.data.coordinationId}/proposals/${proposalId}/confirm`, {
@@ -831,36 +913,36 @@ Page({
       this.applyCoordination(normalizeCoordination(result))
       if (decision === 'reject') this.goCoordinator()
     } catch (err) {
-      wx.showToast({ title: (err && err.message) || (decision === 'reject' ? '暂时无法继续协调' : '确认失败，请重试'), icon: 'none' })
+      this.notifyActionError(err, decision === 'reject' ? '暂时无法继续协调' : '确认失败，请重试')
     } finally {
-      this.setData({ submitting: false })
+      this.setData({ pendingAction: '' })
     }
   },
 
   async retryProcessing() {
-    if (!this.data.coordinationId || this.data.submitting) return
-    this.setData({ submitting: true })
+    if (!this.data.coordinationId || this.data.pendingAction) return
+    this.setData({ pendingAction: 'retry' })
     try {
       const result = await post(`${API_PATHS.DATE_COORDINATIONS}/${this.data.coordinationId}/retry-processing`, {}, { showError: false })
       this.applyCoordination(normalizeCoordination(result))
     } catch (err) {
-      wx.showToast({ title: (err && err.message) || '重新处理失败', icon: 'none' })
+      this.notifyActionError(err, '重新处理失败')
     } finally {
-      this.setData({ submitting: false })
+      this.setData({ pendingAction: '' })
     }
   },
 
   async recoordinate() {
-    if (this.data.submitting) return
-    this.setData({ submitting: true })
+    if (this.data.pendingAction) return
+    this.setData({ pendingAction: 'recoordinate' })
     try {
       const result = await post(`${API_PATHS.DATE_COORDINATIONS}/${this.data.coordinationId}/recoordinate`, {}, { showError: false })
       this.applyCoordination(normalizeCoordination(result))
       this.goCoordinator()
     } catch (err) {
-      wx.showToast({ title: (err && err.message) || '暂时无法重新协调', icon: 'none' })
+      this.notifyActionError(err, '暂时无法重新协调')
     } finally {
-      this.setData({ submitting: false })
+      this.setData({ pendingAction: '' })
     }
   },
 
@@ -872,7 +954,7 @@ Page({
       this.applyCoordination(normalizeCoordination(result))
       wx.showToast({ title: '已推进测试对象一步', icon: 'success' })
     } catch (err) {
-      wx.showToast({ title: (err && err.message) || '暂时无法推进测试对象', icon: 'none' })
+      wx.showToast({ title: publicErrorToast(err, '暂时无法推进测试对象'), icon: 'none' })
     } finally {
       this.setData({ advancingSynthetic: false })
     }

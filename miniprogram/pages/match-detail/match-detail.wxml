@@ -64,6 +64,7 @@
           <text class="summary-dot caution"></text><text>{{item}}</text>
         </view>
       </view>
+      <view class="summary-ai-note" wx:if="{{matchSummary.hasAiText}}">含 AI 生成内容，仅供参考</view>
     </view>
 
     <view class="report-card card" wx:if="{{!detail.locked}}">

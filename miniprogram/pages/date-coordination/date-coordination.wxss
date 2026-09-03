@@ -103,6 +103,7 @@
 .compact-btn {
   width: 100%;
   margin-top: 20rpx;
+  min-height: var(--wf-touch-min);
 }
 
 .processing-card {
@@ -383,7 +384,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 66rpx;
+  min-height: var(--wf-touch-min);
   padding: 8rpx 20rpx;
   border: 2rpx solid #f1ecee;
   border-radius: 30rpx;
@@ -423,8 +424,14 @@
 }
 
 .remove-date {
+  min-height: var(--wf-touch-min);
+  padding: 16rpx 20rpx;
+  margin: -16rpx -20rpx -16rpx 0;
   color: #ff6b8a;
   font-weight: 400;
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
 }
 
 .selected-periods {
@@ -491,12 +498,17 @@
 .outline-btn {
   flex: 1;
   min-width: 200rpx;
-  height: 78rpx;
-  line-height: 78rpx;
+  min-height: var(--wf-touch-min);
+  height: auto;
+  line-height: 1.3;
   margin: 0;
-  padding: 0 20rpx;
+  padding: 18rpx 20rpx;
   border-radius: 39rpx;
   font-size: 27rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
 }
 
 .primary-btn {
@@ -619,22 +631,25 @@
 }
 
 .fact-mark {
-  width: 36rpx;
-  flex: 0 0 36rpx;
-  font-size: 28rpx;
+  width: 16rpx;
+  height: 16rpx;
+  flex: 0 0 16rpx;
+  margin-top: 12rpx;
+  border-radius: 50%;
+  background: var(--wf-color-warning);
 }
 
 .fact-mark.ok {
-  color: #2f9d63;
+  background: var(--wf-color-success);
 }
 
 .fact-mark.warn {
-  color: #c48a2a;
+  background: var(--wf-color-warning);
 }
 
 .fact-label {
-  width: 120rpx;
-  flex: 0 0 120rpx;
+  min-width: 120rpx;
+  flex: 0 0 auto;
   color: #888;
   font-size: 25rpx;
 }
@@ -648,9 +663,14 @@
 
 .text-btn {
   margin-top: 12rpx;
+  min-height: var(--wf-touch-min);
   background: transparent;
   color: #8b7c80;
   font-size: 26rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
 }
 
 .optional-form-entry {
@@ -696,7 +716,8 @@
 
 .qa-reset-btn {
   flex: 0 0 184rpx;
-  height: 88rpx;
+  min-height: var(--wf-touch-min);
+  height: auto;
   margin: 0;
   padding: 0 20rpx;
   border: 1rpx solid var(--wf-warning, #E8A23D);
@@ -704,7 +725,17 @@
   background: #FFFFFF;
   color: #9A6A1E;
   font-size: 26rpx;
-  line-height: 88rpx;
+  line-height: 1.3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
 }
 
 .qa-reset-btn::after { border: 0; }
+
+.qa-advance-btn {
+  width: 100%;
+  margin-top: 16rpx;
+  flex: none;
+}

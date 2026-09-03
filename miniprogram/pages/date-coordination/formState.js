@@ -18,4 +18,15 @@ function mergeCoordinationForm(currentForm, application, coordinationChanged) {
   })
 }
 
-module.exports = { createEmptyDateCoordinationForm, mergeCoordinationForm }
+function preserveArrivalHint(nextForm, currentForm, options) {
+  const form = nextForm && typeof nextForm === 'object' ? nextForm : createEmptyDateCoordinationForm()
+  const focused = Boolean(options && options.focused)
+  const lastServerValue = String((options && options.lastServerValue) || '')
+  const localHint = String((currentForm && currentForm.arrival_hint) || '')
+  if (focused || (localHint && localHint !== lastServerValue)) {
+    form.arrival_hint = localHint
+  }
+  return form
+}
+
+module.exports = { createEmptyDateCoordinationForm, mergeCoordinationForm, preserveArrivalHint }

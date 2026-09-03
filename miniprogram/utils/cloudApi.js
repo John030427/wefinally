@@ -19,7 +19,7 @@ function callApi(action, payload = {}, options = {}) {
     const result = res && res.result
     if (!result || result.success === false) {
       const err = new Error((result && (result.message || result.error)) || '服务暂时不可用，请稍后重试')
-      err.code = result && result.code
+      err.code = result && (result.code || result.error)
       err.type = 'cloud-api'
       throw err
     }

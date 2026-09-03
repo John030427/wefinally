@@ -200,17 +200,14 @@ function buildMatchSummary(detail) {
         .map((item) => `${item.label}需要进一步确认`)
     )
   ).slice(0, 3)
-  const limitations = uniqueText(
-    report.data_limitations
-      || report.dataLimitations
-      || scoreDetail.data_limitations
-      || scoreDetail.dataLimitations
-      || []
-  ).slice(0, 3)
   return {
     strengths: strengths.length ? strengths : ['基础条件通过双方硬性筛选'],
     confirmations: confirmations.length ? confirmations : ['仍需通过真实沟通确认相处感受'],
-    limitations: limitations.length ? limitations : ['结果来自已填写资料，不代表现实关系结论']
+    hasAiText: Boolean((report.strengths && report.strengths.length)
+      || (report.differences && report.differences.length)
+      || (report.risks && report.risks.length)
+      || report.summary
+      || report.ai_report_text)
   }
 }
 

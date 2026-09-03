@@ -4,6 +4,31 @@ page {
   font-size: 28rpx;
   line-height: 1.5;
   box-sizing: border-box;
+  --wf-color-primary: #ff6b8a;
+  --wf-color-success: #4caf87;
+  --wf-color-warning: #e8a23d;
+  --wf-primary: #e8637f;
+  --wf-primary-soft: #f9dee4;
+  --wf-primary-strong: #d14d6b;
+  --wf-success: #4caf87;
+  --wf-warning: #e8a23d;
+  --wf-danger: #d9534f;
+  --wf-card: #ffffff;
+  --wf-bg: #faf6f4;
+  --wf-border: #f0e4e4;
+  --wf-text-main: #3a2e2e;
+  --wf-text-sub: #8c7b7b;
+  --wf-text-hint: #b5a5a5;
+  --wf-ai-tag: #7b6cc8;
+  --wf-shadow-card: 0 6rpx 24rpx rgba(214, 116, 140, 0.08);
+  --wf-radius-card: 24rpx;
+  --wf-radius-sm: 12rpx;
+  --wf-radius-md: 16rpx;
+  --wf-radius-lg: 24rpx;
+  --wf-fs-tiny: 20rpx;
+  --wf-fs-caption: 24rpx;
+  --wf-fs-body: 28rpx;
+  --wf-touch-min: 88rpx;
 }
 
 .container {
@@ -141,9 +166,14 @@ page {
 .state-btn {
   font-size: 28rpx;
   color: #ff6b8a;
+  min-height: var(--wf-touch-min);
   padding: 16rpx 48rpx;
   border: 2rpx solid #ff6b8a;
   border-radius: 48rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
 }
 
 .tag {

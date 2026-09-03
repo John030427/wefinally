@@ -1,6 +1,7 @@
 const { get, post } = require('../../utils/request')
 const { API_PATHS } = require('../../utils/constants')
 const { formatDate } = require('../../utils/util')
+const { formatPatchValue } = require('../../utils/dateCoordinationLabels')
 const {
   AGENT_TYPES,
   MIN_LOADER_MS,
@@ -32,14 +33,6 @@ const PATCH_FIELD_LABELS = {
   activity_venue: '活动场地',
   meet_point: '初步会合范围',
   arrival_hint: '到场识别提示'
-}
-
-function formatPatchValue(value) {
-  if (Array.isArray(value)) return value.map(formatPatchValue).filter(Boolean).join('、') || '未设置'
-  if (value && typeof value === 'object') {
-    return Object.keys(value).map((key) => formatPatchValue(value[key])).filter(Boolean).join('、') || '未设置'
-  }
-  return value === undefined || value === null || value === '' ? '未设置' : String(value)
 }
 
 function normalizeResolutionFields(resolution) {
@@ -104,8 +97,8 @@ function normalizePatchPreview(raw, requiresConfirmation) {
     confirmLabel: partialOverride ? '确认这些调整' : ((patch.operation || 'modify') === 'create' ? '确认发送' : '确认修改'),
     cancelLabel: partialOverride ? '重新说明' : ((patch.operation || 'modify') === 'create' ? '暂不发送' : '暂不修改'),
     changes: preview.changed_fields.map((field) => {
-      let before = formatPatchValue(preview.before && preview.before[field])
-      let after = formatPatchValue(preview.after && preview.after[field])
+      let before = formatPatchValue(field, preview.before && preview.before[field])
+      let after = formatPatchValue(field, preview.after && preview.after[field])
       if (field === 'payment_preference' && preview.primary_payment_changed) {
         before = preview.primary_payment_before_text || before
         after = preview.primary_payment_after_text || after
@@ -252,6 +245,8 @@ Page({
     coordinatorReadOnly: false,
     coordinatorMeetingMode: false,
     patchSubmitting: false,
+    historyError: false,
+    errorMsg: '',
     supportCode: '',
     supportCodeState: 'loading',
     supportCodeError: ''
@@ -479,7 +474,13 @@ Page({
       if (this.data.agentType === AGENT_TYPES.PLATFORM_SERVICE) {
         try {
           messages = await this.loadLegacyHistory()
-        } catch (legacyErr) {}
+        } catch (legacyErr) {
+          this.setData({ pageState: 'error', historyError: true, errorMsg: '聊天记录加载失败，请重试' })
+          return
+        }
+      } else {
+        this.setData({ pageState: 'error', historyError: true, errorMsg: '聊天记录加载失败，请重试' })
+        return
       }
     }
     if (!messages.length) {
@@ -809,7 +810,7 @@ Page({
     if (code === 'INVITATION_EXPIRED' || /暂未得到回应|邀请已结束/.test(message)) {
       wx.showToast({ title: '本次约会邀请已结束，请查看最新状态。', icon: 'none', duration: 3000 })
       if (this.data.coordinationId) {
-        wx.navigateTo({
+        wx.redirectTo({
           url: `/pages/date-coordination/date-coordination?id=${this.data.coordinationId}`
         })
       }
@@ -825,7 +826,7 @@ Page({
       || /刚刚回应了邀请|刚刚更新了约会安排|协调状态刚刚发生变化|请查看最新/.test(message)) {
       wx.showToast({ title: '协调状态刚刚发生变化，请查看最新进度。', icon: 'none', duration: 3000 })
       if (this.data.coordinationId) {
-        wx.navigateTo({
+        wx.redirectTo({
           url: `/pages/date-coordination/date-coordination?id=${this.data.coordinationId}`
         })
       }
