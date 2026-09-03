@@ -380,6 +380,11 @@ async function main() {
   assert(meetingSource.includes('safeDigest(hint)'))
   assert(!/idempotency_suffix: action === 'set_arrival_hint'\s*\n\s*\? hint/.test(meetingSource))
 
+  assert(agentSource.includes("area_hint: '已确认的大致区域或商圈"))
+  assert(agentSource.includes("activity_detail: '已确认的活动或餐饮类型"))
+  assert(agentSource.includes('区域或活动类型可以先形成待完善邀请'))
+  assert(agentSource.includes('最终确认仍必须补齐具体门店'))
+
   const appWxss = read('miniprogram/app.wxss')
   const usedTokens = new Set()
   for (const file of [

@@ -1,6 +1,7 @@
 const assert = require('assert')
 const { createAgentHandlers } = require('../../miniprogram/cloudfunctions/api/handlers/agent')
 const { AGENT_TYPES } = require('../../miniprogram/cloudfunctions/api/agent/types')
+const { buildDateCoordinationGraphInput } = require('../../miniprogram/cloudfunctions/api/agent/dateCoordinationGraphState')
 
 function fakeDeps() {
   const tables = {
@@ -283,6 +284,38 @@ function fakeDeps() {
 }
 
 async function main() {
+  const venueGraph = buildDateCoordinationGraphInput({
+    id: 500,
+    user_a_id: 1,
+    user_b_id: 2,
+    status: 'inviting_partner',
+    coordination_version: 1
+  }, [{
+    user_id: 1,
+    coordination_version: 1,
+    application: {
+      availability: [{ date: '2026-07-18', periods: ['afternoon'] }],
+      areas: ['龙岗区'],
+      activities: ['吃饭'],
+      budget: '100-200',
+      payment_preference: 'aa',
+      duration: '1-2h',
+      start_time: '16:00',
+      area_hint: '大运中心',
+      activity_detail: '椰子鸡',
+      activity_venue: '',
+      venue_resolution: {
+        status: 'needs_specific_venue',
+        missing_fields: ['activity_venue']
+      }
+    }
+  }], { id: 1 })
+  assert.strictEqual(venueGraph.partyAState.venueStatus, 'needs_specific_venue')
+  assert.strictEqual(venueGraph.partyAState.areaHint, '大运中心')
+  assert.strictEqual(venueGraph.partyAState.activityDetail, '椰子鸡')
+  assert.deepStrictEqual(venueGraph.partyAState.missingFields, ['activity_venue'])
+  assert.strictEqual(JSON.stringify(venueGraph).includes('openid'), false)
+
   const deps = fakeDeps()
   const handlers = createAgentHandlers(deps)
   const contextA = { OPENID: 'user-a' }

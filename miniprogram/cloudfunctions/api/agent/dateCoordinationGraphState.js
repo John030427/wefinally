@@ -44,7 +44,15 @@ function budgetBand(value) {
 }
 
 function emptyPreference() {
-  return { dateWindows: [], regions: [], venueTypes: [] }
+  return {
+    dateWindows: [],
+    regions: [],
+    venueTypes: [],
+    venueStatus: '',
+    areaHint: '',
+    activityDetail: '',
+    missingFields: []
+  }
 }
 
 function safePreference(application) {
@@ -52,7 +60,15 @@ function safePreference(application) {
   const result = {
     dateWindows: dateWindows(source.availability),
     regions: uniqueStrings(source.areas, 8, 40),
-    venueTypes: uniqueStrings(source.activities, 8, 32)
+    venueTypes: uniqueStrings(source.activities, 8, 32),
+    venueStatus: String(source.venue_resolution && source.venue_resolution.status || ''),
+    areaHint: String(source.area_hint || '').slice(0, 80),
+    activityDetail: String(source.activity_detail || '').slice(0, 80),
+    missingFields: uniqueStrings(
+      source.venue_resolution && source.venue_resolution.missing_fields,
+      4,
+      40
+    )
   }
   const duration = durationMinutes(source.duration)
   const budget = budgetBand(source.budget)
@@ -258,6 +274,8 @@ function buildDateCoordinationGraphInput(coordination, applications, user, optio
         activity_venue_text: invitationCard.activity_venue_text || '',
         meet_point_text: invitationCard.meet_point_text || '',
         meeting_ready: Boolean(invitationCard.meeting_ready),
+        venue_status: invitationCard.venue_status || '',
+        venue_guidance: invitationCard.venue_guidance || '',
         budget_text: invitationCard.budget_text,
         duration_text: invitationCard.duration_text,
         invitation_version: invitationCard.invitation_version
