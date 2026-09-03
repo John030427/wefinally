@@ -36,7 +36,7 @@ const { createAgentHandlers } = require('../../miniprogram/cloudfunctions/api/ha
 const { AGENT_TYPES } = require('../../miniprogram/cloudfunctions/api/agent/types')
 const { buildDateCoordinationGraphInput } = require('../../miniprogram/cloudfunctions/api/agent/dateCoordinationGraphState')
 const { advanceSyntheticPartner, resolveFixtureJourney } = require('../../miniprogram/cloudfunctions/api/lib/syntheticPartnerJourney')
-const { publishCoordinationEvent } = require('../../miniprogram/cloudfunctions/api/agent/dateCoordinationEvents')
+const { publishCoordinationEvent, attachMemoryIdempotentCreates } = require('../../miniprogram/cloudfunctions/api/agent/dateCoordinationEvents')
 const { TAB_INDEX_RECORDS, applyTabBadge } = require('../../miniprogram/utils/notificationBadge')
 
 const NOW = new Date('2026-07-12T08:00:00.000Z')
@@ -167,7 +167,7 @@ function memory(seed = {}) {
     now: () => new Date(NOW),
     invokeGraphFunction: async () => { throw new Error('graph disabled') }
   }
-  deps.publishCoordinationEvent = (input) => publishCoordinationEvent(input, deps)
+  deps.publishCoordinationEvent = (input) => publishCoordinationEvent(input, attachMemoryIdempotentCreates(deps))
   return deps
 }
 

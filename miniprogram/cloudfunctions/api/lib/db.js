@@ -1310,6 +1310,70 @@ async function createCoordinationNotificationOnce(notification = {}) {
   }))))
 }
 
+async function createRecordOnceInTransaction({
+  key,
+  dataCollection,
+  lockCollection,
+  prefix,
+  data,
+  missingTargetMessage,
+  hashConflictMessage,
+  missingKeyMessage
+}) {
+  const idempotencyKey = String(key || '')
+  if (!idempotencyKey) throw new Error(missingKeyMessage || `${prefix}缺少幂等键`)
+  const digest = crypto.createHash('sha256').update(idempotencyKey).digest('hex')
+  return withCollection(lockCollection, () => withCollection(dataCollection, () => db.runTransaction(async (rawTransaction) => {
+    const adapter = transactionAdapter(rawTransaction)
+    const existingLock = await adapter.byDocId(lockCollection, digest)
+    if (existingLock) {
+      if (existingLock.idempotency_key && String(existingLock.idempotency_key) !== idempotencyKey) {
+        throw new Error(hashConflictMessage || `${prefix}幂等键哈希冲突`)
+      }
+      const existing = existingLock.record_id
+        ? await adapter.byId(dataCollection, Number(existingLock.record_id))
+        : null
+      if (!existing) throw new Error(missingTargetMessage || `${prefix}幂等锁缺少目标记录`)
+      return { created: false, record: existing }
+    }
+    const stored = await adapter.addWithId(dataCollection, Object.assign({}, data), prefix || dataCollection)
+    await adapter.setByDocId(lockCollection, digest, {
+      idempotency_key: idempotencyKey,
+      record_id: Number(stored.id),
+      create_time: stored.create_time || now()
+    })
+    return { created: true, record: stored }
+  })))
+}
+
+async function createCoordinationEventOnce(eventRecord = {}) {
+  const result = await createRecordOnceInTransaction({
+    key: eventRecord.idempotency_key,
+    dataCollection: 'date_coordination_event',
+    lockCollection: 'date_coordination_event_dedupe',
+    prefix: 'date_coordination_event',
+    data: eventRecord,
+    missingKeyMessage: '协调事件缺少幂等键',
+    hashConflictMessage: '协调事件幂等键哈希冲突',
+    missingTargetMessage: '协调事件幂等锁缺少目标记录'
+  })
+  return { created: result.created, event: result.record }
+}
+
+async function createAgentMessageOnce(messageRecord = {}) {
+  const result = await createRecordOnceInTransaction({
+    key: messageRecord.coordination_event_key,
+    dataCollection: 'agent_message',
+    lockCollection: 'agent_message_dedupe',
+    prefix: 'agent_message',
+    data: messageRecord,
+    missingKeyMessage: '协调投影消息缺少幂等键',
+    hashConflictMessage: '协调投影消息幂等键哈希冲突',
+    missingTargetMessage: '协调投影消息幂等锁缺少目标记录'
+  })
+  return { created: result.created, message: result.record }
+}
+
 module.exports = {
   db,
   _,
@@ -1348,6 +1412,8 @@ module.exports = {
   commitInvitationResponse,
   claimDateCoordinationDraft,
   createCoordinationNotificationOnce,
+  createCoordinationEventOnce,
+  createAgentMessageOnce,
   commitPreAcceptInvitationPatch,
   commitPostAcceptApplicationPatch,
   authError,

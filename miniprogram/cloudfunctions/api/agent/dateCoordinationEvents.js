@@ -7,8 +7,68 @@ function defaultDeps() {
     first: db.first,
     list: db.list,
     addWithId: db.addWithId,
-    now: db.now
+    now: db.now,
+    createCoordinationEventOnce: db.createCoordinationEventOnce,
+    createAgentMessageOnce: db.createAgentMessageOnce
   }
+}
+
+function memoryCreateOnce(deps, {
+  claimsKey,
+  keyOf,
+  collection,
+  resultField,
+  missingKeyMessage
+}) {
+  if (!deps[claimsKey]) deps[claimsKey] = new Map()
+  return async function createOnce(record) {
+    const key = String(keyOf(record) || '')
+    if (!key) throw new Error(missingKeyMessage)
+    const claims = deps[claimsKey]
+    if (claims.has(key)) {
+      const stored = await Promise.resolve(claims.get(key))
+      if (!stored) throw new Error(`${collection}幂等锁缺少目标记录`)
+      return { created: false, [resultField]: stored }
+    }
+    let resolveClaim
+    const pending = new Promise((resolve) => { resolveClaim = resolve })
+    claims.set(key, pending)
+    try {
+      const stored = await deps.addWithId(collection, Object.assign({}, record), collection)
+      claims.set(key, stored)
+      resolveClaim(stored)
+      return { created: true, [resultField]: stored }
+    } catch (err) {
+      claims.delete(key)
+      resolveClaim(null)
+      throw err
+    }
+  }
+}
+
+function attachMemoryIdempotentCreates(deps) {
+  if (!deps || typeof deps.addWithId !== 'function') {
+    throw new Error('测试幂等依赖缺少 addWithId')
+  }
+  if (typeof deps.createCoordinationEventOnce !== 'function') {
+    deps.createCoordinationEventOnce = memoryCreateOnce(deps, {
+      claimsKey: '__coordEventClaims',
+      keyOf: (record) => record.idempotency_key,
+      collection: 'date_coordination_event',
+      resultField: 'event',
+      missingKeyMessage: '协调事件缺少幂等键'
+    })
+  }
+  if (typeof deps.createAgentMessageOnce !== 'function') {
+    deps.createAgentMessageOnce = memoryCreateOnce(deps, {
+      claimsKey: '__agentMessageClaims',
+      keyOf: (record) => record.coordination_event_key,
+      collection: 'agent_message',
+      resultField: 'message',
+      missingKeyMessage: '协调投影消息缺少幂等键'
+    })
+  }
+  return deps
 }
 
 function eventKey(coordination, event) {
@@ -87,31 +147,31 @@ async function ensureSession(deps, coordination, userId, options = {}) {
 
 async function publishCoordinationEvent(input = {}, overrides) {
   const deps = overrides || defaultDeps()
+  if (typeof deps.createCoordinationEventOnce !== 'function' || typeof deps.createAgentMessageOnce !== 'function') {
+    throw new Error('协调事件缺少原子幂等创建依赖')
+  }
   const coordination = input.coordination
   if (!coordination || !coordination.id) throw new Error('协调事件缺少任务')
   const event = Object.assign({}, input.event, {
     coordination_version: Number(input.event && input.event.coordination_version || coordination.coordination_version || 1)
   })
   const key = eventKey(coordination, event)
-  let created = false
-  let stored = await deps.first('date_coordination_event', { idempotency_key: key })
-  if (!stored) {
-    created = true
-    stored = await deps.addWithId('date_coordination_event', {
-      coordination_id: Number(coordination.id),
-      coordination_version: event.coordination_version,
-      event_type: String(event.event_type || 'coordination_updated'),
-      actor_user_id: Number(event.actor_user_id || 0),
-      idempotency_key: key,
-      shareable_summary: {
-        changed_dimensions: safeChangedDimensions(event.changed_dimensions)
-      },
-      safe_summary: {
-        stage: projectParticipantEvent(event, { viewer_user_id: 0 }).stage,
-        proposal_key: String(event.proposal && event.proposal.proposal_key || '')
-      }
-    }, 'date_coordination_event')
-  }
+  const createdEvent = await deps.createCoordinationEventOnce({
+    coordination_id: Number(coordination.id),
+    coordination_version: event.coordination_version,
+    event_type: String(event.event_type || 'coordination_updated'),
+    actor_user_id: Number(event.actor_user_id || 0),
+    idempotency_key: key,
+    shareable_summary: {
+      changed_dimensions: safeChangedDimensions(event.changed_dimensions)
+    },
+    safe_summary: {
+      stage: projectParticipantEvent(event, { viewer_user_id: 0 }).stage,
+      proposal_key: String(event.proposal && event.proposal.proposal_key || '')
+    }
+  })
+  const stored = createdEvent.event
+  const created = createdEvent.created === true
 
   const participants = [Number(coordination.user_a_id), Number(coordination.user_b_id)].filter((id) => id > 0)
   const messages = []
@@ -121,30 +181,34 @@ async function publishCoordinationEvent(input = {}, overrides) {
       partner_user_id: participants.find((id) => id !== userId) || 0
     })
     const messageKey = `${key}:user:${userId}`
-    let message = await deps.first('agent_message', { coordination_event_key: messageKey })
-    if (!message) {
-      const allowCreate = !TERMINAL_EVENT_TYPES.has(String(event.event_type || ''))
-      const session = await ensureSession(deps, coordination, userId, { allowCreate })
-      if (!session) continue
-      message = await deps.addWithId('agent_message', {
-        session_id: Number(session.id),
-        user_id: userId,
-        agent_type: 'date_coordinator',
-        coordination_id: Number(coordination.id),
-        coordination_version: event.coordination_version,
-        coordination_event_id: Number(stored.id || 0),
-        coordination_event_key: messageKey,
-        event_type: projection.event_type,
-        stage: projection.stage,
-        role: 'assistant',
-        sender_type: 'assistant',
-        content: projection.content,
-        coordination_update_card: safeCard(projection.card)
-      }, 'agent_message')
-    }
-    messages.push(message)
+    const allowCreate = !TERMINAL_EVENT_TYPES.has(String(event.event_type || ''))
+    const session = await ensureSession(deps, coordination, userId, { allowCreate })
+    if (!session) continue
+    const createdMessage = await deps.createAgentMessageOnce({
+      session_id: Number(session.id),
+      user_id: userId,
+      agent_type: 'date_coordinator',
+      coordination_id: Number(coordination.id),
+      coordination_version: event.coordination_version,
+      coordination_event_id: Number(stored.id || 0),
+      coordination_event_key: messageKey,
+      event_type: projection.event_type,
+      stage: projection.stage,
+      role: 'assistant',
+      sender_type: 'assistant',
+      content: projection.content,
+      coordination_update_card: safeCard(projection.card)
+    })
+    messages.push(createdMessage.message)
   }
   return { event: stored, messages, created, duplicate: !created }
 }
 
-module.exports = { eventKey, publishCoordinationEvent, ensureSession, safeChangedDimensions, safeCard }
+module.exports = {
+  eventKey,
+  publishCoordinationEvent,
+  ensureSession,
+  safeChangedDimensions,
+  safeCard,
+  attachMemoryIdempotentCreates
+}

@@ -75,7 +75,7 @@ function createDefaultServices(deps) {
   const { processCoordinationTasks } = require('../handlers/dateCoordinationWorker')
   const { createAgentHandlers } = require('../handlers/agent')
   const { generateDecision } = require('./provider')
-  const { publishCoordinationEvent } = require('./dateCoordinationEvents')
+  const { publishCoordinationEvent, attachMemoryIdempotentCreates } = require('./dateCoordinationEvents')
 
   const currentUser = async (context) => {
     const user = await deps.byId('user', Number(context && context.CONTROLLED_USER_ID || 0))
@@ -177,9 +177,9 @@ function createDefaultServices(deps) {
           }, 10),
           completeTask: deps.completeCoordinationProcessing,
           failTask: deps.failCoordinationProcessing,
-          publishCoordinationEvent: (input) => publishCoordinationEvent(input, {
-            first: deps.first, addWithId: suppressedAdd, now: deps.now
-          }),
+          publishCoordinationEvent: (input) => publishCoordinationEvent(input, attachMemoryIdempotentCreates({
+            first: deps.first, list: deps.list, addWithId: suppressedAdd, now: deps.now
+          })),
           now: deps.now
         }
       })

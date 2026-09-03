@@ -5,7 +5,7 @@ const { createDateCoordinationHandlers } = require('../../../../miniprogram/clou
 const { createDateApplicationPatchHandlers } = require('../../../../miniprogram/cloudfunctions/api/handlers/dateApplicationPatch')
 const { createAgentHandlers } = require('../../../../miniprogram/cloudfunctions/api/handlers/agent')
 const { createExperienceFeedbackHandlers } = require('../../../../miniprogram/cloudfunctions/api/handlers/experienceFeedback')
-const { publishCoordinationEvent } = require('../../../../miniprogram/cloudfunctions/api/agent/dateCoordinationEvents')
+const { publishCoordinationEvent, attachMemoryIdempotentCreates } = require('../../../../miniprogram/cloudfunctions/api/agent/dateCoordinationEvents')
 const { currentUserFactory } = require('./context')
 const { updateProfileForUser, saveMatchSetting } = require('./profileService')
 const { createAiProvider } = require('./aiProvider')
@@ -53,11 +53,12 @@ function createServices(db, options = {}) {
   const currentUser = currentUserFactory(db)
   const ai = createAiProvider(options)
 
-  const publishEvent = (input) => publishCoordinationEvent(input, {
+  const publishEvent = (input) => publishCoordinationEvent(input, attachMemoryIdempotentCreates({
     first: db.first.bind(db),
+    list: db.list.bind(db),
     addWithId: db.addWithId.bind(db),
     now: db.now.bind(db)
-  })
+  }))
 
   const invokeGraphFunction = options.invokeGraphFunction
     || ((name, payload) => ai.invokeGraphFunction(name, payload))

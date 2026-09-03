@@ -155,8 +155,8 @@ async function main() {
   const db = memoryDb()
   const currentUser = async (wx) => Promise.resolve(db.tables.user[wx.userIndex != null ? wx.userIndex : 0])
   const publishEvent = async (input) => {
-    const { publishCoordinationEvent } = require('../../miniprogram/cloudfunctions/api/agent/dateCoordinationEvents')
-    return publishCoordinationEvent(input, { first: db.first, addWithId: db.addWithId, now: db.now })
+    const { publishCoordinationEvent, attachMemoryIdempotentCreates } = require('../../miniprogram/cloudfunctions/api/agent/dateCoordinationEvents')
+    return publishCoordinationEvent(input, attachMemoryIdempotentCreates({ first: db.first, addWithId: db.addWithId, now: db.now }))
   }
   const writeInbox = async (input) => {
     const { notifyInbox } = require('../../miniprogram/cloudfunctions/api/lib/coordinationInbox')

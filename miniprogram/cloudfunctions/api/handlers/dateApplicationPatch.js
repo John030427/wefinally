@@ -8,7 +8,7 @@ const {
   shareableChangeCard,
   cleanChanges
 } = require('../lib/dateApplicationPatchPolicy')
-const { publishCoordinationEvent } = require('../agent/dateCoordinationEvents')
+const { publishCoordinationEvent, attachMemoryIdempotentCreates } = require('../agent/dateCoordinationEvents')
 const { canStartAnotherRound, enqueueProcessing } = require('../lib/dateCoordinationProcessingPolicy')
 const {
   canModifyApplication,
@@ -118,12 +118,12 @@ function createDateApplicationPatchHandlers(overrides = {}) {
   function dep(name) {
     if (Object.prototype.hasOwnProperty.call(overrides, name)) return overrides[name]
     if (name === 'publishCoordinationEvent' && unitMode) {
-      return (input) => publishCoordinationEvent(input, {
+      return (input) => publishCoordinationEvent(input, attachMemoryIdempotentCreates({
         first: overrides.first,
         list: overrides.list,
         addWithId: overrides.addWithId,
         now: overrides.now
-      })
+      }))
     }
     if (name === 'writeInboxNotification' && !overrides.writeInboxNotification && unitMode) {
       return (input) => {

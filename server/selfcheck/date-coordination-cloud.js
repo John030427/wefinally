@@ -4,7 +4,7 @@ const { createDateCoordinationHandlers, processCoordinationDeadlines } = require
 const { processCoordinationTasks } = require('../../miniprogram/cloudfunctions/api/handlers/dateCoordinationWorker')
 const { claimProcessingVersion, completeProcessingVersion } = require('../../miniprogram/cloudfunctions/api/lib/dateCoordinationProcessingPolicy')
 const { applyConfirmation } = require('../../miniprogram/cloudfunctions/api/lib/dateCoordinationPolicy')
-const { publishCoordinationEvent } = require('../../miniprogram/cloudfunctions/api/agent/dateCoordinationEvents')
+const { publishCoordinationEvent, attachMemoryIdempotentCreates } = require('../../miniprogram/cloudfunctions/api/agent/dateCoordinationEvents')
 const { createDateApplicationPatchHandlers } = require('../../miniprogram/cloudfunctions/api/handlers/dateApplicationPatch')
 
 const NOW = new Date('2026-07-12T08:00:00.000Z')
@@ -66,7 +66,7 @@ function memoryDeps(seed = {}) {
     },
     now: () => new Date(NOW)
   }
-  deps.publishCoordinationEvent = (input) => publishCoordinationEvent(input, deps)
+  deps.publishCoordinationEvent = (input) => publishCoordinationEvent(input, attachMemoryIdempotentCreates(deps))
   deps.commitConfirmation = (coordination, proposal, input) => {
     const execute = async () => {
       coordination = await deps.byId('date_coordination', coordination.id)

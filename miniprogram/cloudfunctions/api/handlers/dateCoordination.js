@@ -15,7 +15,7 @@ const {
   fixtureSceneBadge
 } = require('../lib/syntheticPartnerJourney')
 const { MAX_COORDINATION_ROUNDS, roundNumber, canStartAnotherRound, enqueueProcessing } = require('../lib/dateCoordinationProcessingPolicy')
-const { publishCoordinationEvent } = require('../agent/dateCoordinationEvents')
+const { publishCoordinationEvent, attachMemoryIdempotentCreates } = require('../agent/dateCoordinationEvents')
 const { publicState: publicMeetingState, applyMeetingCheckIn } = require('../lib/meetingCheckInService')
 const {
   buildStructuredCounterProposal,
@@ -410,12 +410,12 @@ function createDateCoordinationHandlers(overrides = {}) {
     if (Object.prototype.hasOwnProperty.call(overrides, name)) return overrides[name]
     if (name === 'env' && unitMode) return process.env
     if (name === 'publishCoordinationEvent' && unitMode) {
-      return (input) => publishCoordinationEvent(input, {
+      return (input) => publishCoordinationEvent(input, attachMemoryIdempotentCreates({
         first: overrides.first,
         list: overrides.list,
         addWithId: overrides.addWithId,
         now: overrides.now
-      })
+      }))
     }
     if (name === 'writeInboxNotification' && !overrides.writeInboxNotification && unitMode) {
       return (input) => {
