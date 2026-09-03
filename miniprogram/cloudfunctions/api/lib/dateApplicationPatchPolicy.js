@@ -5,6 +5,7 @@ const {
   DURATIONS,
   normalizeApplication
 } = require('./dateCoordinationPolicy')
+const { enrichChangesWithDerivedClears } = require('./dateApplicationDerivedFields')
 
 const PATCH_TOOL = 'create_date_application_patch'
 const PATCHABLE_FIELDS = Object.freeze([
@@ -107,7 +108,7 @@ function createPatchFromDecision(currentApplication, decision) {
   if (!decision || decision.intent !== 'modify_date_application') throw new Error('当前表达不是明确办理请求')
   const request = decision.tool_request || decision.toolRequest || {}
   if (request.tool !== PATCH_TOOL) throw new Error('工具不在允许列表中')
-  const changes = cleanChanges(request.arguments || {})
+  const changes = enrichChangesWithDerivedClears(currentApplication, cleanChanges(request.arguments || {}))
   const merged = Object.assign({}, currentApplication || {}, changes)
   normalizeApplication(merged, new Date())
   return { tool: PATCH_TOOL, changes }
@@ -118,7 +119,7 @@ function changedFields(before, after) {
 }
 
 function previewApplicationChange(currentApplication, changes, options = {}) {
-  const safeChanges = cleanChanges(changes)
+  const safeChanges = enrichChangesWithDerivedClears(currentApplication, cleanChanges(changes))
   const after = normalizeApplication(Object.assign({}, currentApplication || {}, safeChanges), options.now || new Date())
   const fields = changedFields(currentApplication || {}, after)
   if (!fields.length) throw new Error('修改前后没有变化')

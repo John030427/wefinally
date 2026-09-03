@@ -193,7 +193,11 @@ function buildDateCoordinationGraphInput(coordination, applications, user, optio
   const waitingInviteePreference = coordination.status === STATUS.COLLECTING_PREFERENCES && !inviteeApp
   let overlap = { proposals: [], missing_dimensions: waitingInviteePreference ? ['partner'] : ['partner'] }
   if (![STATUS.INVITING_PARTNER, STATUS.COLLECTING_INITIATOR].includes(coordination.status) && initiatorApp && inviteeApp) {
-    overlap = computeOverlap(initiatorApp.application, inviteeApp.application, { version })
+    overlap = computeOverlap(initiatorApp.application, inviteeApp.application, {
+      version,
+      user_a_id: coordination.user_a_id,
+      user_b_id: coordination.user_b_id
+    })
   }
   const canonicalOverlap = canonicalFromBackend(overlap, coordination.status, {
     waitingInviteePreference,

@@ -185,7 +185,7 @@ async function register(data, wxContext) {
       })
       const region = resolveRegion(data)
       const replayedAt = now()
-      const replayPatch = Object.assign(buildReplayCompletionPatch(data, replayedAt), {
+      const replayPatch = Object.assign(buildReplayCompletionPatch(data, replayedAt, existing), {
         qa_match_run_id: createQaMatchRunId(existing.id, replayedAt),
         qa_match_run_started_at: replayedAt,
         circle_id: occupation.circleId,
@@ -470,6 +470,7 @@ async function cancel(data, wxContext) {
   const taskRedaction = {
     status: 'cancelled',
     reports: null,
+    reports_json: null,
     input_snapshot: null,
     error_code: 'account_cancelled',
     error_message: '',

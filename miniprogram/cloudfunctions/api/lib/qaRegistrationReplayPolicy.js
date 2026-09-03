@@ -110,8 +110,8 @@ function buildReplayRequestPatch(data = {}, timestamp = new Date()) {
   }
 }
 
-function buildReplayCompletionPatch(data = {}, timestamp = new Date()) {
-  return {
+function buildReplayCompletionPatch(data = {}, timestamp = new Date(), user = {}) {
+  const patch = {
     gender: parseGender(data.gender),
     birth_year: Number(data.birth_year),
     height_range: data.height_range || '',
@@ -140,6 +140,8 @@ function buildReplayCompletionPatch(data = {}, timestamp = new Date()) {
     matched_at: null,
     last_match_setting_time: null
   }
+  if (!isInternalQaAccount(user)) patch.qa_test_run_enabled = false
+  return patch
 }
 
 function buildResetMatchSettingPatch() {

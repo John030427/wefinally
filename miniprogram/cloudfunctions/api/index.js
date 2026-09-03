@@ -29,6 +29,7 @@ const { rankCandidates } = require('./lib/matchPolicy')
 const { canUseFixtureForMatch } = require('./lib/testFixturePolicy')
 const cloudbaseAi = require('./lib/cloudbaseAi')
 const db = require('./lib/db')
+const { SAFE_PUBLIC_ERROR_CODES, declaredPublicCode } = require('./lib/publicErrorCodes')
 
 const ENV_ID = 'cloud1-d4gy8l52g08bba326'
 const MAX_RAG_BACKFILL_PAGES = 10
@@ -54,11 +55,6 @@ const SAFE_SMOKE_REASONS = new Set([
   'provider_error',
   'fallback_deterministic',
   'low_confidence'
-])
-const SAFE_PUBLIC_ERROR_CODES = new Set([
-  'INVALID_RAG_BACKFILL_REQUEST',
-  'INVALID_RAG_SMOKE_REQUEST',
-  'DATE_APPLICATION_INVALID'
 ])
 const SMOKE_PROFILE_FIELDS = [
   'id',
@@ -524,6 +520,16 @@ exports.main = async (event = {}) => {
         }
     }
   } catch (err) {
+    const publicCode = declaredPublicCode(err)
+    if (publicCode) {
+      const publicMessage = String(err.publicMessage || err.message || publicCode).slice(0, 40)
+      return {
+        success: false,
+        code: publicCode,
+        error: publicCode,
+        message: publicMessage
+      }
+    }
     const numericCode = Number(err && err.code)
     const code = numericCode === 403 ? 403 : (numericCode === 400 ? 400 : 500)
     const error = boundedPublicErrorCode(err, action, code)
@@ -531,9 +537,7 @@ exports.main = async (event = {}) => {
       success: false,
       code,
       error,
-      message: SAFE_PUBLIC_ERROR_CODES.has(String(err && err.publicCode || ''))
-        ? String(err.publicMessage || error)
-        : error
+      message: error
     }
   }
 }

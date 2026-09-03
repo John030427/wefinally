@@ -80,6 +80,9 @@ function claimProcessingVersion(coordination = {}, input = {}) {
 }
 
 function completeProcessingVersion(coordination = {}, input = {}) {
+  if (String(coordination.status || '') !== 'computing_overlap') {
+    return { applied: false, reason: 'status_changed', coordination: Object.assign({}, coordination) }
+  }
   const version = Number(input.version || 0)
   const token = String(input.token || '').trim()
   if (version !== Number(coordination.coordination_version || 0)
@@ -219,6 +222,18 @@ function projectParticipantEvent(event = {}, context = {}) {
     processing_failed: {
       stage: 'processing_failed',
       content: '协调方案暂时生成失败，系统会安全重试；如持续失败可联系人工客服。'
+    },
+    qa_coordination_reset: {
+      stage: 'qa_coordination_reset',
+      content: '本轮协调已由测试人员关闭，如需继续请重新发起邀请。'
+    },
+    coordination_closed: {
+      stage: 'coordination_closed',
+      content: '本轮协调已关闭'
+    },
+    coordination_expired: {
+      stage: 'coordination_expired',
+      content: '本次约会邀请暂未得到回应，协调已结束。'
     }
   }
   const selected = definitions[event.event_type] || {

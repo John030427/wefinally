@@ -10,13 +10,32 @@ const {
 } = require('./invitationCoordination')
 
 const DIMENSION_FIELDS = Object.freeze({
-  time: 'availability', area: 'areas', activity: 'activities', budget: 'budget',
-  payment: 'payment_preference', duration: 'duration'
+  time: 'availability',
+  area: 'areas',
+  activity: 'activities',
+  budget: 'budget',
+  payment: 'payment_preference',
+  duration: 'duration',
+  exact_time: 'start_time',
+  activity_venue: 'activity_venue'
 })
 const DIMENSION_LABELS = Object.freeze({
-  time: '时间', area: '区域', activity: '活动', budget: '预算', payment: '费用方式', duration: '时长'
+  time: '时间',
+  area: '区域',
+  activity: '活动',
+  budget: '预算',
+  payment: '费用方式',
+  duration: '时长',
+  exact_time: '具体时间',
+  activity_venue: '活动场地'
 })
-const DIMENSION_ORDER = Object.freeze(['time', 'area', 'activity', 'budget', 'payment', 'duration'])
+const DIMENSION_ORDER = Object.freeze([
+  'time', 'area', 'activity', 'budget', 'payment', 'duration', 'exact_time', 'activity_venue'
+])
+const IMPLIED_DIMENSIONS = Object.freeze({
+  exact_time: ['time'],
+  activity_venue: ['activity', 'area']
+})
 
 function timeSlots(application) {
   const slots = []
@@ -72,8 +91,12 @@ function changedDimensionsOf(coordination, applicationRow) {
 function candidateForDimension(dimension, application, ownerUserId, coordination) {
   if (dimension === 'time') {
     const slots = timeSlots(application)
-    return slots.length === 1 ? slots[0] : null
+    if (slots.length !== 1) return null
+    const start = String(application && application.start_time || '').trim()
+    return start ? Object.assign({}, slots[0], { start_time: start }) : slots[0]
   }
+  if (dimension === 'exact_time') return String(application && application.start_time || '').trim() || null
+  if (dimension === 'activity_venue') return String(application && application.activity_venue || '').trim() || null
   if (dimension === 'area') return exactlyOne(application && application.areas)
   if (dimension === 'activity') return exactlyOne(application && application.activities)
   if (dimension === 'budget') return String(application && application.budget || '').trim()
@@ -89,6 +112,8 @@ function candidateForDimension(dimension, application, ownerUserId, coordination
 function differsFromPrimary(dimension, candidate, primary) {
   if (!candidate) return false
   if (dimension === 'time') return candidate.date !== primary.date || candidate.period !== primary.period
+  if (dimension === 'exact_time') return String(candidate) !== String(primary.start_time || '')
+  if (dimension === 'activity_venue') return String(candidate) !== String(primary.activity_venue || '')
   if (dimension === 'area') return candidate !== primary.area
   if (dimension === 'activity') return candidate !== primary.activity
   if (dimension === 'budget') return candidate !== primary.budget
@@ -99,6 +124,8 @@ function differsFromPrimary(dimension, candidate, primary) {
 
 function valueText(dimension, value, coordination) {
   if (dimension === 'time') return displayTime(value)
+  if (dimension === 'exact_time') return String(value || '')
+  if (dimension === 'activity_venue') return String(value || '')
   if (dimension === 'budget') return BUDGET_LABELS[value] || value
   if (dimension === 'duration') return DURATION_LABELS[value] || value
   if (dimension === 'payment') {
@@ -108,7 +135,9 @@ function valueText(dimension, value, coordination) {
 }
 
 function primaryValue(dimension, primary) {
-  if (dimension === 'time') return { date: primary.date, period: primary.period }
+  if (dimension === 'time') return { date: primary.date, period: primary.period, start_time: primary.start_time || '' }
+  if (dimension === 'exact_time') return primary.start_time || ''
+  if (dimension === 'activity_venue') return primary.activity_venue || ''
   if (dimension === 'area') return primary.area
   if (dimension === 'activity') return primary.activity
   if (dimension === 'budget') return primary.budget
@@ -121,7 +150,11 @@ function applyCandidateToProposal(proposal, dimension, candidate) {
   if (dimension === 'time') {
     proposal.date = candidate.date
     proposal.period = candidate.period
-  } else if (dimension === 'area') proposal.area = candidate
+    if (candidate.start_time) proposal.start_time = candidate.start_time
+    else if (!proposal.start_time) proposal.start_time = ''
+  } else if (dimension === 'exact_time') proposal.start_time = String(candidate || '')
+  else if (dimension === 'activity_venue') proposal.activity_venue = String(candidate || '')
+  else if (dimension === 'area') proposal.area = candidate
   else if (dimension === 'activity') proposal.activity = candidate
   else if (dimension === 'budget') proposal.budget = candidate
   else if (dimension === 'duration') proposal.duration = candidate
@@ -129,6 +162,12 @@ function applyCandidateToProposal(proposal, dimension, candidate) {
     proposal.payment_mode = candidate.payment_mode
     proposal.payer_user_id = candidate.payer_user_id
   }
+}
+
+function dimensionCoveredByDeclared(dimension, declared) {
+  if (declared.includes(dimension)) return true
+  const impliedBy = IMPLIED_DIMENSIONS[dimension] || []
+  return impliedBy.some((item) => declared.includes(item))
 }
 
 function buildStructuredCounterProposal(input = {}) {
@@ -156,8 +195,15 @@ function buildStructuredCounterProposal(input = {}) {
   if (!isPrimaryProposalComplete(primary)) return null
 
   const declared = changedDimensionsOf(coordination, changedApplicationRow)
-  const relevant = DIMENSION_ORDER.filter((dimension) => missing.includes(dimension))
-  if (declared.length && relevant.some((dimension) => !declared.includes(dimension))) return null
+  const relevant = DIMENSION_ORDER.filter((dimension) => {
+    if (missing.includes(dimension)) return true
+    if (dimension === 'exact_time' && missing.includes('time')) {
+      const candidate = candidateForDimension(dimension, changedApplication, changedByUserId, coordination)
+      return Boolean(candidate && differsFromPrimary(dimension, candidate, primary))
+    }
+    return false
+  })
+  if (declared.length && relevant.some((dimension) => !dimensionCoveredByDeclared(dimension, declared))) return null
 
   const proposal = Object.assign({}, primary)
   const changes = []
@@ -186,7 +232,8 @@ function buildStructuredCounterProposal(input = {}) {
   const unchangedLabels = unchangedDimensions.map((dimension) => DIMENSION_LABELS[dimension])
   const proposalToken = [
     Number(coordination.coordination_version || 1),
-    relevant.join(','), proposal.date, proposal.period, proposal.area, proposal.activity,
+    relevant.join(','), proposal.date, proposal.period, proposal.start_time || '',
+    proposal.area, proposal.activity, proposal.activity_venue || '',
     proposal.budget, proposal.duration, proposal.payment_mode, Number(proposal.payer_user_id || 0)
   ].join('|')
   return {
@@ -227,7 +274,10 @@ function applyAcceptedCounterProposal(application, counterProposal) {
         throw new Error('候选时间无效，请刷新后重试')
       }
       next.availability = [{ date: slot.date, periods: [slot.period] }]
-    } else if (change.dimension === 'area') next.areas = [String(change.value)]
+      next.start_time = String(slot.start_time || '').trim()
+    } else if (change.dimension === 'exact_time') next.start_time = String(change.value || '')
+    else if (change.dimension === 'activity_venue') next.activity_venue = String(change.value || '')
+    else if (change.dimension === 'area') next.areas = [String(change.value)]
     else if (change.dimension === 'activity') next.activities = [String(change.value)]
     else if (change.dimension === 'budget') next.budget = String(change.value)
     else if (change.dimension === 'duration') next.duration = String(change.value)
@@ -239,6 +289,8 @@ function applyAcceptedCounterProposal(application, counterProposal) {
 module.exports = {
   DIMENSION_FIELDS,
   DIMENSION_LABELS,
+  DIMENSION_ORDER,
+  IMPLIED_DIMENSIONS,
   buildStructuredCounterProposal,
   applyAcceptedCounterProposal,
   buildTimeCounterOffer: buildStructuredCounterProposal,

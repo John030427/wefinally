@@ -1,4 +1,5 @@
 const PLAN_CONTRACT_VERSION = 2
+const { attachPublicError } = require('./businessError')
 
 const PERIOD_LABELS = Object.freeze({
   morning: '上午',
@@ -33,14 +34,19 @@ function normalizeStartTime(value) {
   return `${String(hour).padStart(2, '0')}:${matched[2]}`
 }
 
-function exactTimeFromText(value) {
+function exactTimeFromText(value, options = {}) {
   const raw = text(value, 200)
-  const matched = raw.match(/(?:(上午|中午|下午|傍晚|晚上|夜里)\s*)?(\d{1,2})(?:点|:)(?:\s*(\d{1,2})分?)?/)
+  const matched = raw.match(/(?:(上午|中午|下午|傍晚|晚上|夜里)\s*)?(?<!\d)(\d{1,2})(?:点|:)(?:\s*(\d{1,2})分?)?/)
   if (!matched) return ''
   let hour = Number(matched[2])
   const minute = Number(matched[3] || 0)
   if (!Number.isInteger(hour) || hour > 23 || minute > 59) return ''
-  if (/下午|傍晚|晚上|夜里/.test(matched[1] || '') && hour < 12) hour += 12
+  const prefix = matched[1] || ''
+  const period = String(options.period || '')
+  if (/下午|傍晚|晚上|夜里/.test(prefix) && hour < 12) hour += 12
+  else if (!prefix && (period === 'afternoon' || period === 'evening' || period === 'night') && hour < 12) {
+    hour += 12
+  }
   return normalizeStartTime(`${hour}:${String(minute).padStart(2, '0')}`)
 }
 
@@ -65,13 +71,11 @@ function normalizeArrivalHint(value) {
   const normalized = text(value, 60)
   if (containsPrivateContact(normalized)) {
     const error = new Error('到场识别提示只能填写穿搭颜色或手持物，不能包含身份、单位、住址、账号或数字')
-    error.code = 'UNSAFE_ARRIVAL_HINT'
-    throw error
+    throw attachPublicError(error, 'UNSAFE_ARRIVAL_HINT')
   }
   if (normalized && !/(?:红|橙|黄|绿|蓝|紫|黑|白|灰|棕|粉|衣|衫|外套|裤|裙|鞋|帽|包|眼镜|书|花|伞|杯|手持|拿着|背着)/.test(normalized)) {
     const error = new Error('到场识别提示请只描述穿搭颜色或手持物')
-    error.code = 'UNSAFE_ARRIVAL_HINT'
-    throw error
+    throw attachPublicError(error, 'UNSAFE_ARRIVAL_HINT')
   }
   return normalized
 }
@@ -81,13 +85,11 @@ function normalizeArrivalPosition(value) {
   if (!normalized) return ''
   if (containsPrivateContact(normalized)) {
     const error = new Error('现场位置只能填写公共场所内的可见位置，不能包含身份、单位、住址、账号或数字')
-    error.code = 'UNSAFE_ARRIVAL_POSITION'
-    throw error
+    throw attachPublicError(error, 'UNSAFE_ARRIVAL_POSITION')
   }
   if (!/(?:吧台|靠窗|窗边|门口|入口|出口|前台|取票机|收银台|大厅|等候区|服务台|招牌|电梯|扶梯|楼梯|立柱|柜台|座位|桌|角落|旁边|附近)/.test(normalized)) {
     const error = new Error('请描述公共场所内容易找到的位置，例如“吧台旁”或“靠窗座位”')
-    error.code = 'UNSAFE_ARRIVAL_POSITION'
-    throw error
+    throw attachPublicError(error, 'UNSAFE_ARRIVAL_POSITION')
   }
   return normalized
 }

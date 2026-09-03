@@ -94,7 +94,7 @@ function normalizeApplication(input = {}, now = new Date()) {
     || meetingPlan.start_time || meetingPlan.activity_venue || meetingPlan.meet_point || meetingPlan.arrival_hint
   if (usesMeetingPlan) {
     if (!meetingPlan.start_time && meetingPlan.activity_venue) {
-      throw new Error('你修改了日期或时间段，请再选择具体开始时间，例如晚上8点')
+      throw new Error('请再选择一个具体开始时间，例如晚上8点')
     }
     if (meetingPlan.start_time && !meetingPlan.activity_venue) throw new Error('请补充具体活动场地')
     if (!meetingPlan.start_time || !meetingPlan.activity_venue) throw new Error('请补充具体时间和活动场地')
@@ -170,6 +170,9 @@ function timeSlots(application) {
 
 function computeOverlap(applicationA, applicationB, options = {}) {
   const version = Number(options.version || 1)
+  if (version >= 2 && !(Number(options.user_a_id) > 0 && Number(options.user_b_id) > 0)) {
+    throw new Error('computeOverlap requires user ids')
+  }
   const times = intersect(timeSlots(applicationA), timeSlots(applicationB))
   const areas = intersect(applicationA.areas, applicationB.areas)
   const activities = intersect(applicationA.activities, applicationB.activities)

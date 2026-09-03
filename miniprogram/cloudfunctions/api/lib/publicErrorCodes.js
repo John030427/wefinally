@@ -1,0 +1,39 @@
+const SAFE_PUBLIC_ERROR_CODES = Object.freeze(new Set([
+  'INVALID_RAG_BACKFILL_REQUEST',
+  'INVALID_RAG_SMOKE_REQUEST',
+  'DATE_APPLICATION_INVALID',
+  'STALE_INVITATION_VERSION',
+  'INVALID_INVITATION_VERSION',
+  'INVITATION_ALREADY_RESPONDED',
+  'INVITATION_EXPIRED',
+  'PRIMARY_PROPOSAL_REQUIRED',
+  'PRIMARY_PROPOSAL_INCOMPLETE',
+  'PRIMARY_RESOLUTION_REQUIRED',
+  'INVALID_PRIMARY_SELECTION',
+  'STALE_COORDINATION_VERSION',
+  'UNSAFE_ARRIVAL_HINT',
+  'UNSAFE_ARRIVAL_POSITION',
+  'ACTIVITY_VENUE_CONFLICT',
+  'COUNTER_OFFER_STALE',
+  'COORDINATION_FINALIZED',
+  'QA_RESET_CONFIRM_REQUIRED',
+  'QA_RESET_FORBIDDEN'
+]))
+
+function isSafePublicErrorCode(value) {
+  return SAFE_PUBLIC_ERROR_CODES.has(String(value || ''))
+}
+
+function declaredPublicCode(err) {
+  const fromPublic = String(err && err.publicCode || '')
+  if (isSafePublicErrorCode(fromPublic)) return fromPublic
+  const fromCode = String(err && err.code || '')
+  if (isSafePublicErrorCode(fromCode)) return fromCode
+  return ''
+}
+
+module.exports = {
+  SAFE_PUBLIC_ERROR_CODES,
+  isSafePublicErrorCode,
+  declaredPublicCode
+}

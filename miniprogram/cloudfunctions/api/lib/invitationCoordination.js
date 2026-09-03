@@ -8,6 +8,8 @@
  */
 
 const { STATUS, PERIODS } = require('./dateCoordinationPolicy')
+const { attachPublicError } = require('./businessError')
+const { reconcileDerivedFields } = require('./dateApplicationDerivedFields')
 const {
   PLAN_CONTRACT_VERSION,
   normalizeMeetingPlanFields,
@@ -73,27 +75,23 @@ const CANONICAL_JOURNEYS = Object.freeze([
 
 function staleInvitationError() {
   const error = new Error(STALE_INVITATION_MESSAGE)
-  error.code = 'STALE_INVITATION_VERSION'
   error.refresh_invitation = true
-  return error
+  return attachPublicError(error, 'STALE_INVITATION_VERSION')
 }
 
 function missingInvitationVersionError() {
   const error = new Error(INVALID_INVITATION_VERSION_MESSAGE)
-  error.code = 'INVALID_INVITATION_VERSION'
-  return error
+  return attachPublicError(error, 'INVALID_INVITATION_VERSION')
 }
 
 function primaryProposalRequiredError(message) {
   const error = new Error(message || PRIMARY_PROPOSAL_REQUIRED_MESSAGE)
-  error.code = 'PRIMARY_PROPOSAL_REQUIRED'
-  return error
+  return attachPublicError(error, 'PRIMARY_PROPOSAL_REQUIRED')
 }
 
 function primaryProposalIncompleteError(message) {
   const error = new Error(message || PRIMARY_PROPOSAL_INCOMPLETE_MESSAGE)
-  error.code = 'PRIMARY_PROPOSAL_INCOMPLETE'
-  return error
+  return attachPublicError(error, 'PRIMARY_PROPOSAL_INCOMPLETE')
 }
 
 function publicInvitationProposal(application = {}) {
@@ -354,14 +352,12 @@ async function persistExpiredInvitationRecord(row, updateFn) {
 
 function invalidPrimarySelectionError(message) {
   const error = new Error(message || '本次建议安排必须落在你当前可接受范围内')
-  error.code = 'INVALID_PRIMARY_SELECTION'
-  return error
+  return attachPublicError(error, 'INVALID_PRIMARY_SELECTION')
 }
 
 function primaryResolutionRequiredError(message) {
   const error = new Error(message || '请先确认本次建议安排后再修改')
-  error.code = 'PRIMARY_RESOLUTION_REQUIRED'
-  return error
+  return attachPublicError(error, 'PRIMARY_RESOLUTION_REQUIRED')
 }
 
 function cleanPrimarySelection(input) {
@@ -495,15 +491,13 @@ function resolvePrimaryAfterPreferenceChange(previous, prefs, context = {}, sele
 
 function invitationAlreadyRespondedError() {
   const error = new Error('对方刚刚回应了邀请，请查看最新协调状态。')
-  error.code = 'INVITATION_ALREADY_RESPONDED'
   error.refresh_invitation = true
-  return error
+  return attachPublicError(error, 'INVITATION_ALREADY_RESPONDED')
 }
 
 function invitationExpiredError(message) {
   const error = new Error(message || EXPIRED_PUBLIC_MESSAGE)
-  error.code = 'INVITATION_EXPIRED'
-  return error
+  return attachPublicError(error, 'INVITATION_EXPIRED')
 }
 
 function preferenceNeedsExplicitPrimary(prefs = {}) {
@@ -679,13 +673,14 @@ function mergeInvitationWithOverrides(invitationProposal, overrides = {}) {
       next[field] = overrides[field]
     }
   }
-  const timeRangeChanged = Object.prototype.hasOwnProperty.call(overrides, 'availability')
-  const exactTimeSupplied = Object.prototype.hasOwnProperty.call(overrides, 'start_time')
-  if (timeRangeChanged && !exactTimeSupplied) next.start_time = ''
-  next.arrival_hint = Object.prototype.hasOwnProperty.call(overrides, 'arrival_hint')
+  const reconciled = reconcileDerivedFields(base, next, {
+    exactTimeSupplied: Object.prototype.hasOwnProperty.call(overrides, 'start_time'),
+    venueSupplied: Object.prototype.hasOwnProperty.call(overrides, 'activity_venue')
+  })
+  reconciled.arrival_hint = Object.prototype.hasOwnProperty.call(overrides, 'arrival_hint')
     ? overrides.arrival_hint
     : ''
-  return next
+  return reconciled
 }
 
 function explicitFields(evidence = {}) {
@@ -738,37 +733,49 @@ function buildSharedCoordinationState(applicationA, applicationB, options = {}) 
       key: 'time',
       label: '时间',
       status: dimensionStatus(!missing.has('time'), false),
-      display: missing.has('time') ? '还没有找到双方都接受的时间' : (uniqueTimes[0] || '已一致')
-    },
-    {
-      key: 'activity',
-      label: '活动',
-      status: dimensionStatus(!missing.has('activity'), false),
-      display: missing.has('activity') ? '还需要确认双方都接受的活动' : (first && first.activity) || '已一致'
+      display: missing.has('time') ? '待确认' : (uniqueTimes[0] || '已一致')
     },
     {
       key: 'area',
       label: '区域',
       status: dimensionStatus(!missing.has('area'), false),
-      display: missing.has('area') ? '还没有找到双方都接受的位置' : (first && first.area) || '已一致'
+      display: missing.has('area') ? '待确认' : (first && first.area) || '已一致'
+    },
+    {
+      key: 'activity',
+      label: '活动',
+      status: dimensionStatus(!missing.has('activity'), false),
+      display: missing.has('activity') ? '待确认' : (first && first.activity) || '已一致'
     },
     {
       key: 'budget',
       label: '预算',
       status: dimensionStatus(!missing.has('budget'), false),
-      display: missing.has('budget') ? '仍需要确认预算' : (BUDGET_LABELS[first && first.budget] || (first && first.budget) || '已一致')
-    },
-    {
-      key: 'duration',
-      label: '时长',
-      status: dimensionStatus(!missing.has('duration'), false),
-      display: missing.has('duration') ? '仍需要确认时长' : (DURATION_LABELS[first && first.duration] || (first && first.duration) || '已一致')
+      display: missing.has('budget') ? '待确认' : (BUDGET_LABELS[first && first.budget] || (first && first.budget) || '已一致')
     },
     {
       key: 'payment',
       label: '费用方式',
       status: dimensionStatus(!missing.has('payment'), false),
-      display: missing.has('payment') ? '仍需要确认费用方式' : (paymentDisplay || '已一致')
+      display: missing.has('payment') ? '待确认' : (paymentDisplay || '已一致')
+    },
+    {
+      key: 'duration',
+      label: '时长',
+      status: dimensionStatus(!missing.has('duration'), false),
+      display: missing.has('duration') ? '待确认' : (DURATION_LABELS[first && first.duration] || (first && first.duration) || '已一致')
+    },
+    {
+      key: 'exact_time',
+      label: '具体时间',
+      status: dimensionStatus(!missing.has('exact_time'), false),
+      display: missing.has('exact_time') ? '待确认' : ((first && first.start_time) || '已一致')
+    },
+    {
+      key: 'activity_venue',
+      label: '活动场地',
+      status: dimensionStatus(!missing.has('activity_venue'), false),
+      display: missing.has('activity_venue') ? '待确认' : ((first && first.activity_venue) || '已一致')
     }
   ]
   return {
@@ -884,6 +891,15 @@ function coordinatorWelcomeText(coordination = {}, role = '') {
   if (status === STATUS.EXPIRED) {
     return '本次约会邀请暂未得到回应，协调已结束。我可以说明结果，但不能再修改安排。'
   }
+  if (status === STATUS.CLOSED) {
+    return '本轮协调已关闭。如需继续请重新发起邀请。'
+  }
+  if (status === STATUS.CANCELLED) {
+    return '本次协调已取消。我可以说明结果，但不能再修改安排。'
+  }
+  if (status === STATUS.MANUAL_HANDOFF) {
+    return '自动协调已转人工客服继续协助。'
+  }
   return '我是你的 AI 约会协调员。你可以告诉我希望调整的时间、区域、活动、预算或其他要求。修改前会先展示预览。'
 }
 
@@ -894,6 +910,9 @@ function waitingCopyForInitiator(coordination = {}) {
   if (status === STATUS.COLLECTING_PREFERENCES && intent === 'coordinate') return COORDINATING_WAITING_B_MESSAGE
   if (status === STATUS.INVITATION_DECLINED) return DECLINED_PUBLIC_MESSAGE
   if (status === STATUS.EXPIRED) return EXPIRED_PUBLIC_MESSAGE
+  if (status === STATUS.CLOSED) return '本轮协调已关闭'
+  if (status === STATUS.CANCELLED) return '已取消'
+  if (status === STATUS.MANUAL_HANDOFF) return '已转人工'
   return ''
 }
 
@@ -938,9 +957,33 @@ function buildCoordinationViewModel(input = {}) {
   else if (inviting && isInvitee) viewState = 'received_invitation'
   else if (proposalReady) viewState = 'proposal_ready'
   else if (status === STATUS.ARRANGED) viewState = 'arranged'
-  else if (status === STATUS.INVITATION_DECLINED || status === STATUS.EXPIRED || status === STATUS.CANCELLED || status === STATUS.CLOSED) {
+  else if ([STATUS.INVITATION_DECLINED, STATUS.EXPIRED, STATUS.CANCELLED, STATUS.CLOSED, STATUS.MANUAL_HANDOFF].includes(status)) {
     viewState = 'result'
   } else if (coordinating) viewState = 'active_coordination'
+
+  const resultCard = viewState === 'result' || status === STATUS.ARRANGED
+    ? {
+      kind: status,
+      title: status === STATUS.ARRANGED
+        ? '最终安排'
+        : (status === STATUS.CLOSED
+          ? '本轮协调已关闭'
+          : (status === STATUS.CANCELLED
+            ? '已取消'
+            : (status === STATUS.MANUAL_HANDOFF
+              ? '已转人工'
+              : (status === STATUS.EXPIRED ? '邀请已结束' : '邀请结果')))),
+      body: status === STATUS.ARRANGED
+        ? '双方已确认最终方案。'
+        : (status === STATUS.CLOSED
+          ? '本轮协调已关闭'
+          : (status === STATUS.CANCELLED
+            ? '已取消'
+            : (status === STATUS.MANUAL_HANDOFF
+              ? '已转人工'
+              : (status === STATUS.EXPIRED ? EXPIRED_PUBLIC_MESSAGE : DECLINED_PUBLIC_MESSAGE))))
+    }
+    : null
 
   return {
     role,
@@ -949,17 +992,7 @@ function buildCoordinationViewModel(input = {}) {
     invitation_card: invitationCard,
     shared_coordination_card: sharedCard,
     proposal_card: proposalCard,
-    result_card: viewState === 'result' || status === STATUS.ARRANGED
-      ? {
-        kind: status,
-        title: status === STATUS.ARRANGED
-          ? '最终安排'
-          : (status === STATUS.EXPIRED ? '邀请已结束' : '邀请结果'),
-        body: status === STATUS.ARRANGED
-          ? '双方已确认最终方案。'
-          : (status === STATUS.EXPIRED ? EXPIRED_PUBLIC_MESSAGE : DECLINED_PUBLIC_MESSAGE)
-      }
-      : null,
+    result_card: resultCard,
     show_coordinator_cta: Boolean(canOpenChat),
     show_accept_invitation: Boolean(canRespond && inviting && isInvitee && primaryComplete),
     show_coordinate_instead: Boolean(canRespond && inviting && isInvitee),

@@ -50,7 +50,11 @@ async function processCoordinationTasks(options = {}) {
       const applicationA = applicationRowA && applicationRowA.application
       const applicationB = applicationRowB && applicationRowB.application
       if (!applicationA || !applicationB) throw new Error('双方协调申请不完整')
-      const overlap = computeOverlap(applicationA, applicationB, { version })
+      const overlap = computeOverlap(applicationA, applicationB, {
+        version,
+        user_a_id: lease.user_a_id,
+        user_b_id: lease.user_b_id
+      })
       const result = await deps.completeTask(lease, overlap, current)
       if (result && result.applied) {
         completed += 1

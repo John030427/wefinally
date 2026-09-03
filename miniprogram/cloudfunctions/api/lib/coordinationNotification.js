@@ -57,7 +57,8 @@ function buildInAppNotification(input = {}) {
       safe_summary: input.safe_summary || {},
       changed_dimensions: input.changed_dimensions || []
     },
-    merge_key: `${input.coordination_id}:${input.user_id}:${eventType}`
+    merge_key: `${input.coordination_id}:${input.user_id}:${eventType}`,
+    idempotency_key: `${Number(input.coordination_id || 0)}:${eventType}:${version}:${Number(input.user_id || 0)}`
   }
 }
 
