@@ -22,12 +22,21 @@ const {
   createDateCoordinationHandlers,
   defaultDeps: buildDateCoordinationDefaultDeps
 } = require('../../miniprogram/cloudfunctions/api/handlers/dateCoordination')
+const collections = require('../../miniprogram/cloudfunctions/api/lib/collections')
+const { canBootstrapCollection } = require('../../miniprogram/cloudfunctions/api/lib/collectionBootstrapPolicy')
 
 function read(rel) {
   return fs.readFileSync(path.join(root, rel), 'utf8')
 }
 
 async function main() {
+  assert.strictEqual(collections.coordination_notification_dedupe, 'coordination_notification_dedupes')
+  assert.strictEqual(canBootstrapCollection('coordination_notification_dedupe'), true)
+  assert.strictEqual(collections.date_coordination_event_dedupe, 'date_coordination_event_dedupes')
+  assert.strictEqual(canBootstrapCollection('date_coordination_event_dedupe'), true)
+  assert.strictEqual(collections.agent_message_dedupe, 'agent_message_dedupes')
+  assert.strictEqual(canBootstrapCollection('agent_message_dedupe'), true)
+
   assert.strictEqual(typeof buildDateCoordinationDefaultDeps, 'function', 'defaultDeps must be exported for production wiring checks')
   const dateCoordinationSource = read('miniprogram/cloudfunctions/api/handlers/dateCoordination.js')
   const defaultDepsBlock = dateCoordinationSource.slice(
