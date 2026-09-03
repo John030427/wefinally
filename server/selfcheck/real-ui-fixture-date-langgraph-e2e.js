@@ -169,15 +169,18 @@ async function main() {
   const { createAgentHandlers } = require('../../miniprogram/cloudfunctions/api/handlers/agent')
 
   const coordination = createDateCoordinationHandlers({
+    unitMode: true,
     currentUser, first: db.first, list: db.list, byId: db.byId, addWithId: db.addWithId, updateByDoc: db.updateByDoc,
     commitConfirmation: db.commitConfirmation, publishCoordinationEvent: publishEvent, writeInboxNotification: writeInbox, now: db.now
   })
   const patches = createDateApplicationPatchHandlers({
+    unitMode: true,
     currentUser, first: db.first, list: db.list, byId: db.byId, addWithId: db.addWithId, updateByDoc: db.updateByDoc,
     claimPendingPatch: db.claimPendingPatch, now: db.now, publishCoordinationEvent: publishEvent,
     writeInboxNotification: writeInbox, saveApplicationForUser: coordination.saveApplicationForUser
   })
   const agent = createAgentHandlers({
+    unitMode: true,
     currentUser, first: db.first, list: db.list, byId: db.byId, addWithId: db.addWithId, updateByDoc: db.updateByDoc,
     claimPendingPatch: db.claimPendingPatch, now: db.now,
     env: Object.assign({}, process.env, { LANGGRAPH_ENABLED: 'false' }),

@@ -23,7 +23,6 @@ const {
   inviteeCoordinatorBlockedError
 } = require('../lib/dateCoordinationAccessPolicy')
 const { coordinatorWelcomeText } = require('../lib/invitationCoordination')
-const { applyAcceptedCounterProposal } = require('../lib/dateCounterOfferPolicy')
 const { exactTimeFromText, periodForStartTime } = require('../lib/meetingPlanPolicy')
 const {
   publicState: publicMeetingState,
@@ -75,19 +74,26 @@ function meetingReply(intent, state) {
 }
 
 function applyExactTimeToDecision(decision, content, currentApplication) {
-  const startTime = exactTimeFromText(content)
+  const currentPeriod = Array.isArray(currentApplication && currentApplication.availability)
+    && currentApplication.availability[0]
+    && Array.isArray(currentApplication.availability[0].periods)
+    ? String(currentApplication.availability[0].periods[0] || '')
+    : ''
+  const startTime = exactTimeFromText(content, { period: currentPeriod })
   if (!startTime || !decision) return decision
   const request = decision.toolRequest || decision.tool_request
   if (!request || !request.arguments || typeof request.arguments !== 'object') return decision
   const args = request.arguments
   const target = args.application && typeof args.application === 'object' ? args.application : args
   target.start_time = startTime
-  const period = periodForStartTime(startTime)
-  if (Array.isArray(target.availability) && target.availability.length === 1) {
-    target.availability = target.availability.map((item) => Object.assign({}, item, { periods: [period] }))
-  } else if (currentApplication && Array.isArray(currentApplication.availability)
-    && currentApplication.availability.length === 1) {
-    target.availability = currentApplication.availability.map((item) => Object.assign({}, item, { periods: [period] }))
+  const explicitPeriod = /上午|中午|下午|傍晚|晚上|夜里/.test(String(content || ''))
+  if (explicitPeriod) {
+    const period = periodForStartTime(startTime)
+    if (currentPeriod && period && currentPeriod !== period) {
+      decision.needs_clarification = true
+      decision.clarification = '你写的具体时间和已选时段不一致，请确认是继续用当前时段，还是改成新的时段。'
+      return decision
+    }
   }
   return decision
 }
@@ -144,6 +150,7 @@ function publicPartnerInquiry(value) {
   return sanitizeOutput({
     status: String(input.status || ''),
     coordination_version: Number(input.coordination_version || 1),
+    proposal_token: String(input.proposal_token || ''),
     title: String(input.title || '').slice(0, 80),
     body: String(input.body || '').slice(0, 240),
     changes: Array.isArray(input.changes) ? input.changes.slice(0, 6) : [],
@@ -587,30 +594,62 @@ function createAgentHandlers(overrides = {}) {
         no_overlap: '暂时没有完整交集，可以调整偏好重新协调',
         replanning: '正在进行新一轮偏好协调',
         arranged: '双方已确认同一个方案，约会安排已经形成',
-        manual_handoff: '自动协调已暂停，正在等待人工客服协助',
+        manual_handoff: '自动协调已转人工客服继续协助',
+        closed: '本轮协调已关闭',
+        cancelled: '本次约会邀请已取消',
+        invitation_declined: '对方暂未接受本次约会邀请',
         expired: '当前协调已过期'
       }[coordination.status] || '协调任务正在处理中'
-      const coordinationHandlers = createDateCoordinationHandlers({
-        first: dep('first'),
-        list: dep('list'),
-        byId: dep('byId'),
-        addWithId: dep('addWithId'),
-        updateByDoc: dep('updateByDoc'),
-        now: dep('now')
-      })
-      const patchHandlerDeps = {
+      const coordinationHandlerDeps = {
         first: dep('first'),
         list: dep('list'),
         byId: dep('byId'),
         addWithId: dep('addWithId'),
         updateByDoc: dep('updateByDoc'),
         claimPendingPatch: dep('claimPendingPatch'),
-        now: dep('now'),
-        saveApplicationForUser: coordinationHandlers.saveApplicationForUser
+        writeInboxNotification: (input) => dep('notifyInbox')(input),
+        now: dep('now')
       }
-      if (!Object.prototype.hasOwnProperty.call(overrides, 'first')) {
-        patchHandlerDeps.commitPreAcceptInvitationPatch = dep('commitPreAcceptInvitationPatch')
-        patchHandlerDeps.commitPostAcceptApplicationPatch = dep('commitPostAcceptApplicationPatch')
+      if (overrides.unitMode === true) coordinationHandlerDeps.unitMode = true
+      if (overrides.unitMode !== true || Object.prototype.hasOwnProperty.call(overrides, 'publishCoordinationEvent')) {
+        coordinationHandlerDeps.publishCoordinationEvent = dep('publishCoordinationEvent')
+      }
+      if (overrides.unitMode !== true || Object.prototype.hasOwnProperty.call(overrides, 'commitPreAcceptInvitationPatch')) {
+        const commitPre = dep('commitPreAcceptInvitationPatch')
+        if (typeof commitPre === 'function') coordinationHandlerDeps.commitPreAcceptInvitationPatch = commitPre
+      }
+      if (overrides.unitMode !== true || Object.prototype.hasOwnProperty.call(overrides, 'commitPostAcceptApplicationPatch')) {
+        const commitPost = dep('commitPostAcceptApplicationPatch')
+        if (typeof commitPost === 'function') coordinationHandlerDeps.commitPostAcceptApplicationPatch = commitPost
+      }
+      const coordinationHandlers = createDateCoordinationHandlers(coordinationHandlerDeps)
+      const patchHandlerDeps = {
+        first: dep('first'),
+        list: dep('list'),
+        byId: dep('byId'),
+        addWithId: dep('addWithId'),
+        updateByDoc: dep('updateByDoc'),
+        now: dep('now'),
+        saveApplicationForUser: coordinationHandlers.saveApplicationForUser,
+        writeInboxNotification: (input) => dep('notifyInbox')(input)
+      }
+      if (overrides.unitMode === true) patchHandlerDeps.unitMode = true
+      if (overrides.unitMode !== true || Object.prototype.hasOwnProperty.call(overrides, 'publishCoordinationEvent')) {
+        patchHandlerDeps.publishCoordinationEvent = dep('publishCoordinationEvent')
+      }
+      const claimPendingPatchDep = dep('claimPendingPatch')
+      if (typeof claimPendingPatchDep === 'function') patchHandlerDeps.claimPendingPatch = claimPendingPatchDep
+      if (overrides.unitMode !== true || Object.prototype.hasOwnProperty.call(overrides, 'commitPreAcceptInvitationPatch')) {
+        const commitPreAcceptInvitationPatchDep = dep('commitPreAcceptInvitationPatch')
+        if (typeof commitPreAcceptInvitationPatchDep === 'function') {
+          patchHandlerDeps.commitPreAcceptInvitationPatch = commitPreAcceptInvitationPatchDep
+        }
+      }
+      if (overrides.unitMode !== true || Object.prototype.hasOwnProperty.call(overrides, 'commitPostAcceptApplicationPatch')) {
+        const commitPostAcceptApplicationPatchDep = dep('commitPostAcceptApplicationPatch')
+        if (typeof commitPostAcceptApplicationPatchDep === 'function') {
+          patchHandlerDeps.commitPostAcceptApplicationPatch = commitPostAcceptApplicationPatchDep
+        }
       }
       const patchHandlers = createDateApplicationPatchHandlers(patchHandlerDeps)
       const allApplications = await dep('list')('date_coordination_application', {
@@ -705,7 +744,25 @@ function createAgentHandlers(overrides = {}) {
           && row.partner_inquiry_preview
           && row.partner_inquiry_preview.status === 'pending_confirmation')
         .sort((a, b) => Number(b.id || 0) - Number(a.id || 0))[0]
-      const inquiryActionIntent = pendingInquiryMessage ? pendingActionIntent(content) : ''
+      const pendingPatchesEarly = await dep('list')('date_application_patch', {
+        coordination_id: Number(coordination.id),
+        session_id: Number(session.id),
+        user_id: Number(user.id),
+        status: 'pending_confirmation'
+      }, 100)
+      const pendingPatchEarly = pendingPatchesEarly.sort((a, b) => Number(b.id || 0) - Number(a.id || 0))[0]
+      const earlyActionIntent = pendingActionIntent(content)
+      if (pendingPatchEarly && pendingInquiryMessage && earlyActionIntent === 'confirm') {
+        const reply = '你现在有一份待确认的修改预览，也有一份待确认的对方询问。请明确说“确认修改”或“确认询问对方”。'
+        await saveMessage(session, user, 'assistant', reply)
+        return { session_id: session.id, agent_type: session.agent_type, reply, needs_clarification: true, risk_level: 'safe' }
+      }
+      if (pendingPatchEarly && earlyActionIntent === 'confirm' && !pendingInquiryMessage) {
+        // fall through to existing pendingPatch confirm block below
+      } else if (pendingInquiryMessage && earlyActionIntent === 'confirm' && !pendingPatchEarly) {
+        // keep existing inquiry confirm path
+      }
+      const inquiryActionIntent = pendingInquiryMessage && !pendingPatchEarly ? pendingActionIntent(content) : ''
       if (pendingInquiryMessage && inquiryActionIntent === 'confirm') {
         const latestCoordination = await dep('byId')('date_coordination', Number(coordination.id))
         const latestApplications = await dep('list')('date_coordination_application', {
@@ -796,38 +853,24 @@ function createAgentHandlers(overrides = {}) {
         .sort((a, b) => Number(b.id || 0) - Number(a.id || 0))[0]
       const acceptsReceivedInquiry = /^(?:接受|同意|可以|就这个|确认接受|接受这份调整)[！!。.]?$/.test(String(content || '').trim())
       if (receivedInquiryMessage && acceptsReceivedInquiry) {
-        const latestCoordination = await dep('byId')('date_coordination', Number(coordination.id))
-        const latestApplications = await dep('list')('date_coordination_application', {
-          coordination_id: Number(coordination.id)
-        }, 200)
-        const latestConfirmations = await dep('list')('date_coordination_confirmation', {
-          coordination_id: Number(coordination.id)
-        }, 50).catch(() => [])
-        const graphState = buildDateCoordinationGraphInput(latestCoordination, latestApplications, user, {
-          confirmations: latestConfirmations
-        })
-        const counterOffer = graphState && graphState.sharedState && graphState.sharedState.counterOffer
-        const ownRow = latestApplication(latestApplications, user.id, latestCoordination.coordination_version)
-        if (!counterOffer || counterOffer.kind !== 'partner_structured_counter_proposal' || !ownRow) {
-          const reply = '这份调整已经失效或被新的方案替代了，请查看最新协调状态后再选择。'
-          await saveMessage(session, user, 'assistant', reply)
-          return { session_id: session.id, agent_type: session.agent_type, reply, stale_inquiry: true, risk_level: 'safe' }
+        const inquiry = receivedInquiryMessage.partner_inquiry || {}
+        try {
+          await coordinationHandlers.acceptCounterOfferForUser({
+            coordination_id: Number(coordination.id),
+            coordination_version: Number(inquiry.coordination_version || coordination.coordination_version || 1),
+            proposal_token: String(inquiry.proposal_token || '')
+          }, user)
+        } catch (err) {
+          if (String(err && (err.publicCode || err.code) || '') === 'COUNTER_OFFER_STALE'
+            || /调整方案已更新|失效|最新/.test(String(err && err.message || ''))) {
+            const reply = '对方刚更新了调整方案，请先看一下最新版本。'
+            await saveMessage(session, user, 'assistant', reply)
+            return { session_id: session.id, agent_type: session.agent_type, reply, stale_inquiry: true, risk_level: 'safe' }
+          }
+          throw err
         }
-        const acceptedApplication = applyAcceptedCounterProposal(ownRow.application, counterOffer)
-        const acceptedChanges = (counterOffer.changes || []).reduce((out, item) => {
-          out[item.field] = acceptedApplication[item.field]
-          return out
-        }, {})
-        const patch = await patchHandlers.createPreviewForUser({
-          coordination_id: Number(coordination.id),
-          changes: acceptedChanges
-        }, user, session)
-        await patchHandlers.confirmForUser({
-          coordination_id: Number(coordination.id),
-          patch_id: Number(patch.id)
-        }, user)
         await dep('updateByDoc')('agent_message', receivedInquiryMessage, {
-          partner_inquiry: Object.assign({}, receivedInquiryMessage.partner_inquiry, { status: 'accepted' })
+          partner_inquiry: Object.assign({}, inquiry, { status: 'accepted' })
         })
         const reply = '已接受这份调整并重新计算双方安排。若其他条件仍一致，系统会进入共同方案确认；如仍有差异，我会继续说明需要协调的项目。'
         await recordTool(session, user, 'accept_partner_counter_proposal', 'completed')

@@ -1,4 +1,6 @@
 const { normalizeApplication, STATUS } = require('../lib/dateCoordinationPolicy')
+const { enrichChangesWithDerivedClears } = require('../lib/dateApplicationDerivedFields')
+const { attachPublicError } = require('../lib/businessError')
 const {
   PATCHABLE_FIELDS,
   previewApplicationChange,
@@ -112,9 +114,10 @@ function publicPatch(row) {
 
 function createDateApplicationPatchHandlers(overrides = {}) {
   let defaults = null
+  const unitMode = overrides.unitMode === true
   function dep(name) {
     if (Object.prototype.hasOwnProperty.call(overrides, name)) return overrides[name]
-    if (name === 'publishCoordinationEvent' && overrides.first && overrides.addWithId) {
+    if (name === 'publishCoordinationEvent' && unitMode) {
       return (input) => publishCoordinationEvent(input, {
         first: overrides.first,
         list: overrides.list,
@@ -122,7 +125,7 @@ function createDateApplicationPatchHandlers(overrides = {}) {
         now: overrides.now
       })
     }
-    if (name === 'writeInboxNotification' && !overrides.writeInboxNotification && overrides.first && overrides.addWithId) {
+    if (name === 'writeInboxNotification' && !overrides.writeInboxNotification && unitMode) {
       return (input) => {
         const { notifyInbox } = require('../lib/coordinationInbox')
         const { notifyConfig } = require('../lib/coordinationNotification')
@@ -136,12 +139,20 @@ function createDateApplicationPatchHandlers(overrides = {}) {
         })
       }
     }
+    if (name === 'claimPendingPatch' && unitMode
+      && !Object.prototype.hasOwnProperty.call(overrides, name)) {
+      return async (patch) => {
+        if (!patch || patch.status !== 'pending_confirmation') return false
+        Object.assign(patch, { status: 'applying' })
+        return true
+      }
+    }
     if (['commitPreAcceptInvitationPatch', 'commitPostAcceptApplicationPatch'].includes(name)
-      && overrides.first && overrides.addWithId
+      && unitMode
       && !Object.prototype.hasOwnProperty.call(overrides, name)) {
       return null
     }
-    if (name === 'beforeCommitHook' && overrides.first && overrides.addWithId) {
+    if (name === 'beforeCommitHook' && unitMode) {
       return null
     }
     if (!defaults) defaults = defaultDeps()
@@ -175,15 +186,15 @@ function createDateApplicationPatchHandlers(overrides = {}) {
     if (Number(current.user_a_id) !== Number(actorUserId)) throw new Error('仅发起方可以在等待回应时修改邀请')
     if (current.invitation_responded_at) throw invitationAlreadyRespondedError()
     if (Number(current.coordination_version) !== Number(expectedCoordinationVersion)) {
-      const err = new Error('约会条件已更新，请重新生成修改预览')
-      err.code = 'STALE_COORDINATION_VERSION'
-      throw err
+      throw attachPublicError(Object.assign(new Error('约会条件已更新，请重新生成修改预览'), {
+        code: 'STALE_COORDINATION_VERSION'
+      }), 'STALE_COORDINATION_VERSION')
     }
     if (invitationVersionOf(current) !== Number(expectedInvitationVersion)) {
-      const err = new Error('对方刚刚更新了约会安排，请查看最新方案后再确认')
-      err.code = 'STALE_INVITATION_VERSION'
-      err.refresh_invitation = true
-      throw err
+      throw attachPublicError(Object.assign(new Error('对方刚刚更新了约会安排，请查看最新方案后再确认'), {
+        code: 'STALE_INVITATION_VERSION',
+        refresh_invitation: true
+      }), 'STALE_INVITATION_VERSION')
     }
     if (typeof beforeCommitHook === 'function') await beforeCommitHook('pre_accept_patch')
 
@@ -246,11 +257,7 @@ function createDateApplicationPatchHandlers(overrides = {}) {
 
   async function memoryCommitPostAcceptApplicationPatch(input = {}) {
     const current = await dep('byId')('date_coordination', Number(input.coordination.id))
-    const stale = () => {
-      const err = new Error('约会条件已更新，请重新生成修改预览')
-      err.code = 'STALE_COORDINATION_VERSION'
-      return err
-    }
+    const stale = () => attachPublicError(new Error('约会条件已更新，请重新生成修改预览'), 'STALE_COORDINATION_VERSION')
     if (!current
       || Number(current.coordination_version) !== Number(input.expectedCoordinationVersion)
       || String(current.status) !== String(input.expectedStatus)) throw stale()
@@ -316,7 +323,7 @@ function createDateApplicationPatchHandlers(overrides = {}) {
       }
       throw new Error('请先完成自己的约会偏好表单')
     }
-    const changes = cleanChanges(data.changes)
+    const changes = enrichChangesWithDerivedClears(mine.application, cleanChanges(data.changes))
     const activeProposals = await dep('list')('date_coordination_proposal', {
       coordination_id: Number(coordination.id),
       coordination_version: version
@@ -555,7 +562,10 @@ function createDateApplicationPatchHandlers(overrides = {}) {
     const rows = await applicationsFor(coordination.id)
     const mine = latestForUser(rows, user.id, oldVersion)
     if (!mine) throw new Error('没有可修改的约会申请')
-    const nextApplication = normalizeApplication(Object.assign({}, mine.application, patch.changes), dep('now')())
+    const nextApplication = normalizeApplication(
+      Object.assign({}, mine.application, enrichChangesWithDerivedClears(mine.application, patch.changes)),
+      dep('now')()
+    )
     const patchSummary = shareableSummary(patch.preview)
     if (!canStartAnotherRound(coordination)) {
       const handedOff = await dep('updateByDoc')('date_coordination', coordination, {

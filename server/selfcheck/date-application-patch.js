@@ -91,6 +91,7 @@ async function serviceChecks() {
   let nextId = 300
   const matches = (row, query) => Object.keys(query || {}).every((key) => row[key] === query[key])
   const deps = {
+    unitMode: true,
     now: () => new Date(testNow),
     first: async (name, query) => (tables[name] || []).find((row) => matches(row, query)) || null,
     list: async (name, query) => (tables[name] || []).filter((row) => matches(row, query)),

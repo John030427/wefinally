@@ -2,12 +2,14 @@ const assert = require('assert')
 const fs = require('fs')
 const path = require('path')
 const { createDateCoordinationHandlers } = require('../../miniprogram/cloudfunctions/api/handlers/dateCoordination')
+const { completeProcessingVersion } = require('../../miniprogram/cloudfunctions/api/lib/dateCoordinationProcessingPolicy')
 
 function depsFor(user) {
   const tables = {
     date_coordination: [{
       _id: 'date_coordination_99', id: 99, pair_key: '1:2', user_a_id: 1, user_b_id: 2,
-      status: 'collecting_preferences', business_state: 'waiting_invitee_preference', coordination_version: 1
+      status: 'collecting_preferences', business_state: 'waiting_invitee_preference', coordination_version: 1,
+      processing_status: 'processing', processing_token: 'tok-1', confirmation_deadline_at: '2026-09-03T00:00:00.000Z'
     }],
     agent_session: [
       { _id: 'session-a', id: 10, coordination_id: 99, user_id: 1, status: 'active' },
@@ -19,10 +21,13 @@ function depsFor(user) {
     date_coordination_confirmation: []
   }
   const events = []
+  const inbox = []
   return {
     tables,
     events,
+    inbox,
     deps: {
+      unitMode: true,
       env: {},
       currentUser: async () => user,
       now: () => new Date('2026-09-02T15:10:00.000Z'),
@@ -31,8 +36,9 @@ function depsFor(user) {
       list: async (name, query) => (tables[name] || []).filter((row) => Object.keys(query || {}).every((key) => row[key] === query[key])),
       updateByDoc: async (_name, row, update) => Object.assign(row, update),
       addWithId: async () => ({}),
-      publishCoordinationEvent: async (input) => { events.push(input.event); return { messages: [] } },
-      writeInboxNotification: async () => ({})
+      flagEnabled: async () => true,
+      publishCoordinationEvent: async (input) => { events.push(input); return { messages: [] } },
+      writeInboxNotification: async (input) => { inbox.push(input); return {} }
     }
   }
 }
@@ -50,10 +56,31 @@ async function main() {
   const result = await handler.qaReset({ coordination_id: 99, confirm_text: '重新开始本轮测试' }, {})
   assert.strictEqual(result.status, 'closed')
   assert.strictEqual(qa.tables.date_coordination[0].business_state, 'qa_reset')
+  assert.strictEqual(qa.tables.date_coordination[0].processing_status, 'idle')
+  assert.strictEqual(qa.tables.date_coordination[0].processing_token, null)
+  assert.strictEqual(qa.tables.date_coordination[0].confirmation_deadline_at, null)
   assert(qa.tables.agent_session.every((row) => row.status === 'closed'))
   assert.strictEqual(qa.tables.agent_notification_job[0].status, 'cancelled')
   assert.strictEqual(qa.tables.date_application_patch[0].status, 'cancelled')
-  assert(qa.events.some((event) => event.event_type === 'qa_coordination_reset'))
+  assert(qa.events.some((item) => item.event && item.event.event_type === 'qa_coordination_reset'))
+  assert(qa.inbox.some((item) => item.event_type === 'qa_coordination_reset' && Number(item.user_id) === 2))
+
+  const closedComplete = completeProcessingVersion({
+    status: 'closed',
+    coordination_version: 1,
+    processing_version: 1,
+    processing_status: 'processing',
+    processing_token: 'tok-1'
+  }, { version: 1, token: 'tok-1', now: new Date() })
+  assert.strictEqual(closedComplete.applied, false)
+  assert.strictEqual(closedComplete.reason, 'status_changed')
+
+  const flagOff = depsFor({ id: 1, qa_match_cohort: 'qa-real-device-registration-v1' })
+  flagOff.deps.flagEnabled = async () => false
+  await assert.rejects(
+    () => createDateCoordinationHandlers(flagOff.deps).qaReset({ coordination_id: 99, confirm_text: '重新开始本轮测试' }, {}),
+    /仅限双真机 QA 测试账号/
+  )
 
   const normal = depsFor({ id: 1, qa_match_cohort: '' })
   await assert.rejects(

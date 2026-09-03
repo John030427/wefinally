@@ -107,6 +107,7 @@ function fakeDeps() {
   let id = 100
   const match = (row, query) => Object.keys(query || {}).every((key) => row[key] === query[key])
   const deps = {
+    unitMode: true,
     tables,
     env: {},
     async invokeGraphFunction() {

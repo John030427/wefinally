@@ -148,6 +148,7 @@ async function main() {
   const writeInbox = async (input) => require('../../miniprogram/cloudfunctions/api/lib/coordinationInbox').notifyInbox(input, inboxDeps)
 
   const coordinationDeps = {
+    unitMode: true,
     currentUser, first: db.first, list: db.list, byId: db.byId, addWithId: db.addWithId, updateByDoc: db.updateByDoc,
     acquireFixtureResponseJob: async () => { throw new Error('not used') },
     upsertConfirmation: null, updateConfirmationState: null,
@@ -162,6 +163,7 @@ async function main() {
   const { createAgentHandlers } = require('../../miniprogram/cloudfunctions/api/handlers/agent')
   const coordination = createDateCoordinationHandlers(coordinationDeps)
   const patches = createDateApplicationPatchHandlers({
+    unitMode: true,
     currentUser, first: db.first, list: db.list, byId: db.byId, addWithId: db.addWithId, updateByDoc: db.updateByDoc,
     claimPendingPatch: db.claimPendingPatch, now,
     publishCoordinationEvent: publishEvent,
@@ -169,6 +171,7 @@ async function main() {
     saveApplicationForUser: coordination.saveApplicationForUser
   })
   const agent = createAgentHandlers({
+    unitMode: true,
     currentUser, first: db.first, list: db.list, byId: db.byId, addWithId: db.addWithId, updateByDoc: db.updateByDoc,
     claimPendingPatch: db.claimPendingPatch, now,
     env: Object.assign({}, process.env, { LANGGRAPH_ENABLED: 'false' }),

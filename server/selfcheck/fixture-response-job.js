@@ -66,6 +66,7 @@ function memory(seed = {}) {
   let seq = 1
   const matches = (row, query) => Object.keys(query || {}).every((key) => row[key] === query[key])
   const deps = {
+    unitMode: true,
     tables,
     currentUser: async () => qa,
     first: async (name, query) => (tables[name] || []).find((row) => matches(row, query)) || null,

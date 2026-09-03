@@ -137,6 +137,7 @@ function memory(seed = {}) {
   }, seed)
   const counters = {}
   const deps = {
+    unitMode: true,
     rows,
     env: {},
     currentUser: async (context) => {

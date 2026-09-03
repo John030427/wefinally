@@ -1,5 +1,7 @@
 const { STATUS, normalizeApplication, nextStatus } = require('../lib/dateCoordinationPolicy')
-const { QA_REAL_DEVICE_MATCH_COHORT } = require('../lib/qaRegistrationReplayPolicy')
+const { QA_REAL_DEVICE_MATCH_COHORT, QA_REGISTRATION_PUBLIC_FLAG } = require('../lib/qaRegistrationReplayPolicy')
+const { isInternalQaAccount } = require('../lib/testIdentityPolicy')
+const { businessError } = require('../lib/businessError')
 const { MEMBER_STATUS, memberStatus } = require('../lib/memberPolicy')
 const { createReminderJob } = require('../agent/notificationJobs')
 const { assertOfflineDatingAllowed } = require('../lib/testFixturePolicy')
@@ -101,6 +103,7 @@ async function expireCoordinationIfCurrent(coordination) {
 
 function defaultDeps() {
   const db = require('../lib/db')
+  const { claimPendingPatch } = require('./dateApplicationPatch')
   return {
     env: process.env,
     currentUser: require('./user').currentUser,
@@ -116,15 +119,25 @@ function defaultDeps() {
     commitDirectInvitationAccept: db.commitDirectInvitationAccept,
     commitInvitationResponse: db.commitInvitationResponse,
     claimDateCoordinationDraft: db.claimDateCoordinationDraft,
+    claimPendingPatch,
     commitPreAcceptInvitationPatch: db.commitPreAcceptInvitationPatch,
+    commitPostAcceptApplicationPatch: db.commitPostAcceptApplicationPatch,
     expireIfCurrent: expireCoordinationIfCurrent,
     publishCoordinationEvent,
+    flagEnabled: require('../lib/flags').flagEnabled,
     now: db.now,
     writeInboxNotification(input) {
       const { notifyInbox } = require('../lib/coordinationInbox')
       return notifyInbox(input)
     }
   }
+}
+
+async function qaResetAllowedFor(user, dep) {
+  if (isInternalQaAccount(user)) return true
+  if (String(user.qa_match_cohort || '') !== QA_REAL_DEVICE_MATCH_COHORT) return false
+  if (typeof dep('flagEnabled') !== 'function') return false
+  return Boolean(await dep('flagEnabled')(QA_REGISTRATION_PUBLIC_FLAG))
 }
 
 function pairKey(userAId, userBId) {
@@ -392,10 +405,11 @@ async function memoryCommitInvitationResponse(dep, input = {}) {
 
 function createDateCoordinationHandlers(overrides = {}) {
   let defaults = null
+  const unitMode = overrides.unitMode === true
   function dep(name) {
     if (Object.prototype.hasOwnProperty.call(overrides, name)) return overrides[name]
-    if (name === 'env' && overrides.first && overrides.addWithId) return process.env
-    if (name === 'publishCoordinationEvent' && overrides.first && overrides.addWithId) {
+    if (name === 'env' && unitMode) return process.env
+    if (name === 'publishCoordinationEvent' && unitMode) {
       return (input) => publishCoordinationEvent(input, {
         first: overrides.first,
         list: overrides.list,
@@ -403,7 +417,7 @@ function createDateCoordinationHandlers(overrides = {}) {
         now: overrides.now
       })
     }
-    if (name === 'writeInboxNotification' && !overrides.writeInboxNotification && overrides.first && overrides.addWithId) {
+    if (name === 'writeInboxNotification' && !overrides.writeInboxNotification && unitMode) {
       return (input) => {
         const { notifyInbox } = require('../lib/coordinationInbox')
         const { notifyConfig } = require('../lib/coordinationNotification')
@@ -417,13 +431,30 @@ function createDateCoordinationHandlers(overrides = {}) {
         })
       }
     }
-    // Unit selfchecks provide first/addWithId but not CloudBase transactions
-    if (['commitDirectInvitationAccept', 'commitInvitationResponse', 'claimDateCoordinationDraft', 'commitPreAcceptInvitationPatch'].includes(name)
-      && overrides.first && overrides.addWithId
+    // Unit selfchecks must opt in with unitMode: true; production never gets memory claim/null commits
+    if (['commitDirectInvitationAccept', 'commitInvitationResponse', 'claimDateCoordinationDraft', 'commitPreAcceptInvitationPatch', 'commitPostAcceptApplicationPatch'].includes(name)
+      && unitMode
       && !Object.prototype.hasOwnProperty.call(overrides, name)) {
       return null
     }
-    if (name === 'beforeCommitHook' && overrides.first && overrides.addWithId) {
+    if (name === 'beforeCommitHook' && unitMode) {
+      return null
+    }
+    if (name === 'flagEnabled' && unitMode
+      && !Object.prototype.hasOwnProperty.call(overrides, name)) {
+      return async () => false
+    }
+    if (name === 'claimPendingPatch' && unitMode
+      && !Object.prototype.hasOwnProperty.call(overrides, name)) {
+      return async (patch) => {
+        if (!patch || patch.status !== 'pending_confirmation') return false
+        Object.assign(patch, { status: 'applying' })
+        return true
+      }
+    }
+    if (['expireIfCurrent', 'upsertConfirmation', 'updateConfirmationState', 'commitConfirmation', 'acquireFixtureResponseJob'].includes(name)
+      && unitMode
+      && !Object.prototype.hasOwnProperty.call(overrides, name)) {
       return null
     }
     if (!defaults) defaults = defaultDeps()
@@ -895,8 +926,8 @@ function createDateCoordinationHandlers(overrides = {}) {
     }
     const now = dep('now')()
     if (deadlinePassed(coordination.application_deadline_at, now)) {
-      await dep('updateByDoc')('date_coordination', coordination, { status: STATUS.EXPIRED })
-      throw new Error('约会申请已过期')
+      await dep('expireIfCurrent')(coordination)
+      throw businessError('COORDINATION_FINALIZED', '本次约会协调已结束')
     }
     const version = Number(coordination.coordination_version || 1)
     const evidence = data.preference_evidence && typeof data.preference_evidence === 'object'
@@ -977,10 +1008,12 @@ function createDateCoordinationHandlers(overrides = {}) {
         deadlineAt: invitationDeadline,
         now
       })
-      const queued = await dep('first')('agent_notification_job', {
-        idempotency_key: notification.idempotency_key
-      })
-      if (!queued) await dep('addWithId')('agent_notification_job', notification, 'agent_notification_job')
+      if (notification) {
+        const queued = await dep('first')('agent_notification_job', {
+          idempotency_key: notification.idempotency_key
+        })
+        if (!queued) await dep('addWithId')('agent_notification_job', notification, 'agent_notification_job')
+      }
       try {
         await dep('writeInboxNotification')({
           coordination: updated,
@@ -1122,7 +1155,15 @@ function createDateCoordinationHandlers(overrides = {}) {
         ? '等待对方回应'
         : (coordination.status === STATUS.INVITATION_DECLINED
           ? '对方暂未接受'
-          : (coordination.status === STATUS.EXPIRED ? '邀请已结束' : '已确认')))
+          : (coordination.status === STATUS.EXPIRED
+            ? '邀请已结束'
+            : (coordination.status === STATUS.CLOSED
+              ? '本轮协调已关闭'
+              : (coordination.status === STATUS.CANCELLED
+                ? '已取消'
+                : (coordination.status === STATUS.MANUAL_HANDOFF
+                  ? '已转人工'
+                  : (coordination.status === STATUS.ARRANGED ? '已确认' : '协调中')))))))
     const payload = {
       id: Number(coordination.id),
       status: coordination.status,
@@ -1184,7 +1225,7 @@ function createDateCoordinationHandlers(overrides = {}) {
         my_application: mine && mine.application
       }), role),
       is_test_data: Number(coordination.is_test_data || 0) === 1,
-      qa_reset_allowed: String(user.qa_match_cohort || '') === QA_REAL_DEVICE_MATCH_COHORT,
+      qa_reset_allowed: await qaResetAllowedFor(user, dep),
       test_data_badge: fixtureSceneBadge(Object.assign({}, coordination, {
         fixture_journey: coordination.synthetic_partner_journey
       })),
@@ -1265,6 +1306,7 @@ function createDateCoordinationHandlers(overrides = {}) {
       list: dep('list'),
       updateByDoc: dep('updateByDoc'),
       publishCoordinationEvent: dep('publishCoordinationEvent'),
+      writeInboxNotification: dep('writeInboxNotification'),
       now: dep('now'),
       env: dep('env')
     })
@@ -1272,21 +1314,23 @@ function createDateCoordinationHandlers(overrides = {}) {
 
   async function qaReset(data, wxContext) {
     const user = await dep('currentUser')(wxContext)
-    if (String(user.qa_match_cohort || '') !== QA_REAL_DEVICE_MATCH_COHORT) {
-      throw new Error('仅限双真机 QA 测试账号重置')
+    if (!(await qaResetAllowedFor(user, dep))) {
+      throw businessError('QA_RESET_FORBIDDEN', '仅限双真机 QA 测试账号重置')
     }
     if (String(data.confirm_text || '') !== '重新开始本轮测试') {
-      throw new Error('请确认重新开始本轮测试')
+      throw businessError('QA_RESET_CONFIRM_REQUIRED', '请确认重新开始本轮测试')
     }
     const coordination = await dep('byId')('date_coordination', coordinationId(data))
-    if (!coordination || !participant(coordination, user.id)) throw new Error('无权重置该约会协调')
+    if (!coordination || !participant(coordination, user.id)) {
+      throw businessError('QA_RESET_FORBIDDEN', '无权重置该约会协调')
+    }
     if (isTerminalCoordination(coordination.status)) {
       return { id: Number(coordination.id), status: coordination.status, reset: false, idempotent: true }
     }
     const now = dep('now')()
     const related = [
       ['agent_session', ['closed', 'cancelled'], 'closed'],
-      ['agent_notification_job', ['delivered', 'cancelled', 'failed'], 'cancelled'],
+      ['agent_notification_job', ['delivered', 'cancelled', 'failed', 'skipped', 'sent', 'expired'], 'cancelled'],
       ['date_application_patch', ['applied', 'cancelled', 'expired'], 'cancelled'],
       ['date_coordination_proposal', ['superseded'], 'superseded'],
       ['date_coordination_confirmation', ['superseded'], 'superseded']
@@ -1302,17 +1346,40 @@ function createDateCoordinationHandlers(overrides = {}) {
     const updated = await dep('updateByDoc')('date_coordination', coordination, {
       status: STATUS.CLOSED,
       business_state: 'qa_reset',
+      processing_status: 'idle',
+      processing_token: null,
+      confirmation_deadline_at: null,
+      counter_offer: null,
       qa_reset_at: now,
       qa_reset_by_user_id: Number(user.id)
     })
     await dep('publishCoordinationEvent')({
       coordination: updated,
+      allowCreate: false,
       event: {
         event_type: 'qa_coordination_reset',
         actor_user_id: Number(user.id),
         coordination_version: Number(coordination.coordination_version || 1)
       }
     })
+    const partnerId = Number(user.id) === Number(coordination.user_a_id)
+      ? Number(coordination.user_b_id)
+      : Number(coordination.user_a_id)
+    if (partnerId > 0) {
+      try {
+        await dep('writeInboxNotification')({
+          coordination: updated,
+          user_id: partnerId,
+          event_type: 'qa_coordination_reset',
+          coordination_version: Number(coordination.coordination_version || 1),
+          title: '本轮协调已关闭',
+          body: '本轮协调已由测试人员关闭，如需继续请重新发起邀请。',
+          stage: 'qa_coordination_reset'
+        })
+      } catch (err) {
+        console.warn('inbox qa-reset notification skipped:', err.message || err)
+      }
+    }
     return { id: Number(coordination.id), status: STATUS.CLOSED, reset: true, idempotent: false }
   }
 
@@ -1339,10 +1406,12 @@ function createDateCoordinationHandlers(overrides = {}) {
 
   async function acceptCounterOfferForUser(data, user) {
     const coordination = await dep('byId')('date_coordination', coordinationId(data))
-    if (!coordination || !participant(coordination, user.id)) throw new Error('无权接受该调整方案')
+    if (!coordination || !participant(coordination, user.id)) {
+      throw businessError('COUNTER_OFFER_STALE', '调整方案已更新，请刷新后重试')
+    }
     const version = Number(coordination.coordination_version || 1)
     if (Number(data.coordination_version || data.coordinationVersion || 0) !== version) {
-      throw new Error('调整方案已更新，请刷新后重试')
+      throw businessError('COUNTER_OFFER_STALE', '调整方案已更新，请刷新后重试')
     }
     const applications = await dep('list')('date_coordination_application', {
       coordination_id: Number(coordination.id),
@@ -1365,11 +1434,34 @@ function createDateCoordinationHandlers(overrides = {}) {
       viewerUserId: user.id
     })
     if (!counterOffer || String(data.proposal_token || data.proposalToken || '') !== counterOffer.proposal_token) {
-      throw new Error('调整方案已更新，请刷新后重试')
+      throw businessError('COUNTER_OFFER_STALE', '调整方案已更新，请刷新后重试')
     }
     if (!mine || !mine.application) throw new Error('请先完成自己的约会偏好')
 
-    const patchHandlers = overrides.applicationPatchHandlers || require('./dateApplicationPatch').createDateApplicationPatchHandlers()
+    const patchHandlerDeps = {
+      first: dep('first'),
+      list: dep('list'),
+      byId: dep('byId'),
+      addWithId: dep('addWithId'),
+      updateByDoc: dep('updateByDoc'),
+      now: dep('now'),
+      currentUser: async () => user,
+      publishCoordinationEvent: dep('publishCoordinationEvent'),
+      writeInboxNotification: dep('writeInboxNotification')
+    }
+    if (unitMode) patchHandlerDeps.unitMode = true
+    const claimPendingPatchDep = dep('claimPendingPatch')
+    const commitPreAcceptInvitationPatchDep = dep('commitPreAcceptInvitationPatch')
+    const commitPostAcceptApplicationPatchDep = dep('commitPostAcceptApplicationPatch')
+    if (typeof claimPendingPatchDep === 'function') patchHandlerDeps.claimPendingPatch = claimPendingPatchDep
+    if (typeof commitPreAcceptInvitationPatchDep === 'function') {
+      patchHandlerDeps.commitPreAcceptInvitationPatch = commitPreAcceptInvitationPatchDep
+    }
+    if (typeof commitPostAcceptApplicationPatchDep === 'function') {
+      patchHandlerDeps.commitPostAcceptApplicationPatch = commitPostAcceptApplicationPatchDep
+    }
+    const patchHandlers = overrides.applicationPatchHandlers
+      || require('./dateApplicationPatch').createDateApplicationPatchHandlers(patchHandlerDeps)
     const acceptedApplication = applyAcceptedCounterProposal(mine.application, counterOffer)
     const acceptedChanges = (counterOffer.changes || []).reduce((out, item) => {
       out[item.field] = acceptedApplication[item.field]
@@ -1388,15 +1480,10 @@ function createDateCoordinationHandlers(overrides = {}) {
     const coordination = await dep('byId')('date_coordination', coordinationId(data))
     if (!coordination) throw new Error('日期协调不存在')
     if (!participant(coordination, user.id)) throw new Error('无权确认该约会方案')
-    if (deadlinePassed(coordination.confirmation_deadline_at, dep('now')())) {
-      await dep('updateByDoc')('date_coordination', coordination, { status: STATUS.EXPIRED })
-      throw new Error('方案确认已过期')
-    }
     const version = Number(coordination.coordination_version || 1)
-    if (Number(data.coordination_version || version) !== version) throw new Error('方案已失效，请刷新后重试')
     const proposal = await dep('byId')('date_coordination_proposal', Number(data.proposal_id || data.proposalId || 0))
     if (!proposal || Number(proposal.coordination_id) !== Number(coordination.id)) {
-      throw new Error('方案已失效，请刷新后重试')
+      throw businessError('STALE_COORDINATION_VERSION', '方案已失效，请刷新后重试')
     }
     if (coordination.status === STATUS.ARRANGED) {
       const completed = await dep('first')('date_coordination_confirmation', {
@@ -1409,6 +1496,18 @@ function createDateCoordinationHandlers(overrides = {}) {
         && Number(coordination.final_proposal_id) === Number(proposal.id)) {
         return detailFor(coordination, user)
       }
+      throw businessError('COORDINATION_FINALIZED', '本次约会协调已结束')
+    }
+    if ([STATUS.CLOSED, STATUS.CANCELLED, STATUS.EXPIRED, STATUS.INVITATION_DECLINED, STATUS.MANUAL_HANDOFF]
+      .includes(coordination.status)) {
+      throw businessError('COORDINATION_FINALIZED', '本次约会协调已结束')
+    }
+    if (deadlinePassed(coordination.confirmation_deadline_at, dep('now')())) {
+      await dep('expireIfCurrent')(coordination)
+      throw businessError('COORDINATION_FINALIZED', '方案确认已过期')
+    }
+    if (Number(data.coordination_version || version) !== version) {
+      throw businessError('STALE_COORDINATION_VERSION', '方案已失效，请刷新后重试')
     }
     const decision = String(data.decision || '')
     if (!['confirm', 'reject'].includes(decision)) throw new Error('请选择确认或重新协调')
@@ -1674,6 +1773,7 @@ module.exports = {
   meetingCheckIn: handler('meetingCheckIn'),
   qaReset: handler('qaReset'),
   createDateCoordinationHandlers,
+  defaultDeps,
   processCoordinationDeadlines,
   upsertConfirmation,
   updateConfirmationState

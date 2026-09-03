@@ -55,6 +55,7 @@ assert(dateView.includes("coordinationId && showCoordinatorCta"))
 async function main() {
   const jobs = []
   const deps = {
+    unitMode: true,
     currentUser: async () => owner,
     byId: async (name, id) => {
       if (name === 'user' && Number(id) === 20) return fixtureLegacy

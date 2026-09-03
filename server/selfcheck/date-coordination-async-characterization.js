@@ -18,6 +18,7 @@ function memoryDeps(seed = {}) {
     return rows[name]
   }
   return {
+    unitMode: true,
     rows,
     currentUser: async (context) => {
       const user = collection('user').find((item) => Number(item.id) === Number(context.user_id))

@@ -19,6 +19,7 @@ function memoryDeps(seed = {}) {
   }
   const deps = {
     rows,
+    unitMode: true,
     currentUser: async (context) => {
       const user = collection('user').find((item) => Number(item.id) === Number(context.user_id))
       if (!user) throw new Error('登录已过期，请重新登录')

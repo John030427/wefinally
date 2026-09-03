@@ -43,7 +43,7 @@ const offer = buildStructuredCounterProposal({
   viewerUserId: 1
 })
 assert.ok(offer)
-assert.strictEqual(offer.time_text, '9月6日（周日）下午')
+assert.strictEqual(offer.time_text, '2026-09-06 下午')
 assert.strictEqual(offer.kind, 'partner_structured_counter_proposal')
 assert.strictEqual(offer.action_label, '接受这份调整')
 assert.deepStrictEqual(offer.changed_dimensions, ['time'])
@@ -100,7 +100,7 @@ const graphInput = buildDateCoordinationGraphInput(coordination, applications, {
 })
 assert.strictEqual(graphInput.sharedState.actionRequired, 'review_counter_proposal')
 assert.strictEqual(graphInput.sharedState.coordinationPath, 'structured_counter_proposal')
-assert.strictEqual(graphInput.sharedState.counterOffer.time_text, '9月6日（周日）下午')
+assert.strictEqual(graphInput.sharedState.counterOffer.time_text, '2026-09-06 下午')
 
 const partnerMessage = projectParticipantEvent({
   event_type: 'no_overlap', actor_user_id: 2, counter_offer: offer
@@ -117,9 +117,17 @@ assert.ok(routeSource.includes('/counter-offer\\/accept'))
 assert.ok(pageSource.includes('async acceptCounterOffer()'))
 assert.ok(viewSource.includes('接受这份调整'))
 assert.ok(viewSource.includes('只调整部分安排'))
-assert.ok(viewSource.includes('完整填写可接受范围'))
+assert.ok(viewSource.includes('完整填写我的安排'))
 assert.ok(chatViewSource.includes('保持不变：'))
 assert.ok(agentSource.includes('clarify_scope'))
 assert.ok(agentSource.includes('has_complete_base_proposal'))
+assert.ok(agentSource.includes("claimPendingPatch: dep('claimPendingPatch')"))
+assert.ok(
+  agentSource.includes("commitPost = dep('commitPostAcceptApplicationPatch')")
+  || agentSource.includes("commitPostAcceptApplicationPatchDep = dep('commitPostAcceptApplicationPatch')")
+)
+const coordinationSource = fs.readFileSync(path.join(ROOT, 'miniprogram/cloudfunctions/api/handlers/dateCoordination.js'), 'utf8')
+assert.ok(coordinationSource.includes('commitPostAcceptApplicationPatch: db.commitPostAcceptApplicationPatch'))
+assert.ok(coordinationSource.includes('unitMode === true'))
 
 console.log('PASS date counter proposal: full-plan diff, bounded acceptance, graph paths and clear UI choices')
