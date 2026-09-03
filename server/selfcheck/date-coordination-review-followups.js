@@ -364,6 +364,11 @@ async function main() {
   }, deps)
   assert.strictEqual(tables.coordination_notification.length, 1)
 
+  const meetingSource = read('miniprogram/cloudfunctions/api/lib/meetingCheckInService.js')
+  assert(meetingSource.includes('safeDigest(arrivalPosition)'))
+  assert(meetingSource.includes('safeDigest(hint)'))
+  assert(!/idempotency_suffix: action === 'set_arrival_hint'\s*\n\s*\? hint/.test(meetingSource))
+
   const appWxss = read('miniprogram/app.wxss')
   const usedTokens = new Set()
   for (const file of [

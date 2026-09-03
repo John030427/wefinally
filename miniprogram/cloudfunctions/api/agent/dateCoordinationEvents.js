@@ -52,7 +52,14 @@ function safeCard(value) {
   }
 }
 
-async function ensureSession(deps, coordination, userId) {
+const TERMINAL_EVENT_TYPES = Object.freeze(new Set([
+  'qa_coordination_reset',
+  'coordination_closed',
+  'coordination_expired'
+]))
+
+async function ensureSession(deps, coordination, userId, options = {}) {
+  const allowCreate = options.allowCreate !== false
   const query = {
     user_id: Number(userId),
     agent_type: 'date_coordinator',
@@ -66,6 +73,7 @@ async function ensureSession(deps, coordination, userId) {
     session = await deps.first('agent_session', Object.assign({}, query, { status: 'active' }))
   }
   if (!session) {
+    if (!allowCreate) return null
     session = await deps.addWithId('agent_session', {
       user_id: Number(userId),
       agent_type: 'date_coordinator',
@@ -85,8 +93,10 @@ async function publishCoordinationEvent(input = {}, overrides) {
     coordination_version: Number(input.event && input.event.coordination_version || coordination.coordination_version || 1)
   })
   const key = eventKey(coordination, event)
+  let created = false
   let stored = await deps.first('date_coordination_event', { idempotency_key: key })
   if (!stored) {
+    created = true
     stored = await deps.addWithId('date_coordination_event', {
       coordination_id: Number(coordination.id),
       coordination_version: event.coordination_version,
@@ -113,7 +123,9 @@ async function publishCoordinationEvent(input = {}, overrides) {
     const messageKey = `${key}:user:${userId}`
     let message = await deps.first('agent_message', { coordination_event_key: messageKey })
     if (!message) {
-      const session = await ensureSession(deps, coordination, userId)
+      const allowCreate = !TERMINAL_EVENT_TYPES.has(String(event.event_type || ''))
+      const session = await ensureSession(deps, coordination, userId, { allowCreate })
+      if (!session) continue
       message = await deps.addWithId('agent_message', {
         session_id: Number(session.id),
         user_id: userId,
@@ -132,7 +144,7 @@ async function publishCoordinationEvent(input = {}, overrides) {
     }
     messages.push(message)
   }
-  return { event: stored, messages }
+  return { event: stored, messages, created, duplicate: !created }
 }
 
-module.exports = { eventKey, publishCoordinationEvent, safeChangedDimensions, safeCard }
+module.exports = { eventKey, publishCoordinationEvent, ensureSession, safeChangedDimensions, safeCard }

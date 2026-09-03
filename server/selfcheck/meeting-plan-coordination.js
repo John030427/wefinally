@@ -51,7 +51,7 @@ async function main() {
   assert.strictEqual(changedDayWithoutExactTime.activity_venue, '万象天地百老汇影城')
   assert.throws(
     () => normalizeApplication(changedDayWithoutExactTime, new Date('2026-09-02T00:00:00.000Z')),
-    /修改了日期或时间段，请再选择具体开始时间/
+    /请再选择一个具体开始时间/
   )
 
   const legacy = normalizeApplication({
@@ -141,6 +141,51 @@ async function main() {
   )
   assert.strictEqual(events.some((event) => event.event_type === 'arrival_hint_updated'), true)
   assert.strictEqual(events.some((event) => event.event_type === 'participant_arrived' && event.arrival_position === '星巴克吧台旁'), true)
+
+  // Same coordination version: position update must notify again; identical position stays idempotent.
+  const positionTables = {
+    date_coordination: [{ id: 19, user_a_id: 1, user_b_id: 2, coordination_version: 4, status: 'arranged' }],
+    date_coordination_application: [
+      { id: 20, coordination_id: 19, coordination_version: 4, user_id: 1, application: application('深色上衣') },
+      { id: 21, coordination_id: 19, coordination_version: 4, user_id: 2, application: application('浅色外套') }
+    ]
+  }
+  const positionEvents = []
+  const partnerNotifications = []
+  const positionDeps = {
+    env: { MEETING_CODE_SECRET: 'selfcheck-secret' },
+    now: () => new Date('2026-09-03T12:00:00.000Z'),
+    byId: async (name, id) => positionTables[name].find((row) => Number(row.id) === Number(id)),
+    list: async (name, query) => positionTables[name].filter((row) => Object.keys(query).every((key) => row[key] === query[key])),
+    updateByDoc: async (_name, row, patch) => Object.assign(row, patch),
+    publishCoordinationEvent: async (input) => {
+      const existing = positionEvents.find((event) => (
+        event.event_type === input.event.event_type
+        && event.idempotency_suffix === input.event.idempotency_suffix
+        && Number(event.actor_user_id) === Number(input.event.actor_user_id)
+      ))
+      if (existing) return { messages: [], duplicate: true, created: false, event: existing }
+      positionEvents.push(input.event)
+      return { messages: [], duplicate: false, created: true, event: input.event }
+    },
+    writeInboxNotification: async (input) => {
+      partnerNotifications.push(input)
+      return { queued: true }
+    }
+  }
+  await applyMeetingCheckIn({ coordination_id: 19, user_id: 1, action: 'arrived', arrival_position: '星巴克吧台旁' }, positionDeps)
+  await applyMeetingCheckIn({ coordination_id: 19, user_id: 1, action: 'arrived', arrival_position: '星巴克靠窗位置' }, positionDeps)
+  assert.strictEqual(partnerNotifications.length, 2)
+  assert.ok(String(partnerNotifications[1].body || '').includes('靠窗'))
+  assert.notStrictEqual(
+    positionEvents[0].idempotency_suffix,
+    positionEvents[1].idempotency_suffix,
+    'updated arrival positions must use distinct event identities'
+  )
+  assert.ok(!String(positionEvents[1].idempotency_suffix || '').includes('靠窗'))
+  await applyMeetingCheckIn({ coordination_id: 19, user_id: 1, action: 'arrived', arrival_position: '星巴克靠窗位置' }, positionDeps)
+  assert.strictEqual(partnerNotifications.length, 2, 'identical arrival position must stay idempotent')
+  assert.strictEqual(positionEvents.length, 2)
 
   const root = path.resolve(__dirname, '../..')
   const dateWxml = fs.readFileSync(path.join(root, 'miniprogram/pages/date-coordination/date-coordination.wxml'), 'utf8')

@@ -68,6 +68,10 @@ function checkInEvent(action, hint, arrivalPosition) {
   return { event_type: 'participant_mismatch' }
 }
 
+function safeDigest(value) {
+  return crypto.createHash('sha256').update(String(value || '')).digest('hex').slice(0, 16)
+}
+
 async function applyMeetingCheckIn(input = {}, deps) {
   const coordination = await deps.byId('date_coordination', Number(input.coordination_id || 0))
   const userId = Number(input.user_id || 0)
@@ -116,14 +120,51 @@ async function applyMeetingCheckIn(input = {}, deps) {
       : Object.assign({ [field]: coordination[field] || now }, arrivalPosition ? { [`arrival_position_${side}`]: arrivalPosition } : {})
     updated = await deps.updateByDoc('date_coordination', coordination, update)
   }
-  await deps.publishCoordinationEvent({
+  const version = Number(updated.coordination_version || 1)
+  const idempotencySuffix = action === 'arrived'
+    ? `${action}:${version}:${safeDigest(arrivalPosition)}`
+    : action === 'set_arrival_hint'
+      ? `${action}:${version}:${safeDigest(hint)}`
+      : `${action}:${version}`
+  const published = await deps.publishCoordinationEvent({
     coordination: updated,
     event: Object.assign(checkInEvent(action, hint, arrivalPosition), {
       actor_user_id: userId,
-      coordination_version: Number(updated.coordination_version || 1),
-      idempotency_suffix: action === 'set_arrival_hint' ? hint : String(new Date(now).getTime())
+      coordination_version: version,
+      idempotency_suffix: idempotencySuffix
     })
   })
+  const partnerId = Number(userId) === Number(updated.user_a_id)
+    ? Number(updated.user_b_id)
+    : Number(updated.user_a_id)
+  const shouldNotifyPartner = ['arrived', 'not_found', 'mismatch'].includes(action)
+    && partnerId > 0
+    && typeof deps.writeInboxNotification === 'function'
+    && !(published && published.duplicate)
+  if (shouldNotifyPartner) {
+    const bodies = {
+      arrived: arrivalPosition
+        ? `对方已到达活动场地（${arrivalPosition}），请打开协调页查看现场会合信息。`
+        : '对方已到达活动场地，请打开协调页查看现场会合信息。',
+      not_found: '对方暂未找到人，请留在公共集合点并核对识别提示。',
+      mismatch: '对方反馈现场情况不符，会合已暂停。请停止接触并前往安全公共区域，必要时联系平台人工客服或当地紧急服务。'
+    }
+    try {
+      await deps.writeInboxNotification({
+        coordination: updated,
+        user_id: partnerId,
+        event_type: action === 'arrived'
+          ? `meeting_arrived:${safeDigest(arrivalPosition)}`
+          : `meeting_${action}`,
+        coordination_version: version,
+        title: action === 'mismatch' ? '会合已暂停' : '到场状态更新',
+        body: bodies[action],
+        stage: `meeting_${action}`
+      })
+    } catch (err) {
+      console.warn('inbox meeting notification skipped:', err.message || err)
+    }
+  }
   const applications = await deps.list('date_coordination_application', {
     coordination_id: Number(coordination.id)
   }, 50)
@@ -134,5 +175,6 @@ module.exports = {
   ACTIONS,
   participantSide,
   publicState,
-  applyMeetingCheckIn
+  applyMeetingCheckIn,
+  safeDigest
 }
