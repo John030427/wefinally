@@ -17,6 +17,18 @@ const ACTIVITY_VENUE_RULES = Object.freeze({
   '桌游': /桌游|board\s*game/i
 })
 
+const ACTIVITY_DETAIL_RULES = Object.freeze({
+  '吃饭': /^(?:吃饭|椰子鸡|火锅|烤肉|烧烤|粤菜|川菜|湘菜|日料|西餐|披萨|牛排|海鲜|茶餐厅)$/,
+  '咖啡': /^(?:咖啡|手冲|拿铁|美式)$/,
+  '奶茶': /^(?:奶茶|茶饮)$/,
+  '电影': /^(?:电影|看电影)$/,
+  '看展': /^(?:看展|展览)$/,
+  '桌游': /^(?:桌游)$/
+})
+
+const CONCRETE_VENUE_RULE = /(?:店|餐厅|饭店|餐馆|影城|影院|电影院|美术馆|博物馆|展馆|桌游馆)$/
+const AREA_HINT_RULE = /(?:附近|商圈|中心|广场|街区|片区|新区|区)$/
+
 function text(value, maxLength) {
   return String(value || '')
     .replace(/[\u0000-\u001f\u007f]/g, ' ')
@@ -107,6 +119,32 @@ function normalizeMeetingPlanFields(input = {}) {
   }
 }
 
+function venueResolution(activity, input) {
+  const normalizedActivity = text(activity, 20)
+  const value = text(input, 80)
+  const unresolved = (areaHint, activityDetail) => ({
+    status: 'needs_specific_venue',
+    area_hint: areaHint,
+    activity_detail: activityDetail,
+    activity_venue: '',
+    missing_fields: ['activity_venue']
+  })
+  if (!value) return unresolved('', normalizedActivity)
+  if (CONCRETE_VENUE_RULE.test(value)) {
+    return {
+      status: 'resolved',
+      area_hint: '',
+      activity_detail: normalizedActivity,
+      activity_venue: value,
+      missing_fields: []
+    }
+  }
+  const detailRule = ACTIVITY_DETAIL_RULES[normalizedActivity]
+  if (detailRule && detailRule.test(value)) return unresolved('', value)
+  if (AREA_HINT_RULE.test(value)) return unresolved(value, normalizedActivity)
+  return unresolved(value, normalizedActivity)
+}
+
 function activityVenueConflict(activity, activityVenue) {
   const normalizedActivity = text(activity, 20)
   const normalizedVenue = text(activityVenue, 80)
@@ -127,14 +165,20 @@ function planReadiness(input = {}, options = {}) {
   const normalized = normalizeMeetingPlanFields(input)
   const missing = []
   if (!normalized.start_time) missing.push('start_time')
-  if (!normalized.activity_venue) missing.push('activity_venue')
   const activity = input.activity || (Array.isArray(input.activities) ? input.activities[0] : '')
-  const conflict = activityVenueConflict(activity, normalized.activity_venue)
+  const resolution = input.venue_resolution && typeof input.venue_resolution === 'object'
+    ? input.venue_resolution
+    : venueResolution(activity, normalized.activity_venue)
+  if (resolution.status !== 'resolved') missing.push('activity_venue')
+  const conflict = resolution.status === 'resolved'
+    ? activityVenueConflict(activity, resolution.activity_venue)
+    : null
   return {
     ready: missing.length === 0 && !conflict,
     missing_fields: missing,
     conflict,
-    fields: normalized
+    fields: normalized,
+    venue_resolution: resolution
   }
 }
 
@@ -154,6 +198,7 @@ module.exports = {
   normalizeArrivalHint,
   normalizeArrivalPosition,
   normalizeMeetingPlanFields,
+  venueResolution,
   activityVenueConflict,
   planReadiness,
   formatPlanTime

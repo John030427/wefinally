@@ -5,6 +5,7 @@ const {
   normalizeStartTime,
   exactTimeFromText,
   periodForStartTime,
+  venueResolution,
   activityVenueConflict,
   planReadiness
 } = require('../../miniprogram/cloudfunctions/api/lib/meetingPlanPolicy')
@@ -40,6 +41,27 @@ async function main() {
   assert.strictEqual(periodForStartTime('20:00'), 'night')
   assert(activityVenueConflict('电影', '星巴克'))
   assert.strictEqual(activityVenueConflict('电影', '万象天地百老汇影城'), null)
+  assert.deepStrictEqual(venueResolution('吃饭', '大运中心'), {
+    status: 'needs_specific_venue',
+    area_hint: '大运中心',
+    activity_detail: '吃饭',
+    activity_venue: '',
+    missing_fields: ['activity_venue']
+  })
+  assert.deepStrictEqual(venueResolution('吃饭', '椰子鸡'), {
+    status: 'needs_specific_venue',
+    area_hint: '',
+    activity_detail: '椰子鸡',
+    activity_venue: '',
+    missing_fields: ['activity_venue']
+  })
+  assert.deepStrictEqual(venueResolution('电影', '深圳仁恒梦中心英皇电影城'), {
+    status: 'resolved',
+    area_hint: '',
+    activity_detail: '电影',
+    activity_venue: '深圳仁恒梦中心英皇电影城',
+    missing_fields: []
+  })
   assert.strictEqual(planReadiness(application('深色上衣，手持一本书')).ready, true)
   assert.strictEqual(planReadiness(Object.assign(application('深色上衣'), { meet_point: '' })).ready, true)
   assert.strictEqual(planReadiness(Object.assign(application('深色上衣'), { activity_venue: '星巴克' })).ready, false)
