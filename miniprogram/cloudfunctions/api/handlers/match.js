@@ -901,6 +901,13 @@ async function executeImmediateMatch(data, user, options = {}) {
 
 async function startQaRealDeviceMatch(data, wxContext) {
   const user = await currentUser(wxContext)
+  const { assertQaPairResetNotBlockingMatch } = require('../lib/qaPairResetService')
+  await assertQaPairResetNotBlockingMatch({
+    actor: user
+  }, {
+    list,
+    now
+  })
   const publicEnabled = await flagEnabled('match_test_run_public_enabled')
   if (!resolveQaTestRunEnabled(user, publicEnabled)) {
     const error = new Error('仅测试账号可以运行双真机互配')

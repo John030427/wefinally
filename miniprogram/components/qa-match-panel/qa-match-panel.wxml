@@ -18,7 +18,7 @@
     <button class="qa-pair-reset" bindtap="onResetQaPairData" disabled="{{running}}">
       清空双机匹配与协调数据
     </button>
-    <view class="qa-pair-reset-hint">保留注册资料、画像、会员与订单；清空后两台手机可重新匹配。</view>
+    <view class="qa-pair-reset-hint">清空本测试对的匹配记录、第一次约会数据、约会协调会话和相关通知；保留注册资料、画像/RAG、会员、订单、推广归属及普通恋爱助手聊天。</view>
   </view>
 
   <view class="qa-scenario-block" wx:if="{{scenarioPickerVisible}}">

@@ -1314,8 +1314,7 @@ async function acquireQaPairResetRun(data) {
   const requestId = String(data && data.request_id || '')
   const pairHash = String(data && data.pair_hash || '')
   if (!requestId || !pairHash) throw new Error('QA 双机重置幂等键无效')
-  const digest = crypto.createHash('sha256').update(`${pairHash}:${requestId}`).digest('hex').slice(0, 32)
-  const documentId = `qa_pair_reset_${digest}`
+  const documentId = `qa_pair_reset_active_${pairHash}`
   return withCollection('qa_pair_reset_run', () => db.runTransaction(async (rawTransaction) => {
     const adapter = transactionAdapter(rawTransaction)
     const current = await adapter.byDocId('qa_pair_reset_run', documentId)
@@ -1324,9 +1323,28 @@ async function acquireQaPairResetRun(data) {
       const expired = current.status === 'deleting'
         && current.lease_expires_at
         && new Date(current.lease_expires_at).getTime() <= timestamp.getTime()
-      if (!expired) return { created: false, run: current }
-      const resumed = Object.assign({}, current, {
+      if (current.status === 'completed') {
+        // allow a new lease on the same pair document after completion
+        const restarted = Object.assign({}, data, {
+          _id: documentId,
+          id: Number(current.id || 0) || await adapter.nextCounter('qa_pair_reset_run'),
+          status: 'deleting',
+          retry_count: 0,
+          lease_expires_at: new Date(timestamp.getTime() + 2 * 60 * 1000),
+          create_time: timestamp,
+          update_time: timestamp,
+          completed_at: null,
+          deleted_counts: {}
+        })
+        await adapter.setByDocId('qa_pair_reset_run', documentId, restarted)
+        return { created: true, run: restarted }
+      }
+      if (!expired && current.status !== 'failed_retryable') {
+        return { created: false, run: current }
+      }
+      const resumed = Object.assign({}, current, data, {
         status: 'deleting',
+        request_id: requestId,
         retry_count: Number(current.retry_count || 0) + 1,
         lease_expires_at: new Date(timestamp.getTime() + 2 * 60 * 1000),
         update_time: timestamp

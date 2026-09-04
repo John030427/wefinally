@@ -71,6 +71,7 @@ function route(method, path) {
     'POST /api/match/start': match.start,
     'POST /api/match/qa-real-device/start': match.startQaRealDeviceMatch,
     'POST /api/match/qa-pair-reset': qaPairReset.reset,
+    'GET /api/match/qa-pair-reset/status': qaPairReset.status,
     'POST /api/match/test-runs': match.create,
     'POST /api/match/report': match.generateReport,
     'POST /api/match/report-tasks': reportTask.create,

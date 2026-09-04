@@ -8,11 +8,14 @@ const {
   now,
   authError
 } = require('../lib/db')
-const { executeQaPairReset } = require('../lib/qaPairResetService')
+const { requireWxOpenid } = require('../lib/wxIdentity')
+const {
+  executeQaPairReset,
+  getQaPairResetStatus
+} = require('../lib/qaPairResetService')
 
 async function reset(data = {}, wxContext = {}) {
-  const openid = String(wxContext.OPENID || '')
-  if (!openid) throw authError('无法获取微信身份')
+  const openid = requireWxOpenid(wxContext)
   const actor = await first('user', { openid })
   if (!actor) throw authError('请先登录')
   const result = await executeQaPairReset({
@@ -29,9 +32,16 @@ async function reset(data = {}, wxContext = {}) {
   })
   return Object.assign({}, result, {
     message: result.status === 'completed'
-      ? '已清空双机匹配与约会协调数据，可以重新开始匹配'
+      ? '已清空本测试对的匹配记录、第一次约会数据、约会协调会话和相关通知；保留注册资料、画像/RAG、会员、订单、推广归属及普通恋爱助手聊天。'
       : '正在清空测试数据，请稍后再试'
   })
 }
 
-module.exports = { reset }
+async function status(data = {}, wxContext = {}) {
+  const openid = requireWxOpenid(wxContext)
+  const actor = await first('user', { openid })
+  if (!actor) throw authError('请先登录')
+  return getQaPairResetStatus({ actor }, { list, now })
+}
+
+module.exports = { reset, status }

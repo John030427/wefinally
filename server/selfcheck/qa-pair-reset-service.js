@@ -66,9 +66,11 @@ function memoryDeps() {
     },
     updateByDoc: async (_name, row, patch) => Object.assign(row, patch),
     acquireRun: async (data) => {
+      const active = rows.qa_pair_reset_run.find((row) => row.pair_hash === data.pair_hash && ['deleting', 'processing'].includes(String(row.status || '')))
+      if (active) return { created: false, run: active }
       const existing = rows.qa_pair_reset_run.find((row) => row.request_id === data.request_id && row.pair_hash === data.pair_hash)
       if (existing) return { created: false, run: existing }
-      const run = Object.assign({ _id: `reset${nextId}`, id: nextId++ }, data)
+      const run = Object.assign({ _id: `qa_pair_reset_active_${data.pair_hash}`, id: nextId++ }, data)
       rows.qa_pair_reset_run.push(run)
       return { created: true, run }
     },

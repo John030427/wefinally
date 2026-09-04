@@ -13,13 +13,17 @@ const panelWxml = read('miniprogram/components/qa-match-panel/qa-match-panel.wxm
 
 assert(route.includes("const qaPairReset = require('./qaPairReset')"))
 assert(route.includes("'POST /api/match/qa-pair-reset': qaPairReset.reset"))
+assert(route.includes("'GET /api/match/qa-pair-reset/status': qaPairReset.status"))
 assert(handler.includes('executeQaPairReset'))
+assert(handler.includes('getQaPairResetStatus'))
 assert(handler.includes('acquireQaPairResetRun'))
 assert(handler.includes('qa_pair_reset_audit'))
 assert(constants.includes("MATCH_QA_PAIR_RESET: '/api/match/qa-pair-reset'"))
+assert(constants.includes("MATCH_QA_PAIR_RESET_STATUS: '/api/match/qa-pair-reset/status'"))
 assert(panelJs.includes('onResetQaPairData'))
 assert(panelJs.includes("confirm_text: '彻底清空本对测试数据'"))
+assert(panelJs.includes('qa_pair_reset_request_id'))
 assert(panelWxml.includes('清空双机匹配与协调数据'))
-assert(panelWxml.includes('保留注册资料、画像、会员与订单'))
+assert(panelWxml.includes('保留注册资料、画像/RAG、会员、订单、推广归属及普通恋爱助手聊天'))
 
 console.log('PASS QA pair reset API and mini program contract')

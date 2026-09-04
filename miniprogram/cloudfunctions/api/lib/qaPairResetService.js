@@ -5,6 +5,7 @@ const {
 } = require('./qaPairResetPolicy')
 
 const REQUEST_ID_RE = /^[A-Za-z0-9_-]{8,80}$/
+const PAGE_SIZE = 100
 
 function uniqueRows(rows) {
   const seen = new Set()
@@ -16,9 +17,32 @@ function uniqueRows(rows) {
   })
 }
 
-async function collect(deps, name, queries, limit = 200) {
-  const pages = await Promise.all((queries || []).map((query) => deps.list(name, query, limit)))
-  return uniqueRows([].concat(...pages))
+async function listPage(deps, name, query, afterId, limit = PAGE_SIZE) {
+  const pageLimit = Math.max(1, Math.min(Number(limit || PAGE_SIZE), PAGE_SIZE))
+  if (typeof deps.listPage === 'function') {
+    return deps.listPage(name, query, afterId, pageLimit)
+  }
+  const rows = await deps.list(name, query, 1000)
+  const sorted = (rows || []).slice().sort((a, b) => String(a._id || '').localeCompare(String(b._id || '')))
+  const start = afterId
+    ? sorted.findIndex((row) => String(row._id || '') === String(afterId)) + 1
+    : 0
+  return sorted.slice(Math.max(0, start), Math.max(0, start) + pageLimit)
+}
+
+async function collect(deps, name, queries) {
+  const all = []
+  for (const query of queries || []) {
+    let afterId = ''
+    for (;;) {
+      const page = await listPage(deps, name, query, afterId || null, PAGE_SIZE)
+      if (!page.length) break
+      all.push(...page)
+      afterId = String(page[page.length - 1]._id || '')
+      if (!afterId || page.length < PAGE_SIZE) break
+    }
+  }
+  return uniqueRows(all)
 }
 
 async function removeRows(deps, name, rows, counts) {
@@ -38,9 +62,16 @@ function stringQueries(field, values) {
 }
 
 async function deleteByQueries(deps, name, queries, counts) {
-  const rows = await collect(deps, name, queries)
-  await removeRows(deps, name, rows, counts)
-  return rows
+  for (const query of queries || []) {
+    for (;;) {
+      const page = await listPage(deps, name, query, null, PAGE_SIZE)
+      if (!page.length) break
+      await removeRows(deps, name, page, counts)
+      if (page.length < PAGE_SIZE) {
+        // keep looping in case more remain after delete; next page starts from head
+      }
+    }
+  }
 }
 
 function resetUserPatch(timestamp) {
@@ -54,6 +85,49 @@ function resetUserPatch(timestamp) {
   }
 }
 
+async function resolvePairFromActor(deps, actor) {
+  const cohort = String(actor.qa_match_cohort || 'qa-real-device-registration-v1')
+  const candidates = await deps.list('user', { qa_match_cohort: cohort }, 20)
+  return resolveQaPair(actor, candidates)
+}
+
+async function getQaPairResetStatus(input = {}, deps = {}) {
+  const actor = input.actor || {}
+  const pair = await resolvePairFromActor(deps, actor)
+  const runs = await deps.list('qa_pair_reset_run', { pair_hash: pair.pairHash }, 20)
+  const active = (runs || [])
+    .filter((row) => ['deleting', 'processing'].includes(String(row.status || '')))
+    .sort((a, b) => new Date(b.update_time || 0).getTime() - new Date(a.update_time || 0).getTime())[0]
+  if (active) {
+    return {
+      status: String(active.status || 'deleting'),
+      pair_hash: pair.pairHash,
+      request_id: active.request_id || '',
+      deleted_counts: active.deleted_counts || {}
+    }
+  }
+  const completed = (runs || [])
+    .filter((row) => String(row.status || '') === 'completed')
+    .sort((a, b) => new Date(b.completed_at || b.update_time || 0).getTime() - new Date(a.completed_at || a.update_time || 0).getTime())[0]
+  if (completed) {
+    return {
+      status: 'completed',
+      pair_hash: pair.pairHash,
+      request_id: completed.request_id || '',
+      deleted_counts: completed.deleted_counts || {}
+    }
+  }
+  return { status: 'idle', pair_hash: pair.pairHash }
+}
+
+async function assertQaPairResetNotBlockingMatch(input = {}, deps = {}) {
+  const status = await getQaPairResetStatus(input, deps)
+  if (['deleting', 'processing'].includes(String(status.status || ''))) {
+    throw businessError('QA_PAIR_RESET_IN_PROGRESS', '双账号清理进行中，请稍后再匹配')
+  }
+  return status
+}
+
 async function executeQaPairReset(input = {}, deps = {}) {
   assertConfirmText(input.confirmText)
   const requestId = String(input.requestId || '')
@@ -61,9 +135,7 @@ async function executeQaPairReset(input = {}, deps = {}) {
     throw businessError('QA_PAIR_RESET_RETRYABLE', '重置请求编号无效，请重试')
   }
   const actor = input.actor || {}
-  const cohort = String(actor.qa_match_cohort || 'qa-real-device-registration-v1')
-  const candidates = await deps.list('user', { qa_match_cohort: cohort }, 20)
-  const pair = resolveQaPair(actor, candidates)
+  const pair = await resolvePairFromActor(deps, actor)
   const timestamp = deps.now()
   const acquired = await deps.acquireRun({
     request_id: requestId,
@@ -89,6 +161,7 @@ async function executeQaPairReset(input = {}, deps = {}) {
 
   const counts = {}
   try {
+    if (typeof deps.beforeDeleteHook === 'function') await deps.beforeDeleteHook(run)
     const userIds = pair.userIds
     const matchLogs = await collect(deps, 'user_match_log', [
       ...queriesFor('user_id', userIds),
@@ -119,7 +192,8 @@ async function executeQaPairReset(input = {}, deps = {}) {
       'fixture_response_job',
       'controlled_date_scenario_run',
       'coordination_notification',
-      'coordination_notification_dedupe'
+      'coordination_notification_dedupe',
+      'date_submission_outbox'
     ]
     for (const name of coordinationChildren) {
       await deleteByQueries(deps, name, queriesFor('coordination_id', coordinationIds), counts)
@@ -174,9 +248,9 @@ async function executeQaPairReset(input = {}, deps = {}) {
     for (const user of pair.users) {
       await deps.updateByDoc('user', user, resetUserPatch(timestamp))
     }
-    const cursors = await collect(deps, 'user_notification_cursor', queriesFor('user_id', userIds), 20)
+    const cursors = await collect(deps, 'user_notification_cursor', queriesFor('user_id', userIds))
     for (const cursor of cursors) {
-      const remaining = await deps.list('coordination_notification', { user_id: Number(cursor.user_id) }, 100)
+      const remaining = await collect(deps, 'coordination_notification', [{ user_id: Number(cursor.user_id) }])
       const unread = remaining.filter((row) => !row.read_at && Number(row.is_read || 0) !== 1).length
       await deps.updateByDoc('user_notification_cursor', cursor, { unread_count: unread, update_time: timestamp })
     }
@@ -206,4 +280,10 @@ async function executeQaPairReset(input = {}, deps = {}) {
   }
 }
 
-module.exports = { executeQaPairReset }
+module.exports = {
+  executeQaPairReset,
+  getQaPairResetStatus,
+  assertQaPairResetNotBlockingMatch,
+  collect,
+  listPage
+}
