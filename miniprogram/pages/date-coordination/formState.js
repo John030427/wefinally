@@ -2,7 +2,8 @@ function createEmptyDateCoordinationForm() {
   return {
     availability: [], areas: [], activities: [], budget: '', payment_preference: '', duration: '',
     transport_constraints: '', other_requirements: '', share_message: '', contract_version: 2,
-    start_time: '', activity_venue: '', meet_point: '', arrival_hint: ''
+    start_time: '', activity_venue: '', meet_point: '', arrival_hint: '',
+    venue_choice_mode: 'named_location', activity_detail: '', open_items: []
   }
 }
 

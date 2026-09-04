@@ -26,6 +26,7 @@ function main() {
   assert.ok(workflow.includes('miniprogram/cloudfunctions/agent-graph/package-lock.json'), 'workflow must cache agent-graph lockfile')
   assert.ok(workflow.includes('npm ci --prefix miniprogram/cloudfunctions/agent-graph'), 'workflow must install agent-graph deps')
   assert.ok(workflow.includes('npm --prefix miniprogram/cloudfunctions/agent-graph run check'), 'workflow must run agent-graph check')
+  assert.ok(workflow.includes('selfcheck:flexible-date-location') || workflow.includes('flexible-date-location'), 'workflow must run flexible date location')
   assert.ok(workflow.includes('selfcheck:qa-pair-reset'), 'workflow must run qa-pair-reset')
   assert.ok(workflow.includes('selfcheck:wx-identity') || workflow.includes('wx-identity-boundary'), 'workflow must run wx identity boundary')
   assert.ok(workflow.includes('release-workflow-contract.js'), 'workflow must run release workflow contract')

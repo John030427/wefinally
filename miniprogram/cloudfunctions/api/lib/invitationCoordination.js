@@ -14,7 +14,10 @@ const {
   PLAN_CONTRACT_VERSION,
   normalizeMeetingPlanFields,
   planReadiness,
-  formatPlanTime
+  formatPlanTime,
+  canSendInvitation,
+  canFinalizePlan,
+  normalizeOpenItems
 } = require('./meetingPlanPolicy')
 
 const STALE_INVITATION_MESSAGE = '对方刚刚更新了约会安排，请查看最新方案后再确认。'
@@ -601,6 +604,11 @@ function buildInvitationCard(primaryOrPrefs = {}, version = 1, options = {}) {
         ? { ready: true, missing_fields: [], conflict: null }
         : planReadiness(primary))
     : { ready: false, missing_fields: ['start_time', 'activity_venue'], conflict: null }
+  const openItems = normalizeOpenItems(primary && primary.open_items)
+  const sendGate = primary ? canSendInvitation(primary) : { ok: false }
+  const finalizeGate = primary ? canFinalizePlan(primary, {
+    accepter_user_ids: [options.user_a_id, options.user_b_id].filter(Boolean)
+  }) : { ok: false }
   const paymentText = complete
     ? paymentFactText(primary, {
       user_a_id: options.user_a_id,
@@ -615,7 +623,12 @@ function buildInvitationCard(primaryOrPrefs = {}, version = 1, options = {}) {
   return {
     invitation_version: Number(version || 1),
     primary_complete: isPrimaryProposalDraftComplete(primary),
-    final_ready: readiness.ready,
+    final_ready: readiness.ready && finalizeGate.ok,
+    can_send_invitation: sendGate.ok,
+    open_items: openItems,
+    open_items_text: openItems.length
+      ? openItems.map((item) => item.label).join('、')
+      : '',
     venue_status: readiness.venue_resolution && readiness.venue_resolution.status || (readiness.ready ? 'resolved' : 'needs_specific_venue'),
     venue_guidance: readiness.venue_resolution && readiness.venue_resolution.location_precision === 'area'
       ? (primary && primary.venue_choice_mode === 'choose_on_arrival'
@@ -1062,6 +1075,9 @@ module.exports = {
   publicPrimaryProposal,
   isPrimaryProposalComplete,
   isPrimaryProposalDraftComplete,
+  canSendInvitation,
+  canFinalizePlan,
+  normalizeOpenItems,
   preferenceNeedsExplicitPrimary,
   derivePrimaryFromSingletonPrefs,
   resolvePrimaryInvitationProposal,

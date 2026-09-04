@@ -4,6 +4,25 @@
 
 ---
 
+## 2026-09-04 — 自由约会地点与 AI 澄清
+
+### 类型
+产品规则 / 约会协调 / LangGraph / 小程序表单
+
+### 变更
+- 分支：`fix/flexible-date-location-2026-09-04`（发布工作树 `wefinally-release-20260904`）。
+- 商圈/商场地点保留在 `activity_venue`，不再因非门店后缀清空后误报“超出可接受范围”。
+- 纯菜品写入 `activity_detail` 并要求地点；支持 `choose_on_arrival` / `open_items` 双方确认。
+- 表单顺序改为地点→活动→时间；宽泛地点为轻提示；自检与 CI 已接入。
+
+### 验证
+- `npm --prefix server run selfcheck:flexible-date-location`
+- `npm --prefix server run selfcheck:agent`
+- `npm --prefix miniprogram/cloudfunctions/agent-graph run check`
+
+### 未做
+- 未部署云函数、未上传小程序；真机双账号验收待办。
+
 ## 2026-09-02 — 真机约会协调时间继承修复与 QA 软重置
 
 ### 类型

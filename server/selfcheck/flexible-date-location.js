@@ -4,7 +4,9 @@ const assert = require('assert')
 const {
   venueResolution,
   normalizeFlexibleLocation,
-  planReadiness
+  planReadiness,
+  canSendInvitation,
+  canFinalizePlan
 } = require('../../miniprogram/cloudfunctions/api/lib/meetingPlanPolicy')
 const { normalizeApplication } = require('../../miniprogram/cloudfunctions/api/lib/dateCoordinationPolicy')
 const {
@@ -113,6 +115,28 @@ function main() {
   // venueResolution stays compatible for callers that still use it.
   const mall = venueResolution('吃饭', '大运中心')
   assert.strictEqual(mall.activity_venue, '大运中心')
+
+  const arrivalPlan = {
+    date: '2026-09-06',
+    period: 'night',
+    start_time: '20:00',
+    area: '南山',
+    activity: '吃饭',
+    activity_venue: '万象城',
+    budget: '50-100',
+    payment: 'aa',
+    duration: 'about-1h',
+    venue_choice_mode: 'choose_on_arrival',
+    open_items: [{ key: 'store_on_arrival', label: '门店到场后商量', accepted_by: [] }]
+  }
+  const sendable = canSendInvitation(arrivalPlan)
+  assert.strictEqual(sendable.ok, true)
+  const blockedFinal = canFinalizePlan(arrivalPlan, { accepter_user_ids: [1, 2] })
+  assert.strictEqual(blockedFinal.ok, false)
+  const acceptedFinal = canFinalizePlan(Object.assign({}, arrivalPlan, {
+    open_items: [{ key: 'store_on_arrival', label: '门店到场后商量', accepted_by: [1, 2] }]
+  }), { accepter_user_ids: [1, 2] })
+  assert.strictEqual(acceptedFinal.ok, true)
 
   console.log('PASS flexible date location normalize + invitation range')
 }

@@ -46,6 +46,9 @@ type ContractModule = {
   applyStructuredPlanIntent: (intent: Record<string, unknown>, base?: Record<string, unknown>) => AppliedPlanIntent
   exactTimeFromText: (value: string, options?: { period?: string }) => string
   periodForStartTime: (value: string) => string
+  canSendInvitation: (plan?: Record<string, unknown>) => { ok: boolean }
+  canFinalizePlan: (plan?: Record<string, unknown>, options?: Record<string, unknown>) => { ok: boolean }
+  normalizeFlexibleLocation: (activity: string, input: string, options?: Record<string, unknown>) => Record<string, unknown>
   NL_CONTRACT_CASES: Array<Record<string, unknown>>
   PLAN_CONTRACT_VERSION: number
 }
@@ -77,3 +80,6 @@ export const interpretNlPlanUtterance = contract.interpretNlPlanUtterance
 export const applyStructuredPlanIntent = contract.applyStructuredPlanIntent
 export const exactTimeFromText = contract.exactTimeFromText
 export const periodForStartTime = contract.periodForStartTime
+export const canSendInvitation = contract.canSendInvitation
+export const canFinalizePlan = contract.canFinalizePlan
+export const normalizeFlexibleLocation = contract.normalizeFlexibleLocation

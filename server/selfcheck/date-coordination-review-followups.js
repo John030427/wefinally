@@ -393,7 +393,10 @@ async function main() {
   assert(datePageJs.includes('DATE_VENUE_NEEDS_CLARIFICATION'))
   assert(!datePageJs.includes("this.data.form.activities[0] === '电影'"))
   assert(datePageWxml.includes('venueClarificationCard'))
-  assert(datePageWxml.includes('想去哪里 / 吃什么'))
+  assert(datePageWxml.includes('想在哪里见面'))
+  assert(datePageWxml.includes('到场后再选店'))
+  assert(datePageJs.includes('markChooseOnArrival'))
+  assert(datePageJs.includes('soft: true') || datePageJs.includes('soft:true') || datePageJs.includes("soft: true"))
   assert(datePageWxml.includes('发送邀请并继续完善'))
   assert(datePageWxss.includes('.venue-clarification-card'))
 

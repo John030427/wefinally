@@ -54,4 +54,15 @@ test('API and LangGraph share the same DatePlanV3 for NL contract cases', () => 
   assert.equal(night.start_time, '20:00')
   assert.equal(night.period, 'night')
   assert.equal(validateDatePlan(night, 'final').valid, true)
+
+  const chooseShop = interpretNlPlanUtterance('就在万象城，到了再选店', {
+    date: '2026-09-06',
+    period: 'night',
+    start_time: '20:00',
+    activity: '吃饭',
+    area: '南山'
+  })
+  assert.equal(chooseShop.candidate_values.venue_choice_mode, 'choose_on_arrival')
+  assert.equal(chooseShop.candidate_values.activity_venue, '万象城')
+  assert.equal(chooseShop.needs_clarification, false)
 })

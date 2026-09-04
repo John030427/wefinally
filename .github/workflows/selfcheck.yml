@@ -54,6 +54,9 @@ jobs:
       - name: Agent-graph build and unit tests
         run: npm --prefix miniprogram/cloudfunctions/agent-graph run check
 
+      - name: Flexible date location checks
+        run: npm --prefix server run selfcheck:flexible-date-location
+
       - name: Agent checks
         run: npm --prefix server run selfcheck:agent
 

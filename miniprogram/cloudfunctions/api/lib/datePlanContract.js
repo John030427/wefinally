@@ -276,7 +276,7 @@ function validateDatePlan(planInput = {}, stage = 'final') {
     if (!plan.area) missing.push('area')
     if (!plan.activity) missing.push('activity')
   }
-  if (stage === 'final') {
+  if (stage === 'final' || stage === 'invitation') {
     if (!plan.start_time) missing.push('start_time')
   }
 
@@ -368,6 +368,8 @@ function interpretNlPlanUtterance(rawText, baseInput = {}) {
       confidence: 0.9
     })
   }
+  const chooseOnArrival = interpretChooseOnArrival(textValue, base)
+  if (chooseOnArrival) return chooseOnArrival
   if (/时间不变.*只改活动|只改活动|活动改成|换成.*(?:电影|吃饭|咖啡|奶茶|看展|桌游)/.test(textValue)
     && !exactTimeFromText(textValue, { period: base.period })) {
     const activityMatch = textValue.match(/(电影|吃饭|咖啡|奶茶|看展|桌游|椰子鸡)/)
@@ -382,22 +384,25 @@ function interpretNlPlanUtterance(rawText, baseInput = {}) {
       clarification: activity ? '' : '你想把活动改成哪一种？'
     })
   }
-  if (/星巴克只是集合点|集合点.*星巴克|星巴克.*集合点/.test(textValue)) {
+  if (/星巴克只是集合点|集合点.*星巴克|星巴克.*集合点|先在星巴克碰面|先碰面再去/.test(textValue)) {
     return emptyIntent({
       intent: 'modify_specific_dimensions',
       changed_dimensions: ['meet_point'],
-      candidate_values: { meet_point: '星巴克' },
+      candidate_values: {
+        meet_point: '星巴克',
+        open_items: [{ key: 'cinema_tbd', label: '影院待商量', accepted_by: [] }]
+      },
       confidence: 0.92
     })
   }
-  if (/电影|看电影/.test(textValue) && /星巴克|咖啡店|咖啡馆/.test(textValue) && !/集合点/.test(textValue)) {
+  if (/电影|看电影/.test(textValue) && /星巴克|咖啡店|咖啡馆/.test(textValue) && !/集合点|碰面/.test(textValue)) {
     return emptyIntent({
       intent: 'clarify_plan',
       changed_dimensions: ['activity', 'activity_venue', 'meet_point'],
-      candidate_values: { activity: '电影', activity_venue: '星巴克' },
+      candidate_values: { activity: '电影', meet_point: '星巴克' },
       confidence: 0.8,
       needs_clarification: true,
-      clarification: '你确认了“看电影”，但当前只看到星巴克。星巴克可以作为集合点，但还需要具体电影院作为活动场地。你想去哪家电影院？'
+      clarification: '先在星巴克碰面，再去看电影吗？如果是，影院可以标成待商量；如果星巴克不是集合点，请告诉我具体电影院。'
     })
   }
   if (/大运中心附近/.test(textValue) && /椰子鸡|吃饭/.test(textValue)) {
@@ -407,7 +412,8 @@ function interpretNlPlanUtterance(rawText, baseInput = {}) {
       candidate_values: {
         area: '大运中心附近',
         activity: '吃饭',
-        activity_venue: '椰子鸡'
+        activity_venue: '大运中心附近',
+        activity_detail: '椰子鸡'
       },
       confidence: 0.9
     })
@@ -509,6 +515,11 @@ function applyStructuredPlanIntent(intentInput = {}, baseInput = {}) {
   if ((changed.includes('meet_point') || hasCandidate('meet_point')) && hasCandidate('meet_point')) {
     next.meet_point = text(candidates.meet_point, 80)
   }
+  if ((changed.includes('venue_choice_mode') || hasCandidate('venue_choice_mode')) && hasCandidate('venue_choice_mode')) {
+    next.venue_choice_mode = text(candidates.venue_choice_mode, 40)
+  }
+  if (hasCandidate('activity_detail')) next.activity_detail = text(candidates.activity_detail, 40)
+  if (hasCandidate('open_items')) next.open_items = normalizeOpenItems(candidates.open_items)
   if ((changed.includes('budget') || hasCandidate('budget')) && hasCandidate('budget')) next.budget = text(candidates.budget, 40)
   if ((changed.includes('payment') || hasCandidate('payment')) && hasCandidate('payment')) next.payment = text(candidates.payment, 40)
   if ((changed.includes('duration') || hasCandidate('duration')) && hasCandidate('duration')) next.duration = text(candidates.duration, 40)
@@ -521,11 +532,12 @@ function applyStructuredPlanIntent(intentInput = {}, baseInput = {}) {
       candidate_values: candidates,
       confidence: Number(intentInput.confidence || 0),
       needs_clarification: true,
-      clarification: '星巴克可以作为集合点，但看电影还需要具体电影院作为活动场地。你想去哪家电影院？',
+      clarification: '先在星巴克碰面，再去看电影吗？如果是，影院可以标成待商量。',
       plan: Object.assign({}, next, { activity_venue: '', meet_point: next.meet_point || next.activity_venue })
     }
   }
 
+  const built = buildDatePlanV3(next)
   return {
     intent,
     changed_dimensions: changed,
@@ -533,7 +545,11 @@ function applyStructuredPlanIntent(intentInput = {}, baseInput = {}) {
     confidence: Number(intentInput.confidence || 0),
     needs_clarification: false,
     clarification: '',
-    plan: buildDatePlanV3(next)
+    plan: Object.assign({}, built, {
+      venue_choice_mode: next.venue_choice_mode || '',
+      activity_detail: next.activity_detail || '',
+      open_items: normalizeOpenItems(next.open_items)
+    })
   }
 }
 
@@ -568,8 +584,8 @@ const NL_CONTRACT_CASES = Object.freeze([
     expect: {
       intent: 'modify_specific_dimensions',
       changed_dimensions: ['area', 'activity', 'activity_venue'],
-      candidate_values: { area: '大运中心附近', activity: '吃饭', activity_venue: '椰子鸡' },
-      plan: { area: '大运中心附近', activity: '吃饭', activity_venue: '椰子鸡' },
+      candidate_values: { area: '大运中心附近', activity: '吃饭', activity_venue: '大运中心附近', activity_detail: '椰子鸡' },
+      plan: { area: '大运中心附近', activity: '吃饭', activity_venue: '大运中心附近' },
       stage: 'draft',
       valid: true,
       missing: undefined
@@ -581,9 +597,20 @@ const NL_CONTRACT_CASES = Object.freeze([
     expect: {
       intent: 'clarify_plan',
       needs_clarification: true,
-      clarification_includes: '电影院',
+      clarification_includes: '碰面',
       stage: 'final',
       valid: false
+    }
+  },
+  {
+    text: '就在万象城，到了再选店',
+    base: { date: '2026-09-06', period: 'night', start_time: '20:00', activity: '吃饭', area: '南山' },
+    expect: {
+      intent: 'modify_specific_dimensions',
+      candidate_values: { activity_venue: '万象城', venue_choice_mode: 'choose_on_arrival' },
+      plan: { activity_venue: '万象城' },
+      stage: 'final',
+      valid: true
     }
   },
   {
@@ -661,6 +688,94 @@ const NL_CONTRACT_CASES = Object.freeze([
   }
 ])
 
+function canSendInvitation(planInput = {}) {
+  const validation = validateDatePlan(planInput, 'invitation')
+  return {
+    ok: validation.valid && Boolean(validation.plan.start_time || planInput.start_time),
+    missing: validation.missing.concat(validation.plan.start_time || planInput.start_time ? [] : ['start_time']),
+    clarification: validation.clarification,
+    plan: validation.plan,
+    open_items: normalizeOpenItems(planInput.open_items || (
+      validation.plan.location_precision === 'area' && planInput.venue_choice_mode === 'choose_on_arrival'
+        ? [{ key: 'store_on_arrival', label: '门店到场后商量', accepted_by: [] }]
+        : []
+    ))
+  }
+}
+
+function canFinalizePlan(planInput = {}, options = {}) {
+  const invitation = canSendInvitation(planInput)
+  if (!invitation.ok) {
+    return Object.assign({}, invitation, { ok: false, stage: 'final' })
+  }
+  const openItems = normalizeOpenItems(planInput.open_items || invitation.open_items)
+  const accepterIds = Array.isArray(options.accepter_user_ids) ? options.accepter_user_ids.map(Number) : []
+  const unresolved = openItems.filter((item) => {
+    const accepted = Array.isArray(item.accepted_by) ? item.accepted_by.map(Number) : []
+    if (!accepterIds.length) return accepted.length < 2
+    return accepterIds.some((id) => !accepted.includes(id))
+  })
+  return {
+    ok: unresolved.length === 0,
+    missing: unresolved.length ? ['open_items'] : [],
+    clarification: unresolved.length
+      ? `还有未双方确认的事项：${unresolved.map((item) => item.label).join('、')}`
+      : '',
+    plan: invitation.plan,
+    open_items: openItems,
+    unresolved_open_items: unresolved,
+    stage: 'final'
+  }
+}
+
+function normalizeOpenItems(items) {
+  const out = []
+  for (const item of Array.isArray(items) ? items : []) {
+    if (!item || typeof item !== 'object') continue
+    const key = text(item.key || item.id, 40)
+    const label = text(item.label || item.text, 80)
+    if (!key || !label) continue
+    out.push({
+      key,
+      label,
+      accepted_by: Array.isArray(item.accepted_by)
+        ? item.accepted_by.map(Number).filter((id) => id > 0).slice(0, 4)
+        : []
+    })
+    if (out.length >= 8) break
+  }
+  return out
+}
+
+function interpretChooseOnArrival(textValue, base) {
+  if (!/到了再选|到场后再选|先不定店|到了再说|到了再决定/.test(textValue)) return null
+  const known = textValue.match(/(万象城|大运中心|海岸城|壹方城|茂业|天虹)/)
+  const generic = textValue.match(/(?:就在|在)?([^\s，。]{2,12}(?:中心|城|广场|商场))/)
+  let place = known ? known[1] : ''
+  if (!place && generic) {
+    place = String(generic[1] || '').replace(/^(?:就在|在)/, '')
+  }
+  if (!place) place = base.activity_venue || base.area || ''
+  if (!place) {
+    return emptyIntent({
+      intent: 'clarify_plan',
+      needs_clarification: true,
+      clarification: '可以到场后再选店。请先告诉我见面的商场或商圈。',
+      confidence: 0.7
+    })
+  }
+  return emptyIntent({
+    intent: 'modify_specific_dimensions',
+    changed_dimensions: ['activity_venue', 'venue_choice_mode'],
+    candidate_values: {
+      activity_venue: place,
+      venue_choice_mode: 'choose_on_arrival',
+      open_items: [{ key: 'store_on_arrival', label: '门店到场后商量', accepted_by: [] }]
+    },
+    confidence: 0.94
+  })
+}
+
 module.exports = {
   PLAN_CONTRACT_VERSION,
   PERIOD_LABELS,
@@ -674,6 +789,9 @@ module.exports = {
   normalizeFlexibleLocation,
   buildDatePlanV3,
   validateDatePlan,
+  canSendInvitation,
+  canFinalizePlan,
+  normalizeOpenItems,
   interpretNlPlanUtterance,
   applyStructuredPlanIntent
 }

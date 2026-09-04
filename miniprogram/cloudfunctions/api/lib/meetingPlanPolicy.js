@@ -8,7 +8,10 @@ const {
   activityVenueConflict,
   normalizeFlexibleLocation,
   buildDatePlanV3,
-  validateDatePlan
+  validateDatePlan,
+  canSendInvitation,
+  canFinalizePlan,
+  normalizeOpenItems
 } = require('./datePlanContract')
 const { attachPublicError } = require('./businessError')
 
@@ -112,5 +115,8 @@ module.exports = {
   planReadiness,
   formatPlanTime,
   buildDatePlanV3,
-  validateDatePlan
+  validateDatePlan,
+  canSendInvitation,
+  canFinalizePlan,
+  normalizeOpenItems
 }

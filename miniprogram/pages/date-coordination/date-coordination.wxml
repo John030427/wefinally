@@ -58,7 +58,8 @@
         <view class="plan-conflict" wx:if="{{currentPlanCard.meeting_conflict}}">{{currentPlanCard.meeting_conflict.message}}</view>
         <view class="fact-row"><text class="fact-label">时间</text><text class="fact-value">{{currentPlanCard.time_text || '待确认'}}</text></view>
         <view class="fact-row"><text class="fact-label">活动</text><text class="fact-value">{{currentPlanCard.activity_text || '待确认'}}</text></view>
-        <view class="fact-row"><text class="fact-label">活动场地</text><text class="fact-value">{{currentPlanCard.activity_venue_text || '待确认'}}</text></view>
+        <view class="fact-row"><text class="fact-label">见面地点</text><text class="fact-value">{{currentPlanCard.activity_venue_text || '待确认'}}</text></view>
+        <view class="fact-row" wx:if="{{currentPlanCard.open_items_text}}"><text class="fact-label">未定事项</text><text class="fact-value">{{currentPlanCard.open_items_text}}</text></view>
         <view class="fact-row"><text class="fact-label">初步会合范围</text><text class="fact-value">{{currentPlanCard.meet_point_text || '到场前再确认'}}</text></view>
         <view class="fact-row"><text class="fact-label">区域</text><text class="fact-value">{{currentPlanCard.area_text || '待确认'}}</text></view>
         <view class="fact-row"><text class="fact-label">预算 / 费用</text><text class="fact-value">{{currentPlanCard.budget_text || '待确认'}} · {{currentPlanCard.payment_text || '待确认'}}</text></view>
@@ -229,6 +230,20 @@
         <view class="field-help">填写一个区域；如需改动，可在 AI 协调会话中提出新方案。</view>
       </view>
       <view class="form-item">
+        <view class="form-label required">想在哪里见面</view>
+        <input class="input field-input" maxlength="80" placeholder="商圈、商场或具体店名都可以，例如万象城、大运中心四季椰林" value="{{form.activity_venue}}" data-key="activity_venue" bindinput="onInput" />
+        <view class="field-help">地点可以宽泛；双方确认同一版本后才会生效。</view>
+        <view class="choice-list" wx:if="{{form.activity_venue}}">
+          <view class="choice-tag {{form.venue_choice_mode === 'choose_on_arrival' ? 'selected' : ''}}" bindtap="markChooseOnArrival" hover-class="choice-tag-pressed">到场后再选店</view>
+        </view>
+        <view class="venue-clarification-card" wx:if="{{venueClarificationCard}}">
+          <view class="venue-clarification-title">{{venueClarificationCard.soft ? '轻提示' : '还需要确认'}}</view>
+          <view class="venue-clarification-row" wx:if="{{venueClarificationCard.areaHint}}">地点：{{venueClarificationCard.areaHint}}</view>
+          <view class="venue-clarification-row" wx:if="{{venueClarificationCard.activityDetail}}">活动：{{venueClarificationCard.activityDetail}}</view>
+          <view class="venue-clarification-missing">{{venueClarificationCard.missingText}}</view>
+        </view>
+      </view>
+      <view class="form-item">
         <view class="form-label required">活动偏好（本次单选）</view>
         <view class="choice-list">
           <view class="choice-tag {{selection.activities[item.value] ? 'selected' : ''}}" wx:for="{{activityOptions}}" wx:key="value" bindtap="toggleActivity" data-value="{{item.value}}" hover-class="choice-tag-pressed">{{item.label}}</view>
@@ -271,16 +286,6 @@
           <view class="picker-value">{{form.start_time || '请选择具体几点，例如 20:00'}}</view>
         </picker>
         <view class="field-help">粗时间段用于寻找共同空档，具体时间用于最终赴约。</view>
-      </view>
-      <view class="form-item">
-        <view class="form-label required">想去哪里 / 吃什么</view>
-        <input class="input field-input" maxlength="80" placeholder="例如：大运中心附近、椰子鸡或具体门店" value="{{form.activity_venue}}" data-key="activity_venue" bindinput="onInput" />
-        <view class="venue-clarification-card" wx:if="{{venueClarificationCard}}">
-          <view class="venue-clarification-title">AI 会继续帮你完善</view>
-          <view class="venue-clarification-row" wx:if="{{venueClarificationCard.areaHint}}">大致区域：{{venueClarificationCard.areaHint}}</view>
-          <view class="venue-clarification-row">活动偏好：{{venueClarificationCard.activityDetail}}</view>
-          <view class="venue-clarification-missing">{{venueClarificationCard.missingText}}，发送后可在协调会话中补充。</view>
-        </view>
       </view>
       <view class="form-item">
         <view class="form-label">初步会合范围（选填）</view>

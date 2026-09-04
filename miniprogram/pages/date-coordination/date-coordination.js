@@ -71,18 +71,42 @@ function periodForTime(value) {
 function deriveVenueClarification(form) {
   const value = String(form && form.activity_venue || '').trim()
   const activity = String(form && form.activities && form.activities[0] || '').trim()
+  const mode = String(form && form.venue_choice_mode || '')
   if (!value || !activity) return null
+  if (mode === 'choose_on_arrival') {
+    return {
+      areaHint: value,
+      activityDetail: activity,
+      missingText: '已记录：门店到场后商量',
+      soft: true
+    }
+  }
+  const dishOnly = /^(?:椰子鸡|火锅|烤肉|烧烤|粤菜|川菜|湘菜|日料|西餐|披萨|牛排|海鲜)$/.test(value)
+  if (dishOnly) {
+    return {
+      areaHint: '',
+      activityDetail: value,
+      missingText: '还需要见面地点（商场、商圈或店名都可以）',
+      soft: false
+    }
+  }
+  if (activity === '电影' && /^(?:星巴克|瑞幸|喜茶|奈雪)$/.test(value)) {
+    return {
+      areaHint: '',
+      activityDetail: '电影',
+      missingText: '先在这里碰面再去影院吗？可把影院标成待商量',
+      soft: false
+    }
+  }
   const concrete = /(?:店|餐厅|饭店|餐馆|影城|影院|电影院|美术馆|博物馆|展馆|桌游馆)$/.test(value)
     || (/(?:星巴克|瑞幸|喜茶|奈雪|太二|海底捞|润园四季|百老汇|英皇)/.test(value)
       && !/^(?:星巴克|瑞幸|喜茶|奈雪|太二|海底捞|润园四季|百老汇|英皇)$/.test(value))
   if (concrete) return null
-  const activityDetail = /^(?:椰子鸡|火锅|烤肉|烧烤|粤菜|川菜|湘菜|日料|西餐|披萨|牛排|海鲜)$/.test(value)
-    ? value
-    : activity
   return {
-    areaHint: activityDetail === value ? '' : value,
-    activityDetail,
-    missingText: '还需要确认具体门店'
+    areaHint: value,
+    activityDetail: activity,
+    missingText: '地点比较宽泛，可到场后再选店；不是错误',
+    soft: true
   }
 }
 
@@ -850,6 +874,16 @@ Page({
     }
   },
 
+  markChooseOnArrival() {
+    const nextForm = Object.assign({}, this.data.form, {
+      venue_choice_mode: this.data.form.venue_choice_mode === 'choose_on_arrival' ? 'named_location' : 'choose_on_arrival'
+    })
+    this.setData({
+      'form.venue_choice_mode': nextForm.venue_choice_mode,
+      venueClarificationCard: deriveVenueClarification(nextForm)
+    })
+  },
+
   toggleOptionalForm() {
     const next = !this.data.showOptionalForm
     this.setData({
@@ -863,10 +897,10 @@ Page({
     if (!this.data.form.availability.length || !this.data.form.areas.length || !this.data.form.activities.length ||
       !this.data.form.budget || !this.data.form.payment_preference || !this.data.form.duration ||
       !this.data.form.start_time || !this.data.form.activity_venue) {
-      wx.showToast({ title: '请补充具体时间和活动场地', icon: 'none', duration: 3000 })
+      wx.showToast({ title: '请补充具体时间和见面地点', icon: 'none', duration: 3000 })
       return
     }
-    const needsVenueClarification = Boolean(this.data.venueClarificationCard)
+    const needsVenueClarification = Boolean(this.data.venueClarificationCard && !this.data.venueClarificationCard.soft)
     const wasInitiatorDraft = this.data.coordination && this.data.coordination.status === 'collecting_initiator'
     let invitationPrimaryProposal = null
     if (wasInitiatorDraft) {
@@ -890,6 +924,10 @@ Page({
         activity_venue: this.data.form.activity_venue,
         meet_point: this.data.form.meet_point,
         arrival_hint: this.data.form.arrival_hint,
+        venue_choice_mode: this.data.form.venue_choice_mode || 'named_location',
+        open_items: this.data.form.venue_choice_mode === 'choose_on_arrival'
+          ? [{ key: 'store_on_arrival', label: '门店到场后商量', accepted_by: [] }]
+          : [],
         budget: this.data.form.budget,
         duration: this.data.form.duration,
         payment_preference: this.data.form.payment_preference
