@@ -44,7 +44,7 @@ const REFRESH_ERROR_CODES = {
 }
 
 function errorCodeOf(err) {
-  return String((err && (err.code || err.error || err.error_code || err.errorCode)) || '')
+  return String((err && (err.error || err.code || err.error_code || err.errorCode)) || '')
 }
 
 function publicErrorToast(err, fallback) {

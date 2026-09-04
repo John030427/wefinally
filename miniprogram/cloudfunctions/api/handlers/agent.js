@@ -347,7 +347,18 @@ function createAgentHandlers(overrides = {}) {
     const session = await ownedSession(data.id || data.session_id || data.sessionId, user)
     const rows = await dep('list')('agent_message', { session_id: session.id }, 100)
     rows.sort((a, b) => Number(a.id || 0) - Number(b.id || 0))
-    return { session: publicSession(session), messages: rows.map(publicMessage) }
+    let coordinationVersion = Number(session.coordination_version || session.last_seen_coordination_version || 0)
+    if (Number(session.coordination_id || 0) > 0 && typeof dep('byId') === 'function') {
+      const coordination = await dep('byId')('date_coordination', Number(session.coordination_id))
+      if (coordination) coordinationVersion = Number(coordination.coordination_version || coordinationVersion || 1)
+    }
+    return {
+      session: publicSession(session),
+      messages: rows.map(publicMessage),
+      session_generation: Number(session.session_generation || session.id || 0),
+      coordination_version: coordinationVersion,
+      session_status: String(session.status || '')
+    }
   }
 
   async function createTicketFor(session, user, input) {

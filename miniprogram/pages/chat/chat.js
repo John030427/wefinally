@@ -16,6 +16,10 @@ const {
   evaluateAssistantReply,
   resolveCompleteAssistantReply
 } = require('../../utils/aiChatWaiting')
+const {
+  historySignature,
+  reconcileHistory
+} = require('../../utils/agentHistoryState')
 
 const HISTORY_POLL_MS = 4000
 
@@ -240,6 +244,8 @@ Page({
     agentTitle: '平台AI客服',
     sessionId: '',
     sessionReady: false,
+    sessionGeneration: 0,
+    coordinationVersion: 0,
     coordinationId: '',
     coordinatorWelcome: '',
     coordinatorReadOnly: false,
@@ -334,13 +340,40 @@ Page({
       || this.data.agentType !== AGENT_TYPES.DATE_COORDINATOR || !this.data.sessionReady) return
     this._refreshingHistory = true
     try {
-      const messages = await this.loadAgentHistory()
-      if (!this._pageActive || !messages.length) return
-      const signature = (rows) => rows.map((item) => `${item.id}:${item.status}:${item.content}`).join('|')
-      if (signature(messages) === signature(this.data.messages)) return
+      const payload = await this.loadAgentHistory(true)
+      if (!this._pageActive) return
+      const incoming = Array.isArray(payload.messages) ? payload.messages : []
+      const reconciled = reconcileHistory(this.data.messages, incoming)
+      const sessionGeneration = Number(payload.session_generation || this.data.sessionGeneration || 0)
+      const coordinationVersion = Number(payload.coordination_version || this.data.coordinationVersion || 0)
+      const nextSignature = historySignature(reconciled, sessionGeneration, coordinationVersion)
+      const currentSignature = historySignature(this.data.messages, this.data.sessionGeneration, this.data.coordinationVersion)
+      if (nextSignature === currentSignature) return
+      if (!reconciled.length) {
+        const welcome = [{
+          id: 'welcome',
+          content: this.welcomeMessage(),
+          isBot: true,
+          status: 'completed',
+          timeText: formatDate(new Date(), 'HH:mm')
+        }]
+        this.safeSetData({
+          messages: welcome,
+          sessionGeneration,
+          coordinationVersion,
+          scrollToView: 'msg-welcome'
+        })
+        if (['closed', 'cancelled'].includes(String(payload.session_status || ''))) {
+          this._sessionId = null
+          this.setData({ sessionReady: false })
+        }
+        return
+      }
       this.safeSetData({
-        messages,
-        scrollToView: `msg-${messages[messages.length - 1].id}`
+        messages: reconciled,
+        sessionGeneration,
+        coordinationVersion,
+        scrollToView: `msg-${reconciled[reconciled.length - 1].id}`
       })
     } catch (err) {
       // 前台轮询失败不覆盖当前会话；用户仍可手动发送或重新进入页面。
@@ -447,10 +480,17 @@ Page({
     return String(sessionId)
   },
 
-  async loadAgentHistory() {
+  async loadAgentHistory(withMeta = false) {
     const sessionId = await this.ensureSession()
     const result = await get(`${API_PATHS.AGENT_SESSIONS}/${sessionId}/messages`, {}, { showError: false })
-    return normalizeMessages((result && (result.messages || result.list)) || result)
+    const messages = normalizeMessages((result && (result.messages || result.list)) || result)
+    if (!withMeta) return messages
+    return {
+      messages,
+      session_generation: Number(result && result.session_generation || 0),
+      coordination_version: Number(result && result.coordination_version || 0),
+      session_status: String(result && result.session_status || (result && result.session && result.session.status) || '')
+    }
   },
 
   async loadLegacyHistory() {
