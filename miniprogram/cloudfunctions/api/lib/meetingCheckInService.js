@@ -1,6 +1,11 @@
 const crypto = require('crypto')
 const { STATUS } = require('./dateCoordinationPolicy')
 const { normalizeArrivalHint, normalizeArrivalPosition } = require('./meetingPlanPolicy')
+const {
+  DELIVERY_STATUS,
+  createCoordinationEventOutboxOnce,
+  projectCoordinationEventOutbox
+} = require('./coordinationEventOutbox')
 
 const ACTIONS = Object.freeze(['set_arrival_hint', 'arrived', 'met', 'not_found', 'mismatch'])
 
@@ -120,36 +125,115 @@ async function applyMeetingCheckIn(input = {}, deps) {
       : Object.assign({ [field]: coordination[field] || now }, arrivalPosition ? { [`arrival_position_${side}`]: arrivalPosition } : {})
     updated = await deps.updateByDoc('date_coordination', coordination, update)
   }
+
   const version = Number(updated.coordination_version || 1)
   const idempotencySuffix = action === 'arrived'
     ? `${action}:${version}:${safeDigest(arrivalPosition)}`
     : action === 'set_arrival_hint'
       ? `${action}:${version}:${safeDigest(hint)}`
       : `${action}:${version}`
-  const published = await deps.publishCoordinationEvent({
-    coordination: updated,
-    event: Object.assign(checkInEvent(action, hint, arrivalPosition), {
-      actor_user_id: userId,
-      coordination_version: version,
-      idempotency_suffix: idempotencySuffix
-    })
+  const eventPayload = Object.assign(checkInEvent(action, hint, arrivalPosition), {
+    actor_user_id: userId,
+    coordination_version: version,
+    idempotency_suffix: idempotencySuffix
   })
+
   const partnerId = Number(userId) === Number(updated.user_a_id)
     ? Number(updated.user_b_id)
     : Number(updated.user_a_id)
-  const shouldNotifyPartner = ['arrived', 'not_found', 'mismatch'].includes(action)
-    && partnerId > 0
-    && typeof deps.writeInboxNotification === 'function'
-    && !(published && published.duplicate)
-  if (shouldNotifyPartner) {
-    const bodies = {
-      arrived: arrivalPosition
-        ? `对方已到达活动场地（${arrivalPosition}），请打开协调页查看现场会合信息。`
-        : '对方已到达活动场地，请打开协调页查看现场会合信息。',
-      not_found: '对方暂未找到人，请留在公共集合点并核对识别提示。',
-      mismatch: '对方反馈现场情况不符，会合已暂停。请停止接触并前往安全公共区域，必要时联系平台人工客服或当地紧急服务。'
+
+  let deliveryStatus = DELIVERY_STATUS.PROJECTED
+  let eventId = 0
+  let outboxId = 0
+  let published = null
+
+  try {
+    published = await deps.publishCoordinationEvent({
+      coordination: updated,
+      event: eventPayload
+    })
+    eventId = Number(published && published.event && published.event.id || 0)
+  } catch (err) {
+    deliveryStatus = DELIVERY_STATUS.PENDING
+    if (typeof deps.addWithId === 'function') {
+      const fallbackEvent = await deps.addWithId('date_coordination_event', {
+        coordination_id: Number(updated.id),
+        coordination_version: version,
+        event_type: eventPayload.event_type,
+        actor_user_id: userId,
+        idempotency_key: `meeting:${updated.id}:${idempotencySuffix}`,
+        safe_summary: { stage: eventPayload.event_type }
+      }, 'date_coordination_event')
+      eventId = Number(fallbackEvent.id || 0)
     }
+  }
+
+  if (partnerId > 0 && ['arrived', 'not_found', 'mismatch'].includes(action)
+    && typeof deps.addWithId === 'function') {
+    const outbox = await createCoordinationEventOutboxOnce({
+      event_id: eventId || Number(Date.now()),
+      coordination_id: Number(updated.id),
+      actor_user_id: userId,
+      recipient_user_id: partnerId,
+      event_type: eventPayload.event_type,
+      idempotency_key: `meeting:${updated.id}:${idempotencySuffix}:user:${partnerId}`,
+      payload: {
+        title: action === 'mismatch' ? '会合已暂停' : '到场状态更新',
+        body: action === 'arrived'
+          ? (arrivalPosition
+            ? `对方已到达活动场地（${arrivalPosition}），请打开协调页查看现场会合信息。`
+            : '对方已到达活动场地，请打开协调页查看现场会合信息。')
+          : action === 'not_found'
+            ? '对方暂未找到人，请留在公共集合点并核对识别提示。'
+            : '对方反馈现场情况不符，会合已暂停。请停止接触并前往安全公共区域，必要时联系平台人工客服或当地紧急服务。',
+        inbox_event_type: action === 'arrived'
+          ? `meeting_arrived:${safeDigest(arrivalPosition)}`
+          : `meeting_${action}`
+      }
+    }, deps)
+    outboxId = Number(outbox.id || 0)
+
+    if (published && !published.duplicate && deliveryStatus === DELIVERY_STATUS.PROJECTED) {
+      const projected = await projectCoordinationEventOutbox(outbox, Object.assign({}, deps, {
+        async projectRecipient(row) {
+          if (typeof deps.writeInboxNotification === 'function') {
+            await deps.writeInboxNotification({
+              coordination: updated,
+              user_id: Number(row.recipient_user_id),
+              event_type: row.payload && row.payload.inbox_event_type || `meeting_${action}`,
+              coordination_version: version,
+              title: row.payload && row.payload.title || '到场状态更新',
+              body: row.payload && row.payload.body || '到场状态有更新，请打开协调页查看。',
+              stage: `meeting_${action}`
+            })
+          }
+        }
+      }))
+      deliveryStatus = projected.delivery_status
+      if (!projected.projected) deliveryStatus = DELIVERY_STATUS.PENDING
+    } else if (deliveryStatus === DELIVERY_STATUS.PENDING || (published && published.duplicate)) {
+      deliveryStatus = published && published.duplicate ? DELIVERY_STATUS.PROJECTED : DELIVERY_STATUS.PENDING
+      if (published && published.duplicate && String(outbox.status || '') !== DELIVERY_STATUS.PROJECTED) {
+        await deps.updateByDoc('coordination_event_outbox', outbox, {
+          status: DELIVERY_STATUS.PROJECTED,
+          projected_at: now,
+          update_time: now
+        })
+      }
+    } else if (!published) {
+      deliveryStatus = DELIVERY_STATUS.PENDING
+    }
+  } else if (partnerId > 0 && ['arrived', 'not_found', 'mismatch'].includes(action)
+    && published && !published.duplicate && typeof deps.writeInboxNotification === 'function') {
+    // Legacy unit deps without outbox storage: keep inbox best-effort.
     try {
+      const bodies = {
+        arrived: arrivalPosition
+          ? `对方已到达活动场地（${arrivalPosition}），请打开协调页查看现场会合信息。`
+          : '对方已到达活动场地，请打开协调页查看现场会合信息。',
+        not_found: '对方暂未找到人，请留在公共集合点并核对识别提示。',
+        mismatch: '对方反馈现场情况不符，会合已暂停。请停止接触并前往安全公共区域，必要时联系平台人工客服或当地紧急服务。'
+      }
       await deps.writeInboxNotification({
         coordination: updated,
         user_id: partnerId,
@@ -162,13 +246,21 @@ async function applyMeetingCheckIn(input = {}, deps) {
         stage: `meeting_${action}`
       })
     } catch (err) {
+      deliveryStatus = DELIVERY_STATUS.PENDING
       console.warn('inbox meeting notification skipped:', err.message || err)
     }
   }
+
   const applications = await deps.list('date_coordination_application', {
     coordination_id: Number(coordination.id)
   }, 50)
-  return publicState(updated, applications, userId, deps.env || {})
+  const state = publicState(updated, applications, userId, deps.env || {}) || {}
+  return Object.assign({}, state, {
+    action_recorded: true,
+    delivery_status: deliveryStatus,
+    event_id: eventId,
+    outbox_id: outboxId
+  })
 }
 
 module.exports = {
@@ -176,5 +268,6 @@ module.exports = {
   participantSide,
   publicState,
   applyMeetingCheckIn,
-  safeDigest
+  safeDigest,
+  DELIVERY_STATUS
 }

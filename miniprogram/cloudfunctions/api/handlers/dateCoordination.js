@@ -1275,6 +1275,8 @@ function createDateCoordinationHandlers(overrides = {}) {
     }, {
       byId: dep('byId'),
       list: dep('list'),
+      first: dep('first'),
+      addWithId: dep('addWithId'),
       updateByDoc: dep('updateByDoc'),
       publishCoordinationEvent: dep('publishCoordinationEvent'),
       writeInboxNotification: dep('writeInboxNotification'),

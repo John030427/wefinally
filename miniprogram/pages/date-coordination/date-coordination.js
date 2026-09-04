@@ -796,9 +796,9 @@ Page({
       const result = await post(`${API_PATHS.DATE_COORDINATIONS}/${this.data.coordinationId}/meeting-check-in`, Object.assign({ action }, extra || {}), { showError: false })
       this.setData({ meetingCheckin: result })
       const message = {
-        arrived: '已通知对方你已到达',
+        arrived: '到场状态已记录，对方打开或刷新协调会话后可看到',
         met: result.meeting_confirmed ? '双方已确认见面' : '已确认，等待对方',
-        not_found: '已请 AI 通知对方',
+        not_found: '状态已记录，对方打开协调会话后可看到',
         mismatch: '会合已暂停，请先确保安全',
         set_arrival_hint: '识别提示已同步'
       }[action] || '状态已更新'

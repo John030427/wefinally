@@ -64,5 +64,6 @@ module.exports = {
   controlled_date_scenario_run: 'controlled_date_scenario_runs',
   qa_pair_reset_run: 'qa_pair_reset_runs',
   qa_pair_reset_audit: 'qa_pair_reset_audits',
-  date_submission_outbox: 'date_submission_outboxes'
+  date_submission_outbox: 'date_submission_outboxes',
+  coordination_event_outbox: 'coordination_event_outboxes'
 }
