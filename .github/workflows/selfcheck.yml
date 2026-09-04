@@ -17,7 +17,7 @@ jobs:
   selfcheck:
     name: WeFinally selfchecks
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
 
     steps:
       - name: Check out repository
@@ -28,13 +28,31 @@ jobs:
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: server/package-lock.json
+          cache-dependency-path: |
+            server/package-lock.json
+            miniprogram/cloudfunctions/api/package-lock.json
+            miniprogram/cloudfunctions/agent-graph/package-lock.json
 
       - name: Install server dependencies
         run: npm ci --prefix server --ignore-scripts
 
       - name: Install API cloud function dependencies
         run: npm ci --prefix miniprogram/cloudfunctions/api --ignore-scripts
+
+      - name: Install agent-graph dependencies
+        run: npm ci --prefix miniprogram/cloudfunctions/agent-graph --ignore-scripts
+
+      - name: Release workflow contract
+        run: node server/selfcheck/release-workflow-contract.js
+
+      - name: WeChat identity boundary
+        run: npm --prefix server run selfcheck:wx-identity
+
+      - name: QA pair reset checks
+        run: npm --prefix server run selfcheck:qa-pair-reset
+
+      - name: Agent-graph build and unit tests
+        run: npm --prefix miniprogram/cloudfunctions/agent-graph run check
 
       - name: Agent checks
         run: npm --prefix server run selfcheck:agent

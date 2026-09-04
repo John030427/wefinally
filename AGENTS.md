@@ -2,19 +2,25 @@
 
 ## 唯一工作目录
 
-- 仓库根目录：`D:\wefinal\.worktrees\wefinally-ai-agent`
-- 当前整合分支：`feature/ai-agent-system`
+发布修复与合并后的真源：
+
+- 当前发布修复工作树：`D:\wefinal\.worktrees\wefinally-release-20260904`
+- 当前任务分支：`fix/release-review-remediation-2026-09-04`
+- 远端安全基线：GitHub `main`（私有仓库 `John030427/wefinally`）
 - 禁止在外层 `D:\wefinal` 直接开发。
 
-当前工作树包含大量未提交和未跟踪的产品改动。未经用户明确授权，禁止执行 `git reset`、`git clean`、`git checkout`、`git restore`、提交、强推或覆盖其他人的改动。
+历史实验工作树 `D:\wefinal\.worktrees\wefinally-ai-agent`（及旧分支 `feature/ai-agent-system`、`experiment/*`）视为**只读历史**，不得部署、不得作为发布候选，不得未经审计地合并进 `main`。
+
+未经用户明确授权，禁止执行 `git reset`、`git clean`、`git checkout`、`git restore`、提交、强推或覆盖其他人的改动。
 
 ## 每次接手先读
 
 1. `PROJECT_HANDOFF.md`
 2. `CONTRIBUTING.md`
-3. `project-docs/NEXT_THREAD_HANDOFF_2026-07-26_MINIPROGRAM_CONTINUATION.md`
-4. `project-docs/DEVELOPMENT_LOG.md`
-5. 与任务直接相关的 `project-docs/MODULES/`、`project-docs/REQUIREMENTS.md` 和自检脚本
+3. `project-docs/RELEASE_MANIFEST_TEMPLATE.md`
+4. `project-docs/NEXT_THREAD_HANDOFF_2026-07-26_MINIPROGRAM_CONTINUATION.md`
+5. `project-docs/DEVELOPMENT_LOG.md`
+6. 与任务直接相关的 `project-docs/MODULES/`、`project-docs/REQUIREMENTS.md` 和自检脚本
 
 `project-docs/archive/` 只保存历史快照，不作为当前需求真源。
 
@@ -46,10 +52,16 @@ npm --prefix server run selfcheck:ai-report
 npm --prefix server run selfcheck:cloudpay
 npm --prefix server run selfcheck:member
 npm --prefix server run selfcheck:cloud-match
+npm --prefix server run selfcheck:qa-pair-reset
+npm --prefix server run selfcheck:wx-identity
+npm --prefix miniprogram/cloudfunctions/agent-graph run check
+node server/selfcheck/release-workflow-contract.js
 ```
 
 失败时依据实际证据修复，不能通过回滚现有改动“让测试变绿”。非平凡逻辑应保留可重复运行的自检，并更新 `project-docs/DEVELOPMENT_LOG.md`。
 
+依赖升级（CloudBase SDK、Axios 传递依赖、数据库驱动等）必须在独立分支完成 `agent-graph` build、checkpoint 恢复、数据库事务自检和云端 smoke；禁止 `npm audit fix --force` 直接进入发布线。基线字段见 `project-docs/RELEASE_MANIFEST_TEMPLATE.md` 的 `dependency_baseline`。
+
 ## 发布边界
 
-“部署 `api` 云函数”和“上传小程序客户端”是两个独立动作。任何发布前都要记录源分支、提交号、自检结果和目标环境；未明确授权不得部署、上传或修改生产数据。
+“部署 `api` 云函数”、“部署 `agent-graph` 云函数”和“上传小程序客户端”是三个独立动作。任何发布前都要按 `project-docs/RELEASE_MANIFEST_TEMPLATE.md` 记录 `source_commit`、各产物 commit、`cloud_env`、`test_results` 和 `rollback_commit`；未明确授权不得部署、上传或修改生产数据。

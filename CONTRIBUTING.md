@@ -7,7 +7,7 @@
 - 每个人使用自己的 GitHub 账号和分支，不共享 Token，不共同开发同一条分支。
 - 生产密钥只放 GitHub Environments/Secrets 或 CloudBase 密钥配置，不放仓库。
 
-私有仓库为 `John030427/wefinally`，本地 remote 名称为 `origin`。当前远端为空，而且历史提交曾包含本地测试凭据；第一次推送前必须先完成历史策略确认。
+私有仓库为 `John030427/wefinally`，本地 remote 名称为 `origin`。协作以 GitHub `main` 安全基线为起点；当前发布修复在工作树 `wefinally-release-20260904` / 分支 `fix/release-review-remediation-2026-09-04`。旧实验工作树不得直接推送或部署。
 
 ## 2. 分支命名
 
@@ -65,6 +65,10 @@ npm --prefix server run selfcheck:ai-report
 npm --prefix server run selfcheck:cloudpay
 npm --prefix server run selfcheck:member
 npm --prefix server run selfcheck:cloud-match
+npm --prefix server run selfcheck:qa-pair-reset
+npm --prefix server run selfcheck:wx-identity
+npm --prefix miniprogram/cloudfunctions/agent-graph run check
+node server/selfcheck/release-workflow-contract.js
 git diff --check
 ```
 
@@ -81,7 +85,8 @@ git diff --check
 
 每次发布指定一名负责人：
 
-- 云函数负责人只部署已审核提交，并核对云端版本。
+- 云函数负责人只部署已审核提交，并核对云端版本；`api` 与 `agent-graph` 分开记录。
 - 客户端负责人只上传相同发布候选提交构建的小程序。
-- 两个动作分别记录，不用“已部署”笼统代替。
+- 三个动作分别记录到 [`project-docs/RELEASE_MANIFEST_TEMPLATE.md`](project-docs/RELEASE_MANIFEST_TEMPLATE.md)，不用“已部署”笼统代替。
 - 生产数据修复只走白名单业务服务和审计按钮，不在控制台直接改库。
+- 依赖升级禁止 `npm audit fix --force` 直接进入发布线。
