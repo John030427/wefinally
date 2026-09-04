@@ -321,3 +321,27 @@
   line-height: 1.5;
   margin-bottom: 16rpx;
 }
+
+.event-card {
+  width: 100%;
+  box-sizing: border-box;
+  margin: 12rpx 0 4rpx;
+  padding: 18rpx 20rpx;
+  border-radius: 12rpx;
+  background: #f8f5ff;
+  border: 1rpx solid #ded3f7;
+}
+
+.event-card-title {
+  color: #6b4bb5;
+  font-size: 24rpx;
+  font-weight: 600;
+}
+
+.event-card-change,
+.event-card-summary {
+  margin-top: 8rpx;
+  color: #5f566f;
+  font-size: 24rpx;
+  line-height: 1.5;
+}

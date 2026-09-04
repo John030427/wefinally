@@ -49,6 +49,10 @@ async function main() {
   const userB = deps.tables.agent_message.find((row) => row.user_id === 2)
   assert.strictEqual(userA.stage, 'partner_application_submitted')
   assert.strictEqual(userB.stage, 'my_application_submitted')
+  assert.strictEqual(userA.event_card.event_type, 'APPLICATION_SUBMITTED')
+  assert.strictEqual(userA.event_card.runtime_event_type, 'application_submitted')
+  assert.strictEqual(userA.event_card.coordination_version, 1)
+  assert.deepStrictEqual(userA.event_card.changed_dimensions, [])
   const serialized = JSON.stringify({
     event: deps.tables.date_coordination_event,
     messages: deps.tables.agent_message

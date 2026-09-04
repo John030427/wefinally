@@ -39,6 +39,11 @@
           <text class="msg-text">{{item.content}}</text>
           <text class="msg-time">{{item.timeText}}</text>
         </view>
+        <view wx:if="{{item.eventCard}}" class="event-card">
+          <view class="event-card-title">协调进展 · V{{item.eventCard.coordinationVersion}}</view>
+          <view wx:if="{{item.eventCard.changedDimensionsText}}" class="event-card-change">本次变化：{{item.eventCard.changedDimensionsText}}</view>
+          <view wx:if="{{item.eventCard.summary}}" class="event-card-summary">{{item.eventCard.summary}}</view>
+        </view>
         <view wx:if="{{item.patchPreview}}" class="patch-preview-card">
           <view class="patch-preview-title">{{item.patchPreview.operation === 'create' ? '💌 约会申请发送预览' : '💗 约会条件修改预览'}}</view>
           <view class="patch-change" wx:for="{{item.patchPreview.changes}}" wx:key="field">

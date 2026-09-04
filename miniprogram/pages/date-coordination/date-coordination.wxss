@@ -410,8 +410,13 @@
 
 .fact-card,
 .invite-actions,
-.result-card {
+.result-card,
+.snapshot-card {
   background: #fff;
+}
+
+.snapshot-card {
+  border: 1rpx solid #f1dce2;
 }
 
 .fact-row {

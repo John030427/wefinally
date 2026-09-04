@@ -47,6 +47,8 @@ const {
   coordinatorWelcomeText,
   buildCoordinationViewModel
 } = require('../lib/invitationCoordination')
+const { buildCoordinationEventCard } = require('../lib/coordinationProjection')
+const { toCanonicalCoordinationEventType } = require('../../agent-graph/shared/coordinationAdapters.cjs')
 
 async function upsertConfirmation(existing, data) {
   const db = require('../lib/db')
@@ -1011,6 +1013,9 @@ function createDateCoordinationHandlers(overrides = {}) {
       coordination_id: Number(coordination.id),
       coordination_version: version
     }, 10)
+    const events = await dep('list')('date_coordination_event', {
+      coordination_id: Number(coordination.id)
+    }, 200).catch(() => [])
     const applicationUsers = new Set(applications.map((item) => Number(item.user_id)))
     const confirmedUsers = new Set(confirmations
       .filter((item) => item.decision === 'confirm')
@@ -1055,6 +1060,20 @@ function createDateCoordinationHandlers(overrides = {}) {
       user_a_id: coordination.user_a_id,
       user_b_id: coordination.user_b_id
     })
+    const eventCards = events
+      .slice()
+      .sort((a, b) => Number(a.id || 0) - Number(b.id || 0))
+      .map((event) => buildCoordinationEventCard({
+        event,
+        content: event.safe_summary && event.safe_summary.content
+      }))
+    const arrivalEvents = events.filter((event) => ['ARRIVED', 'MEETING_ARRIVED'].includes(
+      toCanonicalCoordinationEventType(event.event_type)
+    ))
+    const meeting = {
+      me_arrived: arrivalEvents.some((event) => Number(event.actor_user_id) === Number(user.id)),
+      partner_arrived: arrivalEvents.some((event) => Number(event.actor_user_id) === partnerId)
+    }
     const invitationStatusText = coordination.status === STATUS.COLLECTING_INITIATOR
       ? '准备邀请'
       : (coordination.status === STATUS.INVITING_PARTNER
@@ -1091,6 +1110,9 @@ function createDateCoordinationHandlers(overrides = {}) {
       application_deadline_at: coordination.application_deadline_at || null,
       confirmation_deadline_at: coordination.confirmation_deadline_at || null,
       final_proposal_id: Number(coordination.final_proposal_id || 0),
+      current_plan: activeProposal || invitationPrimary || null,
+      event_cards: eventCards,
+      meeting,
       missing_dimensions: coordination.missing_dimensions || [],
       role,
       can_respond_invitation: coordination.status === STATUS.INVITING_PARTNER && role === 'invitee',
@@ -1144,7 +1166,9 @@ function createDateCoordinationHandlers(overrides = {}) {
       }))
     }
     payload.view_model = buildCoordinationViewModel(Object.assign({}, payload, {
-      partner_application_submitted: partnerApplicationSubmitted
+      partner_application_submitted: partnerApplicationSubmitted,
+      event_cards: eventCards,
+      meeting
     }))
     return payload
   }

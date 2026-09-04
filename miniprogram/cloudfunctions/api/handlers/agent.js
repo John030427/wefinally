@@ -28,6 +28,7 @@ const {
   inviteeCoordinatorBlockedError
 } = require('../lib/dateCoordinationAccessPolicy')
 const { coordinatorWelcomeText } = require('../lib/invitationCoordination')
+const { buildCoordinationEventCard } = require('../lib/coordinationProjection')
 
 const FREE_DAILY_LIMIT = 5
 const VIP_DAILY_LIMIT = 30
@@ -87,6 +88,13 @@ function publicMessage(row) {
   }
   if (row.patch_preview) result.patch_preview = sanitizeOutput(row.patch_preview)
   if (row.handoff) result.handoff = sanitizeOutput(row.handoff)
+  if (row.event_card) result.event_card = sanitizeOutput(row.event_card)
+  else if (row.coordination_event_id || row.coordination_event_key) {
+    result.event_card = sanitizeOutput(buildCoordinationEventCard({
+      event: row,
+      content: result.content
+    }))
+  }
   return result
 }
 

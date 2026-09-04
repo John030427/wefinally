@@ -146,6 +146,12 @@ Page({
     errorMsg: '',
     coordinationId: '',
     coordination: null,
+    canonicalViewModel: {},
+    currentPlan: null,
+    planState: null,
+    confirmation: { me: false, partner: false },
+    meeting: { me_arrived: false, partner_arrived: false },
+    eventCards: [],
     coordinationDisplay: buildCoordinationDisplay({}),
     showCoordinatorCta: false,
     showPreSubmitCoordinatorCard: false,
@@ -315,6 +321,7 @@ Page({
       return
     }
     const id = coordination.id || coordination.coordination_id || coordination.coordinationId || ''
+    const canonicalViewModel = coordination.view_model || coordination.canonical_view_model || {}
     const application = coordination.application || coordination.my_application || {}
     const proposal = (coordination.proposal_card)
       || coordination.final_proposal
@@ -330,6 +337,12 @@ Page({
     this.setData({
       coordinationId: String(id),
       coordination,
+      canonicalViewModel,
+      currentPlan: canonicalViewModel.current_plan || coordination.current_plan || null,
+      planState: canonicalViewModel.plan_state || null,
+      confirmation: canonicalViewModel.confirmation || { me: false, partner: false },
+      meeting: canonicalViewModel.meeting || { me_arrived: false, partner_arrived: false },
+      eventCards: canonicalViewModel.event_cards || coordination.event_cards || [],
       coordinationDisplay,
       showCoordinatorCta: Boolean(id) && Boolean(coordinationDisplay.showCoordinatorCta),
       showPreSubmitCoordinatorCard: Boolean(id) && Boolean(coordinationDisplay.showPreSubmitCoordinatorCard),
@@ -337,7 +350,8 @@ Page({
       showAcceptInvitation: Boolean(coordinationDisplay.showAcceptInvitation),
       showCoordinateInstead: Boolean(coordinationDisplay.showCoordinateInstead),
       showDecline: Boolean(coordinationDisplay.showDecline),
-      showApplicationForm: Boolean(coordinationDisplay.showApplicationForm) || Boolean(this.data.showOptionalForm && coordinationDisplay.showOptionalFullForm),
+      showApplicationForm: Boolean(canonicalViewModel.form_policy && canonicalViewModel.form_policy.show_initial_form)
+        || Boolean(this.data.showOptionalForm && coordinationDisplay.showOptionalFullForm),
       showOptionalFullForm: Boolean(coordinationDisplay.showOptionalFullForm),
       invitationCard: coordination.invitation_card || null,
       sharedCoordination: coordination.shared_coordination || null,

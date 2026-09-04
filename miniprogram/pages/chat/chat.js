@@ -93,14 +93,30 @@ function normalizePatchPreview(raw, requiresConfirmation) {
   }
 }
 
+function normalizeEventCard(raw) {
+  const card = raw && (raw.event_card || raw.eventCard || raw)
+  if (!card || card.source !== 'coordination_event') return null
+  return {
+    eventId: Number(card.event_id || card.eventId || 0),
+    eventType: String(card.event_type || ''),
+    coordinationVersion: Number(card.coordination_version || 0),
+    changedDimensions: Array.isArray(card.changed_dimensions) ? card.changed_dimensions : [],
+    changedDimensionsText: String(card.changed_dimensions_text || ''),
+    proposalKey: String(card.proposal_key || ''),
+    summary: String(card.summary || '')
+  }
+}
+
 function assistantMessage(item, index) {
   const patchPreview = normalizePatchPreview(item && item.patch_preview, item && item.requires_confirmation)
+  const eventCard = normalizeEventCard(item && item.event_card)
   return {
     id: `b_${item.id || index}`,
     content: item.ai_content || item.reply || item.content || '已收到您的咨询',
     isBot: true,
     timeText: formatDate(item.create_time || item.createdAt || item.time, 'HH:mm'),
     patchPreview,
+    eventCard,
     handoff: item && item.handoff && item.handoff.available ? item.handoff : null
   }
 }

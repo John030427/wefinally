@@ -8,6 +8,7 @@
  */
 
 const { STATUS, PERIODS } = require('./dateCoordinationPolicy')
+const { buildCanonicalPlanProjection } = require('./coordinationProjection')
 
 const STALE_INVITATION_MESSAGE = '对方刚刚更新了约会安排，请查看最新方案后再确认。'
 const WAITING_PARTNER_MESSAGE = '当前正在等待对方回应。'
@@ -815,6 +816,24 @@ function buildCoordinationViewModel(input = {}) {
   const isInvitee = role === 'invitee'
   const isInitiator = role === 'initiator'
   const terminal = ['arranged', 'invitation_declined', 'expired', 'cancelled', 'closed', 'manual_handoff'].includes(status)
+  const planProjection = buildCanonicalPlanProjection({
+    current_plan: input.current_plan || input.currentPlan || proposalCard || invitationCard || null,
+    flexible_fields: input.flexible_fields
+  })
+  const partnerConfirmed = input.confirmation && input.confirmation.partner !== undefined
+    ? Boolean(input.confirmation.partner)
+    : Boolean((input.participant_progress || []).find((item) => item.side === 'partner' && item.proposal_confirmed))
+  const confirmation = input.confirmation && typeof input.confirmation === 'object'
+    ? {
+      me: Boolean(input.confirmation.me),
+      partner: partnerConfirmed
+    }
+    : { me: confirmedByMe, partner: partnerConfirmed }
+  const meetingSource = input.meeting && typeof input.meeting === 'object' ? input.meeting : {}
+  const meeting = {
+    me_arrived: Boolean(meetingSource.me_arrived || input.me_arrived),
+    partner_arrived: Boolean(meetingSource.partner_arrived || input.partner_arrived)
+  }
   const inviting = status === STATUS.INVITING_PARTNER
   const coordinating = [
     STATUS.COLLECTING_PREFERENCES,
@@ -836,9 +855,26 @@ function buildCoordinationViewModel(input = {}) {
   } else if (coordinating) viewState = 'active_coordination'
 
   return {
+    projection_source: 'date_coordination_database',
+    coordination_id: Number(input.id || input.coordination_id || 0),
+    coordination_version: Number(input.coordination_version || 1),
     role,
     status,
     view_state: viewState,
+    current_plan: planProjection.current_plan,
+    plan_state: planProjection.plan_state,
+    confirmation,
+    meeting,
+    event_cards: Array.isArray(input.event_cards) ? input.event_cards : [],
+    form_policy: {
+      entry: 'chat',
+      initial_creation_only: true,
+      show_initial_form: Boolean(input.show_application_form !== undefined
+        ? input.show_application_form
+        : status === STATUS.COLLECTING_INITIATOR && isInitiator && !hasOwnApplication),
+      show_advanced_form: Boolean(input.show_optional_full_form),
+      modifications_via_chat: true
+    },
     invitation_card: invitationCard,
     shared_coordination_card: sharedCard,
     proposal_card: proposalCard,

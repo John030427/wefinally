@@ -3,6 +3,7 @@ const {
   toCanonicalCoordinationEventType,
   toRuntimeCoordinationEventType
 } = require('../../agent-graph/shared/coordinationAdapters.cjs')
+const { buildCoordinationEventCard } = require('../lib/coordinationProjection')
 
 function defaultDeps() {
   const db = require('../lib/db')
@@ -73,7 +74,8 @@ async function publishCoordinationEvent(input = {}, overrides) {
       safe_summary: {
         stage: projectParticipantEvent(event, { viewer_user_id: 0 }).stage,
         proposal_key: String(event.proposal && event.proposal.proposal_key || ''),
-        relay_text: String(event.relay_text || '').slice(0, 240)
+        relay_text: String(event.relay_text || '').slice(0, 240),
+        content: projectParticipantEvent(event, { viewer_user_id: 0 }).content
       }
     }, 'date_coordination_event')
   }
@@ -84,6 +86,15 @@ async function publishCoordinationEvent(input = {}, overrides) {
     const projection = projectParticipantEvent(event, {
       viewer_user_id: userId,
       partner_user_id: participants.find((id) => id !== userId) || 0
+    })
+    const eventCard = buildCoordinationEventCard({
+      event: Object.assign({}, event, {
+        id: stored.id,
+        coordination_id: coordination.id,
+        shareable_summary: stored.shareable_summary,
+        safe_summary: stored.safe_summary
+      }),
+      content: projection.content
     })
     const messageKey = `${key}:user:${userId}`
     let message = await deps.first('agent_message', { coordination_event_key: messageKey })
@@ -101,7 +112,8 @@ async function publishCoordinationEvent(input = {}, overrides) {
         stage: projection.stage,
         role: 'assistant',
         sender_type: 'assistant',
-        content: projection.content
+        content: projection.content,
+        event_card: eventCard
       }, 'agent_message')
     }
     messages.push(message)
