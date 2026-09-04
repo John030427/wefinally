@@ -582,6 +582,10 @@ async function start(data, wxContext) {
     throw err
   }
   const user = await currentUser(wxContext)
+  if (user && (user.account_mode === 'internal_qa' || user.qa_test_run_enabled === true || Number(user.qa_test_run_enabled || 0) === 1)) {
+    const { assertQaPairResetNotBlockingMatch } = require('../lib/qaPairResetService')
+    await assertQaPairResetNotBlockingMatch({ actor: user }, { list, now })
+  }
   if (!canUseMatching({ member_status: memberStatus(user), vipActive: isVipActive(user) })) {
     throw authError(memberStatus(user) === MEMBER_STATUS.APPROVED ? '请先开通 VIP' : '会员审核通过后才能进入匹配流程')
   }

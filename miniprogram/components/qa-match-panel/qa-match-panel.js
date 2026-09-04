@@ -17,6 +17,7 @@ Component({
 
   data: {
     visible: false,
+    resetVisible: false,
     scenarioPickerVisible: false,
     scenario: 'coordinate',
     scenarios: QA_SCENARIOS,
@@ -53,7 +54,7 @@ Component({
 
     async loadAccess(force = false) {
       const access = await refreshQaAccess({ force })
-      this.setData({ visible: access.enabled })
+      this.setData({ visible: access.enabled, resetVisible: access.enabled })
     },
 
     onToggleScenario() {
@@ -143,6 +144,54 @@ Component({
       } finally {
         this.setData({ running: false, countdown: 0 })
       }
+    },
+
+    onResetQaPairData() {
+      if (!this.data.resetVisible || this.data.running) return
+      wx.showModal({
+        title: '清空双机测试进度？',
+        content: '清空本测试对的匹配记录、第一次约会数据、约会协调会话和相关通知；保留注册资料、画像/RAG、会员、订单、推广归属及普通恋爱助手聊天。',
+        confirmText: '确认清空',
+        confirmColor: '#B42318',
+        success: async (modal) => {
+          if (!modal.confirm) return
+          this.setData({ running: true, statusText: '正在清空双机测试进度…' })
+          const storageKey = 'qa_pair_reset_request_id'
+          let requestId = ''
+          try { requestId = String(wx.getStorageSync(storageKey) || '') } catch (err) { requestId = '' }
+          if (!requestId) {
+            requestId = buildRequestId()
+            try { wx.setStorageSync(storageKey, requestId) } catch (err) { /* ignore */ }
+          }
+          try {
+            let result = await post(API_PATHS.MATCH_QA_PAIR_RESET, {
+              request_id: requestId,
+              confirm_text: '彻底清空本对测试数据'
+            }, { showLoading: true, loadingText: '正在清空…' })
+            let attempts = 0
+            while (result && ['processing', 'deleting'].includes(String(result.status || '')) && attempts < 30) {
+              this.setData({ statusText: '清理进行中，请稍候…' })
+              await sleep(1000)
+              result = await get(API_PATHS.MATCH_QA_PAIR_RESET_STATUS, {}, { showError: false })
+              attempts += 1
+            }
+            if (result && result.status === 'completed') {
+              try { wx.removeStorageSync(storageKey) } catch (err) { /* ignore */ }
+              wx.showToast({ title: '测试进度已清空', icon: 'success' })
+            }
+            this.setData({
+              statusText: (result && result.message) || (result && result.status === 'completed'
+                ? '已清空，可以重新开始双机测试'
+                : '清理仍在进行，请稍后刷新')
+            })
+            this.triggerEvent('completed', { status: 'reset', runId: '', executed: result })
+          } catch (err) {
+            this.setData({ statusText: (err && err.message) || '清空测试进度失败' })
+          } finally {
+            this.setData({ running: false })
+          }
+        }
+      })
     }
   }
 })

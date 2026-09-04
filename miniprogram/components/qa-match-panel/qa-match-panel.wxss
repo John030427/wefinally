@@ -33,6 +33,36 @@
   margin-bottom: 20rpx;
 }
 
+.qa-pair-reset {
+  width: 100%;
+  height: 72rpx;
+  line-height: 68rpx;
+  margin: 0 0 8rpx;
+  border: 2rpx solid #d92d20;
+  border-radius: 36rpx;
+  background: #fff;
+  color: #b42318;
+  font-size: 25rpx;
+  font-weight: 600;
+}
+
+.qa-pair-reset::after {
+  border: none;
+}
+
+.qa-pair-reset[disabled] {
+  border-color: #e6b8b3;
+  color: #c99892;
+  background: #fffafa;
+}
+
+.qa-pair-reset-hint {
+  color: #8f6b62;
+  font-size: 21rpx;
+  line-height: 1.55;
+  margin-bottom: 20rpx;
+}
+
 .qa-scenario-block {
   margin-bottom: 20rpx;
 }

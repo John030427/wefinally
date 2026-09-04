@@ -59,6 +59,16 @@ async function list(name, query, limit) {
   return res.data || []
 }
 
+async function listPage(name, query, afterId, limit = 100) {
+  const pageLimit = Math.max(1, Math.min(Number(limit || 100), 100))
+  const res = await withCollection(name, () => {
+    const conditions = Object.assign({}, query || {})
+    if (afterId) conditions._id = _.gt(String(afterId))
+    return col(name).where(conditions).orderBy('_id', 'asc').limit(pageLimit).get()
+  })
+  return res.data || []
+}
+
 async function byId(name, id) {
   const n = Number(id)
   if (!Number.isNaN(n)) {
@@ -362,6 +372,62 @@ async function removeByDoc(name, doc) {
   const removed = Number(result && result.stats && result.stats.removed || 0)
   if (removed !== 1) throw new Error('记录删除失败')
   return { removed }
+}
+
+async function acquireQaPairResetRun(data) {
+  const requestId = String(data && data.request_id || '')
+  const pairHash = String(data && data.pair_hash || '')
+  if (!requestId || !pairHash) throw new Error('QA 双机重置幂等键无效')
+  const documentId = `qa_pair_reset_active_${pairHash}`
+  return withCollection('qa_pair_reset_run', () => db.runTransaction(async (rawTransaction) => {
+    const adapter = transactionAdapter(rawTransaction)
+    const current = await adapter.byDocId('qa_pair_reset_run', documentId)
+    const timestamp = now()
+    if (current) {
+      const expired = current.status === 'deleting'
+        && current.lease_expires_at
+        && new Date(current.lease_expires_at).getTime() <= timestamp.getTime()
+      if (current.status === 'completed' && current.request_id === requestId) {
+        return { created: false, run: current }
+      }
+      if (!expired && current.status !== 'failed_retryable' && current.status !== 'completed') {
+        return { created: false, run: current }
+      }
+      if (current.status === 'completed' && current.request_id !== requestId) {
+        const restarted = Object.assign({}, data, {
+          _id: documentId,
+          id: Number(current.id || 0) || await adapter.nextCounter('qa_pair_reset_run'),
+          status: 'deleting',
+          retry_count: 0,
+          lease_expires_at: new Date(timestamp.getTime() + 2 * 60 * 1000),
+          create_time: timestamp,
+          update_time: timestamp,
+          completed_at: null,
+          deleted_counts: {}
+        })
+        await adapter.setByDocId('qa_pair_reset_run', documentId, restarted)
+        return { created: true, run: restarted }
+      }
+      const resumed = Object.assign({}, current, data, {
+        status: 'deleting',
+        request_id: requestId,
+        retry_count: Number(current.retry_count || 0) + 1,
+        lease_expires_at: new Date(timestamp.getTime() + 2 * 60 * 1000),
+        update_time: timestamp
+      })
+      await adapter.setByDocId('qa_pair_reset_run', documentId, resumed)
+      return { created: true, run: resumed }
+    }
+    const id = await adapter.nextCounter('qa_pair_reset_run')
+    const run = Object.assign({}, data, {
+      _id: documentId,
+      id,
+      lease_expires_at: new Date(timestamp.getTime() + 2 * 60 * 1000),
+      update_time: timestamp
+    })
+    await adapter.setByDocId('qa_pair_reset_run', documentId, run)
+    return { created: true, run }
+  }))
 }
 
 function transactionAdapter(rawTransaction) {
@@ -1161,6 +1227,7 @@ module.exports = {
   now,
   first,
   list,
+  listPage,
   byId,
   nextId,
   addWithId,
@@ -1175,6 +1242,7 @@ module.exports = {
   completeFixtureResponseJob,
   retryFixtureResponseJob,
   acquireFormalMatchBatch,
+  acquireQaPairResetRun,
   removeByDoc,
   transaction,
   commitCoordinationApplication,

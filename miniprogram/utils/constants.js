@@ -22,6 +22,8 @@ const API_PATHS = {
   MATCH_AI_PROFILE_CORRECT: '/api/match/ai-profile/correct',
   MATCH_SETTING_COOLDOWN: '/api/match/setting/cooldown',
   MATCH_START: '/api/match/start',
+  MATCH_QA_PAIR_RESET: '/api/match/qa-pair-reset',
+  MATCH_QA_PAIR_RESET_STATUS: '/api/match/qa-pair-reset/status',
   MATCH_LIST: '/api/match/list',
   MATCH_DETAIL: '/api/match/detail',
   MATCH_HANDOFF: '/api/match/handoff',

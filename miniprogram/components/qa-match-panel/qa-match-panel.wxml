@@ -5,6 +5,11 @@
   </view>
   <view class="qa-panel-hint">仅测试账号可见，正式用户不会看到此区域</view>
 
+  <button class="qa-pair-reset" wx:if="{{resetVisible}}" bindtap="onResetQaPairData" disabled="{{running}}">
+    清空双机匹配与协调数据
+  </button>
+  <view class="qa-pair-reset-hint" wx:if="{{resetVisible}}">清空本测试对的匹配记录、第一次约会数据、约会协调会话和相关通知；保留注册资料、画像/RAG、会员、订单、推广归属及普通恋爱助手聊天。</view>
+
   <view class="qa-scenario-block" wx:if="{{scenarioPickerVisible}}">
     <view class="qa-scenario-label">测试场景</view>
     <radio-group class="qa-scenario-group" bindchange="onScenarioChange">

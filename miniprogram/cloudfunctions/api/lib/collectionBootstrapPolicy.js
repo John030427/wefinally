@@ -24,6 +24,8 @@ const BOOTSTRAP_COLLECTIONS = new Set([
   'match_batch_run',
   'fixture_response_job',
   'controlled_date_scenario_run',
+  'qa_pair_reset_run',
+  'qa_pair_reset_audit',
   'coordination_notification',
   'user_notification_cursor',
   'partner_commission_ledger',
