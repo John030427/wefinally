@@ -4,7 +4,8 @@ const {
   createActorRef,
   createThreadId,
   invokeLangGraph,
-  runLangGraphStep
+  runLangGraphStep,
+  normalizeResult
 } = require('../../miniprogram/cloudfunctions/api/agent/langgraphClient')
 
 async function main() {
@@ -76,6 +77,30 @@ async function main() {
   assert.strictEqual(continued.result.status, 'awaiting_confirmation')
   assert.strictEqual(refreshed, 1)
 
+  await assert.rejects(
+    () => runLangGraphStep({ threadId: 'wf_thread_aaaaaaaaaaaaaaaa', actorRef, mode: 'date_coordination', userText: '调整方案', safeSummary: '' }, {
+      env: { LANGGRAPH_ENABLED: 'true', LANGGRAPH_ACTOR_SECRET: 'secret' },
+      invokeFunction: async (_name, payload) => ({ result: { success: true, data: {
+        status: 'awaiting_tool',
+        threadId: payload.threadId,
+        phase: 'awaiting_tool',
+        replyDraft: '',
+        pendingAction: { type: 'create_date_application_patch', arguments: { coordinationId: 716, coordinationVersion: 3 }, requiresConfirmation: true }
+      } } }),
+      executeTool: async () => {
+        const error = new Error('patch write failed')
+        error.code = 'PATCH_DB_WRITE'
+        throw error
+      }
+    }),
+    (error) => {
+      assert.strictEqual(error.graphStage, 'execute_graph_tool')
+      assert.strictEqual(error.toolName, 'create_date_application_patch')
+      assert.strictEqual(error.toolErrorCode, 'PATCH_DB_WRITE')
+      return true
+    }
+  )
+
   const timedOut = await invokeLangGraph({ threadId: 'wf_thread_aaaaaaaaaaaaaaaa', actorRef, mode: 'customer_service', userText: '你好', safeSummary: '' }, {
     env: { LANGGRAPH_ENABLED: 'true', LANGGRAPH_TIMEOUT_MS: '10', LANGGRAPH_ACTOR_SECRET: 'secret' },
     invokeFunction: async () => new Promise(() => {})
@@ -89,6 +114,18 @@ async function main() {
   })
   assert.strictEqual(invalid.kind, 'fallback')
   assert.strictEqual(invalid.code, 'invalid_request:unknown:context')
+
+  const diagnostics = normalizeResult({
+    status: 'fallback',
+    threadId: 'wf_thread_aaaaaaaaaaaaaaaa',
+    phase: 'fallback',
+    replyDraft: '',
+    pendingAction: null,
+    graph_fallback_code: 'invalid_model_output',
+    model_error_code: 'invalid_model_output'
+  })
+  assert.strictEqual(diagnostics.graph_fallback_code, 'invalid_model_output')
+  assert.strictEqual(diagnostics.model_error_code, 'invalid_model_output')
 
   console.log('PASS langgraph client')
 }

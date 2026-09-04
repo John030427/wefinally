@@ -1,5 +1,5 @@
 const { computeOverlap, STATUS } = require('../lib/dateCoordinationPolicy')
-const { buildInvitationCard, invitationProposalOf, invitationVersionOf } = require('../lib/invitationCoordination')
+const { invitationProposalOf, invitationVersionOf } = require('../lib/invitationCoordination')
 const {
   toCanonicalCoordinationPlan,
   toCanonicalCoordinationChanges
@@ -278,10 +278,6 @@ function buildDateCoordinationGraphInput(coordination, applications, user, optio
   })
   const confirmations = options.confirmations || []
   const snapshot = confirmationSnapshot(coordination, confirmations, user)
-  const invitationCard = buildInvitationCard(
-    invitationProposalOf(coordination, initiatorApp),
-    invitationVersionOf(coordination, initiatorApp)
-  )
   const actionRequired = canonicalOverlap.hasOverlap
     ? 'confirm_or_adjust'
     : (canonicalOverlap.missingDimensions.includes('own_preference')
@@ -345,19 +341,10 @@ function buildDateCoordinationGraphInput(coordination, applications, user, optio
     coordinationVersion: version,
     party,
     ownPreference,
-    ownEvidence: ownRow && ownRow.preference_evidence ? ownRow.preference_evidence : null,
     partyAState: party === 'A' ? ownPreference : empty,
     partyBState: party === 'B' ? ownPreference : empty,
     canonicalOverlap,
     sharedState: {
-      invitationCard: {
-        time_text: invitationCard.time_text,
-        area_text: invitationCard.area_text,
-        activity_text: invitationCard.activity_text,
-        budget_text: invitationCard.budget_text,
-        duration_text: invitationCard.duration_text,
-        invitation_version: invitationCard.invitation_version
-      },
       commonTime: canonicalOverlap.commonTime,
       commonArea: canonicalOverlap.commonArea,
       commonActivity: canonicalOverlap.commonActivity,
@@ -365,7 +352,6 @@ function buildDateCoordinationGraphInput(coordination, applications, user, optio
       paymentCompatibility: canonicalOverlap.paymentCompatibility,
       durationCompatibility: canonicalOverlap.durationCompatibility,
       missingDimensions: canonicalOverlap.missingDimensions,
-      unresolvedDimensions: (canonicalOverlap.conflictDimensions || []).slice(),
       activeProposalSummary: canonicalOverlap.proposal,
       actionRequired
     },

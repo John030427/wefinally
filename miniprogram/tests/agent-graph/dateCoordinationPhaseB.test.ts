@@ -7,6 +7,7 @@ import {
   buildDateCoordinationGraph,
   type DateCoordinationState
 } from '../../cloudfunctions/agent-graph/src/graphs/dateCoordination.js'
+import { GraphRunInputSchema } from '../../cloudfunctions/agent-graph/src/contracts.js'
 import type { CoordinationCommand, CoordinationCanonicalState } from '../../cloudfunctions/agent-graph/src/contracts.js'
 import type { DecisionInput, DecisionModel } from '../../cloudfunctions/agent-graph/src/model.js'
 
@@ -499,4 +500,51 @@ test('API canonical graph input uses the same shared venue/payment adapter as ag
   assert.equal(input.canonicalState.current_plan?.venue, undefined)
   assert.equal(input.pendingPreview?.patchId, 456)
   assert.equal((input.pendingPreview?.candidatePlan as Record<string, unknown>).payment, 'flexible')
+})
+
+test('API graph input stays within the strict agent-graph run contract', () => {
+  const coordination = {
+    id: 1788501441438033,
+    user_a_id: 1788246797946266,
+    user_b_id: 1784818962143965,
+    coordination_version: 1,
+    status: 'no_overlap',
+    business_state: 'waiting_partner',
+    invitation_proposal: {
+      date: '2026-09-10',
+      period: 'afternoon',
+      start_time: '13:57',
+      activity: '奶茶',
+      activity_venue: '万象城',
+      area: '南山区',
+      budget: '50-100',
+      payment_preference: 'partner_pays',
+      duration: '1-2h'
+    },
+    invitation_version: 1
+  }
+  const input = apiGraphState.buildDateCoordinationGraphInput(
+    coordination,
+    [],
+    { id: 1784818962143965 },
+    {
+      confirmations: [],
+      contextRef: {
+        type: 'patch_preview',
+        coordination_id: 1788501441438033,
+        coordination_version: 1,
+        patch_id: 1788501674554951
+      }
+    }
+  )
+  const parsed = GraphRunInputSchema.safeParse({
+    operation: 'run',
+    threadId: 'wf_thread_aaaaaaaaaaaaaaaa',
+    actorRef: 'usr_0123456789abcdef0123456789abcdef',
+    mode: 'date_coordination',
+    userText: '周六晚上7点吃椰子鸡可以吗',
+    safeSummary: '真实真机重放',
+    ...input
+  })
+  assert.equal(parsed.success, true, parsed.success ? '' : parsed.error.message)
 })

@@ -70,6 +70,9 @@ function normalizeResult(value) {
   }
   if (Number.isInteger(value.coordinationVersion) && value.coordinationVersion > 0) result.coordinationVersion = value.coordinationVersion
   if (typeof value.errorCode === 'string') result.errorCode = value.errorCode.slice(0, 80)
+  for (const key of ['graph_fallback_code', 'model_error_code']) {
+    if (typeof value[key] === 'string') result[key] = value[key].slice(0, 120)
+  }
   for (const key of ['coordinationCommand', 'candidatePlan', 'candidateChanges', 'baseVersion', 'contextRef', 'pendingPreview']) {
     if (value[key] !== undefined) result[key] = JSON.parse(JSON.stringify(value[key]))
   }
@@ -143,15 +146,30 @@ async function invokeLangGraph(input, deps = {}) {
       })
     ])
     const body = response && typeof response === 'object' && response.result ? response.result : response
+    const graphStage = input.operation === 'resume_tool' ? 'resume_agent_graph' : 'invoke_agent_graph'
     if (!body || body.success !== true) {
       const baseCode = String((body && body.code) || 'graph_failed')
       const details = String((body && body.details) || '').replace(/[^A-Za-z0-9_.:,-]/g, '').slice(0, 120)
-      return { kind: 'fallback', code: `${baseCode}${details ? `:${details}` : ''}`.slice(0, 160) }
+      return {
+        kind: 'fallback',
+        code: `${baseCode}${details ? `:${details}` : ''}`.slice(0, 160),
+        graphStage,
+        graphFallbackCode: baseCode.slice(0, 120)
+      }
     }
     const result = normalizeResult(body.data)
-    return result ? { kind: 'result', result } : { kind: 'fallback', code: 'invalid_graph_result' }
+    return result
+      ? { kind: 'result', result }
+      : { kind: 'fallback', code: 'invalid_graph_result', graphStage, graphFallbackCode: 'invalid_graph_result' }
   } catch (error) {
-    return { kind: 'fallback', code: error && error.message === 'graph_timeout' ? 'graph_timeout' : 'graph_unavailable' }
+    const code = error && error.message === 'graph_timeout' ? 'graph_timeout' : 'graph_unavailable'
+    return {
+      kind: 'fallback',
+      code,
+      graphStage: input.operation === 'resume_tool' ? 'resume_agent_graph' : 'invoke_agent_graph',
+      graphFallbackCode: code,
+      modelErrorCode: error && error.code ? String(error.code).slice(0, 120) : ''
+    }
   } finally {
     if (timer) clearTimeout(timer)
   }
@@ -164,17 +182,42 @@ async function runLangGraphStep(input, deps = {}) {
   if (config.shadowMode) return { kind: 'shadow', result: first.result }
   if (first.result.status !== 'awaiting_tool' || !first.result.pendingAction) return first
   if (typeof deps.executeTool !== 'function') return { kind: 'fallback', code: 'graph_tool_executor_missing' }
-  const toolResult = await deps.executeTool(first.result.pendingAction)
-  const refreshed = typeof deps.refreshInput === 'function'
-    ? await deps.refreshInput(input, first.result.pendingAction, toolResult)
-    : {}
-  return invokeLangGraph({
+  const toolName = first.result.pendingAction.type
+  let toolResult
+  try {
+    toolResult = await deps.executeTool(first.result.pendingAction)
+  } catch (error) {
+    const wrapped = error instanceof Error ? error : new Error(String(error || 'graph_tool_error'))
+    wrapped.graphStage = 'execute_graph_tool'
+    wrapped.toolName = toolName
+    wrapped.toolErrorCode = String(error && (error.errorCode || error.code) || wrapped.message || 'tool_error').slice(0, 120)
+    throw wrapped
+  }
+  let refreshed = {}
+  try {
+    refreshed = typeof deps.refreshInput === 'function'
+      ? await deps.refreshInput(input, first.result.pendingAction, toolResult)
+      : {}
+  } catch (error) {
+    const wrapped = error instanceof Error ? error : new Error(String(error || 'graph_refresh_error'))
+    wrapped.graphStage = 'refresh_canonical_state'
+    wrapped.toolName = toolName
+    wrapped.toolErrorCode = String(error && (error.errorCode || error.code) || wrapped.message || 'refresh_error').slice(0, 120)
+    throw wrapped
+  }
+  const resumed = await invokeLangGraph({
     operation: 'resume_tool',
     threadId: first.result.threadId,
     actorRef: input.actorRef,
     toolResult,
     ...refreshed
   }, deps)
+  return Object.assign(resumed, {
+    toolName,
+    ...(toolResult && toolResult.ok === false
+      ? { toolErrorCode: String(toolResult.code || 'tool_failed').slice(0, 120) }
+      : {})
+  })
 }
 
 module.exports = {

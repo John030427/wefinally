@@ -47,6 +47,17 @@ function dateCoordinatorFallback(code) {
   }
 }
 
+function graphDiagnosticFields(input = {}) {
+  const bounded = (value, limit) => String(value || '').slice(0, limit)
+  return {
+    graph_stage: bounded(input.graphStage || input.graph_stage, 80),
+    graph_fallback_code: bounded(input.graphFallbackCode || input.graph_fallback_code || input.code, 120),
+    model_error_code: bounded(input.modelErrorCode || input.model_error_code, 120),
+    tool_name: bounded(input.toolName || input.tool_name, 80),
+    tool_error_code: bounded(input.toolErrorCode || input.tool_error_code, 120)
+  }
+}
+
 function defaultDeps() {
   const db = require('../lib/db')
   const cloud = require('wx-server-sdk')
@@ -620,18 +631,22 @@ function createAgentHandlers(overrides = {}) {
           last_seen_coordination_version: Number(coordination.coordination_version || 1)
         }).catch(() => null)
       }
-      const recordGraphFailure = async (code) => dep('addWithId')('agent_run', {
-        session_id: session.id,
-        user_id: user.id,
-        agent_type: session.agent_type,
-        coordination_id: Number(coordination.id),
-        coordination_version: Number(coordination.coordination_version || 1),
-        status: 'fallback',
-        provider: 'langgraph',
-        intent: 'date_coordination_state',
-        risk_level: 'safe',
-        error_code: String(code || 'graph_unavailable').slice(0, 80)
-      }, 'agent_run')
+      const recordGraphFailure = async (diagnostic = {}) => {
+        const fields = graphDiagnosticFields(diagnostic)
+        return dep('addWithId')('agent_run', {
+          session_id: session.id,
+          user_id: user.id,
+          agent_type: session.agent_type,
+          coordination_id: Number(coordination.id),
+          coordination_version: Number(coordination.coordination_version || 1),
+          status: 'fallback',
+          provider: 'langgraph',
+          intent: 'date_coordination_state',
+          risk_level: 'safe',
+          error_code: String(diagnostic.code || fields.graph_fallback_code || 'graph_unavailable').slice(0, 120),
+          ...fields
+        }, 'agent_run')
+      }
       let graphFailure = { kind: 'disabled', code: 'graph_disabled' }
       if (graphConfig.enabled) {
         graphFailure = { kind: 'fallback', code: 'graph_unavailable' }
@@ -698,25 +713,28 @@ function createAgentHandlers(overrides = {}) {
               provider: 'langgraph',
               intent: 'date_coordination_state',
               risk_level: 'safe',
-              error_code: dateGraphResult.errorCode || ''
+              error_code: dateGraphResult.errorCode || dateGraphResult.graph_fallback_code || '',
+              ...graphDiagnosticFields({
+                graphStage: graphStep.toolName ? 'resume_agent_graph' : 'invoke_agent_graph',
+                graphFallbackCode: dateGraphResult.graph_fallback_code || '',
+                modelErrorCode: dateGraphResult.model_error_code || '',
+                toolName: graphStep.toolName || '',
+                toolErrorCode: graphStep.toolErrorCode || ''
+              })
             }, 'agent_run')
             if (dateGraphResult.status === 'fallback') {
               graphFailure = { kind: 'fallback', code: dateGraphResult.errorCode || 'graph_unavailable' }
             }
           } else {
             graphFailure = graphStep
-            await dep('addWithId')('agent_run', {
-              session_id: session.id,
-              user_id: user.id,
-              agent_type: session.agent_type,
-              coordination_id: Number(coordination.id),
-              coordination_version: Number(coordination.coordination_version || 1),
-              status: 'fallback',
-              provider: 'langgraph',
-              intent: 'date_coordination_state',
-              risk_level: 'safe',
-              error_code: String(graphStep.code || graphStep.kind || 'graph_fallback').slice(0, 80)
-            }, 'agent_run')
+            await recordGraphFailure({
+              code: graphStep.code || graphStep.kind || 'graph_fallback',
+              graphStage: graphStep.graphStage || 'invoke_agent_graph',
+              graphFallbackCode: graphStep.graphFallbackCode || graphStep.code || '',
+              modelErrorCode: graphStep.modelErrorCode || '',
+              toolName: graphStep.toolName || '',
+              toolErrorCode: graphStep.toolErrorCode || ''
+            })
           }
           if (dateGraphResult && dateGraphResult.status !== 'fallback') {
             const reply = [resumeText, dateGraphResult.replyDraft].filter(Boolean).join('\n') || '我已按当前协调状态处理这次请求。'
@@ -759,12 +777,24 @@ function createAgentHandlers(overrides = {}) {
               risk_level: 'safe'
             }
           }
-        } catch (_) {
-          graphFailure = { kind: 'fallback', code: 'graph_unavailable' }
-          await recordGraphFailure(graphFailure.code)
+        } catch (error) {
+          const diagnostic = {
+            code: 'graph_error',
+            graphStage: error && error.graphStage || 'graph_workflow',
+            graphFallbackCode: error && error.graphFallbackCode || 'graph_error',
+            modelErrorCode: error && error.modelErrorCode || '',
+            toolName: error && error.toolName || '',
+            toolErrorCode: error && error.toolErrorCode || error && error.code || error && error.message || 'graph_error'
+          }
+          graphFailure = { kind: 'fallback', code: diagnostic.graphFallbackCode }
+          await recordGraphFailure(diagnostic)
         }
       }
-      if (!graphConfig.enabled) await recordGraphFailure(graphFailure.code)
+      if (!graphConfig.enabled) await recordGraphFailure({
+        code: graphFailure.code,
+        graphStage: 'graph_disabled',
+        graphFallbackCode: graphFailure.code
+      })
       const fallback = dateCoordinatorFallback(graphFailure.code)
       const reply = [resumeText, fallback.reply].filter(Boolean).join('\n')
       await saveMessage(session, user, 'assistant', reply, {
