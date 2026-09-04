@@ -42,25 +42,34 @@ async function main() {
   assert(activityVenueConflict('电影', '星巴克'))
   assert.strictEqual(activityVenueConflict('电影', '万象天地百老汇影城'), null)
   assert.deepStrictEqual(venueResolution('吃饭', '大运中心'), {
-    status: 'needs_specific_venue',
+    status: 'resolved',
     area_hint: '大运中心',
     activity_detail: '吃饭',
-    activity_venue: '',
-    missing_fields: ['activity_venue']
+    activity_venue: '大运中心',
+    missing_fields: [],
+    location_precision: 'area',
+    venue_choice_mode: 'named_location',
+    clarification: '当前地点比较宽泛，可以到场后再选店；若你已有具体店名也可以继续补充。'
   })
   assert.deepStrictEqual(venueResolution('吃饭', '椰子鸡'), {
     status: 'needs_specific_venue',
     area_hint: '',
     activity_detail: '椰子鸡',
     activity_venue: '',
-    missing_fields: ['activity_venue']
+    missing_fields: ['activity_venue'],
+    location_precision: 'unspecified',
+    venue_choice_mode: '',
+    clarification: '“椰子鸡”更像活动说明。想在哪里见面？商场、商圈或具体店名都可以'
   })
   assert.deepStrictEqual(venueResolution('电影', '深圳仁恒梦中心英皇电影城'), {
     status: 'resolved',
     area_hint: '',
     activity_detail: '电影',
     activity_venue: '深圳仁恒梦中心英皇电影城',
-    missing_fields: []
+    missing_fields: [],
+    location_precision: 'venue',
+    venue_choice_mode: 'named_location',
+    clarification: ''
   })
   assert.strictEqual(planReadiness(application('深色上衣，手持一本书')).ready, true)
   assert.strictEqual(planReadiness(Object.assign(application('深色上衣'), { meet_point: '' })).ready, true)

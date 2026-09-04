@@ -253,7 +253,8 @@ async function main() {
     { availability: [{ date: '2026-09-11', periods: ['night'] }], activities: ['散步'], areas: ['福田'] }
   )
   assert.strictEqual(derived.start_time, '')
-  assert.strictEqual(derived.activity_venue, '')
+  // R2: activity/area changes must not wipe the chosen location.
+  assert.ok(!Object.prototype.hasOwnProperty.call(derived, 'activity_venue') || derived.activity_venue === '旧影城')
 
   assert.deepStrictEqual(DIMENSION_ORDER, [
     'time', 'area', 'activity', 'budget', 'payment', 'duration', 'exact_time', 'activity_venue'
@@ -380,10 +381,10 @@ async function main() {
   assert(meetingSource.includes('safeDigest(hint)'))
   assert(!/idempotency_suffix: action === 'set_arrival_hint'\s*\n\s*\? hint/.test(meetingSource))
 
-  assert(agentSource.includes("area_hint: '已确认的大致区域或商圈"))
-  assert(agentSource.includes("activity_detail: '已确认的活动或餐饮类型"))
-  assert(agentSource.includes('区域或活动类型可以先形成待完善邀请'))
-  assert(agentSource.includes('最终确认仍必须补齐具体门店'))
+  assert(agentSource.includes('地点允许商圈/商场/公共场馆或具体门店'))
+  assert(agentSource.includes('venue_choice_mode=choose_on_arrival'))
+  assert(agentSource.includes('宽泛地点可以发送邀请与最终确认'))
+  assert(!agentSource.includes('最终确认仍必须补齐具体门店'))
 
   const datePageJs = read('miniprogram/pages/date-coordination/date-coordination.js')
   const datePageWxml = read('miniprogram/pages/date-coordination/date-coordination.wxml')

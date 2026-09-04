@@ -105,48 +105,132 @@ function periodFromText(value) {
   return ''
 }
 
-function venueResolution(activity, input) {
+function isBrandOnlyVenue(value) {
+  return /^(?:星巴克|瑞幸|喜茶|奈雪|太二|海底捞|润园四季|百老汇|英皇)$/.test(text(value, 80))
+}
+
+function isConcreteNamedVenue(value) {
+  const raw = text(value, 80)
+  if (!raw) return false
+  if (CONCRETE_VENUE_RULE.test(raw)) return true
+  if (BRANDED_VENUE_RULE.test(raw) && !isBrandOnlyVenue(raw)) return true
+  return false
+}
+
+function isActivityDetailOnly(activity, value) {
   const normalizedActivity = text(activity, 20)
-  const value = text(input, 80)
-  const unresolved = (areaHint, activityDetail) => ({
-    status: 'needs_specific_venue',
-    area_hint: areaHint,
-    activity_detail: activityDetail,
-    activity_venue: '',
-    missing_fields: ['activity_venue']
-  })
-  if (!value) return unresolved('', normalizedActivity)
-  const brandedWithLocation = BRANDED_VENUE_RULE.test(value)
-    && !/^(?:星巴克|瑞幸|喜茶|奈雪|太二|海底捞|润园四季|百老汇|英皇)$/.test(value)
-  if (CONCRETE_VENUE_RULE.test(value) || brandedWithLocation) {
-    return {
-      status: 'resolved',
-      area_hint: '',
-      activity_detail: normalizedActivity,
-      activity_venue: value,
-      missing_fields: []
-    }
+  const raw = text(value, 80)
+  if (!raw) return false
+  if (isConcreteNamedVenue(raw) || AREA_HINT_RULE.test(raw)) return false
+  if (/中心|城|广场|公园|商场|步行街|地铁|站|馆|院|店|厅|里|附近|万象|大运|海岸|海岸城|壹方|茂业|天虹/.test(raw)) {
+    return false
   }
   const detailRule = ACTIVITY_DETAIL_RULES[normalizedActivity]
-  if (detailRule && detailRule.test(value)) return unresolved('', value)
-  if (AREA_HINT_RULE.test(value)) return unresolved(value, normalizedActivity)
-  return unresolved(value, normalizedActivity)
+  if (detailRule && detailRule.test(raw)) return true
+  if (/^(?:椰子鸡|火锅|烤肉|烧烤|粤菜|川菜|湘菜|日料|西餐|披萨|牛排|海鲜)$/.test(raw)) return true
+  return false
+}
+
+function normalizeFlexibleLocation(activity, input, options = {}) {
+  const normalizedActivity = text(activity || options.activity, 20)
+  const value = text(input, 80)
+  const priorDetail = text(options.activity_detail, 40)
+
+  if (!value) {
+    return {
+      status: 'location_required',
+      location_precision: 'unspecified',
+      venue_choice_mode: text(options.venue_choice_mode, 40) || '',
+      area_hint: '',
+      activity_detail: priorDetail || normalizedActivity,
+      activity_venue: '',
+      missing_fields: ['activity_venue'],
+      clarification: '想在哪里见面？商场、商圈或具体店名都可以'
+    }
+  }
+
+  if (isActivityDetailOnly(normalizedActivity, value)) {
+    return {
+      status: 'location_required',
+      location_precision: 'unspecified',
+      venue_choice_mode: '',
+      area_hint: '',
+      activity_detail: value,
+      activity_venue: '',
+      missing_fields: ['activity_venue'],
+      clarification: `“${value}”更像活动说明。想在哪里见面？商场、商圈或具体店名都可以`
+    }
+  }
+
+  const precision = isConcreteNamedVenue(value) ? 'venue' : 'area'
+  const mode = text(options.venue_choice_mode, 40) || 'named_location'
+  return {
+    status: 'resolved',
+    location_precision: precision,
+    venue_choice_mode: mode,
+    area_hint: precision === 'area' ? value : '',
+    activity_detail: priorDetail,
+    activity_venue: value,
+    missing_fields: [],
+    clarification: precision === 'area' && mode === 'named_location'
+      ? '当前地点比较宽泛，可以到场后再选店；若你已有具体店名也可以继续补充。'
+      : ''
+  }
+}
+
+function venueResolution(activity, input) {
+  const flexible = normalizeFlexibleLocation(activity, input)
+  if (flexible.status === 'location_required') {
+    return {
+      status: 'needs_specific_venue',
+      area_hint: flexible.area_hint,
+      activity_detail: flexible.activity_detail,
+      activity_venue: '',
+      missing_fields: ['activity_venue'],
+      location_precision: flexible.location_precision,
+      venue_choice_mode: flexible.venue_choice_mode,
+      clarification: flexible.clarification
+    }
+  }
+  return {
+    status: 'resolved',
+    area_hint: flexible.area_hint,
+    activity_detail: flexible.activity_detail || text(activity, 20),
+    activity_venue: flexible.activity_venue,
+    missing_fields: [],
+    location_precision: flexible.location_precision,
+    venue_choice_mode: flexible.venue_choice_mode,
+    clarification: flexible.clarification
+  }
 }
 
 function activityVenueConflict(activity, activityVenue) {
   const normalizedActivity = text(activity, 20)
   const normalizedVenue = text(activityVenue, 80)
   if (!normalizedActivity || !normalizedVenue) return null
-  const rule = ACTIVITY_VENUE_RULES[normalizedActivity]
-  if (!rule || rule.test(normalizedVenue)) return null
-  return {
-    code: 'ACTIVITY_VENUE_CONFLICT',
-    activity: normalizedActivity,
-    activity_venue: normalizedVenue,
-    message: normalizedActivity === '电影'
-      ? `你选择了看电影，但活动场地是“${normalizedVenue}”。请确认它是集合点，还是把活动场地改为具体电影院。`
-      : `“${normalizedVenue}”看起来与“${normalizedActivity}”不一致，请确认活动场地或修改活动。`
+  const flexible = normalizeFlexibleLocation(normalizedActivity, normalizedVenue)
+  if (flexible.status !== 'resolved') return null
+  if (normalizedActivity === '电影'
+    && /星巴克|瑞幸|喜茶|奈雪|咖啡/.test(normalizedVenue)
+    && !/影城|影院|电影院|cinema|movie/i.test(normalizedVenue)) {
+    return {
+      code: 'ACTIVITY_VENUE_CONFLICT',
+      activity: normalizedActivity,
+      activity_venue: normalizedVenue,
+      message: `你选择了看电影，但活动场地是“${normalizedVenue}”。请确认它是集合点，还是把活动场地改为具体电影院。`
+    }
   }
+  // Mall / area level places are never hard conflicts.
+  if (flexible.location_precision === 'area') return null
+  if (normalizedActivity === '咖啡' && /影城|影院|电影院/.test(normalizedVenue) && !/咖啡/.test(normalizedVenue)) {
+    return {
+      code: 'ACTIVITY_VENUE_CONFLICT',
+      activity: normalizedActivity,
+      activity_venue: normalizedVenue,
+      message: `“${normalizedVenue}”看起来与“咖啡”不一致，请确认活动场地或修改活动。`
+    }
+  }
+  return null
 }
 
 function firstOf(input, keys, maxLength) {
@@ -196,9 +280,12 @@ function validateDatePlan(planInput = {}, stage = 'final') {
     if (!plan.start_time) missing.push('start_time')
   }
 
-  const resolution = venueResolution(plan.activity, plan.activity_venue)
-  if (stage === 'final') {
-    if (resolution.status !== 'resolved') missing.push('activity_venue')
+  const resolution = normalizeFlexibleLocation(plan.activity, plan.activity_venue, {
+    activity_detail: planInput.activity_detail,
+    venue_choice_mode: planInput.venue_choice_mode
+  })
+  if (stage === 'final' || stage === 'invitation') {
+    if (resolution.status === 'location_required' || !resolution.activity_venue) missing.push('activity_venue')
     const conflict = resolution.status === 'resolved'
       ? activityVenueConflict(plan.activity, resolution.activity_venue)
       : null
@@ -206,8 +293,7 @@ function validateDatePlan(planInput = {}, stage = 'final') {
       conflicts.push(conflict)
       clarification = conflict.message
     }
-  } else if (stage === 'draft' || stage === 'invitation') {
-    // Draft/invitation may keep area hints and activity details; still surface conflicts if a concrete mismatched venue is already present.
+  } else if (stage === 'draft') {
     if (resolution.status === 'resolved') {
       const conflict = activityVenueConflict(plan.activity, resolution.activity_venue)
       if (conflict) {
@@ -217,7 +303,10 @@ function validateDatePlan(planInput = {}, stage = 'final') {
     }
   }
 
-  if (!clarification && missing.includes('activity_venue') && plan.activity === '电影' && /星巴克|咖啡/.test(plan.meet_point || plan.activity_venue || '')) {
+  if (!clarification && missing.includes('activity_venue')) {
+    clarification = resolution.clarification || '想在哪里见面？商场、商圈或具体店名都可以'
+  }
+  if (!clarification && plan.activity === '电影' && /星巴克|咖啡/.test(plan.meet_point || plan.activity_venue || '')) {
     clarification = '星巴克可以作为集合点，但看电影还需要具体电影院作为活动场地。'
   }
 
@@ -226,8 +315,13 @@ function validateDatePlan(planInput = {}, stage = 'final') {
     missing,
     conflicts,
     clarification,
-    plan,
-    venue_resolution: resolution,
+    plan: Object.assign({}, plan, {
+      activity_venue: resolution.activity_venue || plan.activity_venue,
+      activity_detail: resolution.activity_detail || planInput.activity_detail || '',
+      location_precision: resolution.location_precision,
+      venue_choice_mode: resolution.venue_choice_mode
+    }),
+    venue_resolution: venueResolution(plan.activity, resolution.activity_venue || plan.activity_venue),
     stage
   }
 }
@@ -577,6 +671,7 @@ module.exports = {
   periodForStartTime,
   venueResolution,
   activityVenueConflict,
+  normalizeFlexibleLocation,
   buildDatePlanV3,
   validateDatePlan,
   interpretNlPlanUtterance,

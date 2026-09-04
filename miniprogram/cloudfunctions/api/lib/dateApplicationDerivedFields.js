@@ -16,8 +16,10 @@ function reconcileDerivedFields(prev, next, options = {}) {
   }
   const activityChanged = JSON.stringify(previous.activities || []) !== JSON.stringify(current.activities || [])
   const areaChanged = JSON.stringify(previous.areas || []) !== JSON.stringify(current.areas || [])
-  if ((activityChanged || areaChanged) && !venueSupplied) {
-    current.activity_venue = ''
+  // R2: changing activity/area must not wipe a user-chosen location unless venue was omitted
+  // intentionally via an explicit empty activity_venue patch.
+  if ((activityChanged || areaChanged) && !venueSupplied && !text(current.activity_venue) && text(previous.activity_venue)) {
+    current.activity_venue = previous.activity_venue
   }
   return current
 }

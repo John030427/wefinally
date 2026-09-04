@@ -207,30 +207,32 @@ function patchHandlersFor(pair) {
 }
 
 async function main() {
-  const unresolvedApplication = normalizeApplication(app({
+  const flexibleMallApplication = normalizeApplication(app({
     contract_version: 2,
     activities: ['吃饭'],
     start_time: '18:00',
     activity_venue: '大运中心'
   }), NOW)
-  assert.strictEqual(unresolvedApplication.venue_resolution.status, 'needs_specific_venue')
-  assert.strictEqual(unresolvedApplication.area_hint, '大运中心')
-  assert.strictEqual(unresolvedApplication.activity_detail, '吃饭')
-  const unresolvedPrimary = resolvePrimaryInvitationProposal({
+  assert.strictEqual(flexibleMallApplication.venue_resolution.status, 'resolved')
+  assert.strictEqual(flexibleMallApplication.activity_venue, '大运中心')
+  assert.strictEqual(flexibleMallApplication.area_hint, '大运中心')
+  assert.strictEqual(flexibleMallApplication.location_precision, 'area')
+  const flexibleMallPrimary = resolvePrimaryInvitationProposal({
     invitation_primary_proposal: primaryOf({
       contract_version: 2,
       activity: '吃饭',
       start_time: '18:00',
-      activity_venue: '',
+      activity_venue: '大运中心',
       area_hint: '大运中心',
       activity_detail: '吃饭',
-      venue_resolution: unresolvedApplication.venue_resolution
+      venue_resolution: flexibleMallApplication.venue_resolution
     })
-  }, unresolvedApplication, { user_a_id: 1, user_b_id: 2 })
-  const unresolvedCard = buildInvitationCard(unresolvedPrimary, 1, { user_a_id: 1, user_b_id: 2 })
-  assert.strictEqual(unresolvedCard.primary_complete, true)
-  assert.strictEqual(unresolvedCard.final_ready, false)
-  assert.strictEqual(unresolvedCard.venue_status, 'needs_specific_venue')
+  }, flexibleMallApplication, { user_a_id: 1, user_b_id: 2 })
+  const flexibleMallCard = buildInvitationCard(flexibleMallPrimary, 1, { user_a_id: 1, user_b_id: 2 })
+  assert.strictEqual(flexibleMallCard.primary_complete, true)
+  assert.strictEqual(flexibleMallCard.final_ready, true)
+  assert.strictEqual(flexibleMallCard.venue_status, 'resolved')
+  assert.ok(String(flexibleMallCard.venue_guidance || '').includes('宽泛') || flexibleMallCard.venue_guidance === '' || String(flexibleMallCard.venue_guidance).includes('到场'))
 
   assert.strictEqual(nextStatus(STATUS.INVITING_PARTNER, 'accept_invitation'), STATUS.ARRANGED)
   assert.strictEqual(nextStatus(STATUS.INVITING_PARTNER, 'coordinate_invitation'), STATUS.COLLECTING_PREFERENCES)

@@ -6,6 +6,7 @@ const {
   periodForStartTime,
   venueResolution,
   activityVenueConflict,
+  normalizeFlexibleLocation,
   buildDatePlanV3,
   validateDatePlan
 } = require('./datePlanContract')
@@ -107,6 +108,7 @@ module.exports = {
   normalizeMeetingPlanFields,
   venueResolution,
   activityVenueConflict,
+  normalizeFlexibleLocation,
   planReadiness,
   formatPlanTime,
   buildDatePlanV3,

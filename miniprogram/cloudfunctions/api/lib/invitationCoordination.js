@@ -617,9 +617,13 @@ function buildInvitationCard(primaryOrPrefs = {}, version = 1, options = {}) {
     primary_complete: isPrimaryProposalDraftComplete(primary),
     final_ready: readiness.ready,
     venue_status: readiness.venue_resolution && readiness.venue_resolution.status || (readiness.ready ? 'resolved' : 'needs_specific_venue'),
-    venue_guidance: readiness.venue_resolution && readiness.venue_resolution.status === 'needs_specific_venue'
-      ? '已记录大致区域或活动类型，还需要确认具体门店'
-      : '',
+    venue_guidance: readiness.venue_resolution && readiness.venue_resolution.location_precision === 'area'
+      ? (primary && primary.venue_choice_mode === 'choose_on_arrival'
+        ? '双方已确认到场后再选具体店'
+        : '地点较宽泛，可到场后再选店；不是错误')
+      : (readiness.venue_resolution && readiness.venue_resolution.status === 'needs_specific_venue'
+        ? '还需要一个见面地点，商场、商圈或具体店名都可以'
+        : ''),
     time_text: primary && primary.date
       ? formatPlanTime(primary.date, primary.period, primary.start_time)
       : (prefs ? formatAvailabilityRange(prefs.availability) : '待确认'),

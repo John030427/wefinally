@@ -24,8 +24,10 @@ const {
   PLAN_CONTRACT_VERSION,
   normalizeMeetingPlanFields,
   venueResolution,
-  activityVenueConflict
+  activityVenueConflict,
+  normalizeFlexibleLocation
 } = require('./meetingPlanPolicy')
+const { attachPublicError } = require('./businessError')
 
 function uniqueStrings(values, limit) {
   const result = []
@@ -108,22 +110,30 @@ function normalizeApplication(input = {}, now = new Date()) {
     if (normalized.availability[0].periods[0] !== meetingPlan.period) {
       throw new Error('具体时间与所选时间段不一致')
     }
-    const resolution = venueResolution(normalized.activities[0], meetingPlan.activity_venue)
-    const venueConflict = resolution.status === 'resolved'
-      ? activityVenueConflict(normalized.activities[0], resolution.activity_venue)
-      : null
+    const resolution = normalizeFlexibleLocation(normalized.activities[0], meetingPlan.activity_venue, {
+      activity_detail: input.activity_detail,
+      venue_choice_mode: input.venue_choice_mode
+    })
+    if (resolution.status === 'location_required' || !resolution.activity_venue) {
+      const error = new Error(resolution.clarification || '想在哪里见面？商场、商圈或具体店名都可以')
+      throw attachPublicError(error, 'LOCATION_REQUIRED')
+    }
+    const venueConflict = activityVenueConflict(normalized.activities[0], resolution.activity_venue)
     if (venueConflict) {
       const error = new Error(venueConflict.message)
       error.code = venueConflict.code
-      throw error
+      throw attachPublicError(error, venueConflict.code || 'ACTIVITY_VENUE_CONFLICT')
     }
     Object.assign(normalized, {
       contract_version: PLAN_CONTRACT_VERSION,
       start_time: meetingPlan.start_time,
       activity_venue: resolution.activity_venue,
       area_hint: resolution.area_hint,
-      activity_detail: resolution.activity_detail,
-      venue_resolution: resolution,
+      activity_detail: resolution.activity_detail || textValue(input.activity_detail, 40),
+      location_precision: resolution.location_precision,
+      venue_choice_mode: resolution.venue_choice_mode || 'named_location',
+      open_items: Array.isArray(input.open_items) ? input.open_items.slice(0, 8) : undefined,
+      venue_resolution: venueResolution(normalized.activities[0], resolution.activity_venue),
       meet_point: meetingPlan.meet_point,
       arrival_hint: meetingPlan.arrival_hint
     })
