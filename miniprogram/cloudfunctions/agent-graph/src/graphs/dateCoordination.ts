@@ -13,6 +13,7 @@ import {
 } from '../contracts.js'
 import type { DecisionModel } from '../model.js'
 import { sanitizeGraphText } from '../sanitize.js'
+import { applyStructuredPlanIntent, buildDatePlanV3, validateDatePlan } from '../datePlanContract.js'
 
 export type CoordinationProposal = {
   dateWindow: string
@@ -332,7 +333,8 @@ function mapIntentToPhase(intent: string): string | null {
   const text = String(intent || '').toLowerCase()
   if (/^ask_(time|exact_time|area|activity|activity_venue|meet_point|budget|duration|partner|more)$/.test(text)) return text
   if (text === 'clarify_scope') return 'clarify_scope'
-  if (text === 'accept_current_invitation') return 'review_invitation'
+  if (text === 'clarify_plan') return 'clarify_plan'
+  if (text === 'accept_current_invitation' || text === 'accept_time_only') return 'review_invitation'
   if (text === 'modify_specific_dimensions' || text === 'partial_override' || text === 'provide_preference_range') return 'clarify_overrides'
   if (text === 'accept_counter_proposal' || text === 'review_counter_proposal') return 'review_counter_proposal'
   if (text === 'wait_partner') return 'wait_partner'
@@ -340,6 +342,31 @@ function mapIntentToPhase(intent: string): string | null {
   if (text === 'manual_handoff') return 'manual_handoff'
   if (text === 'done' || text === 'ready_to_submit') return 'ready_to_submit'
   return null
+}
+
+function basePlanFromState(state: DateCoordinationState): Record<string, unknown> {
+  const counter = counterOfferOf(state)
+  const proposal = (counter && counter.proposal && typeof counter.proposal === 'object'
+    ? counter.proposal
+    : state.proposal) as Record<string, unknown> | null
+  const card = state.sharedState?.invitationCard
+  const cardObject = card && typeof card === 'object' && !Array.isArray(card)
+    ? card as Record<string, unknown>
+    : null
+  return buildDatePlanV3({
+    ...(proposal || {}),
+    date: String((proposal && proposal.date) || ''),
+    period: String((proposal && proposal.period) || ''),
+    start_time: String((proposal && proposal.start_time) || ''),
+    area: String((proposal && (proposal.area || (Array.isArray(proposal.areas) ? proposal.areas[0] : ''))) || ''),
+    activity: String((proposal && (proposal.activity || (Array.isArray(proposal.activities) ? proposal.activities[0] : ''))) || ''),
+    activity_venue: String((proposal && proposal.activity_venue) || ''),
+    meet_point: String((proposal && proposal.meet_point) || ''),
+    budget: String((proposal && proposal.budget) || ''),
+    payment: String((proposal && (proposal.payment || proposal.payment_preference)) || ''),
+    duration: String((proposal && proposal.duration) || ''),
+    time_text: cardObject ? String(cardObject.time_text || '') : ''
+  })
 }
 
 export type DateCoordinationGraphDependencies = {
@@ -378,10 +405,31 @@ export function buildDateCoordinationGraph(dependencies: DateCoordinationGraphDe
             }
           }
         })
+        const applied = applyStructuredPlanIntent({
+          intent: decision.intent,
+          changed_dimensions: decision.changedDimensions || [],
+          candidate_values: decision.candidateValues || {},
+          confidence: decision.confidence,
+          needs_clarification: decision.needsClarification,
+          clarification: decision.clarification || decision.replyDraft
+        }, basePlanFromState(state))
+        if (applied.needs_clarification) {
+          return {
+            phase: mapIntentToPhase(decision.intent) || 'clarify_plan',
+            replyDraft: sanitizeGraphText(applied.clarification || decision.replyDraft, 1200),
+            riskLevel: decision.riskLevel
+          }
+        }
+        const finalGate = validateDatePlan(applied.plan, 'final')
         const phase = mapIntentToPhase(decision.intent) || 'compute_overlap'
         return {
           phase,
-          replyDraft: sanitizeGraphText(decision.replyDraft, 1200),
+          replyDraft: sanitizeGraphText(
+            (!finalGate.valid && finalGate.clarification)
+              ? finalGate.clarification
+              : decision.replyDraft,
+            1200
+          ),
           riskLevel: decision.riskLevel
         }
       } catch {

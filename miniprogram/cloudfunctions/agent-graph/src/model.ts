@@ -12,7 +12,12 @@ const RawDecisionSchema = z.object({
   risk_level: z.enum(['safe', 'low', 'medium', 'high', 'critical']).default('safe'),
   route: z.enum(['frontline', 'faq', 'complaint', 'safety', 'date_coordination', 'manual_review']),
   tool_request: ToolRequestSchema.nullable().default(null),
-  suggested_actions: z.array(z.string().max(120)).max(5).default([])
+  suggested_actions: z.array(z.string().max(120)).max(5).default([]),
+  changed_dimensions: z.array(z.string().max(40)).max(8).default([]),
+  candidate_values: z.record(z.string(), z.unknown()).default({}),
+  confidence: z.number().min(0).max(1).optional(),
+  needs_clarification: z.boolean().optional(),
+  clarification: z.string().max(240).optional()
 }).strict()
 
 const ProviderResponseSchema = z.object({
@@ -28,6 +33,11 @@ export type ModelDecision = {
   route: 'frontline' | 'faq' | 'complaint' | 'safety' | 'date_coordination' | 'manual_review'
   toolRequest: { tool: string; arguments: Record<string, unknown> } | null
   suggestedActions: string[]
+  changedDimensions: string[]
+  candidateValues: Record<string, unknown>
+  confidence?: number
+  needsClarification?: boolean
+  clarification?: string
 }
 
 export type DecisionInput = {
@@ -78,10 +88,11 @@ type DecisionModelConfig = {
 
 const SYSTEM_PROMPT = [
   'Return one JSON object only.',
-  'Allowed keys: intent, reply_draft, risk_level, route, tool_request, suggested_actions.',
+  'Allowed keys: intent, reply_draft, risk_level, route, tool_request, suggested_actions, changed_dimensions, candidate_values, confidence, needs_clarification, clarification.',
   'For date_coordination, distinguish: direct invitation response, partial override of a complete invitation, bilateral acceptable-range matching, structured counter-proposal review, final proposal confirmation, and clarification.',
   'A value such as 周日 only identifies the time dimension. Do not infer acceptance of location, activity, budget, payment, or duration unless the safe context says a complete base proposal is being partially overridden and the user will confirm a structured preview.',
-  'Preserve exact clock time: 周日晚上8点 means start_time 20:00 and night, never only evening. A final real-world plan needs exact time and activity venue. A preliminary meeting area is optional; each participant may separately share a non-sensitive in-venue position and arrival hint at arrival.',
+  'Model output is structured intent only: intent, changed_dimensions, candidate_values, confidence, needs_clarification, clarification. Never finalize period, exact clock time, venue conflicts, version bumps, or plan completeness yourself; the deterministic datePlanContract applies those rules.',
+  'Preserve exact clock time candidates: 周日晚上8点 / 八点 should be candidate_values.start_time "20:00" with period night. A final real-world plan needs exact time and activity venue. A preliminary meeting area is optional; each participant may separately share a non-sensitive in-venue position and arrival hint at arrival.',
   'Detect activity-place conflicts. 看电影 with 星巴克 is incomplete unless 星巴克 is explicitly confirmed as the meeting point and a cinema is provided as the activity venue. Ask one concise clarification instead of silently combining them.',
   'AI may relay a participant-provided clothing or carried-item hint, arrival state, and plan changes in the official coordination session, but must never claim to verify real-world identity.',
   'When the message does not identify which part changes and the context has no active dimension, use intent=clarify_scope and ask one concise clarification question; do not request a write tool.',
@@ -130,7 +141,12 @@ function parseDecisionContent(content: string): ModelDecision {
     riskLevel: parsed.data.risk_level,
     route: parsed.data.route,
     toolRequest: parsed.data.tool_request,
-    suggestedActions: parsed.data.suggested_actions.map((item) => sanitizeGraphText(item, 120))
+    suggestedActions: parsed.data.suggested_actions.map((item) => sanitizeGraphText(item, 120)),
+    changedDimensions: parsed.data.changed_dimensions,
+    candidateValues: parsed.data.candidate_values,
+    ...(parsed.data.confidence !== undefined ? { confidence: parsed.data.confidence } : {}),
+    ...(parsed.data.needs_clarification !== undefined ? { needsClarification: parsed.data.needs_clarification } : {}),
+    ...(parsed.data.clarification !== undefined ? { clarification: sanitizeGraphText(parsed.data.clarification, 240) } : {})
   }
 }
 

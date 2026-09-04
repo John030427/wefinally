@@ -8,6 +8,12 @@ const {
   paymentFactText,
   buildProposalCard
 } = require('./invitationCoordination')
+const {
+  normalizeStartTime,
+  periodForStartTime,
+  buildDatePlanV3,
+  validateDatePlan
+} = require('./datePlanContract')
 
 const DIMENSION_FIELDS = Object.freeze({
   time: 'availability',
@@ -274,14 +280,43 @@ function applyAcceptedCounterProposal(application, counterProposal) {
         throw new Error('候选时间无效，请刷新后重试')
       }
       next.availability = [{ date: slot.date, periods: [slot.period] }]
-      next.start_time = String(slot.start_time || '').trim()
-    } else if (change.dimension === 'exact_time') next.start_time = String(change.value || '')
-    else if (change.dimension === 'activity_venue') next.activity_venue = String(change.value || '')
+      const start = normalizeStartTime(slot.start_time || '')
+      next.start_time = start
+      if (start) {
+        const inferred = periodForStartTime(start)
+        if (inferred && inferred !== slot.period) {
+          next.availability = [{ date: slot.date, periods: [inferred] }]
+        }
+      }
+    } else if (change.dimension === 'exact_time') {
+      const start = normalizeStartTime(change.value || '')
+      next.start_time = start
+      if (start && Array.isArray(next.availability) && next.availability[0]) {
+        const inferred = periodForStartTime(start)
+        if (inferred) next.availability = [{ date: next.availability[0].date, periods: [inferred] }]
+      }
+    } else if (change.dimension === 'activity_venue') next.activity_venue = String(change.value || '')
     else if (change.dimension === 'area') next.areas = [String(change.value)]
     else if (change.dimension === 'activity') next.activities = [String(change.value)]
     else if (change.dimension === 'budget') next.budget = String(change.value)
     else if (change.dimension === 'duration') next.duration = String(change.value)
     else if (change.dimension === 'payment') next.payment_preference = String(change.application_value || '')
+  }
+  const planView = buildDatePlanV3({
+    date: next.availability && next.availability[0] && next.availability[0].date,
+    period: next.availability && next.availability[0] && next.availability[0].periods && next.availability[0].periods[0],
+    start_time: next.start_time,
+    area: next.areas && next.areas[0],
+    activity: next.activities && next.activities[0],
+    activity_venue: next.activity_venue,
+    meet_point: next.meet_point,
+    budget: next.budget,
+    payment: next.payment_preference,
+    duration: next.duration
+  })
+  const gate = validateDatePlan(planView, 'draft')
+  if (!gate.valid && gate.conflicts.length) {
+    throw new Error(gate.clarification || '调整后的活动场地与活动不一致，请修改后再接受')
   }
   return next
 }

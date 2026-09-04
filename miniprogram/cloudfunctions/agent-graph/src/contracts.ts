@@ -113,6 +113,30 @@ export const ConfirmationSnapshotSchema = z.object({
   source: z.enum(['database', 'graph_legacy']).optional()
 }).strict()
 
+export const DatePlanV3Schema = z.object({
+  contract_version: z.number().int().positive(),
+  date: z.string().max(10),
+  period: z.string().max(20),
+  start_time: z.string().max(8),
+  area: z.string().max(40),
+  activity: z.string().max(20),
+  activity_venue: z.string().max(80),
+  meet_point: z.string().max(80),
+  budget: z.string().max(40),
+  payment: z.string().max(40),
+  duration: z.string().max(40),
+  arrival_hint: z.string().max(60)
+}).strict()
+
+export const StructuredPlanIntentSchema = z.object({
+  intent: z.string().min(1).max(64),
+  changed_dimensions: z.array(z.string().max(40)).max(8).default([]),
+  candidate_values: z.record(z.string(), z.unknown()).default({}),
+  confidence: z.number().min(0).max(1).optional(),
+  needs_clarification: z.boolean().optional(),
+  clarification: z.string().max(240).optional()
+}).strict()
+
 export const GraphRunInputSchema = z.object({
   operation: z.literal('run'),
   threadId: ThreadIdSchema,
