@@ -7,8 +7,8 @@ const { computeOverlap } = require('../../miniprogram/cloudfunctions/api/lib/dat
  * NL patch -> preview -> confirm -> version+1 -> recompute -> safe partner event
  * -> area continuation -> proposal -> two-party confirmation -> arranged,
  * plus concurrent A/B updates and a stale-notification guard.
- * Classification: Deterministic Coordination E2E. LANGGRAPH_ENABLED is not required.
- * No cloud, no LLM beyond a scripted decision, no real notifications.
+ * The model response is scripted at the Graph boundary; preview creation, CAS commit
+ * and projections use the real agent handler runtime.
  */
 
 // ------------------------------------------------------------------ harness
@@ -34,6 +34,95 @@ function app(overrides = {}) {
     other_requirements: '',
     share_message: ''
   }, overrides)
+}
+
+function scriptedDateGraph(name, payload) {
+  assert.strictEqual(name, 'agent-graph')
+  const base = {
+    threadId: payload.threadId,
+    pendingAction: null,
+    coordinationVersion: Number(payload.coordinationVersion || 1)
+  }
+  if (payload.operation === 'resume_tool') {
+    const result = payload.toolResult || {}
+    const data = result.data || {}
+    if (result.ok === true && data.status === 'pending_confirmation' && Number(data.patchId || 0) > 0) {
+      const patchId = Number(data.patchId)
+      const version = Number(data.coordinationVersion || payload.coordinationVersion || 1)
+      return {
+        result: {
+          success: true,
+          data: Object.assign({}, base, {
+            status: 'awaiting_confirmation',
+            phase: 'awaiting_confirmation',
+            replyDraft: '修改预览已经生成，确认后才会写入协调状态。',
+            coordinationVersion: version,
+            pendingPreview: {
+              patchId,
+              baseVersion: Number(payload.coordinationVersion || 1),
+              candidatePlan: payload.canonicalState && payload.canonicalState.current_plan || {},
+              candidateChanges: {},
+              contextRef: {
+                type: 'patch_preview',
+                coordination_id: Number(payload.coordinationId),
+                coordination_version: Number(payload.coordinationVersion || 1),
+                patch_id: patchId
+              }
+            }
+          })
+        }
+      }
+    }
+    return { result: { success: true, data: Object.assign({}, base, { status: 'completed', phase: 'completed', replyDraft: '协调事实已更新。' }) } }
+  }
+  if (payload.userText === '确认修改' && payload.pendingPreview) {
+    return {
+      result: {
+        success: true,
+        data: Object.assign({}, base, {
+          status: 'awaiting_tool',
+          phase: 'awaiting_tool',
+          replyDraft: '正在提交你确认的修改。',
+          pendingAction: {
+            type: 'confirm_date_application_patch',
+            arguments: {
+              coordinationId: Number(payload.coordinationId),
+              coordinationVersion: Number(payload.coordinationVersion),
+              patchId: Number(payload.pendingPreview.patchId),
+              contextRef: payload.pendingPreview.contextRef
+            },
+            requiresConfirmation: false
+          }
+        })
+      }
+    }
+  }
+  const changes = payload.userText === '周六下午也可以'
+    ? { date: SAT, period: 'afternoon' }
+    : (payload.userText === '区域也可以换成车公庙' ? { area: '车公庙' } : null)
+  if (changes) {
+    return {
+      result: {
+        success: true,
+        data: Object.assign({}, base, {
+          status: 'awaiting_tool',
+          phase: 'awaiting_tool',
+          replyDraft: '我整理了一份修改预览，请确认后再生效。',
+          pendingAction: {
+            type: 'create_date_application_patch',
+            arguments: {
+              coordinationId: Number(payload.coordinationId),
+              coordinationVersion: Number(payload.coordinationVersion),
+              changes,
+              preserve: []
+            },
+            requiresConfirmation: true
+          }
+        })
+      }
+    }
+  }
+  return { result: { success: true, data: Object.assign({}, base, { status: 'completed', phase: 'completed', replyDraft: '当前协调状态已重新加载。' }) } }
 }
 
 function memoryDb(seedCoordination) {
@@ -121,17 +210,6 @@ function coordinationRow({ id = 50, status = STATUS.COLLECTING_INITIATOR, versio
   }
 }
 
-function chain(messages) {
-  let index = 0
-  return {
-    next() {
-      const value = messages[Math.min(index, messages.length - 1)]
-      index += 1
-      return value
-    }
-  }
-}
-
 async function main() {
   const db = memoryDb(coordinationRow({ id: 50, status: STATUS.COLLECTING_INITIATOR }))
   const now = () => db.now()
@@ -171,16 +249,8 @@ async function main() {
   const agent = createAgentHandlers({
     currentUser, first: db.first, list: db.list, byId: db.byId, addWithId: db.addWithId, updateByDoc: db.updateByDoc,
     claimPendingPatch: db.claimPendingPatch, now,
-    env: Object.assign({}, process.env, { LANGGRAPH_ENABLED: 'false' }),
-    generateDecision: chain([{
-      intent: 'modify_date_application',
-      toolRequest: { tool: 'create_date_application_patch', arguments: { availability: [{ date: SAT, periods: ['afternoon'] }] } },
-      provider: 'scripted', fallback: false
-    }, {
-      intent: 'modify_date_application',
-      toolRequest: { tool: 'create_date_application_patch', arguments: { areas: ['车公庙'] } },
-      provider: 'scripted', fallback: false
-    }]).next
+    env: Object.assign({}, process.env, { LANGGRAPH_ENABLED: 'true', LANGGRAPH_ACTOR_SECRET: 'phase-c-secret' }),
+    invokeGraphFunction: scriptedDateGraph
   })
 
   // worker bridge
@@ -237,13 +307,14 @@ async function main() {
   // ======== A: NL 周六下午也可以 -> preview -> confirm ========
   const session = await agent.createSession({ agent_type: 'date_coordinator', coordination_id: 50 }, { userIndex: 0 })
   const first = await agent.send({ session_id: session.id, message: '周六下午也可以' }, { userIndex: 0 })
-  assert.ok(first.patch_preview, 'A got a pending patch preview for the NL change')
-  assert.strictEqual(first.patch_preview.status, 'pending_confirmation')
-  assert.strictEqual(first.patch_preview.base_version, 1)
+  assert.ok(first.pending_preview, 'A got a pending patch preview from Graph')
+  assert.ok(first.pending_preview.patchId > 0)
+  assert.strictEqual(first.pending_preview.baseVersion, 1)
   assert.strictEqual(db.tables.date_coordination[0].coordination_version, 1, 'nothing written before confirm')
   assert.strictEqual(db.tables.coordination_notification.filter((r) => r.event_type !== 'invitation_created' && r.event_type !== 'invitation_accepted').length, 0, 'no partner notify before confirm')
   const confirmReply = await agent.send({ session_id: session.id, message: '确认修改' }, { userIndex: 0 })
-  assert.strictEqual(String(confirmReply.reply).includes('已按你的确认更新'), true, 'patch applied via agent confirm')
+  assert.strictEqual(confirmReply.provider, 'langgraph', 'patch applied via Graph confirm command')
+  assert.strictEqual(String(confirmReply.reply).includes('协调事实已更新'), true, 'patch applied via agent confirm')
   assert.strictEqual(db.tables.date_coordination[0].coordination_version, 2, 'coordination version bumped after confirm')
   assert.strictEqual(db.tables.date_coordination[0].status, STATUS.COMPUTING_OVERLAP)
   const aAppV2 = db.tables.date_coordination_application.filter((r) => r.user_id === 1 && r.coordination_version === 2)[0].application
@@ -258,8 +329,8 @@ async function main() {
 
   // ======== A: 区域改成车公庙 ========
   const second = await agent.send({ session_id: session.id, message: '区域也可以换成车公庙' }, { userIndex: 0 })
-  assert.ok(second.patch_preview, 'area patch preview created')
-  await patches.confirmForUser({ coordination_id: 50, patch_id: second.patch_preview.id }, db.tables.user[0])
+  assert.ok(second.pending_preview, 'area patch preview created')
+  await patches.confirmForUser({ coordination_id: 50, patch_id: second.pending_preview.patchId }, db.tables.user[0])
   assert.strictEqual(db.tables.date_coordination[0].coordination_version, 3)
   await runWorker()
   assert.strictEqual(db.tables.date_coordination[0].status, STATUS.WAITING_CONFIRMATIONS, 'all dimensions aligned => proposal ready')

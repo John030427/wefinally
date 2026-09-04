@@ -256,8 +256,9 @@ async function main() {
     /无权读取该约会协调任务/
   )
   const coordinatorReply = await handlers.send({ session_id: coordinator.id, message: '现在协调到哪一步了？' }, contextA)
-  assert(coordinatorReply.reply.includes('填写约会偏好'))
-  assert.strictEqual(coordinatorReply.tool, 'get_date_coordination_status')
+  assert.strictEqual(coordinatorReply.provider, 'fallback')
+  assert.strictEqual(coordinatorReply.graph_fallback, 'graph_disabled')
+  assert.strictEqual(coordinatorReply.tool, undefined)
   assert.strictEqual(JSON.stringify(coordinatorReply).includes('user_a_id'), false)
 
   deps.env.LANGGRAPH_ENABLED = 'true'
@@ -314,11 +315,10 @@ async function main() {
   deps.env.LANGGRAPH_ENABLED = 'false'
 
   const patchReply = await handlers.send({ session_id: coordinator.id, message: '不想看电影了，帮我改成咖啡' }, contextA)
-  assert.strictEqual(patchReply.provider, 'deepseek')
-  assert.strictEqual(patchReply.requires_confirmation, true)
-  assert.strictEqual(patchReply.patch_preview.status, 'pending_confirmation')
-  assert.deepStrictEqual(patchReply.patch_preview.preview.before.activities, ['电影'])
-  assert.deepStrictEqual(patchReply.patch_preview.preview.after.activities, ['咖啡'])
+  assert.strictEqual(patchReply.provider, 'fallback')
+  assert.strictEqual(patchReply.graph_fallback, 'graph_disabled')
+  assert.strictEqual(patchReply.patch_preview, undefined)
+  assert.strictEqual(deps.tables.date_application_patch.filter((row) => row.coordination_id === 50).length, 0)
   assert.strictEqual(deps.tables.date_coordination[0].coordination_version, 1)
   const historyB = await handlers.messages({ id: coordinatorB.id }, contextB)
   assert.strictEqual(JSON.stringify(historyB).includes('不想看电影'), false)
@@ -327,21 +327,22 @@ async function main() {
     session_id: initialCoordinator.id,
     message: '请把这份约会申请整理给我确认'
   }, contextA)
-  assert.strictEqual(applicationPreview.requires_confirmation, true)
-  assert.strictEqual(applicationPreview.patch_preview.operation, 'create')
-  assert.strictEqual(applicationPreview.patch_preview.status, 'pending_confirmation')
+  assert.strictEqual(applicationPreview.provider, 'fallback')
+  assert.strictEqual(applicationPreview.graph_fallback, 'graph_disabled')
+  assert.strictEqual(applicationPreview.patch_preview, undefined)
   assert.strictEqual(deps.tables.date_coordination_application.filter((row) => row.coordination_id === 51).length, 0)
 
   const sentApplication = await handlers.send({
     session_id: initialCoordinator.id,
     message: '我补充了，你帮我发送吧，期待他的回复'
   }, contextA)
-  assert.strictEqual(sentApplication.application_sent, true)
-  assert(sentApplication.reply.includes('已发送'))
-  assert.strictEqual(deps.tables.date_coordination_application.filter((row) => row.coordination_id === 51).length, 1)
-  assert.strictEqual(deps.tables.date_coordination.find((row) => row.id === 51).status, 'inviting_partner')
-  assert.strictEqual(deps.tables.agent_notification_job.filter((row) => row.coordination_id === 51).length, 1)
-  assert.strictEqual(deps.tables.agent_tool_call.filter((row) => row.tool_name === 'confirm_date_application').length, 1)
+  assert.strictEqual(sentApplication.provider, 'fallback')
+  assert.strictEqual(sentApplication.graph_fallback, 'graph_disabled')
+  assert.strictEqual(sentApplication.application_sent, undefined)
+  assert.strictEqual(deps.tables.date_coordination_application.filter((row) => row.coordination_id === 51).length, 0)
+  assert.strictEqual(deps.tables.date_coordination.find((row) => row.id === 51).status, 'collecting_initiator')
+  assert.strictEqual(deps.tables.agent_notification_job.filter((row) => row.coordination_id === 51).length, 0)
+  assert.strictEqual(deps.tables.agent_tool_call.filter((row) => row.tool_name === 'confirm_date_application').length, 0)
 
   const unsafeSuccess = await handlers.send({
     session_id: initialCoordinator.id,

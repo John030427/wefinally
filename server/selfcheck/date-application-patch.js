@@ -1,8 +1,6 @@
 const assert = require('assert')
 
 const {
-  classifyChangeIntent,
-  createPatchFromDecision,
   previewApplicationChange,
   shareableSummary
 } = require('../../miniprogram/cloudfunctions/api/lib/dateApplicationPatchPolicy')
@@ -27,20 +25,8 @@ const current = {
   share_message: ''
 }
 
-assert.strictEqual(classifyChangeIntent('预算一般怎么选？'), 'consultation')
-assert.strictEqual(classifyChangeIntent('感觉咖啡可能更轻松'), 'preference')
-assert.strictEqual(classifyChangeIntent('不想看电影了，换咖啡或散步'), 'modify_date_application')
-
-const patch = createPatchFromDecision(current, {
-  intent: 'modify_date_application',
-  tool_request: {
-    tool: 'create_date_application_patch',
-    arguments: { activities: ['咖啡', '散步'], budget: 'under-50' }
-  }
-})
-assert.deepStrictEqual(patch.changes, { activities: ['咖啡', '散步'], budget: 'under-50' })
-
-const preview = previewApplicationChange(current, patch.changes, { hasActiveProposal: true })
+const changes = { activities: ['咖啡', '散步'], budget: 'under-50' }
+const preview = previewApplicationChange(current, changes, { hasActiveProposal: true })
 assert.deepStrictEqual(preview.before.activities, ['电影'])
 assert.deepStrictEqual(preview.after.activities, ['咖啡', '散步'])
 assert.strictEqual(preview.affects_existing_proposal, true)
@@ -50,11 +36,6 @@ const summary = shareableSummary(preview)
 assert.deepStrictEqual(summary.changed_dimensions, ['activity', 'budget'])
 assert.strictEqual(JSON.stringify(summary).includes('电影'), false)
 assert.strictEqual(JSON.stringify(summary).includes('不想'), false)
-
-assert.throws(() => createPatchFromDecision(current, {
-  intent: 'modify_date_application',
-  tool_request: { tool: 'delete_partner_application', arguments: {} }
-}), /工具不在允许列表/)
 
 async function serviceChecks() {
   const { createDateApplicationPatchHandlers } = require('../../miniprogram/cloudfunctions/api/handlers/dateApplicationPatch')

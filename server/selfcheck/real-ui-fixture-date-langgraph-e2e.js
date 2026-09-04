@@ -6,10 +6,9 @@ const { publicSafeDeclineMessage } = require('../../miniprogram/cloudfunctions/a
 const { unreadCount } = require('../../miniprogram/cloudfunctions/api/lib/coordinationInbox')
 
 /**
- * Deterministic real-UI + synthetic partner journey E2E.
- * This file keeps LANGGRAPH_ENABLED off (or unused). It is NOT a LangGraph runtime test.
- * Classification: Deterministic Coordination E2E.
- * True LangGraph provider assertions live in date-coordination-logic-audit.js and agent-chat.js.
+ * Deterministic real-UI + synthetic partner journey E2E with scripted Graph commands.
+ * The Graph response is scripted, but preview creation, CAS commit and projections use
+ * the real agent handler runtime.
  */
 
 function futureDate(days) {
@@ -33,6 +32,95 @@ function app(overrides = {}) {
     other_requirements: '',
     share_message: ''
   }, overrides)
+}
+
+function scriptedDateGraph(name, payload) {
+  assert.strictEqual(name, 'agent-graph')
+  const base = {
+    threadId: payload.threadId,
+    pendingAction: null,
+    coordinationVersion: Number(payload.coordinationVersion || 1)
+  }
+  if (payload.operation === 'resume_tool') {
+    const result = payload.toolResult || {}
+    const data = result.data || {}
+    if (result.ok === true && data.status === 'pending_confirmation' && Number(data.patchId || 0) > 0) {
+      const patchId = Number(data.patchId)
+      const version = Number(data.coordinationVersion || payload.coordinationVersion || 1)
+      return {
+        result: {
+          success: true,
+          data: Object.assign({}, base, {
+            status: 'awaiting_confirmation',
+            phase: 'awaiting_confirmation',
+            replyDraft: '修改预览已经生成，确认后才会写入协调状态。',
+            coordinationVersion: version,
+            pendingPreview: {
+              patchId,
+              baseVersion: Number(payload.coordinationVersion || 1),
+              candidatePlan: payload.canonicalState && payload.canonicalState.current_plan || {},
+              candidateChanges: {},
+              contextRef: {
+                type: 'patch_preview',
+                coordination_id: Number(payload.coordinationId),
+                coordination_version: Number(payload.coordinationVersion || 1),
+                patch_id: patchId
+              }
+            }
+          })
+        }
+      }
+    }
+    return { result: { success: true, data: Object.assign({}, base, { status: 'completed', phase: 'completed', replyDraft: '协调事实已更新。' }) } }
+  }
+  if (payload.userText === '确认修改' && payload.pendingPreview) {
+    return {
+      result: {
+        success: true,
+        data: Object.assign({}, base, {
+          status: 'awaiting_tool',
+          phase: 'awaiting_tool',
+          replyDraft: '正在提交你确认的修改。',
+          pendingAction: {
+            type: 'confirm_date_application_patch',
+            arguments: {
+              coordinationId: Number(payload.coordinationId),
+              coordinationVersion: Number(payload.coordinationVersion),
+              patchId: Number(payload.pendingPreview.patchId),
+              contextRef: payload.pendingPreview.contextRef
+            },
+            requiresConfirmation: false
+          }
+        })
+      }
+    }
+  }
+  const changes = payload.userText === '周六下午也可以'
+    ? { date: SAT, period: 'afternoon' }
+    : (payload.userText === '区域也可以换成车公庙' ? { area: '车公庙' } : null)
+  if (changes) {
+    return {
+      result: {
+        success: true,
+        data: Object.assign({}, base, {
+          status: 'awaiting_tool',
+          phase: 'awaiting_tool',
+          replyDraft: '我整理了一份修改预览，请确认后再生效。',
+          pendingAction: {
+            type: 'create_date_application_patch',
+            arguments: {
+              coordinationId: Number(payload.coordinationId),
+              coordinationVersion: Number(payload.coordinationVersion),
+              changes,
+              preserve: []
+            },
+            requiresConfirmation: true
+          }
+        })
+      }
+    }
+  }
+  return { result: { success: true, data: Object.assign({}, base, { status: 'completed', phase: 'completed', replyDraft: '当前协调状态已重新加载。' }) } }
 }
 
 function memoryDb() {
@@ -123,17 +211,6 @@ function memoryDb() {
   return db
 }
 
-function chain(messages) {
-  let index = 0
-  return {
-    next() {
-      const value = messages[Math.min(index, messages.length - 1)]
-      index += 1
-      return value
-    }
-  }
-}
-
 async function main() {
   const root = path.resolve(__dirname, '../..')
   const matchDetail = fs.readFileSync(path.join(root, 'miniprogram/pages/match-detail/match-detail.wxml'), 'utf8')
@@ -180,16 +257,8 @@ async function main() {
   const agent = createAgentHandlers({
     currentUser, first: db.first, list: db.list, byId: db.byId, addWithId: db.addWithId, updateByDoc: db.updateByDoc,
     claimPendingPatch: db.claimPendingPatch, now: db.now,
-    env: Object.assign({}, process.env, { LANGGRAPH_ENABLED: 'false' }),
-    generateDecision: chain([{
-      intent: 'modify_date_application',
-      toolRequest: { tool: 'create_date_application_patch', arguments: { availability: [{ date: FRI, periods: ['evening'] }, { date: SAT, periods: ['afternoon'] }] } },
-      provider: 'scripted', fallback: false
-    }, {
-      intent: 'modify_date_application',
-      toolRequest: { tool: 'create_date_application_patch', arguments: { areas: ['车公庙'] } },
-      provider: 'scripted', fallback: false
-    }]).next
+    env: Object.assign({}, process.env, { LANGGRAPH_ENABLED: 'true', LANGGRAPH_ACTOR_SECRET: 'phase-c-secret' }),
+    invokeGraphFunction: scriptedDateGraph
   })
 
   const runWorker = async () => {
@@ -261,8 +330,8 @@ async function main() {
   const resumed = await agent.createSession({ agent_type: 'date_coordinator', coordination_id: cid }, { userIndex: 0 })
   assert.strictEqual(Number(resumed.id), Number(session.id), 'same coordinationId must resume the same thread')
   const first = await agent.send({ session_id: session.id, message: '周六下午也可以' }, { userIndex: 0 })
-  assert.ok(first.patch_preview, 'NL must produce patch preview')
-  assert.strictEqual(first.patch_preview.status, 'pending_confirmation')
+  assert.ok(first.pending_preview, 'Graph must produce a pending preview')
+  assert.ok(first.pending_preview.patchId > 0)
   assert.strictEqual(db.tables.date_coordination.find((r) => Number(r.id) === cid).coordination_version, 1, 'no write before confirm')
   await agent.send({ session_id: session.id, message: '确认修改' }, { userIndex: 0 })
   assert.ok(db.tables.date_coordination.find((r) => Number(r.id) === cid).coordination_version >= 2)
@@ -272,8 +341,8 @@ async function main() {
   assert.strictEqual(live.status, STATUS.NO_OVERLAP, 'time overlap but area still conflicts')
 
   const second = await agent.send({ session_id: session.id, message: '区域也可以换成车公庙' }, { userIndex: 0 })
-  assert.ok(second.patch_preview)
-  await patches.confirmForUser({ coordination_id: cid, patch_id: second.patch_preview.id }, db.tables.user[0])
+  assert.ok(second.pending_preview)
+  await patches.confirmForUser({ coordination_id: cid, patch_id: second.pending_preview.patchId }, db.tables.user[0])
   live = db.tables.date_coordination.find((r) => Number(r.id) === cid)
   if (live.status === STATUS.COMPUTING_OVERLAP) await runWorker()
   await coordination.detail({ id: cid, coordination_id: cid }, { userIndex: 0 })
