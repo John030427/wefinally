@@ -31,6 +31,7 @@ export type ModelDecision = {
   toolRequest: { tool: string; arguments: Record<string, unknown> } | null
   coordinationCommand?: CoordinationCommand | null
   suggestedActions: string[]
+  rawModelOutput?: string
 }
 
 export type DecisionInput = {
@@ -47,11 +48,21 @@ export type DecisionModel = {
 
 export class ModelBoundaryError extends Error {
   readonly code: string
+  readonly modelErrorCode?: string
+  readonly modelErrorName?: string
+  readonly rawModelOutput?: string
 
-  constructor(code: string) {
+  constructor(code: string, details: {
+    modelErrorCode?: string
+    modelErrorName?: string
+    rawModelOutput?: string
+  } = {}) {
     super(code)
     this.name = 'ModelBoundaryError'
     this.code = code
+    if (details.modelErrorCode) this.modelErrorCode = details.modelErrorCode
+    if (details.modelErrorName) this.modelErrorName = details.modelErrorName
+    if (details.rawModelOutput) this.rawModelOutput = details.rawModelOutput.slice(0, 4000)
   }
 }
 
@@ -68,7 +79,7 @@ type GenerateTextImpl = (input: {
   responseFormat?: { type: string }
 }) => Promise<GenerateTextResult>
 
-type DecisionModelConfig = {
+export type DecisionModelConfig = {
   provider?: string
   apiKey?: string
   baseUrl?: string
@@ -77,6 +88,20 @@ type DecisionModelConfig = {
   envId?: string
   fetchImpl?: typeof fetch
   generateTextImpl?: GenerateTextImpl
+}
+
+export type CloudBaseProviderSmokeResult = {
+  status: 'provider_smoke'
+  ok: boolean
+  provider: 'cloudbase'
+  group: string
+  model: string
+  envIdConfigured: boolean
+  latencyMs: number
+  rawResponse?: string
+  modelErrorCode?: string
+  modelErrorName?: string
+  errorMessage?: string
 }
 
 const BASE_SYSTEM_PROMPT = [
@@ -93,7 +118,7 @@ const DATE_COORDINATION_SYSTEM_PROMPT = [
   'Allowed CoordinationCommand fields are type, target_version, changes, preserve, partner_request, relay, confidence, needs_clarification, clarification, and context_ref. Do not invent fields or put runtime names activity_venue/payment_preference in changes.',
   'Allowed changes are date, period, start_time, activity, activity_detail, venue, area, budget, payment, duration, meet_point, arrival_status, arrival_hint, delay_minutes, public_location, and appearance_hint. Use budget under-50/50-100/100-200/over-200/flexible, payment aa/self_pays/partner_pays/flexible, and duration about-1h/1-2h/2-3h/flexible.',
   'context_ref is the precise object the user is referring to and must carry coordination_id and coordination_version. A proposal ref also carries proposal_id; a patch_preview ref carries patch_id; an invitation ref carries invitation_version; a partner_inquiry ref carries inquiry_id or event_id; a meeting_status ref may carry event_id when replying to a specific live event. Never guess an object from “可以” or “上一个”; ask to clarify when there is no uniquely active ref.',
-  'Every PROPOSE_CHANGE and PROPOSE_CHANGE_AND_ASK_PARTNER must include target_version or context_ref, and target_version must equal context_ref.coordination_version when both are present. Confirmation, invitation response, cancellation, and preview commands are also version-bound. A tool request is only a request for backend validation; it is not proof that anything was written or notified.',
+  'Every PROPOSE_CHANGE and PROPOSE_CHANGE_AND_ASK_PARTNER must include target_version or context_ref, and target_version must equal context_ref.coordination_version when both are present. If the command only targets the current version and no actionable object is being answered, provide target_version and completely omit context_ref; 只提供 target_version 时必须完全省略 context_ref；never emit a partial context_ref containing only coordination_id or coordination_version. Confirmation, invitation response, cancellation, and preview commands are also version-bound. A tool request is only a request for backend validation; it is not proof that anything was written or notified.',
   'Classify plan fields as core (date, period, start_time, activity, activity_detail, venue), soft preferences (area, budget, payment, duration), and meeting state (meet_point, arrival_status, arrival_hint, delay_minutes, public_location, appearance_hint). Core changes require a preview and explicit confirmation. Soft changes may be grouped into one preview; preserve unchanged fields and do not repeatedly confirm already-set flexible preferences. Meeting state is a live fact/relay and does not silently mutate the canonical plan.',
   'Use partner_request only for ASK_PARTNER, ASK_PARTNER_ARRIVAL, and the combined command. Use relay only for arrival, delay, safe meeting notes, or an explicit partner relay. The combined arrival command is the only command for “我到了，你在哪”: do not emit ASK_PARTNER_ARRIVAL alone. Backend order is strict: 先记录本人 ARRIVED，再发送 ARRIVAL_STATUS_REQUESTED; do not claim either event happened before the backend tool result. For “可以” confirm the active patch/proposal/invitation only when context_ref uniquely identifies it; otherwise emit CLARIFY. A preview is only written after confirmation; do not claim success: say the backend will validate, apply, notify, or project the result.',
   'Few-shot examples (the version and identifiers below are placeholders; copy the current DB state values, never these numbers):',
@@ -145,10 +170,18 @@ function parseDecisionContent(content: string): ModelDecision {
   try {
     rawDecision = JSON.parse(content)
   } catch {
-    throw new ModelBoundaryError('invalid_model_output')
+    throw new ModelBoundaryError('invalid_model_output', {
+      modelErrorCode: 'invalid_model_output',
+      rawModelOutput: content
+    })
   }
   const parsed = RawDecisionSchema.safeParse(rawDecision)
-  if (!parsed.success) throw new ModelBoundaryError('invalid_model_output')
+  if (!parsed.success) {
+    throw new ModelBoundaryError('invalid_model_output', {
+      modelErrorCode: 'invalid_model_output',
+      rawModelOutput: content
+    })
+  }
   return {
     intent: parsed.data.intent,
     replyDraft: sanitizeGraphText(parsed.data.reply_draft, 1200),
@@ -156,8 +189,36 @@ function parseDecisionContent(content: string): ModelDecision {
     route: parsed.data.route,
     toolRequest: parsed.data.tool_request,
     coordinationCommand: parsed.data.coordination_command,
-    suggestedActions: parsed.data.suggested_actions.map((item) => sanitizeGraphText(item, 120))
+    suggestedActions: parsed.data.suggested_actions.map((item) => sanitizeGraphText(item, 120)),
+    rawModelOutput: content.slice(0, 4000)
   }
+}
+
+function providerErrorCode(error: unknown): string | undefined {
+  if (!error || typeof error !== 'object') return undefined
+  const code = (error as { code?: unknown }).code
+  return typeof code === 'string' && code.trim() ? code.trim().slice(0, 120) : undefined
+}
+
+function providerErrorName(error: unknown): string | undefined {
+  return error instanceof Error && error.name.trim() ? error.name.trim().slice(0, 80) : undefined
+}
+
+function providerErrorMessage(error: unknown): string | undefined {
+  if (!(error instanceof Error) || !error.message.trim()) return undefined
+  return sanitizeGraphText(error.message, 300)
+}
+
+function toModelBoundaryError(error: unknown): ModelBoundaryError {
+  const details: { modelErrorCode?: string; modelErrorName?: string } = {}
+  const code = providerErrorCode(error)
+  const name = providerErrorName(error)
+  if (code) details.modelErrorCode = code
+  if (name) details.modelErrorName = name
+  return new ModelBoundaryError(
+    error instanceof Error && error.name === 'TimeoutError' ? 'provider_timeout' : 'provider_request_error',
+    details
+  )
 }
 
 function createDeepseekDecisionModel(config: DecisionModelConfig): DecisionModel {
@@ -185,7 +246,7 @@ function createDeepseekDecisionModel(config: DecisionModelConfig): DecisionModel
         })
       } catch (error) {
         if (error instanceof ModelBoundaryError) throw error
-        throw new ModelBoundaryError(error instanceof Error && error.name === 'TimeoutError' ? 'provider_timeout' : 'provider_request_error')
+        throw toModelBoundaryError(error)
       }
       if (!response.ok) throw new ModelBoundaryError('provider_http_error')
 
@@ -207,10 +268,10 @@ function createCloudbaseGenerateText(config: DecisionModelConfig): GenerateTextI
   let appInstance: ReturnType<typeof import('@cloudbase/node-sdk').init> | null = null
   const group = String(config.group || 'cloudbase')
   const model = String(config.model || 'hy3')
-  const envId = String(config.envId || process.env.TCB_ENV || process.env.SCF_NAMESPACE || '')
+  const envId = String(config.envId || process.env.TCB_ENV || '').trim()
   return async (input) => {
-    const tcb = await import('@cloudbase/node-sdk')
-    if (!appInstance) appInstance = tcb.init({ env: envId })
+    const tcb = resolveCloudbaseSdkModule(await import('@cloudbase/node-sdk'))
+    if (!appInstance) appInstance = tcb.init(resolveCloudbaseInitOptions(envId, tcb.SYMBOL_CURRENT_ENV))
     const ai = appInstance.ai()
     const client = ai.createModel(input.group || group)
     const generate = client.generateText.bind(client) as (input: {
@@ -251,7 +312,7 @@ function createCloudbaseDecisionModel(config: DecisionModelConfig): DecisionMode
         })
       } catch (error) {
         if (error instanceof ModelBoundaryError) throw error
-        throw new ModelBoundaryError(error instanceof Error && error.name === 'TimeoutError' ? 'provider_timeout' : 'provider_request_error')
+        throw toModelBoundaryError(error)
       }
       return parseDecisionContent(result.text)
     }
@@ -270,6 +331,93 @@ export function createDecisionModel(config: DecisionModelConfig = {}): DecisionM
   return createCloudbaseDecisionModel(config)
 }
 
+export function resolveCloudbaseInitOptions(
+  envId: string | undefined,
+  currentEnv?: typeof import('@cloudbase/node-sdk').SYMBOL_CURRENT_ENV
+): { env: string | typeof import('@cloudbase/node-sdk').SYMBOL_CURRENT_ENV } | Record<string, never> {
+  const normalized = String(envId || '').trim()
+  if (normalized) return { env: normalized }
+  return currentEnv ? { env: currentEnv } : {}
+}
+
+export function resolveCloudbaseSdkModule(moduleValue: unknown): typeof import('@cloudbase/node-sdk') {
+  const candidate = moduleValue && typeof moduleValue === 'object' && 'default' in moduleValue
+    ? (moduleValue as { default?: unknown }).default || moduleValue
+    : moduleValue
+  if (!candidate || typeof candidate !== 'object' || typeof (candidate as { init?: unknown }).init !== 'function') {
+    throw new TypeError('cloudbase_node_sdk_invalid')
+  }
+  return candidate as typeof import('@cloudbase/node-sdk')
+}
+
+export async function runCloudbaseProviderSmoke(config: DecisionModelConfig = {}): Promise<CloudBaseProviderSmokeResult> {
+  const startedAt = Date.now()
+  const provider = String(config.provider || 'cloudbase').toLowerCase()
+  const group = String(config.group || 'cloudbase')
+  const model = String(config.model || 'hy3')
+  const envId = String(config.envId || process.env.TCB_ENV || '').trim()
+  if (provider !== 'cloudbase') {
+    return {
+      status: 'provider_smoke',
+      ok: false,
+      provider: 'cloudbase',
+      group,
+      model,
+      envIdConfigured: Boolean(envId),
+      latencyMs: Date.now() - startedAt,
+      modelErrorCode: 'provider_disabled',
+      errorMessage: 'agent-graph is not configured for the CloudBase provider'
+    }
+  }
+  try {
+    const result = await createCloudbaseGenerateText(config)({
+      group,
+      model,
+      messages: [
+        { role: 'system', content: 'Return exactly one JSON object with a boolean ok field.' },
+        { role: 'user', content: '{"ok":true}' }
+      ],
+      maxTokens: 32,
+      temperature: 0,
+      responseFormat: { type: 'json_object' }
+    })
+    const rawResponse = String(result.text || '').trim().slice(0, 1000)
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(rawResponse)
+    } catch {
+      parsed = null
+    }
+    return {
+      status: 'provider_smoke',
+      ok: Boolean(parsed && typeof parsed === 'object' && (parsed as { ok?: unknown }).ok === true),
+      provider: 'cloudbase',
+      group,
+      model,
+      envIdConfigured: Boolean(envId),
+      latencyMs: Date.now() - startedAt,
+      rawResponse
+    }
+  } catch (error) {
+    const failed: CloudBaseProviderSmokeResult = {
+      status: 'provider_smoke',
+      ok: false,
+      provider: 'cloudbase',
+      group,
+      model,
+      envIdConfigured: Boolean(envId),
+      latencyMs: Date.now() - startedAt
+    }
+    const modelErrorCode = providerErrorCode(error)
+    const modelErrorName = providerErrorName(error)
+    const errorMessage = providerErrorMessage(error)
+    if (modelErrorCode) failed.modelErrorCode = modelErrorCode
+    if (modelErrorName) failed.modelErrorName = modelErrorName
+    if (errorMessage) failed.errorMessage = errorMessage
+    return failed
+  }
+}
+
 export function resolveDecisionModelConfig(env: NodeJS.ProcessEnv = process.env): DecisionModelConfig {
   const provider = String(env.AI_PROVIDER || 'cloudbase').toLowerCase()
   if (provider === 'deepseek' || provider === 'legacy_deepseek') {
@@ -284,6 +432,6 @@ export function resolveDecisionModelConfig(env: NodeJS.ProcessEnv = process.env)
     provider: 'cloudbase',
     group: String(env.AI_GROUP || 'cloudbase'),
     model: String(env.AI_MODEL || env.LLM_MODEL || 'hy3'),
-    envId: String(env.TCB_ENV || env.SCF_NAMESPACE || '')
+    envId: String(env.TCB_ENV || '')
   }
 }

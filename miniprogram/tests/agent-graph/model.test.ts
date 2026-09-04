@@ -2,7 +2,10 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   ModelBoundaryError,
-  createDecisionModel
+  createDecisionModel,
+  resolveCloudbaseInitOptions,
+  resolveCloudbaseSdkModule,
+  runCloudbaseProviderSmoke
 } from '../../cloudfunctions/agent-graph/src/model.js'
 
 const sampleDecision = {
@@ -52,7 +55,10 @@ test('maps malformed provider content to a stable boundary error', async () => {
       userText: '帮助',
       safeSummary: ''
     }),
-    (error: unknown) => error instanceof ModelBoundaryError && error.code === 'invalid_model_output'
+    (error: unknown) => error instanceof ModelBoundaryError
+      && error.code === 'invalid_model_output'
+      && error.modelErrorCode === 'invalid_model_output'
+      && error.rawModelOutput === 'not-json'
   )
 })
 
@@ -92,6 +98,68 @@ test('legacy deepseek fetch path still works when explicitly configured', async 
   const parsedBody = JSON.parse(requestBody) as { model?: string; response_format?: { type?: string } }
   assert.equal(parsedBody.model, 'deepseek-chat')
   assert.equal(parsedBody.response_format?.type, 'json_object')
+})
+
+test('CloudBase provider uses the current function environment when no env id is configured', () => {
+  assert.deepEqual(resolveCloudbaseInitOptions(''), {})
+  assert.deepEqual(resolveCloudbaseInitOptions('  '), {})
+  const currentEnv = Symbol.for('SYMBOL_CURRENT_ENV')
+  assert.deepEqual(resolveCloudbaseInitOptions('', currentEnv), { env: currentEnv })
+  assert.deepEqual(resolveCloudbaseInitOptions('cloud1-d4gy8l52g08bba326'), {
+    env: 'cloud1-d4gy8l52g08bba326'
+  })
+})
+
+test('normalizes the CloudBase Node SDK default export used by deployed ESM interop', () => {
+  const init = () => undefined
+  assert.equal(resolveCloudbaseSdkModule({ default: { init } }).init, init)
+  assert.equal(resolveCloudbaseSdkModule({ init }).init, init)
+})
+
+test('preserves the provider error code for internal QA diagnostics', async () => {
+  const providerError = Object.assign(new Error('CloudBase provider rejected the request'), {
+    code: 'INVALID_ENV'
+  })
+  const model = createDecisionModel({
+    provider: 'cloudbase',
+    generateTextImpl: async () => { throw providerError }
+  })
+
+  await assert.rejects(
+    () => model.decide({
+      mode: 'customer_service',
+      phase: 'frontline',
+      userText: '帮助',
+      safeSummary: ''
+    }),
+    (error: unknown) => error instanceof ModelBoundaryError
+      && error.code === 'provider_request_error'
+      && error.modelErrorCode === 'INVALID_ENV'
+  )
+})
+
+test('provider smoke uses CloudBase hy3 structured output and returns the raw bounded response', async () => {
+  let request: Record<string, unknown> | undefined
+  const result = await runCloudbaseProviderSmoke({
+    provider: 'cloudbase',
+    group: 'cloudbase',
+    model: 'hy3',
+    generateTextImpl: async (input) => {
+      request = input as unknown as Record<string, unknown>
+      return { text: '{"ok":true}' }
+    }
+  })
+
+  assert.equal(result.ok, true)
+  assert.equal(result.provider, 'cloudbase')
+  assert.equal(result.group, 'cloudbase')
+  assert.equal(result.model, 'hy3')
+  assert.equal(result.rawResponse, '{"ok":true}')
+  assert.deepEqual(request?.responseFormat, { type: 'json_object' })
+  assert.deepEqual(request?.messages, [
+    { role: 'system', content: 'Return exactly one JSON object with a boolean ok field.' },
+    { role: 'user', content: '{"ok":true}' }
+  ])
 })
 
 test('parses date coordination command output as the only semantic command channel', async () => {
@@ -163,6 +231,7 @@ test('date coordinator prompt documents the complete command contract and ground
   ]) assert.match(systemPrompt, new RegExp(phrase))
   assert.match(systemPrompt, /ARRIVAL_AND_ASK_PARTNER_STATUS/)
   assert.match(systemPrompt, /先记录本人 ARRIVED，再发送 ARRIVAL_STATUS_REQUESTED/)
+  assert.match(systemPrompt, /只提供 target_version 时必须完全省略 context_ref/)
   assert.match(systemPrompt, /A preview is only written after confirmation/)
   assert.match(systemPrompt, /Do not claim any business action succeeded/)
 })

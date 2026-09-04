@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { requireFromAgentGraph } from './agentGraphRequire.js'
 const { MemorySaver } = requireFromAgentGraph('@langchain/langgraph') as typeof import('@langchain/langgraph')
 import type { DecisionInput, DecisionModel } from '../../cloudfunctions/agent-graph/src/model.js'
+import { ModelBoundaryError } from '../../cloudfunctions/agent-graph/src/model.js'
 import { createAgentGraphMain } from '../../cloudfunctions/agent-graph/src/index.js'
 
 function customerInput(text: string) {
@@ -155,4 +156,87 @@ test('malformed checkpoint storage returns a stable error without exposing the s
     toolResult: { ok: true }
   })
   assert.deepEqual(result, { success: false, code: 'invalid_checkpoint' })
+})
+
+test('provider fallback exposes separate graph and model diagnostic codes', async () => {
+  const main = createAgentGraphMain({
+    checkpointer: new MemorySaver(),
+    model: {
+      decide: async () => {
+        throw new ModelBoundaryError('provider_request_error', { modelErrorCode: 'INVALID_ENV' })
+      }
+    }
+  })
+  const result = await main(customerInput('帮助'))
+  assert.equal(result.success, true)
+  assert.equal(result.data?.status, 'fallback')
+  assert.equal(result.data?.errorCode, 'provider_request_error')
+  assert.equal(result.data?.graph_fallback_code, 'provider_request_error')
+  assert.equal(result.data?.model_error_code, 'INVALID_ENV')
+})
+
+test('internal provider and decision diagnostics do not route through LangGraph', async () => {
+  const main = createAgentGraphMain({
+    checkpointer: new MemorySaver(),
+    model: {
+      decide: async () => ({
+        intent: 'date_coordination',
+        replyDraft: '请确认调整预览。',
+        riskLevel: 'safe',
+        route: 'date_coordination',
+        toolRequest: null,
+        suggestedActions: [],
+        rawModelOutput: '{"coordination_command":{"type":"PROPOSE_CHANGE"}}',
+        coordinationCommand: {
+          type: 'PROPOSE_CHANGE',
+          target_version: 1,
+          changes: { activity: '吃饭' },
+          confidence: 0.99
+        }
+      })
+    },
+    providerSmoke: async () => ({
+      status: 'provider_smoke', ok: true, provider: 'cloudbase', group: 'cloudbase', model: 'hy3',
+      rawResponse: '{"ok":true}'
+    })
+  })
+
+  const provider = await main({ operation: 'provider_smoke' })
+  assert.deepEqual(provider, {
+    success: true,
+    data: {
+      status: 'provider_smoke', ok: true, provider: 'cloudbase', group: 'cloudbase', model: 'hy3',
+      rawResponse: '{"ok":true}'
+    }
+  })
+
+  const decision = await main({ operation: 'decision_smoke', userText: '奶茶改成吃饭' })
+  assert.equal(decision.success, true)
+  assert.equal(decision.data?.status, 'decision_smoke')
+  assert.equal(decision.data?.coordinationCommandSchemaValid, true)
+  assert.equal(decision.data?.decision?.coordinationCommand?.type, 'PROPOSE_CHANGE')
+  assert.equal(decision.data?.rawModelOutput, '{"coordination_command":{"type":"PROPOSE_CHANGE"}}')
+})
+
+test('decision diagnostics retain bounded invalid model output for schema inspection', async () => {
+  const main = createAgentGraphMain({
+    checkpointer: new MemorySaver(),
+    model: {
+      decide: async () => {
+        throw new ModelBoundaryError('invalid_model_output', {
+          modelErrorCode: 'invalid_model_output',
+          rawModelOutput: '{"unexpected":true}'
+        })
+      }
+    }
+  })
+  const result = await main({ operation: 'decision_smoke', userText: '奶茶改成吃饭' })
+  assert.deepEqual(result.data, {
+    status: 'decision_smoke',
+    ok: false,
+    coordinationCommandSchemaValid: false,
+    graph_fallback_code: 'invalid_model_output',
+    model_error_code: 'invalid_model_output',
+    rawModelOutput: '{"unexpected":true}'
+  })
 })

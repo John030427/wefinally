@@ -127,7 +127,9 @@ const GraphResultBaseSchema = z.object({
   replyDraft: z.string().max(1200).default(''),
   pendingAction: PendingActionSchema.nullable().default(null),
   coordinationVersion: z.number().int().positive().optional(),
-  errorCode: z.string().max(80).optional()
+  errorCode: z.string().max(80).optional(),
+  graph_fallback_code: z.string().max(80).optional(),
+  model_error_code: z.string().max(120).optional()
 }).strict()
 
 // Phase A coordination contract. This is intentionally additive: the existing

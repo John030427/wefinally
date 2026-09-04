@@ -6,23 +6,77 @@ import {
   GraphStateSchema,
   PendingActionSchema,
   CoordinationCanonicalStateSchema,
+  CoordinationCommandSchema,
   type GraphResult
 } from './contracts.js'
 import { loadCheckpointState, resumeGraph, runGraph } from './graph.js'
-import type { DecisionModel } from './model.js'
+import type { CloudBaseProviderSmokeResult, DecisionInput, DecisionModel, ModelDecision } from './model.js'
 import { ModelBoundaryError } from './model.js'
 import { sanitizeGraphText } from './sanitize.js'
 
 type MainDependencies = {
   checkpointer: BaseCheckpointSaver
   model: DecisionModel
+  providerSmoke?: () => Promise<CloudBaseProviderSmokeResult>
+}
+
+type DiagnosticResult = CloudBaseProviderSmokeResult | {
+  status: 'decision_smoke'
+  ok: boolean
+  coordinationCommandSchemaValid: boolean
+  rawModelOutput?: string
+  decision?: ModelDecision
+  graph_fallback_code?: string
+  model_error_code?: string
 }
 
 type MainResponse = {
   success: boolean
-  data?: GraphResult | { status: 'ok'; runtime: 'langgraph' }
+  data?: GraphResult | { status: 'ok'; runtime: 'langgraph' } | DiagnosticResult
   code?: string
   details?: string
+}
+
+const MINIMAL_DECISION_DIAGNOSTIC_CONTEXT: Record<string, unknown> = {
+  coordinationId: 900001,
+  coordinationVersion: 1,
+  party: 'A',
+  currentPlan: {
+    date: '2026-09-06',
+    period: 'night',
+    start_time: '20:00',
+    activity: '奶茶',
+    area: '福田区',
+    payment: 'flexible',
+    duration: 'flexible'
+  },
+  canonicalOverlap: { source: 'backend', hasOverlap: true },
+  sharedState: {},
+  partnerProgress: 'waiting',
+  confirmationSnapshot: {
+    myConfirmed: false,
+    partnerConfirmed: false,
+    proposalStatus: 'active',
+    source: 'database'
+  },
+  invitationVersion: null,
+  currentProposalId: null,
+  contextRef: null,
+  pendingPreview: null
+}
+
+function decisionDiagnosticInput(event: Record<string, unknown>): DecisionInput {
+  const suppliedContext = event.context
+  const context = suppliedContext && typeof suppliedContext === 'object' && !Array.isArray(suppliedContext)
+    ? suppliedContext as Record<string, unknown>
+    : MINIMAL_DECISION_DIAGNOSTIC_CONTEXT
+  return {
+    mode: 'date_coordination',
+    phase: 'parse_command',
+    userText: sanitizeGraphText(event.userText || '奶茶改成吃饭', 2000),
+    safeSummary: '内部运行时诊断',
+    context
+  }
 }
 
 function withoutCloudBaseMetadata(event: unknown): unknown {
@@ -98,6 +152,41 @@ export function createAgentGraphMain(dependencies: MainDependencies) {
       }
     }
 
+    if (businessEvent && typeof businessEvent === 'object' && !Array.isArray(businessEvent)) {
+      const diagnosticEvent = businessEvent as Record<string, unknown>
+      if (diagnosticEvent.operation === 'provider_smoke') {
+        if (!dependencies.providerSmoke) return { success: false, code: 'diagnostic_unavailable' }
+        return { success: true, data: await dependencies.providerSmoke() }
+      }
+      if (diagnosticEvent.operation === 'decision_smoke') {
+        try {
+          const decision = await dependencies.model.decide(decisionDiagnosticInput(diagnosticEvent))
+          const commandResult = CoordinationCommandSchema.safeParse(decision.coordinationCommand)
+          const result: DiagnosticResult = {
+            status: 'decision_smoke',
+            ok: commandResult.success,
+            coordinationCommandSchemaValid: commandResult.success,
+            decision
+          }
+          if (decision.rawModelOutput) result.rawModelOutput = decision.rawModelOutput
+          return { success: true, data: result }
+        } catch (error) {
+          if (error instanceof ModelBoundaryError) {
+            const result: DiagnosticResult = {
+              status: 'decision_smoke',
+              ok: false,
+              coordinationCommandSchemaValid: false,
+              graph_fallback_code: error.code
+            }
+            result.model_error_code = error.modelErrorCode || error.code
+            if (error.rawModelOutput) result.rawModelOutput = error.rawModelOutput
+            return { success: true, data: result }
+          }
+          return { success: false, code: 'diagnostic_error' }
+        }
+      }
+    }
+
     const runInput = GraphRunInputSchema.safeParse(businessEvent)
     try {
       if (runInput.success) {
@@ -135,16 +224,19 @@ export function createAgentGraphMain(dependencies: MainDependencies) {
       return { success: true, data: resultFromState(resumeInput.data.threadId, state) }
     } catch (error) {
       if (error instanceof ModelBoundaryError) {
+        const fallback: Record<string, unknown> = {
+          status: 'fallback',
+          threadId: runInput.success ? runInput.data.threadId : (businessEvent as { threadId: string }).threadId,
+          phase: 'fallback',
+          replyDraft: 'AI 服务暂时不可用，请稍后重试或联系人工客服。',
+          pendingAction: null,
+          errorCode: error.code,
+          graph_fallback_code: error.code
+        }
+        fallback.model_error_code = error.modelErrorCode || error.code
         return {
           success: true,
-          data: GraphResultSchema.parse({
-            status: 'fallback',
-            threadId: runInput.success ? runInput.data.threadId : (businessEvent as { threadId: string }).threadId,
-            phase: 'fallback',
-            replyDraft: 'AI 服务暂时不可用，请稍后重试或联系人工客服。',
-            pendingAction: null,
-            errorCode: error.code
-          })
+          data: GraphResultSchema.parse(fallback)
         }
       }
       const code = error instanceof Error && [
