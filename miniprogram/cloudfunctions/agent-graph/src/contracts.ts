@@ -168,7 +168,7 @@ const CoordinationProposalContextRefSchema = z.object({
 const CoordinationInvitationContextRefSchema = z.object({
   ...CoordinationContextRefBase,
   type: z.literal('invitation'),
-  invitation_id: z.number().int().positive()
+  invitation_version: z.number().int().positive()
 }).strict()
 
 const CoordinationPatchPreviewContextRefSchema = z.object({
@@ -187,7 +187,7 @@ const CoordinationPartnerInquiryContextRefSchema = z.object({
 const CoordinationMeetingStatusContextRefSchema = z.object({
   ...CoordinationContextRefBase,
   type: z.literal('meeting_status'),
-  event_id: z.number().int().positive()
+  event_id: z.number().int().positive().optional()
 }).strict()
 
 export const CoordinationContextRefSchema = z.discriminatedUnion('type', [
@@ -261,7 +261,9 @@ export function getCoordinationFieldClass(field: string): CoordinationPlanFieldC
 }
 
 // This is the only boundary adapter for the two historical plan field names.
-// Graph contracts stay canonical; runtime persistence can translate at this boundary.
+// Phase B API and agent-graph code must import this module; handlers may not
+// define a second field mapping. Graph contracts stay canonical and runtime
+// persistence can translate only at this shared boundary.
 export const COORDINATION_FIELD_RUNTIME_ADAPTER = Object.freeze({
   venue: 'activity_venue',
   payment: 'payment_preference'
@@ -391,10 +393,23 @@ export const CoordinationEventTypeSchema = z.enum([
   'COORDINATION_CANCELLED',
   'ARRANGED',
   'NO_OVERLAP',
+  'OVERLAP_FOUND',
   'RECOORDINATION_STARTED',
   'MANUAL_HANDOFF',
   'COORDINATION_UPDATED',
-  'PROCESSING_FAILED'
+  'PROCESSING_FAILED',
+  'QA_COORDINATION_RESET',
+  'COORDINATION_CLOSED',
+  'COORDINATION_EXPIRED',
+  'PARTICIPANT_MET_CONFIRMED',
+  'PARTICIPANT_NOT_FOUND',
+  'PARTICIPANT_MISMATCH',
+  'MEETING_ARRIVED',
+  'MEETING_NOT_FOUND',
+  'MEETING_MISMATCH',
+  'POLITE_DECLINE',
+  'SHARE_TRIGGER',
+  'PROPOSAL_READY'
 ])
 
 export type CoordinationEventType = z.infer<typeof CoordinationEventTypeSchema>
@@ -423,17 +438,57 @@ export const COORDINATION_EVENT_TYPE_RUNTIME_ADAPTER: Readonly<Record<Coordinati
   COORDINATION_CANCELLED: 'coordination_cancelled',
   ARRANGED: 'arranged',
   NO_OVERLAP: 'no_overlap',
+  OVERLAP_FOUND: 'overlap_found',
   RECOORDINATION_STARTED: 'recoordination_started',
   MANUAL_HANDOFF: 'manual_handoff',
   COORDINATION_UPDATED: 'coordination_updated',
-  PROCESSING_FAILED: 'processing_failed'
+  PROCESSING_FAILED: 'processing_failed',
+  QA_COORDINATION_RESET: 'qa_coordination_reset',
+  COORDINATION_CLOSED: 'coordination_closed',
+  COORDINATION_EXPIRED: 'coordination_expired',
+  PARTICIPANT_MET_CONFIRMED: 'participant_met_confirmed',
+  PARTICIPANT_NOT_FOUND: 'participant_not_found',
+  PARTICIPANT_MISMATCH: 'participant_mismatch',
+  MEETING_ARRIVED: 'meeting_arrived',
+  MEETING_NOT_FOUND: 'meeting_not_found',
+  MEETING_MISMATCH: 'meeting_mismatch',
+  POLITE_DECLINE: 'polite_decline',
+  SHARE_TRIGGER: 'share_trigger',
+  PROPOSAL_READY: 'proposal_ready'
 })
 
 export const COORDINATION_EVENT_TYPE_LEGACY_ALIASES: Readonly<Record<string, CoordinationEventType>> = Object.freeze({
   application_sent: 'APPLICATION_SUBMITTED',
   preference_updated: 'PREFERENCES_UPDATED',
-  coordination_arranged: 'ARRANGED'
+  partner_preference_changed: 'PREFERENCES_UPDATED',
+  partner_inquiry: 'PARTNER_QUESTION',
+  counter_offer_ready: 'PLAN_CHANGE_PROPOSED',
+  participant_arrived: 'ARRIVED',
+  coordination_arranged: 'ARRANGED',
+  application_received: 'APPLICATION_SUBMITTED',
+  coordination_expiring: 'COORDINATION_EXPIRED',
+  new_overlap_found: 'OVERLAP_FOUND',
+  updated: 'COORDINATION_UPDATED'
 })
+
+const DYNAMIC_COORDINATION_EVENT_TYPE_ALIASES = Object.freeze([
+  { prefix: 'meeting_arrived:', type: 'MEETING_ARRIVED' as CoordinationEventType },
+  { prefix: 'meeting_not_found:', type: 'MEETING_NOT_FOUND' as CoordinationEventType },
+  { prefix: 'meeting_mismatch:', type: 'MEETING_MISMATCH' as CoordinationEventType }
+])
+
+// Migration inventory for the current release branch's coordination event_type
+// values. Preferred runtime names come from the canonical adapter; legacy names
+// below are compatibility aliases until Phase B migration.
+export const COORDINATION_EVENT_TYPE_MIGRATION_INVENTORY: ReadonlyArray<readonly [string, CoordinationEventType]> = Object.freeze([
+  ...Object.entries(COORDINATION_EVENT_TYPE_RUNTIME_ADAPTER)
+    .map(([type, runtimeValue]) => [runtimeValue, type as CoordinationEventType] as const),
+  ...Object.entries(COORDINATION_EVENT_TYPE_LEGACY_ALIASES)
+    .map(([runtimeValue, type]) => [runtimeValue, type] as const),
+  ['meeting_arrived:<digest>', 'MEETING_ARRIVED'] as const,
+  ['meeting_not_found:<digest>', 'MEETING_NOT_FOUND'] as const,
+  ['meeting_mismatch:<digest>', 'MEETING_MISMATCH'] as const
+])
 
 export function toCanonicalCoordinationEventType(value: string): CoordinationEventType | null {
   const canonical = CoordinationEventTypeSchema.safeParse(value)
@@ -441,7 +496,10 @@ export function toCanonicalCoordinationEventType(value: string): CoordinationEve
   const runtimeEntry = Object.entries(COORDINATION_EVENT_TYPE_RUNTIME_ADAPTER)
     .find(([, runtimeValue]) => runtimeValue === value)
   if (runtimeEntry) return runtimeEntry[0] as CoordinationEventType
-  return COORDINATION_EVENT_TYPE_LEGACY_ALIASES[value] || null
+  if (COORDINATION_EVENT_TYPE_LEGACY_ALIASES[value]) return COORDINATION_EVENT_TYPE_LEGACY_ALIASES[value]
+  const dynamicEntry = DYNAMIC_COORDINATION_EVENT_TYPE_ALIASES
+    .find(({ prefix }) => value.startsWith(prefix))
+  return dynamicEntry ? dynamicEntry.type : null
 }
 
 export function toRuntimeCoordinationEventType(value: CoordinationEventType): string {

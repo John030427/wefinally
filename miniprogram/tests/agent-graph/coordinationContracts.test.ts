@@ -9,6 +9,7 @@ import {
   CoordinationEventSchema,
   CoordinationEventTypeSchema,
   COORDINATION_FIELD_RUNTIME_ADAPTER,
+  COORDINATION_EVENT_TYPE_MIGRATION_INVENTORY,
   COORDINATION_EVENT_TYPE_RUNTIME_ADAPTER,
   toCanonicalCoordinationEventType,
   toCanonicalCoordinationField,
@@ -33,7 +34,7 @@ const invitationContext = {
   type: 'invitation' as const,
   coordination_id: 716,
   coordination_version: 1,
-  invitation_id: 123
+  invitation_version: 1
 }
 const partnerInquiryContext = {
   type: 'partner_inquiry' as const,
@@ -46,6 +47,11 @@ const meetingStatusContext = {
   coordination_id: 716,
   coordination_version: 6,
   event_id: 987
+}
+const meetingStatusCurrentContext = {
+  type: 'meeting_status' as const,
+  coordination_id: 716,
+  coordination_version: 6
 }
 
 test('accepts the complete structured command matrix', () => {
@@ -83,27 +89,27 @@ test('accepts the complete structured command matrix', () => {
     {
       type: 'ARRIVAL_STATUS',
       relay: { type: 'ARRIVAL_STATUS', text: '我到了' },
-      context_ref: meetingStatusContext
+      context_ref: meetingStatusCurrentContext
     },
     {
       type: 'ARRIVAL_HINT',
       relay: { type: 'ARRIVAL_HINT', text: '今天穿白T黑裤' },
-      context_ref: meetingStatusContext
+      context_ref: meetingStatusCurrentContext
     },
     {
       type: 'ASK_PARTNER_ARRIVAL',
       partner_request: { type: 'ASK_ARRIVAL', topic: '询问对方是否到达' },
-      context_ref: meetingStatusContext
+      context_ref: meetingStatusCurrentContext
     },
     {
       type: 'DELAY_NOTICE',
       relay: { type: 'DELAY_NOTICE', text: '我可能晚10分钟' },
-      context_ref: meetingStatusContext
+      context_ref: meetingStatusCurrentContext
     },
     {
       type: 'RELAY_MESSAGE',
       relay: { type: 'SAFE_NOTE', text: '我在商场北门' },
-      context_ref: meetingStatusContext
+      context_ref: meetingStatusCurrentContext
     },
     { type: 'CANCEL_COORDINATION', target_version: 6, context_ref: contextRef },
     { type: 'CLARIFY', needs_clarification: true, clarification: '你想调整时间还是活动？' }
@@ -132,7 +138,10 @@ test('combination intent is one change set with explicit preserved fields', () =
 test('context_ref is versioned and rejects unknown or incomplete context', () => {
   assert.equal(CoordinationContextRefSchema.safeParse(contextRef).success, true)
   assert.equal(CoordinationContextRefSchema.safeParse(proposalContext).success, true)
+  assert.equal(CoordinationContextRefSchema.safeParse(invitationContext).success, true)
   assert.equal(CoordinationContextRefSchema.safeParse(partnerInquiryContext).success, true)
+  assert.equal(CoordinationContextRefSchema.safeParse(meetingStatusCurrentContext).success, true)
+  assert.equal(CoordinationContextRefSchema.safeParse(meetingStatusContext).success, true)
   assert.equal(CoordinationContextRefSchema.safeParse({
     ...partnerInquiryContext,
     inquiry_id: undefined,
@@ -148,6 +157,16 @@ test('context_ref is versioned and rejects unknown or incomplete context', () =>
     coordination_version: 6
   }).success, false)
   assert.equal(CoordinationContextRefSchema.safeParse({
+    type: 'invitation',
+    coordination_id: 716,
+    coordination_version: 1,
+    invitation_id: 123
+  }).success, false)
+  assert.equal(CoordinationContextRefSchema.safeParse({
+    ...invitationContext,
+    invitation_version: 0
+  }).success, false)
+  assert.equal(CoordinationContextRefSchema.safeParse({
     ...partnerInquiryContext,
     inquiry_id: undefined
   }).success, false)
@@ -159,6 +178,11 @@ test('context_ref is versioned and rejects unknown or incomplete context', () =>
     type: 'CONFIRM_PREVIEW',
     target_version: 5,
     context_ref: contextRef
+  }).success, false)
+  assert.equal(CoordinationCommandSchema.safeParse({
+    type: 'ACCEPT_INVITATION',
+    target_version: 2,
+    context_ref: invitationContext
   }).success, false)
 })
 
@@ -298,6 +322,66 @@ test('runtime event_type values normalize through one canonical event vocabulary
     idempotency_key: 'coordination:716:v7:proposal_generated:1'
   }).success, false)
   assert.equal(COORDINATION_EVENT_TYPE_RUNTIME_ADAPTER.PROCESSING_FAILED, 'processing_failed')
+})
+
+test('release event_type migration inventory has no unmapped runtime values', () => {
+  const releaseRuntimeEventTypes = [
+    'updated',
+    'partner_inquiry',
+    'share_trigger',
+    'preference_changed',
+    'partner_preference_changed',
+    'preference_updated',
+    'application_sent',
+    'application_submitted',
+    'application_received',
+    'invitation_created',
+    'invitation_accepted',
+    'invitation_declined',
+    'invitation_expired',
+    'processing_queued',
+    'processing_failed',
+    'proposal_generated',
+    'proposal_ready',
+    'PROPOSAL_READY',
+    'counter_offer_ready',
+    'no_overlap',
+    'new_overlap_found',
+    'proposal_confirmed',
+    'proposal_rejected',
+    'arranged',
+    'coordination_arranged',
+    'recoordination_started',
+    'manual_handoff',
+    'qa_coordination_reset',
+    'coordination_closed',
+    'coordination_expired',
+    'coordination_updated',
+    'arrival_hint_updated',
+    'participant_arrived',
+    'participant_met_confirmed',
+    'participant_not_found',
+    'participant_mismatch',
+    'meeting_arrived:abc123',
+    'meeting_not_found',
+    'meeting_mismatch',
+    'polite_decline'
+  ]
+  for (const runtimeEventType of releaseRuntimeEventTypes) {
+    assert.notEqual(toCanonicalCoordinationEventType(runtimeEventType), null, runtimeEventType)
+  }
+  for (const [runtimeEventType, canonicalEventType] of COORDINATION_EVENT_TYPE_MIGRATION_INVENTORY) {
+    const concreteRuntimeEventType = runtimeEventType.replace('<digest>', 'abc123')
+    assert.equal(toCanonicalCoordinationEventType(concreteRuntimeEventType), canonicalEventType, runtimeEventType)
+  }
+  assert.equal(toCanonicalCoordinationEventType('qa_coordination_reset'), 'QA_COORDINATION_RESET')
+  assert.equal(toCanonicalCoordinationEventType('coordination_closed'), 'COORDINATION_CLOSED')
+  assert.equal(toCanonicalCoordinationEventType('coordination_expired'), 'COORDINATION_EXPIRED')
+  assert.equal(toCanonicalCoordinationEventType('partner_preference_changed'), 'PREFERENCES_UPDATED')
+  assert.equal(toCanonicalCoordinationEventType('meeting_arrived:abc123'), 'MEETING_ARRIVED')
+  assert.ok(COORDINATION_EVENT_TYPE_MIGRATION_INVENTORY.some(([runtimeValue, type]) => (
+    runtimeValue === 'qa_coordination_reset' && type === 'QA_COORDINATION_RESET'
+  )))
 })
 
 test('plan field classification separates core, soft preference and live meeting state', () => {
