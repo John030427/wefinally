@@ -46,7 +46,7 @@ function request(options) {
           if (err && err.code === 401) {
               app && app.clearLoginState && app.clearLoginState()
               wx.showToast({ title: '登录已过期', icon: 'none' })
-              return Promise.reject({ code: 401, message: '未授权', type: 'auth' })
+              return Promise.reject({ code: 401, errorCode: 'AUTH_REQUIRED', httpCode: 401, message: '未授权', type: 'auth' })
           }
           const rawMsg = (err && err.message) || ''
           const msg = /接口不存在|route not found|unknown route/i.test(rawMsg)
@@ -56,8 +56,12 @@ function request(options) {
               : (rawMsg || '服务暂时不可用，请稍后重试'))
           const routeMissing = /接口不存在|route not found|unknown route/i.test(rawMsg)
           if (showError) wx.showToast({ title: msg, icon: 'none' })
+          const errorCode = (err && err.errorCode) || (err && typeof err.code === 'string' ? err.code : '')
+          const httpCode = Number(err && err.httpCode || (err && typeof err.code === 'number' ? err.code : 500))
           return Promise.reject({
-            code: (err && err.code) || -2,
+            code: errorCode || (err && err.code) || -2,
+            errorCode,
+            httpCode,
             message: msg,
             type: (err && err.type) || 'cloud',
             routeMissing,

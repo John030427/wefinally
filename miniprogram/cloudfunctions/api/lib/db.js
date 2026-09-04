@@ -427,6 +427,14 @@ function transactionAdapter(rawTransaction) {
     now,
     byDocId: txByDocId,
     byId: txById,
+    list: async (name, query, limit = 100) => {
+      let cursor = collection(name)
+      for (const [key, value] of Object.entries(query || {})) {
+        cursor = cursor.where({ [key]: value })
+      }
+      const result = await cursor.limit(Math.max(1, Math.min(Number(limit || 100), 500))).get()
+      return result.data || []
+    },
     nextCounter: txNextCounter,
     addWithId: txAddWithId,
     updateByDoc: txUpdateByDoc,
@@ -437,6 +445,107 @@ function transactionAdapter(rawTransaction) {
 async function transaction(work) {
   if (typeof work !== 'function') throw new Error('事务回调无效')
   return db.runTransaction((rawTransaction) => work(transactionAdapter(rawTransaction)))
+}
+
+function submissionError(code, message, httpCode = 409) {
+  const error = new Error(message)
+  error.code = code
+  error.errorCode = code
+  error.httpCode = httpCode
+  return error
+}
+
+/**
+ * Core application submission transaction. Event, notification and reminder
+ * projections are deliberately outside this transaction.
+ */
+async function commitCoordinationApplication(input = {}, timestamp = now()) {
+  const coordination = input.coordination
+  const userId = Number(input.user_id || 0)
+  const expectedVersion = Number(input.coordination_version || 0)
+  if (!coordination || !coordination._id || !userId || !expectedVersion) {
+    throw submissionError('DATE_APPLICATION_INVALID', '日期申请参数无效', 400)
+  }
+  return transaction(async (adapter) => {
+    const current = await adapter.byDocId('date_coordination', coordination._id)
+    if (!current) throw submissionError('DATE_COORDINATION_NOT_FOUND', '日期协调不存在', 404)
+    if (![Number(current.user_a_id), Number(current.user_b_id)].includes(userId)) {
+      throw submissionError('DATE_COORDINATION_FORBIDDEN', '无权操作该日期协调', 403)
+    }
+    const version = Number(current.coordination_version || 1)
+    if (version !== expectedVersion) {
+      throw submissionError('STALE_COORDINATION_VERSION', '协调状态已更新，请刷新后重试', 409)
+    }
+    const query = {
+      coordination_id: Number(current.id),
+      user_id: userId,
+      coordination_version: version
+    }
+    const existing = (await adapter.list('date_coordination_application', query, 5))[0] || null
+    const sameApplication = existing && JSON.stringify(existing.application || {}) === JSON.stringify(input.application || {})
+    if (sameApplication && !['collecting_initiator', 'collecting_preferences'].includes(String(current.status || ''))) {
+      return { coordination: current, application: existing, idempotent: true }
+    }
+    const isInitiatorDraft = current.status === 'collecting_initiator'
+    if (isInitiatorDraft && Number(current.user_a_id) !== userId) {
+      throw submissionError('DATE_COORDINATION_STATE_INVALID', '请等待发起方填写约会偏好并发出邀请')
+    }
+    if (!['collecting_initiator', 'collecting_preferences'].includes(String(current.status || ''))) {
+      throw submissionError('DATE_COORDINATION_STATE_INVALID', '当前状态不能提交日期申请')
+    }
+    const nextPreferenceVersion = existing
+      ? Number(existing.preference_version || existing.coordination_version || version) + 1
+      : version
+    const applicationData = {
+      application: input.application,
+      submitted_at: timestamp,
+      preference_version: nextPreferenceVersion,
+      preference_evidence: input.preference_evidence || {},
+      source: String(input.application_source || (isInitiatorDraft ? 'initiator_invitation' : 'invitee_full_form')),
+      accepted_base_invitation_version: Number(input.accepted_base_invitation_version || current.accepted_base_invitation_version || 0)
+    }
+    const applicationRow = existing
+      ? await adapter.updateByDoc('date_coordination_application', existing, applicationData)
+      : await adapter.addWithId('date_coordination_application', Object.assign({}, query, applicationData), 'date_application')
+    let updated = current
+    if (isInitiatorDraft) {
+      updated = await adapter.updateByDoc('date_coordination', current, {
+        status: 'inviting_partner',
+        business_state: 'waiting_partner',
+        invitation_deadline_at: new Date(timestamp.getTime() + 48 * 60 * 60 * 1000),
+        application_deadline_at: null,
+        invitation_proposal: input.invitation_proposal || input.application,
+        invitation_primary_proposal: input.invitation_primary_proposal || null,
+        invitation_version: nextPreferenceVersion,
+        initiator_agreed_invitation_version: nextPreferenceVersion,
+        invitee_intent: ''
+      })
+    } else {
+      const applications = await adapter.list('date_coordination_application', {
+        coordination_id: Number(current.id),
+        coordination_version: version
+      }, 10)
+      const hasA = applications.some((item) => Number(item.user_id) === Number(current.user_a_id))
+      const hasB = applications.some((item) => Number(item.user_id) === Number(current.user_b_id))
+      if (hasA && hasB) {
+        updated = await adapter.updateByDoc('date_coordination', current, {
+          status: 'computing_overlap',
+          business_state: 'processing',
+          processing_status: 'queued',
+          processing_version: version,
+          processing_token: '',
+          processing_attempts: 0,
+          processing_started_at: null,
+          processing_completed_at: null,
+          processing_error_code: '',
+          last_event_at: timestamp,
+          missing_dimensions: [],
+          confirmation_deadline_at: null
+        })
+      }
+    }
+    return { coordination: updated, application: applicationRow, idempotent: false }
+  })
 }
 
 async function ensureUserSupportCode(userDoc) {
@@ -1068,6 +1177,7 @@ module.exports = {
   acquireFormalMatchBatch,
   removeByDoc,
   transaction,
+  commitCoordinationApplication,
   ensureUserSupportCode,
   listCoordinationProcessingTasks,
   claimCoordinationProcessing,

@@ -49,6 +49,7 @@ module.exports = {
   date_coordination_confirmation: 'date_confirmations',
   date_application_patch: 'date_application_patches',
   date_coordination_event: 'date_coordination_events',
+  coordination_projection_outbox: 'coordination_projection_outbox',
   user_identity_tag: 'user_identity_tags',
   coordination_notification: 'coordination_notifications',
   user_notification_cursor: 'user_notification_cursors',

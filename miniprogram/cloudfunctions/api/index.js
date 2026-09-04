@@ -10,6 +10,7 @@ const { processQueuedTasks } = require('./handlers/reportTask')
 const { processNotificationJobs } = require('./agent/notificationJobs')
 const { processCoordinationDeadlines } = require('./handlers/dateCoordination')
 const { processCoordinationTasks } = require('./handlers/dateCoordinationWorker')
+const { processCoordinationProjectionOutbox } = require('./handlers/dateCoordinationProjectionWorker')
 const { processFixtureResponseJobs } = require('./lib/fixtureResponseService')
 const { isHttpEvent } = require('./lib/httpEvent')
 const { runFormalMatchBatch } = require('./lib/matchingRunService')
@@ -49,11 +50,12 @@ exports.main = async (event = {}) => {
         }
       case 'processWorkerTasks': {
         assertInternalWorkerSecret(payload.worker_secret)
-        const [reports, notifications, coordinationDeadlines, coordinationTasks, fixtureResponses] = await Promise.all([
+        const [reports, notifications, coordinationDeadlines, coordinationTasks, coordinationProjections, fixtureResponses] = await Promise.all([
           processQueuedTasks(Number(payload.report_limit || 2)),
           processNotificationJobs({ limit: Number(payload.notification_limit || 10) }),
           processCoordinationDeadlines({ limit: Number(payload.coordination_limit || 50) }),
           processCoordinationTasks({ limit: Number(payload.coordination_task_limit || 10) }),
+          processCoordinationProjectionOutbox({ limit: Number(payload.coordination_projection_limit || 20) }),
           processFixtureResponseJobs({
             listDue: db.listDueFixtureResponseJobs,
             claimJob: db.claimFixtureResponseJob,
@@ -62,7 +64,7 @@ exports.main = async (event = {}) => {
             now: db.now
           }, { limit: Number(payload.fixture_limit || 20) })
         ])
-        return { success: true, data: { reports, notifications, coordinationDeadlines, coordinationTasks, fixtureResponses } }
+        return { success: true, data: { reports, notifications, coordinationDeadlines, coordinationTasks, coordinationProjections, fixtureResponses } }
       }
       case 'aiSmoke':
         assertInternalWorkerSecret(payload.worker_secret)
@@ -105,9 +107,13 @@ exports.main = async (event = {}) => {
         }
     }
   } catch (err) {
+    const errorCode = (err && err.errorCode) || (err && typeof err.code === 'string' ? err.code : '')
+    const httpCode = Number(err && err.httpCode || (err && typeof err.code === 'number' ? err.code : 500))
     return {
       success: false,
-      code: err && err.code,
+      code: errorCode || (err && err.code),
+      errorCode,
+      httpCode,
       error: (err && err.message) || 'server error'
     }
   }

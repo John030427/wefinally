@@ -16,6 +16,7 @@ const BOOTSTRAP_COLLECTIONS = new Set([
   'date_coordination_confirmation',
   'date_application_patch',
   'date_coordination_event',
+  'coordination_projection_outbox',
   'match_experience_feedback',
   'date_experience_feedback',
   'match_claim',

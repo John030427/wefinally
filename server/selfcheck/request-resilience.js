@@ -42,6 +42,18 @@ async function main() {
   assert.strictEqual(expired.error.type, 'auth')
   assert.strictEqual(cleared, 1)
 
+  global.wx.cloud.callFunction = async () => ({ result: {
+    success: false,
+    errorCode: 'DATE_COORDINATION_STATE_INVALID',
+    httpCode: 409,
+    error: '当前状态不能提交日期申请'
+  } })
+  const businessError = await expectSettled(request({ url: '/business-error', showError: false }))
+  assert.strictEqual(businessError.timeout, undefined)
+  assert.strictEqual(businessError.error.errorCode, 'DATE_COORDINATION_STATE_INVALID')
+  assert.strictEqual(businessError.error.httpCode, 409)
+  assert.strictEqual(businessError.error.code, 'DATE_COORDINATION_STATE_INVALID')
+
   console.log('PASS request weak-network and expired-login recovery')
 }
 
