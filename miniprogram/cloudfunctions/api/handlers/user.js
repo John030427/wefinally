@@ -47,6 +47,7 @@ const {
   isEligibleUser,
   syncUserCorpus
 } = require('../lib/matchRagCorpus')
+const { requireWxOpenid } = require('../lib/wxIdentity')
 
 function ragCorpusRepository() {
   return { listChunksByOwnerIds, upsertChunk, disableChunks, now }
@@ -85,8 +86,7 @@ async function syncCorpusBestEffort(user, settingOverride) {
 }
 
 async function currentUser(wxContext) {
-  const openid = wxContext.OPENID
-  if (!openid) throw authError('无法获取微信身份')
+  const openid = requireWxOpenid(wxContext)
   const user = await first('user', { openid })
   if (!user) throw authError('请先登录')
   return user
@@ -169,8 +169,7 @@ function parseGender(value) {
 }
 
 async function register(data, wxContext) {
-  const openid = wxContext.OPENID || data.openid
-  if (!openid) throw new Error('缺少 openid')
+  const openid = requireWxOpenid(wxContext)
   const existing = await first('user', { openid })
   if (existing) {
     if (Number(existing.registration_replay_pending || 0) === 1 && canReplayRegistration(existing)) {
@@ -515,8 +514,7 @@ async function claimFree(data, wxContext) {
 }
 
 async function divorceReviewStatus(data, wxContext) {
-  const openid = data.openid || wxContext.OPENID
-  if (!openid) throw new Error('缺少 openid')
+  const openid = requireWxOpenid(wxContext)
   const row = await first('marry_report', { openid, report_type: 2 })
   if (!row) return { status: 'none', audit_status: -1 }
   return Object.assign({}, row, {
@@ -525,8 +523,7 @@ async function divorceReviewStatus(data, wxContext) {
 }
 
 async function submitDivorceReview(data, wxContext) {
-  const openid = data.openid || wxContext.OPENID
-  if (!openid) throw new Error('缺少 openid')
+  const openid = requireWxOpenid(wxContext)
   return addWithId('marry_report', {
     user_id: 0,
     openid,

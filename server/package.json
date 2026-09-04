@@ -40,6 +40,7 @@
     "selfcheck:qa-frontend": "node selfcheck/qa-frontend-modules.js",
     "selfcheck:secondary-identity": "node selfcheck/secondary-identity-picker.js",
     "selfcheck:custom-tab-bar": "node selfcheck/custom-tab-bar.js",
+    "selfcheck:wx-identity": "node selfcheck/wx-identity-boundary.js",
     "selfcheck:release-guard": "node selfcheck/release-qa-flag-guard-logic.js",
     "selfcheck:release-guard:live": "node selfcheck/release-qa-flag-guard.js",
     "selfcheck:match-sparse-rag": "node selfcheck/match-sparse-rag.js",
