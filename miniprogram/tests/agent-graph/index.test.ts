@@ -100,7 +100,12 @@ test('resume rejects a different actor even with a valid thread id', async () =>
 test('date coordination returns awaiting confirmation until both current-version confirmations exist', async () => {
   const main = createAgentGraphMain({
     checkpointer: new MemorySaver(),
-    model: { decide: async () => { throw new Error('not_called') } }
+    model: {
+      decide: async () => ({
+        intent: 'date_coordination', replyDraft: '', riskLevel: 'safe', route: 'date_coordination',
+        toolRequest: null, suggestedActions: [], coordinationCommand: { type: 'QUERY_STATUS', confidence: 1 }
+      })
+    }
   })
   const preference = {
     dateWindows: ['2026-08-16T14:00+08:00'],
@@ -118,10 +123,19 @@ test('date coordination returns awaiting confirmation until both current-version
     coordinationVersion: 1,
     party: 'A',
     partyAState: preference,
-    partyBState: preference
+    partyBState: preference,
+    canonicalState: {
+      coordination_id: 716,
+      coordination_version: 1,
+      status: 'waiting_confirmations',
+      business_state: 'coordinating',
+      party: 'A',
+      current_plan: null
+    }
   })
   assert.equal(result.success, true)
-  assert.equal(result.data?.status, 'awaiting_confirmation')
+  assert.equal(result.data?.status, 'completed')
+  assert.equal(result.data?.phase, 'query_status')
 })
 
 test('malformed checkpoint storage returns a stable error without exposing the storage exception', async () => {

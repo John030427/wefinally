@@ -1,5 +1,9 @@
 const { computeOverlap, STATUS } = require('../lib/dateCoordinationPolicy')
 const { buildInvitationCard, invitationProposalOf, invitationVersionOf } = require('../lib/invitationCoordination')
+const {
+  toCanonicalCoordinationPlan,
+  toCanonicalCoordinationChanges
+} = require('../../agent-graph/shared/coordinationAdapters.cjs')
 
 function uniqueStrings(values, limit, maxLength) {
   return [...new Set((values || [])
@@ -126,7 +130,18 @@ function canonicalFromBackend(overlap, status, options = {}) {
       ? {
         dateWindow: `${first.date}:${first.period}`,
         region: first.area,
-        venueType: first.activity
+        venueType: first.activity,
+        date: first.date,
+        period: first.period,
+        start_time: first.start_time,
+        activity: first.activity,
+        activity_detail: first.activity_detail,
+        activity_venue: first.activity_venue,
+        area: first.area,
+        budget: first.budget,
+        payment_preference: first.payment_preference,
+        duration: first.duration,
+        proposal_id: first.id
       }
       : null
   }
@@ -176,6 +191,27 @@ function confirmationSnapshot(coordination, confirmations, user) {
   }
 }
 
+function pendingPreviewFromBackend(patch, currentPlan, coordinationId) {
+  if (!patch || Number(patch.id || 0) <= 0) return null
+  const preview = patch.preview && typeof patch.preview === 'object' ? patch.preview : {}
+  const after = toCanonicalCoordinationPlan(preview.after || patch.changes || {})
+  const candidatePlan = Object.assign({}, currentPlan || {}, after)
+  const partnerRequest = preview.partner_request || patch.coordination_partner_request || null
+  return {
+    patchId: Number(patch.id),
+    baseVersion: Number(patch.base_version || 0),
+    candidatePlan,
+    candidateChanges: toCanonicalCoordinationChanges(patch.changes || preview.source_changes || {}),
+    ...(partnerRequest ? { partnerRequest } : {}),
+    contextRef: {
+      type: 'patch_preview',
+      coordination_id: Number(coordinationId),
+      coordination_version: Number(patch.base_version || 0),
+      patch_id: Number(patch.id)
+    }
+  }
+}
+
 function buildDateCoordinationGraphInput(coordination, applications, user, options = {}) {
   const version = Number(coordination.coordination_version || 1)
   const party = Number(user.id) === Number(coordination.user_a_id) ? 'A' : 'B'
@@ -206,6 +242,38 @@ function buildDateCoordinationGraphInput(coordination, applications, user, optio
       : (canonicalOverlap.missingDimensions.includes('partner')
         ? (waitingInviteePreference ? 'wait_invitee_preference' : 'wait_partner')
         : 'adjust_unresolved_dimension'))
+  const invitationProposal = invitationProposalOf(coordination, initiatorApp)
+  const runtimePlan = canonicalOverlap.proposal || invitationProposal
+  const currentPlan = runtimePlan && Object.keys(runtimePlan).length
+    ? toCanonicalCoordinationPlan(runtimePlan)
+    : null
+  const pendingPreview = pendingPreviewFromBackend(options.pendingPatch, currentPlan, coordination.id)
+  const canonicalState = {
+    coordination_id: Number(coordination.id),
+    coordination_version: version,
+    status: String(coordination.status || ''),
+    ...(coordination.business_state ? { business_state: String(coordination.business_state) } : {}),
+    party,
+    current_plan: currentPlan,
+    canonical_overlap: canonicalOverlap,
+    shared_state: {
+      commonTime: canonicalOverlap.commonTime,
+      commonArea: canonicalOverlap.commonArea,
+      commonActivity: canonicalOverlap.commonActivity,
+      missingDimensions: canonicalOverlap.missingDimensions,
+      activeProposalSummary: canonicalOverlap.proposal,
+      actionRequired
+    },
+    own_preference: ownPreference,
+    partner_progress: partnerProgress(coordination, applications, confirmations, user),
+    confirmation_snapshot: snapshot,
+    ...(invitationVersionOf(coordination, initiatorApp) > 0
+      ? { invitation_version: invitationVersionOf(coordination, initiatorApp) }
+      : {}),
+    ...(runtimePlan && Number(runtimePlan.id || runtimePlan.proposal_id || 0) > 0
+      ? { current_proposal_id: Number(runtimePlan.id || runtimePlan.proposal_id) }
+      : {})
+  }
   return {
     coordinationId: Number(coordination.id),
     coordinationVersion: version,
@@ -236,7 +304,9 @@ function buildDateCoordinationGraphInput(coordination, applications, user, optio
       actionRequired
     },
     partnerProgress: partnerProgress(coordination, applications, confirmations, user),
-    confirmationSnapshot: snapshot
+    confirmationSnapshot: snapshot,
+    canonicalState,
+    pendingPreview: pendingPreview || null
   }
 }
 

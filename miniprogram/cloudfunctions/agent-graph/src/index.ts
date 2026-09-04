@@ -5,6 +5,7 @@ import {
   GraphRunInputSchema,
   GraphStateSchema,
   PendingActionSchema,
+  CoordinationCanonicalStateSchema,
   type GraphResult
 } from './contracts.js'
 import { loadCheckpointState, resumeGraph, runGraph } from './graph.js'
@@ -74,6 +75,14 @@ function resultFromState(threadId: string, state: Record<string, unknown>): Grap
     phase,
     replyDraft: sanitizeGraphText(state.replyDraft, 1200),
     pendingAction,
+    ...(state.pendingTool ? { pendingTool: state.pendingTool } : {}),
+    ...(state.pendingPreview ? { pendingPreview: state.pendingPreview } : {}),
+    ...(state.canonicalState ? { canonicalState: CoordinationCanonicalStateSchema.parse(state.canonicalState) } : {}),
+    ...(state.candidatePlan !== undefined ? { candidatePlan: state.candidatePlan } : {}),
+    ...(state.candidateChanges ? { candidateChanges: state.candidateChanges } : {}),
+    ...(typeof state.baseVersion === 'number' ? { baseVersion: state.baseVersion } : {}),
+    ...(state.contextRef ? { contextRef: state.contextRef } : {}),
+    ...(state.coordinationCommand ? { coordinationCommand: state.coordinationCommand } : {}),
     ...(typeof state.coordinationVersion === 'number' ? { coordinationVersion: state.coordinationVersion } : {}),
     ...(typeof state.errorCode === 'string' ? { errorCode: state.errorCode } : {})
   })
@@ -103,6 +112,7 @@ export function createAgentGraphMain(dependencies: MainDependencies) {
           !boundedInput.party ||
           !boundedInput.partyAState ||
           !boundedInput.partyBState
+          || !boundedInput.canonicalState
         )) return { success: false, code: 'invalid_request' }
         const state = await runGraph(boundedInput, dependencies)
         return { success: true, data: resultFromState(boundedInput.threadId, state) }

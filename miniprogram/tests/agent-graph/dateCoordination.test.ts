@@ -41,6 +41,8 @@ function state(overrides: Partial<DateCoordinationState> = {}): DateCoordination
     riskLevel: 'safe',
     replyDraft: '',
     pendingAction: null,
+    pendingTool: null,
+    pendingPreview: null,
     confirmationA: false,
     confirmationB: false,
     confirmationVersionA: undefined,
@@ -56,7 +58,14 @@ function state(overrides: Partial<DateCoordinationState> = {}): DateCoordination
     sharedState: undefined,
     partnerProgress: undefined,
     confirmationSnapshot: undefined,
+    canonicalState: undefined,
+    candidatePlan: null,
+    candidateChanges: {},
+    baseVersion: undefined,
+    contextRef: undefined,
+    coordinationCommand: null,
     lastResult: undefined,
+    resumeToolResult: undefined,
     errorCode: undefined,
     ...overrides
   }

@@ -93,3 +93,34 @@ test('legacy deepseek fetch path still works when explicitly configured', async 
   assert.equal(parsedBody.model, 'deepseek-chat')
   assert.equal(parsedBody.response_format?.type, 'json_object')
 })
+
+test('parses date coordination command output as the only semantic command channel', async () => {
+  let requestPayload = ''
+  const model = createDecisionModel({
+    provider: 'cloudbase',
+    generateTextImpl: async (input) => {
+      requestPayload = JSON.stringify(input.messages)
+      return {
+        text: JSON.stringify({
+          ...sampleDecision,
+          route: 'date_coordination',
+          coordination_command: {
+            type: 'PROPOSE_CHANGE',
+            target_version: 3,
+            changes: { payment: 'aa' },
+            confidence: 0.95
+          }
+        })
+      }
+    }
+  })
+  const decision = await model.decide({
+    mode: 'date_coordination',
+    phase: 'parse_command',
+    userText: '把费用改成AA',
+    safeSummary: ''
+  })
+  assert.equal(decision.coordinationCommand?.type, 'PROPOSE_CHANGE')
+  assert.equal(decision.coordinationCommand?.target_version, 3)
+  assert.match(requestPayload, /coordination_command/)
+})

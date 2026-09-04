@@ -6,14 +6,20 @@ const {
 
 async function main() {
   assert.deepStrictEqual(Object.keys(GRAPH_TOOL_ALLOWLIST).sort(), [
+    'cancel_coordination',
+    'cancel_date_application_patch',
     'confirm_date_application',
+    'confirm_date_application_patch',
     'create_date_application_patch',
     'create_date_application_preview',
     'create_human_ticket',
     'get_coordination_overlap',
     'get_coordination_status',
     'get_match_status',
-    'notify_coordination_partner'
+    'notify_coordination_partner',
+    'publish_coordination_event',
+    'reject_date_application',
+    'respond_date_invitation'
   ].sort())
 
   const context = { userId: 7, sessionId: 22, coordinationId: 716, coordinationVersion: 3 }

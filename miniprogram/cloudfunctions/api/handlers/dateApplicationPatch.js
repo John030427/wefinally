@@ -1,5 +1,10 @@
 const { normalizeApplication, STATUS } = require('../lib/dateCoordinationPolicy')
-const { previewApplicationChange, shareableSummary, cleanChanges } = require('../lib/dateApplicationPatchPolicy')
+const {
+  previewApplicationChange,
+  shareableSummary,
+  cleanChanges,
+  normalizePartnerRequest
+} = require('../lib/dateApplicationPatchPolicy')
 const { publishCoordinationEvent } = require('../agent/dateCoordinationEvents')
 const { canStartAnotherRound, enqueueProcessing } = require('../lib/dateCoordinationProcessingPolicy')
 const {
@@ -81,6 +86,7 @@ function publicPatch(row) {
     operation: row.operation || 'modify',
     status: row.status,
     preview: row.preview,
+    coordination_partner_request: row.coordination_partner_request || null,
     expires_at: row.expires_at || null
   }
 }
@@ -236,6 +242,7 @@ function createDateApplicationPatchHandlers(overrides = {}) {
       throw new Error(terminalWriteError(coordination.status))
     }
     const version = Number(coordination.coordination_version || 1)
+    const coordinationPartnerRequest = normalizePartnerRequest(data.partner_request || data.partnerRequest)
     const rows = await applicationsFor(coordination.id)
     const mine = latestForUser(rows, user.id, version)
     if (!mine || !mine.application) {
@@ -243,7 +250,8 @@ function createDateApplicationPatchHandlers(overrides = {}) {
       if (isInvitee && (coordination.invitation_proposal || latestForUser(rows, coordination.user_a_id, version))) {
         return createInitialPreviewForUser(Object.assign({}, data, {
           changes: data.changes,
-          application: data.changes
+          application: data.changes,
+          coordination_partner_request: coordinationPartnerRequest
         }), user, session)
       }
       throw new Error('请先完成自己的约会偏好表单')
@@ -315,6 +323,7 @@ function createDateApplicationPatchHandlers(overrides = {}) {
       changes,
       preview,
       primary_selection: preview.primary_selection || null,
+      ...(coordinationPartnerRequest ? { coordination_partner_request: coordinationPartnerRequest } : {}),
       expires_at: addHours(now, 2)
     }, 'date_application_patch')
     return publicPatch(created)
@@ -327,6 +336,9 @@ function createDateApplicationPatchHandlers(overrides = {}) {
       throw new Error(terminalWriteError(coordination.status))
     }
     const version = Number(coordination.coordination_version || 1)
+    const coordinationPartnerRequest = normalizePartnerRequest(
+      data.coordination_partner_request || data.partner_request || data.partnerRequest
+    )
     const rows = await applicationsFor(coordination.id)
     const mine = latestForUser(rows, user.id, version)
     if (mine && mine.application) throw new Error('约会申请已经存在，请使用修改预览')
@@ -362,6 +374,7 @@ function createDateApplicationPatchHandlers(overrides = {}) {
       status: 'pending_confirmation',
       changes: application,
       preview,
+      ...(coordinationPartnerRequest ? { coordination_partner_request: coordinationPartnerRequest } : {}),
       expires_at: addHours(now, 2)
     }, 'date_application_patch')
     return publicPatch(created)
@@ -458,13 +471,8 @@ function createDateApplicationPatchHandlers(overrides = {}) {
         applied_version: oldVersion,
         applied_at: dep('now')()
       })
-      await dep('addWithId')('date_coordination_event', {
-        coordination_id: Number(coordination.id),
-        coordination_version: oldVersion,
-        event_type: 'application_sent',
-        actor_user_id: Number(user.id),
-        shareable_summary: { application_submitted: true }
-      }, 'date_coordination_event')
+      // saveApplicationForUser already publishes APPLICATION_SUBMITTED through
+      // the shared event projector; do not append a second application_sent fact.
       return {
         patch: publicPatch(appliedPatch),
         coordination_version: oldVersion,

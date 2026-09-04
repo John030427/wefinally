@@ -1,0 +1,441 @@
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import { createRequire } from 'node:module'
+import { requireFromAgentGraph } from './agentGraphRequire.js'
+const { MemorySaver } = requireFromAgentGraph('@langchain/langgraph') as typeof import('@langchain/langgraph')
+import {
+  buildDateCoordinationGraph,
+  type DateCoordinationState
+} from '../../cloudfunctions/agent-graph/src/graphs/dateCoordination.js'
+import type { CoordinationCommand, CoordinationCanonicalState } from '../../cloudfunctions/agent-graph/src/contracts.js'
+import type { DecisionInput, DecisionModel } from '../../cloudfunctions/agent-graph/src/model.js'
+
+const require = createRequire(import.meta.url)
+const apiGraphState = require('../../cloudfunctions/api/agent/dateCoordinationGraphState.js') as {
+  buildDateCoordinationGraphInput: (coordination: Record<string, unknown>, applications: Array<Record<string, unknown>>, user: Record<string, unknown>, options: Record<string, unknown>) => {
+    canonicalState: CoordinationCanonicalState
+    pendingPreview?: Record<string, unknown> | null
+  }
+}
+
+const preference = {
+  dateWindows: ['2026-08-16T14:00+08:00'],
+  regions: ['福田区'],
+  venueTypes: ['咖啡']
+}
+
+function canonical(overrides: Partial<CoordinationCanonicalState> = {}): CoordinationCanonicalState {
+  return {
+    coordination_id: 716,
+    coordination_version: 3,
+    status: 'waiting_confirmations',
+    business_state: 'coordinating',
+    party: 'A',
+    current_plan: {
+      date: '2026-08-16',
+      period: 'afternoon',
+      start_time: '14:00',
+      activity: '咖啡',
+      activity_detail: '手冲咖啡',
+      area: '福田区',
+      venue: '公共咖啡馆',
+      budget: '50-100',
+      payment: 'aa',
+      duration: 'about-1h'
+    },
+    canonical_overlap: {
+      source: 'backend',
+      hasOverlap: true,
+      missingDimensions: [],
+      conflictDimensions: [],
+      proposal: { proposal_id: 99 }
+    },
+    shared_state: { actionRequired: 'confirm_or_adjust' },
+    own_preference: preference,
+    partner_progress: 'submitted',
+    confirmation_snapshot: {
+      myConfirmed: false,
+      partnerConfirmed: false,
+      proposalStatus: 'awaiting_confirmation',
+      source: 'database'
+    },
+    invitation_version: 7,
+    current_proposal_id: 99,
+    ...overrides
+  }
+}
+
+function state(canonicalState: CoordinationCanonicalState, overrides: Partial<DateCoordinationState> = {}): DateCoordinationState {
+  return {
+    operation: 'run',
+    threadId: 'wf_thread_coordination_phase_b',
+    actorRef: 'usr_4f52c3d8a9b071ce',
+    mode: 'date_coordination',
+    userText: '请处理协调请求',
+    safeSummary: '',
+    phase: 'start',
+    riskLevel: 'safe',
+    replyDraft: '',
+    pendingAction: null,
+    pendingTool: null,
+    pendingPreview: null,
+    lastResult: undefined,
+    resumeToolResult: undefined,
+    confirmationA: false,
+    confirmationB: false,
+    confirmationVersionA: undefined,
+    confirmationVersionB: undefined,
+    proposal: null,
+    coordinationId: canonicalState.coordination_id,
+    coordinationVersion: canonicalState.coordination_version,
+    baseVersion: canonicalState.coordination_version,
+    party: 'A',
+    partyAState: preference,
+    partyBState: preference,
+    ownPreference: preference,
+    canonicalOverlap: undefined,
+    sharedState: undefined,
+    partnerProgress: undefined,
+    confirmationSnapshot: undefined,
+    canonicalState,
+    candidatePlan: null,
+    candidateChanges: {},
+    contextRef: undefined,
+    coordinationCommand: null,
+    errorCode: undefined,
+    ...overrides
+  }
+}
+
+function command(value: CoordinationCommand): DecisionModel {
+  return {
+    decide: async (_input: DecisionInput) => ({
+      intent: 'date_coordination',
+      replyDraft: '我会按当前协调状态处理。',
+      riskLevel: 'safe' as const,
+      route: 'date_coordination' as const,
+      toolRequest: null,
+      suggestedActions: [],
+      coordinationCommand: value
+    })
+  }
+}
+
+async function invoke(commandValue: CoordinationCommand, overrides: Partial<CoordinationCanonicalState> = {}) {
+  const graph = buildDateCoordinationGraph({ checkpointer: new MemorySaver(), model: command(commandValue) })
+  return graph.invoke(state(canonical(overrides)), { configurable: { thread_id: 'wf_thread_phase_b_' + commandValue.type.toLowerCase() } })
+}
+
+test('reloads sanitized canonical state on every graph round instead of trusting checkpoint fields', async () => {
+  let observedVersions: number[] = []
+  const model: DecisionModel = {
+    decide: async (input) => {
+      const context = input.context || {}
+      observedVersions.push(Number(context.coordinationVersion))
+      return {
+        intent: 'date_coordination',
+        replyDraft: '当前方案以数据库状态为准。',
+        riskLevel: 'safe',
+        route: 'date_coordination',
+        toolRequest: null,
+        suggestedActions: [],
+        coordinationCommand: { type: 'QUERY_STATUS', confidence: 1 }
+      }
+    }
+  }
+  const saver = new MemorySaver()
+  const graph = buildDateCoordinationGraph({ checkpointer: saver, model })
+  const first = await graph.invoke(state(canonical()), { configurable: { thread_id: 'wf_thread_phase_b_reload' } })
+  const second = await graph.invoke(
+    state(canonical({ coordination_version: 4, status: 'arranged' }), { coordinationVersion: 3, phase: 'stale_checkpoint' }),
+    { configurable: { thread_id: 'wf_thread_phase_b_reload' } }
+  )
+  assert.equal(first.coordinationVersion, 3)
+  assert.equal(second.coordinationVersion, 4)
+  assert.deepEqual(observedVersions, [3, 4])
+  assert.equal(second.phase, 'query_status')
+})
+
+test('query returns canonical status without a business write request', async () => {
+  const result = await invoke({ type: 'QUERY_STATUS', confidence: 1 })
+  assert.equal(result.phase, 'query_status')
+  assert.equal(result.coordinationCommand?.type, 'QUERY_STATUS')
+  assert.equal(result.pendingTool, null)
+  assert.equal(result.pendingAction, null)
+  assert.match(result.replyDraft, /当前协调状态：waiting_confirmations/)
+})
+
+test('plan changes create a version-bound candidate and preview tool only', async () => {
+  const result = await invoke({
+    type: 'PROPOSE_CHANGE',
+    target_version: 3,
+    changes: { venue: '公共餐厅', payment: 'flexible' },
+    preserve: ['date', 'start_time', 'activity'],
+    confidence: 0.96,
+    context_ref: { type: 'proposal', coordination_id: 716, coordination_version: 3, proposal_id: 99 }
+  })
+  assert.equal(result.phase, 'awaiting_tool')
+  assert.equal(result.baseVersion, 3)
+  assert.deepEqual(result.candidateChanges, { venue: '公共餐厅', payment: 'flexible' })
+  assert.equal(result.candidatePlan?.venue, '公共餐厅')
+  assert.equal(result.candidatePlan?.payment, 'flexible')
+  assert.equal(result.pendingTool?.type, 'create_date_application_patch')
+  assert.equal(result.pendingAction?.arguments.coordinationVersion, 3)
+  assert.equal(result.pendingAction?.requiresConfirmation, true)
+  assert.equal(result.pendingPreview?.baseVersion, 3)
+})
+
+test('combined change and partner question shares one candidate and remains version-bound', async () => {
+  const result = await invoke({
+    type: 'PROPOSE_CHANGE_AND_ASK_PARTNER',
+    target_version: 3,
+    changes: { start_time: '20:00', activity_detail: '酸菜鱼' },
+    partner_request: { type: 'ASK_ACCEPTANCE', topic: '周六晚上八点吃酸菜鱼可以吗？' },
+    context_ref: { type: 'proposal', coordination_id: 716, coordination_version: 3, proposal_id: 99 }
+  })
+  assert.equal(result.pendingTool?.type, 'create_date_application_patch')
+  assert.equal(result.pendingTool?.arguments.partnerRequest?.type, 'ASK_ACCEPTANCE')
+  assert.equal(result.pendingTool?.arguments.coordinationVersion, 3)
+  assert.equal(result.candidatePlan?.start_time, '20:00')
+  assert.equal(result.candidatePlan?.activity_detail, '酸菜鱼')
+  assert.deepEqual(result.pendingPreview?.partnerRequest, {
+    type: 'ASK_ACCEPTANCE',
+    topic: '周六晚上八点吃酸菜鱼可以吗？'
+  })
+})
+
+test('partner inquiry and relay emit structured event tool requests without changing plan version', async () => {
+  const inquiry = await invoke({
+    type: 'ASK_PARTNER',
+    partner_request: { type: 'ASK_PREFERENCE', topic: '对方周六晚上方便吗？' },
+    context_ref: { type: 'partner_inquiry', coordination_id: 716, coordination_version: 3, event_id: 501 }
+  })
+  assert.equal(inquiry.pendingTool?.type, 'notify_coordination_partner')
+  assert.equal(inquiry.pendingTool?.arguments.eventType, 'PARTNER_QUESTION')
+  assert.equal(inquiry.coordinationVersion, 3)
+
+  const relay = await invoke({
+    type: 'DELAY_NOTICE',
+    relay: { type: 'DELAY_NOTICE', text: '我大约晚到十分钟。' },
+    context_ref: { type: 'meeting_status', coordination_id: 716, coordination_version: 3 }
+  })
+  assert.equal(relay.pendingTool?.type, 'publish_coordination_event')
+  assert.equal(relay.pendingTool?.arguments.eventType, 'DELAY_NOTICE')
+  assert.equal(relay.pendingTool?.arguments.coordinationVersion, 3)
+})
+
+test('invitation, confirmation, arrival and clarification commands all route structurally', async () => {
+  const invitation = await invoke({
+    type: 'ACCEPT_INVITATION',
+    target_version: 3,
+    context_ref: { type: 'invitation', coordination_id: 716, coordination_version: 3, invitation_version: 7 }
+  })
+  assert.equal(invitation.pendingTool?.type, 'respond_date_invitation')
+  assert.equal(invitation.pendingTool?.arguments.invitationVersion, 7)
+
+  const confirmation = await invoke({
+    type: 'CONFIRM_CURRENT_PLAN',
+    target_version: 3,
+    context_ref: { type: 'proposal', coordination_id: 716, coordination_version: 3, proposal_id: 99 }
+  })
+  assert.equal(confirmation.pendingTool?.type, 'confirm_date_application')
+  assert.equal(confirmation.pendingTool?.arguments.coordinationVersion, 3)
+
+  const arrival = await invoke({
+    type: 'ARRIVAL_STATUS',
+    relay: { type: 'ARRIVAL_STATUS', text: '我到了。' },
+    context_ref: { type: 'meeting_status', coordination_id: 716, coordination_version: 3 }
+  })
+  assert.equal(arrival.pendingTool?.type, 'publish_coordination_event')
+  assert.equal(arrival.pendingTool?.arguments.eventType, 'ARRIVED')
+
+  const clarify = await invoke({
+    type: 'CLARIFY',
+    needs_clarification: true,
+    clarification: '你想调整时间、活动，还是区域？'
+  })
+  assert.equal(clarify.phase, 'clarify')
+  assert.equal(clarify.pendingTool, null)
+  assert.equal(clarify.replyDraft, '你想调整时间、活动，还是区域？')
+})
+
+test('invitation and proposal context refs must still point at the current database version', async () => {
+  const staleInvitation = await invoke({
+    type: 'ACCEPT_INVITATION',
+    target_version: 3,
+    context_ref: { type: 'invitation', coordination_id: 716, coordination_version: 3, invitation_version: 6 }
+  })
+  assert.equal(staleInvitation.pendingTool, null)
+  assert.equal(staleInvitation.errorCode, 'stale_coordination_version')
+
+  const ambiguousConfirmation = await invoke({
+    type: 'CONFIRM_CURRENT_PLAN',
+    target_version: 3
+  } as CoordinationCommand)
+  assert.equal(ambiguousConfirmation.pendingTool, null)
+  assert.equal(ambiguousConfirmation.errorCode, 'invalid_command')
+})
+
+test('stale and unversioned plan mutation commands never produce a plan tool request', async () => {
+  const stale = await invoke({
+    type: 'PROPOSE_CHANGE',
+    target_version: 2,
+    changes: { venue: '公共餐厅' },
+    context_ref: { type: 'proposal', coordination_id: 716, coordination_version: 2, proposal_id: 99 }
+  })
+  assert.equal(stale.pendingTool, null)
+  assert.equal(stale.errorCode, 'stale_coordination_version')
+
+  const unversioned = await invoke({
+    type: 'PROPOSE_CHANGE',
+    changes: { venue: '公共餐厅' }
+  } as CoordinationCommand)
+  assert.equal(unversioned.pendingTool, null)
+  assert.equal(unversioned.errorCode, 'invalid_command')
+})
+
+test('tool continuation reloads canonical state and keeps preview facts separate from plan truth', async () => {
+  const saver = new MemorySaver()
+  const graph = buildDateCoordinationGraph({
+    checkpointer: saver,
+    model: command({
+      type: 'PROPOSE_CHANGE',
+      target_version: 3,
+      changes: { payment: 'flexible' },
+      context_ref: { type: 'proposal', coordination_id: 716, coordination_version: 3, proposal_id: 99 }
+    })
+  })
+  const threadId = 'wf_thread_phase_b_tool_resume'
+  const first = await graph.invoke(state(canonical()), { configurable: { thread_id: threadId } })
+  const second = await graph.invoke({
+    ...state(canonical({ coordination_version: 3, status: 'waiting_confirmations' })),
+    pendingAction: first.pendingAction,
+    pendingTool: first.pendingTool,
+    pendingPreview: first.pendingPreview,
+    candidatePlan: first.candidatePlan,
+    candidateChanges: first.candidateChanges,
+    baseVersion: first.baseVersion,
+    contextRef: first.contextRef,
+    coordinationCommand: first.coordinationCommand,
+    resumeToolResult: { ok: true, data: { patchId: 456, status: 'pending_confirmation', coordinationVersion: 3 } }
+  }, { configurable: { thread_id: threadId } })
+  assert.equal(second.phase, 'awaiting_confirmation')
+  assert.equal(second.pendingTool, null)
+  assert.equal(second.pendingPreview?.patchId, 456)
+  assert.equal(second.pendingPreview?.baseVersion, 3)
+  assert.match(second.replyDraft, /确认后才会写入/)
+})
+
+test('preview confirmation uses the DB-loaded pending preview instead of checkpoint-only context', async () => {
+  const graph = buildDateCoordinationGraph({
+    checkpointer: new MemorySaver(),
+    model: command({
+      type: 'CONFIRM_PREVIEW',
+      target_version: 3,
+      context_ref: { type: 'patch_preview', coordination_id: 716, coordination_version: 3, patch_id: 456 }
+    })
+  })
+  const result = await graph.invoke(state(canonical(), {
+    pendingPreview: {
+      patchId: 456,
+      baseVersion: 3,
+      candidatePlan: canonical().current_plan,
+      candidateChanges: { payment: 'flexible' },
+      contextRef: { type: 'patch_preview', coordination_id: 716, coordination_version: 3, patch_id: 456 }
+    }
+  }), { configurable: { thread_id: 'wf_thread_phase_b_preview_confirm' } })
+  assert.equal(result.pendingTool?.type, 'confirm_date_application_patch')
+  assert.equal(result.pendingTool?.arguments.patchId, 456)
+})
+
+test('combined preview confirmation carries the partner request into the commit tool', async () => {
+  const graph = buildDateCoordinationGraph({
+    checkpointer: new MemorySaver(),
+    model: command({
+      type: 'CONFIRM_PREVIEW',
+      target_version: 3,
+      context_ref: { type: 'patch_preview', coordination_id: 716, coordination_version: 3, patch_id: 456 }
+    })
+  })
+  const result = await graph.invoke(state(canonical(), {
+    pendingPreview: {
+      patchId: 456,
+      baseVersion: 3,
+      candidatePlan: canonical().current_plan,
+      candidateChanges: { activity_detail: '酸菜鱼' },
+      partnerRequest: { type: 'ASK_ACCEPTANCE', topic: '周六晚上吃酸菜鱼可以吗？' },
+      contextRef: { type: 'patch_preview', coordination_id: 716, coordination_version: 3, patch_id: 456 }
+    }
+  }), { configurable: { thread_id: 'wf_thread_phase_b_combined_confirm' } })
+  assert.equal(result.pendingTool?.type, 'confirm_date_application_patch')
+  assert.deepEqual(result.pendingTool?.arguments.partnerRequest, {
+    type: 'ASK_ACCEPTANCE',
+    topic: '周六晚上吃酸菜鱼可以吗？'
+  })
+})
+
+test('a fresh API round can invalidate a checkpoint-only preview', async () => {
+  const graph = buildDateCoordinationGraph({
+    checkpointer: new MemorySaver(),
+    model: command({
+      type: 'CONFIRM_PREVIEW',
+      target_version: 3,
+      context_ref: { type: 'patch_preview', coordination_id: 716, coordination_version: 3, patch_id: 456 }
+    })
+  })
+  const threadId = 'wf_thread_phase_b_preview_checkpoint'
+  const preview = {
+    patchId: 456,
+    baseVersion: 3,
+    candidatePlan: canonical().current_plan,
+    candidateChanges: { payment: 'flexible' },
+    contextRef: { type: 'patch_preview', coordination_id: 716, coordination_version: 3, patch_id: 456 }
+  }
+  const first = await graph.invoke(state(canonical(), { pendingPreview: preview }), { configurable: { thread_id: threadId } })
+  assert.equal(first.pendingTool?.type, 'confirm_date_application_patch')
+  const second = await graph.invoke(state(canonical(), { pendingPreview: null }), { configurable: { thread_id: threadId } })
+  assert.equal(second.pendingTool, null)
+  assert.equal(second.errorCode, 'invalid_context_ref')
+})
+
+test('API canonical graph input uses the same shared venue/payment adapter as agent-graph', () => {
+  const coordination = {
+    id: 716,
+    user_a_id: 1,
+    user_b_id: 2,
+    coordination_version: 3,
+    status: 'waiting_confirmations',
+    business_state: 'coordinating'
+  }
+  const application = {
+    availability: [{ date: '2026-08-16', periods: ['afternoon'] }],
+    areas: ['福田区'],
+    activities: ['咖啡'],
+    budget: '50-100',
+    payment_preference: 'aa',
+    duration: 'about-1h'
+  }
+  const input = apiGraphState.buildDateCoordinationGraphInput(
+    coordination,
+    [
+      { user_id: 1, coordination_version: 3, application },
+      { user_id: 2, coordination_version: 3, application }
+    ],
+    { id: 1 },
+    {
+      confirmations: [],
+      pendingPatch: {
+        id: 456,
+        base_version: 3,
+        changes: { payment_preference: 'flexible' },
+        preview: {
+          after: { ...application, payment_preference: 'flexible' }
+        }
+      }
+    }
+  )
+  assert.equal(input.canonicalState.current_plan?.payment, 'aa')
+  assert.equal(input.canonicalState.current_plan?.venue, undefined)
+  assert.equal(input.pendingPreview?.patchId, 456)
+  assert.equal((input.pendingPreview?.candidatePlan as Record<string, unknown>).payment, 'flexible')
+})

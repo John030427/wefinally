@@ -70,6 +70,10 @@ function normalizeResult(value) {
   }
   if (Number.isInteger(value.coordinationVersion) && value.coordinationVersion > 0) result.coordinationVersion = value.coordinationVersion
   if (typeof value.errorCode === 'string') result.errorCode = value.errorCode.slice(0, 80)
+  for (const key of ['coordinationCommand', 'candidatePlan', 'candidateChanges', 'baseVersion', 'contextRef', 'pendingPreview']) {
+    if (value[key] !== undefined) result[key] = JSON.parse(JSON.stringify(value[key]))
+  }
+  if (value.pendingTool !== undefined) result.pendingTool = safePendingAction(value.pendingTool)
   return result
 }
 
@@ -95,12 +99,21 @@ function safePayload(input) {
       'partnerProgress',
       'confirmationSnapshot',
       'confirmationA',
-      'confirmationB'
+      'confirmationB',
+      'canonicalState',
+      'candidatePlan',
+      'candidateChanges',
+      'baseVersion',
+      'contextRef',
+      'pendingPreview',
+      'pendingTool'
     ]) {
       if (input[key] !== undefined) payload[key] = input[key]
     }
   } else if (payload.operation === 'resume_tool') {
     payload.toolResult = input.toolResult
+    if (input.canonicalState !== undefined) payload.canonicalState = input.canonicalState
+    if (input.pendingPreview !== undefined) payload.pendingPreview = input.pendingPreview
   } else if (payload.operation === 'resume_confirmation') {
     payload.confirmation = input.confirmation
   }
@@ -152,11 +165,15 @@ async function runLangGraphStep(input, deps = {}) {
   if (first.result.status !== 'awaiting_tool' || !first.result.pendingAction) return first
   if (typeof deps.executeTool !== 'function') return { kind: 'fallback', code: 'graph_tool_executor_missing' }
   const toolResult = await deps.executeTool(first.result.pendingAction)
+  const refreshed = typeof deps.refreshInput === 'function'
+    ? await deps.refreshInput(input, first.result.pendingAction, toolResult)
+    : {}
   return invokeLangGraph({
     operation: 'resume_tool',
     threadId: first.result.threadId,
     actorRef: input.actorRef,
-    toolResult
+    toolResult,
+    ...refreshed
   }, deps)
 }
 

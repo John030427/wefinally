@@ -113,6 +113,10 @@ function proposalSummary(proposal = {}) {
     .join('、')
 }
 
+function safeRelayText(value) {
+  return String(value || '').replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, 240)
+}
+
 function projectParticipantEvent(event = {}, context = {}) {
   const viewerId = Number(context.viewer_user_id || 0)
   const actorId = Number(event.actor_user_id || 0)
@@ -154,6 +158,46 @@ function projectParticipantEvent(event = {}, context = {}) {
     proposal_confirmed: {
       stage: mine ? 'my_proposal_confirmed' : 'partner_proposal_confirmed',
       content: mine ? '你已确认当前方案，正在等待对方确认。' : '对方已确认当前方案，请在协调页查看并决定。'
+    },
+    plan_change_proposed: {
+      stage: mine ? 'my_plan_change_proposed' : 'partner_plan_change_proposed',
+      content: mine ? '你的方案修改已生成预览，确认后才会写入协调状态。' : '对方提出了方案调整，请在协调页查看共同方案。'
+    },
+    plan_change_committed: {
+      stage: 'plan_change_committed',
+      content: '协调方案有新的版本，请在协调页查看最新共同状态。'
+    },
+    partner_question: {
+      stage: mine ? 'my_partner_question' : 'partner_question',
+      content: mine
+        ? '你的询问已按安全摘要传达给对方。'
+        : `对方有一条协调询问：${safeRelayText(event.relay_text) || '请在协调页查看并回应。'}`
+    },
+    partner_response: {
+      stage: mine ? 'my_partner_response' : 'partner_response',
+      content: mine
+        ? '你的协调回复已按安全摘要传达给对方。'
+        : `对方回复了协调询问：${safeRelayText(event.relay_text) || '请在协调页查看。'}`
+    },
+    arrived: {
+      stage: mine ? 'my_arrived' : 'partner_arrived',
+      content: mine ? '你已标记到达。' : '对方已标记到达，请按安全流程确认见面。'
+    },
+    arrival_hint_updated: {
+      stage: mine ? 'my_arrival_hint_updated' : 'partner_arrival_hint_updated',
+      content: mine
+        ? '你的到场提示已更新。'
+        : `对方更新了到场提示：${safeRelayText(event.relay_text) || '请在协调页查看。'}`
+    },
+    arrival_status_requested: {
+      stage: mine ? 'my_arrival_status_requested' : 'arrival_status_requested',
+      content: mine ? '已向对方询问到场状态。' : '对方想确认你的到场状态，请在协调页回应。'
+    },
+    delay_notice: {
+      stage: mine ? 'my_delay_notice' : 'partner_delay_notice',
+      content: mine
+        ? '你的晚到提示已传达给对方。'
+        : `对方发来了晚到提示：${safeRelayText(event.relay_text) || '请在协调页查看。'}`
     },
     proposal_rejected: {
       stage: mine ? 'my_proposal_rejected' : 'partner_proposal_rejected',

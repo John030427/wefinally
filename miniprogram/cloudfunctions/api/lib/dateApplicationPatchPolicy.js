@@ -11,6 +11,7 @@ const PATCHABLE_FIELDS = Object.freeze([
   'availability',
   'areas',
   'activities',
+  'activity_venue',
   'budget',
   'payment_preference',
   'duration',
@@ -28,8 +29,19 @@ const DIMENSION_LABELS = Object.freeze({
   duration: 'duration',
   transport_constraints: 'transport',
   other_requirements: 'requirements',
-  share_message: 'share_message'
+  share_message: 'share_message',
+  activity_venue: 'venue'
 })
+
+const PARTNER_REQUEST_TYPES = new Set(['ASK_ACCEPTANCE', 'ASK_PREFERENCE', 'ASK_STATUS', 'ASK_ARRIVAL', 'RELAY'])
+
+function normalizePartnerRequest(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const type = String(value.type || '').trim()
+  const topic = String(value.topic || '').replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, 160)
+  if (!PARTNER_REQUEST_TYPES.has(type) || !topic) return null
+  return { type, topic }
+}
 
 function classifyChangeIntent(message) {
   const text = String(message || '').trim()
@@ -105,5 +117,6 @@ module.exports = {
   createPatchFromDecision,
   previewApplicationChange,
   shareableSummary,
-  cleanChanges
+  cleanChanges,
+  normalizePartnerRequest
 }

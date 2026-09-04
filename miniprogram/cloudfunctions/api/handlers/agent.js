@@ -7,12 +7,18 @@ const { generateDecision } = require('../agent/provider')
 const { TOOL_NAMES, inferTool, executeTool } = require('../agent/toolRegistry')
 const { createDateApplicationPatchHandlers, claimPendingPatch } = require('./dateApplicationPatch')
 const { createDateCoordinationHandlers } = require('./dateCoordination')
-const { PATCH_TOOL, classifyChangeIntent } = require('../lib/dateApplicationPatchPolicy')
+const { PATCH_TOOL } = require('../lib/dateApplicationPatchPolicy')
 const { readHumanServiceConfig, buildHumanServiceHandoff } = require('../agent/humanService')
 const { readLangGraphConfig, createActorRef, createThreadId, runLangGraphStep } = require('../agent/langgraphClient')
 const { executeGraphTool } = require('../agent/langgraphToolBridge')
 const { buildDateCoordinationGraphInput, latestApplication } = require('../agent/dateCoordinationGraphState')
 const { buildResumeSummary } = require('../lib/coordinationConcurrency')
+const { publishCoordinationEvent } = require('../agent/dateCoordinationEvents')
+const {
+  toRuntimeCoordinationChanges,
+  toCanonicalCoordinationEventType,
+  toRuntimeCoordinationEventType
+} = require('../../agent-graph/shared/coordinationAdapters.cjs')
 const {
   canOpenCoordinatorChat,
   canWriteCoordinatorAction,
@@ -440,6 +446,141 @@ function createAgentHandlers(overrides = {}) {
         now: dep('now'),
         saveApplicationForUser: coordinationHandlers.saveApplicationForUser
       })
+      const graphEvent = async (args, fallbackEventType) => {
+        const current = await dep('byId')('date_coordination', Number(args.coordinationId || coordination.id))
+        if (!current) throw new Error('日期协调不存在')
+        if (Number(args.coordinationVersion) !== Number(current.coordination_version || 1)) throw new Error('stale_coordination_version')
+        const canonicalType = toCanonicalCoordinationEventType(String(args.eventType || fallbackEventType))
+        if (!canonicalType) throw new Error('invalid_coordination_event_type')
+        const runtimeType = toRuntimeCoordinationEventType(canonicalType)
+        const relay = args.relay && typeof args.relay === 'object' ? args.relay : {}
+        const partnerRequest = args.partnerRequest && typeof args.partnerRequest === 'object' ? args.partnerRequest : {}
+        const published = await publishCoordinationEvent({
+          coordination: current,
+          event: {
+            event_type: runtimeType,
+            actor_user_id: Number(user.id),
+            coordination_version: Number(current.coordination_version || 1),
+            idempotency_suffix: `graph:${session.id}:${userMessage.id}`,
+            changed_dimensions: Array.isArray(args.changedDimensions) ? args.changedDimensions : [],
+            relay_text: sanitizeOutput(String(relay.text || partnerRequest.topic || '')).slice(0, 240),
+            partner_request: partnerRequest
+          }
+        }, {
+          first: dep('first'),
+          addWithId: dep('addWithId'),
+          now: dep('now')
+        })
+        return {
+          ok: true,
+          data: {
+            eventId: Number(published.event && published.event.id || 0),
+            eventType: runtimeType,
+            coordinationVersion: Number(current.coordination_version || 1),
+            status: current.status
+          }
+        }
+      }
+      const graphToolServices = {
+        create_date_application_patch: async (args) => {
+          const runtimeChanges = toRuntimeCoordinationChanges(args.changes || {}, args.candidatePlan || null)
+          const preview = await patchHandlers.createPreviewForUser({
+            coordination_id: Number(args.coordinationId),
+            coordination_version: Number(args.coordinationVersion),
+            session_id: Number(session.id),
+            source_message_id: Number(userMessage.id || 0),
+            changes: runtimeChanges,
+            partner_request: args.partnerRequest
+          }, user, session)
+          return {
+            ok: true,
+            data: {
+              patchId: Number(preview.id || 0),
+              status: preview.status,
+              coordinationVersion: Number(preview.base_version || args.coordinationVersion)
+            }
+          }
+        },
+        create_date_application_preview: async (args) => {
+          const preview = await patchHandlers.createInitialPreviewForUser({
+            coordination_id: Number(args.coordinationId),
+            session_id: Number(session.id),
+            source_message_id: Number(userMessage.id || 0),
+            application: args.application || args.candidatePlan || {}
+          }, user, session)
+          return { ok: true, data: { previewId: Number(preview.id || 0), status: preview.status, coordinationVersion: Number(preview.base_version || coordination.coordination_version) } }
+        },
+        confirm_date_application_patch: async (args) => {
+          const applied = await patchHandlers.confirmForUser({ coordination_id: Number(args.coordinationId), patch_id: Number(args.patchId) }, user)
+          if (args.partnerRequest) {
+            await graphEvent({
+              ...args,
+              coordinationVersion: Number(applied.coordination_version || args.coordinationVersion),
+              eventType: 'PARTNER_QUESTION',
+              partnerRequest: args.partnerRequest,
+              relay: { type: 'SAFE_NOTE', text: args.partnerRequest.topic }
+            }, 'PARTNER_QUESTION')
+          }
+          return { ok: true, data: {
+            patchId: Number(applied.patch && applied.patch.id || args.patchId),
+            status: applied.status || (applied.patch && applied.patch.status) || 'applied',
+            coordinationVersion: Number(applied.coordination_version || args.coordinationVersion),
+            applicationSent: applied.application_sent === true,
+            partnerNotified: applied.partner_notified === true
+          } }
+        },
+        cancel_date_application_patch: async (args) => {
+          const cancelled = await patchHandlers.cancelForUser({ patch_id: Number(args.patchId) }, user)
+          return { ok: true, data: { patchId: Number(cancelled.id || args.patchId), status: cancelled.status, coordinationVersion: Number(args.coordinationVersion) } }
+        },
+        confirm_date_application: async (args) => {
+          const confirmed = await coordinationHandlers.confirmProposalForUser({
+            coordination_id: Number(args.coordinationId),
+            coordination_version: Number(args.coordinationVersion),
+            proposal_id: Number(args.proposalId || 0),
+            decision: 'confirm'
+          }, user)
+          return { ok: true, data: { status: confirmed.status, coordinationVersion: Number(confirmed.coordination_version || args.coordinationVersion), applicationSent: false, partnerNotified: true } }
+        },
+        reject_date_application: async (args) => {
+          const rejected = await coordinationHandlers.confirmProposalForUser({
+            coordination_id: Number(args.coordinationId),
+            coordination_version: Number(args.coordinationVersion),
+            proposal_id: Number(args.proposalId || 0),
+            decision: 'reject'
+          }, user)
+          return { ok: true, data: { status: rejected.status, businessState: rejected.business_state, coordinationVersion: Number(rejected.coordination_version || args.coordinationVersion) } }
+        },
+        respond_date_invitation: async (args) => {
+          const responded = await coordinationHandlers.respondInvitationForUser({
+            coordination_id: Number(args.coordinationId),
+            decision: String(args.decision || ''),
+            invitation_version: Number(args.invitationVersion)
+          }, user)
+          return { ok: true, data: { status: responded.status, coordinationVersion: Number(responded.coordination_version || args.coordinationVersion), invitationVersion: Number(args.invitationVersion), partnerNotified: true } }
+        },
+        cancel_coordination: async (args) => {
+          const current = await dep('byId')('date_coordination', Number(args.coordinationId))
+          if (!current) throw new Error('日期协调不存在')
+          if (Number(current.coordination_version || 1) !== Number(args.coordinationVersion)) throw new Error('stale_coordination_version')
+          if (![Number(current.user_a_id), Number(current.user_b_id)].includes(Number(user.id))) throw new Error('无权操作该日期协调')
+          const updated = await dep('updateByDoc')('date_coordination', current, { status: 'cancelled', business_state: 'cancelled' })
+          await graphEvent({ ...args, eventType: 'COORDINATION_CANCELLED' }, 'COORDINATION_CANCELLED')
+          return { ok: true, data: { status: updated.status, coordinationVersion: Number(updated.coordination_version || args.coordinationVersion) } }
+        },
+        publish_coordination_event: (args) => graphEvent(args, 'COORDINATION_UPDATED'),
+        notify_coordination_partner: (args) => graphEvent(args, 'PARTNER_QUESTION'),
+        get_coordination_status: async (args) => {
+          const current = await dep('byId')('date_coordination', Number(args.coordinationId))
+          if (!current) throw new Error('日期协调不存在')
+          return { ok: true, data: { status: current.status, businessState: current.business_state || '', coordinationVersion: Number(current.coordination_version || 1), missingDimensions: current.missing_dimensions || [] } }
+        },
+        get_coordination_overlap: async (args) => {
+          const current = await dep('byId')('date_coordination', Number(args.coordinationId))
+          if (!current) throw new Error('日期协调不存在')
+          return { ok: true, data: { hasOverlap: current.status === 'waiting_confirmations' || current.status === 'arranged', missingFields: current.missing_dimensions || [], proposal: null, coordinationVersion: Number(current.coordination_version || 1) } }
+        }
+      }
       const allApplications = await dep('list')('date_coordination_application', {
         coordination_id: Number(coordination.id)
       }, 200)
@@ -459,7 +600,35 @@ function createAgentHandlers(overrides = {}) {
         }).catch(() => null)
       }
       if (graphConfig.enabled) {
-        const graphInput = buildDateCoordinationGraphInput(coordination, allApplications, user, { confirmations })
+        const graphPendingPatches = await dep('list')('date_application_patch', {
+          coordination_id: Number(coordination.id),
+          session_id: Number(session.id),
+          user_id: Number(user.id),
+          status: 'pending_confirmation'
+        }, 100).catch(() => [])
+        const graphPendingPatch = graphPendingPatches
+          .sort((a, b) => Number(b.id || 0) - Number(a.id || 0))[0] || null
+        const graphInput = buildDateCoordinationGraphInput(coordination, allApplications, user, {
+          confirmations,
+          pendingPatch: graphPendingPatch
+        })
+        const refreshGraphInput = async () => {
+          const freshCoordination = await dep('byId')('date_coordination', Number(coordination.id))
+          const freshApplications = await dep('list')('date_coordination_application', { coordination_id: Number(coordination.id) }, 200)
+          const freshConfirmations = await dep('list')('date_coordination_confirmation', { coordination_id: Number(coordination.id) }, 50).catch(() => [])
+          const freshPendingPatches = await dep('list')('date_application_patch', {
+            coordination_id: Number(coordination.id),
+            session_id: Number(session.id),
+            user_id: Number(user.id),
+            status: 'pending_confirmation'
+          }, 100).catch(() => [])
+          const freshPendingPatch = freshPendingPatches
+            .sort((a, b) => Number(b.id || 0) - Number(a.id || 0))[0] || null
+          return buildDateCoordinationGraphInput(freshCoordination, freshApplications, user, {
+            confirmations: freshConfirmations,
+            pendingPatch: freshPendingPatch
+          })
+        }
         try {
           const graphStep = await runLangGraphStep({
             threadId: createThreadId('date:' + coordination.id + ':user:' + user.id, graphConfig.actorSecret),
@@ -470,7 +639,15 @@ function createAgentHandlers(overrides = {}) {
             ...graphInput
           }, {
             env: dep('env'),
-            invokeFunction: dep('invokeGraphFunction')
+            invokeFunction: dep('invokeGraphFunction'),
+            executeTool: (action) => executeGraphTool(action, {
+              userId: Number(user.id),
+              sessionId: Number(session.id),
+              coordinationId: Number(coordination.id),
+              coordinationVersion: Number(coordination.coordination_version || 1),
+              idempotencyKey: `graph:${session.id}:${userMessage.id}:${action.type}`
+            }, graphToolServices),
+            refreshInput: refreshGraphInput
           })
           if (graphStep.kind === 'result') {
             dateGraphResult = graphStep.result
@@ -500,28 +677,31 @@ function createAgentHandlers(overrides = {}) {
               error_code: String(graphStep.code || graphStep.kind || 'graph_fallback').slice(0, 80)
             }, 'agent_run')
           }
+          if (dateGraphResult && dateGraphResult.status !== 'fallback') {
+            const reply = [resumeText, dateGraphResult.replyDraft].filter(Boolean).join('\n') || '我已按当前协调状态处理这次请求。'
+            await saveMessage(session, user, 'assistant', reply, {
+              graph_phase: dateGraphResult.phase,
+              coordination_command: dateGraphResult.coordinationCommand || null,
+              candidate_plan: dateGraphResult.candidatePlan || null,
+              pending_preview: dateGraphResult.pendingPreview || null
+            })
+            await markSeen()
+            return {
+              session_id: session.id,
+              agent_type: session.agent_type,
+              reply,
+              provider: 'langgraph',
+              graph_phase: dateGraphResult.phase,
+              coordination_version: dateGraphResult.coordinationVersion,
+              coordination_command: dateGraphResult.coordinationCommand || null,
+              candidate_plan: dateGraphResult.candidatePlan || null,
+              pending_preview: dateGraphResult.pendingPreview || null,
+              requires_confirmation: dateGraphResult.status === 'awaiting_confirmation',
+              risk_level: 'safe'
+            }
+          }
         } catch (_) {
           // Graph failures fall through to the established backend/DeepSeek path.
-        }
-      }
-      // LangGraph is the primary interaction layer for coordination when it can
-      // answer directly; modification requests still go to the backend patch
-      // preview pipeline (deterministic business layer owns every write).
-      const modificationIntent = classifyChangeIntent(content) === 'modify_date_application'
-      const questionLike = /进度|状态|哪一步|怎么样了|看看|怎么样|如何|情况|进展|确认|方案|安排|协调|在吗|\?|？/.test(content)
-      if (!modificationIntent && dateGraphResult && ['completed', 'awaiting_confirmation'].includes(dateGraphResult.status)
-        && dateGraphResult.replyDraft && (questionLike || resumeText)) {
-        const reply = [resumeText, dateGraphResult.replyDraft].filter(Boolean).join('\n')
-        await saveMessage(session, user, 'assistant', reply, { graph_phase: dateGraphResult.phase })
-        await markSeen()
-        return {
-          session_id: session.id,
-          agent_type: session.agent_type,
-          reply,
-          provider: 'langgraph',
-          graph_phase: dateGraphResult.phase,
-          resume_summary: resumeText ? true : undefined,
-          risk_level: 'safe'
         }
       }
       const pendingPatches = await dep('list')('date_application_patch', {

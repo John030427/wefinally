@@ -1,4 +1,8 @@
 const { projectParticipantEvent } = require('../lib/dateCoordinationProcessingPolicy')
+const {
+  toCanonicalCoordinationEventType,
+  toRuntimeCoordinationEventType
+} = require('../../agent-graph/shared/coordinationAdapters.cjs')
 
 function defaultDeps() {
   const db = require('../lib/db')
@@ -45,7 +49,13 @@ async function publishCoordinationEvent(input = {}, overrides) {
   const deps = overrides || defaultDeps()
   const coordination = input.coordination
   if (!coordination || !coordination.id) throw new Error('协调事件缺少任务')
+  const requestedEventType = String(input.event && input.event.event_type || 'COORDINATION_UPDATED')
+  const canonicalEventType = toCanonicalCoordinationEventType(requestedEventType)
+  if (!canonicalEventType) throw new Error('invalid_coordination_event_type')
+  const runtimeEventType = toRuntimeCoordinationEventType(requestedEventType)
+  if (!runtimeEventType) throw new Error('invalid_coordination_event_type')
   const event = Object.assign({}, input.event, {
+    event_type: runtimeEventType,
     coordination_version: Number(input.event && input.event.coordination_version || coordination.coordination_version || 1)
   })
   const key = eventKey(coordination, event)
@@ -62,7 +72,8 @@ async function publishCoordinationEvent(input = {}, overrides) {
       },
       safe_summary: {
         stage: projectParticipantEvent(event, { viewer_user_id: 0 }).stage,
-        proposal_key: String(event.proposal && event.proposal.proposal_key || '')
+        proposal_key: String(event.proposal && event.proposal.proposal_key || ''),
+        relay_text: String(event.relay_text || '').slice(0, 240)
       }
     }, 'date_coordination_event')
   }

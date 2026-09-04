@@ -49,6 +49,33 @@ async function main() {
   assert.strictEqual(shadow.kind, 'shadow')
   assert.strictEqual(tools, 0)
 
+  let continuationCalls = 0
+  let refreshed = 0
+  const continued = await runLangGraphStep({ threadId: 'wf_thread_aaaaaaaaaaaaaaaa', actorRef, mode: 'date_coordination', userText: '调整方案', safeSummary: '' }, {
+    env: { LANGGRAPH_ENABLED: 'true', LANGGRAPH_ACTOR_SECRET: 'secret' },
+    invokeFunction: async (_name, payload) => {
+      continuationCalls += 1
+      if (continuationCalls === 1) return { result: { success: true, data: {
+        status: 'awaiting_tool',
+        threadId: payload.threadId,
+        phase: 'awaiting_tool',
+        replyDraft: '',
+        pendingAction: { type: 'create_date_application_patch', arguments: { coordinationId: 716, coordinationVersion: 3 }, requiresConfirmation: true }
+      } } }
+      assert.strictEqual(payload.operation, 'resume_tool')
+      assert.strictEqual(payload.canonicalState.coordination_version, 3)
+      return { result: { success: true, data: { status: 'awaiting_confirmation', threadId: payload.threadId, phase: 'awaiting_confirmation', replyDraft: 'preview', pendingAction: null } } }
+    },
+    executeTool: async () => ({ ok: true, data: { patchId: 456, status: 'pending_confirmation', coordinationVersion: 3 } }),
+    refreshInput: async () => {
+      refreshed += 1
+      return { canonicalState: { coordination_version: 3 } }
+    }
+  })
+  assert.strictEqual(continued.kind, 'result')
+  assert.strictEqual(continued.result.status, 'awaiting_confirmation')
+  assert.strictEqual(refreshed, 1)
+
   const timedOut = await invokeLangGraph({ threadId: 'wf_thread_aaaaaaaaaaaaaaaa', actorRef, mode: 'customer_service', userText: '你好', safeSummary: '' }, {
     env: { LANGGRAPH_ENABLED: 'true', LANGGRAPH_TIMEOUT_MS: '10', LANGGRAPH_ACTOR_SECRET: 'secret' },
     invokeFunction: async () => new Promise(() => {})

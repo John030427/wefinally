@@ -63,6 +63,11 @@ async function main() {
   assert.strictEqual(deps.tables.agent_message.length, 2)
   assert.strictEqual(deps.tables.date_coordination_event.length, 1)
 
+  await assert.rejects(
+    publishCoordinationEvent({ coordination, event: { event_type: 'unmapped_event', actor_user_id: 2 } }, deps),
+    /invalid_coordination_event_type/
+  )
+
   const proposal = await publishCoordinationEvent({
     coordination,
     event: {

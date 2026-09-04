@@ -203,6 +203,22 @@ test('plan mutation commands are always bound to a target version or context_ref
   }).success, true)
 })
 
+test('object commands require a context_ref that uniquely identifies the target', () => {
+  assert.equal(CoordinationCommandSchema.safeParse({
+    type: 'CONFIRM_CURRENT_PLAN',
+    target_version: 6
+  }).success, false)
+  assert.equal(CoordinationCommandSchema.safeParse({
+    type: 'ACCEPT_INVITATION',
+    target_version: 1
+  }).success, false)
+  assert.equal(CoordinationCommandSchema.safeParse({
+    type: 'CONFIRM_PREVIEW',
+    target_version: 6,
+    context_ref: proposalContext
+  }).success, false)
+})
+
 test('commands reject unknown keys, unsafe plan fields and incomplete clarification', () => {
   assert.equal(CoordinationCommandSchema.safeParse({
     type: 'PROPOSE_CHANGE',

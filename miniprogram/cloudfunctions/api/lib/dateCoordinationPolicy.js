@@ -73,7 +73,7 @@ function normalizeApplication(input = {}, now = new Date()) {
   if (!activities.length) throw new Error('请选择至少一项活动偏好')
   if (activities.length > 3) throw new Error('活动偏好最多选择3项')
   if (activities.some((item) => !ACTIVITIES.includes(item))) throw new Error('活动偏好包含无效选项')
-  return {
+  const normalized = {
     availability: normalizeAvailability(input.availability, now),
     areas,
     activities,
@@ -84,6 +84,9 @@ function normalizeApplication(input = {}, now = new Date()) {
     other_requirements: textValue(input.other_requirements, 100),
     share_message: textValue(input.share_message, 100)
   }
+  const venue = textValue(input.activity_venue, 160)
+  if (venue) normalized.activity_venue = venue
+  return normalized
 }
 
 function intersect(a, b) {

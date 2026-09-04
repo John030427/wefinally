@@ -1,7 +1,13 @@
 const GRAPH_TOOL_ALLOWLIST = Object.freeze({
   confirm_date_application: ['status', 'coordinationVersion', 'applicationSent', 'partnerNotified'],
+  reject_date_application: ['status', 'coordinationVersion', 'businessState'],
+  confirm_date_application_patch: ['patchId', 'status', 'coordinationVersion', 'applicationSent', 'partnerNotified'],
+  cancel_date_application_patch: ['patchId', 'status', 'coordinationVersion'],
   create_date_application_patch: ['patchId', 'status', 'coordinationVersion'],
   create_date_application_preview: ['previewId', 'status', 'coordinationVersion'],
+  respond_date_invitation: ['status', 'coordinationVersion', 'invitationVersion', 'partnerNotified'],
+  cancel_coordination: ['status', 'coordinationVersion'],
+  publish_coordination_event: ['eventId', 'eventType', 'coordinationVersion', 'status'],
   create_human_ticket: ['ticketId', 'status', 'priority'],
   get_coordination_overlap: ['hasOverlap', 'missingFields', 'proposal', 'coordinationVersion'],
   get_coordination_status: ['status', 'businessState', 'coordinationVersion', 'missingDimensions'],
@@ -11,8 +17,14 @@ const GRAPH_TOOL_ALLOWLIST = Object.freeze({
 
 const COORDINATION_TOOLS = new Set([
   'confirm_date_application',
+  'reject_date_application',
+  'confirm_date_application_patch',
+  'cancel_date_application_patch',
   'create_date_application_patch',
   'create_date_application_preview',
+  'respond_date_invitation',
+  'cancel_coordination',
+  'publish_coordination_event',
   'get_coordination_overlap',
   'get_coordination_status',
   'notify_coordination_partner'

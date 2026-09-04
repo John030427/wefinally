@@ -1,4 +1,14 @@
 import { z } from 'zod'
+import {
+  COORDINATION_EVENT_TYPE_LEGACY_ALIASES as SHARED_EVENT_TYPE_LEGACY_ALIASES,
+  COORDINATION_EVENT_TYPE_MIGRATION_INVENTORY as SHARED_EVENT_TYPE_MIGRATION_INVENTORY,
+  COORDINATION_EVENT_TYPE_RUNTIME_ADAPTER as SHARED_EVENT_TYPE_RUNTIME_ADAPTER,
+  COORDINATION_FIELD_RUNTIME_ADAPTER as SHARED_FIELD_RUNTIME_ADAPTER,
+  toCanonicalCoordinationEventType as sharedToCanonicalCoordinationEventType,
+  toCanonicalCoordinationField as sharedToCanonicalCoordinationField,
+  toRuntimeCoordinationEventType as sharedToRuntimeCoordinationEventType,
+  toRuntimeCoordinationField as sharedToRuntimeCoordinationField
+} from '../shared/coordinationAdapters.cjs'
 
 const ThreadIdSchema = z.string().regex(/^wf_thread_[A-Za-z0-9_-]{10,80}$/)
 const ActorRefSchema = z.string().regex(/^usr_[a-f0-9]{16,64}$/)
@@ -57,7 +67,7 @@ export const ConfirmationSnapshotSchema = z.object({
   source: z.enum(['database', 'graph_legacy']).optional()
 }).strict()
 
-export const GraphRunInputSchema = z.object({
+const GraphRunInputBaseSchema = z.object({
   operation: z.literal('run'),
   threadId: ThreadIdSchema,
   actorRef: ActorRefSchema,
@@ -76,7 +86,7 @@ export const GraphRunInputSchema = z.object({
   confirmationSnapshot: ConfirmationSnapshotSchema.optional()
 }).strict()
 
-export const GraphResumeInputSchema = z.object({
+const GraphResumeInputBaseSchema = z.object({
   operation: z.enum(['resume_tool', 'resume_confirmation']),
   threadId: ThreadIdSchema,
   actorRef: ActorRefSchema,
@@ -95,7 +105,7 @@ export const GraphResumeInputSchema = z.object({
   }
 })
 
-export const GraphStateSchema = GraphRunInputSchema.extend({
+const GraphStateBaseSchema = GraphRunInputBaseSchema.extend({
   phase: z.string().min(1).max(80).default('start'),
   riskLevel: z.enum(['safe', 'low', 'medium', 'high', 'critical']).default('safe'),
   route: z.enum(['frontline', 'faq', 'complaint', 'safety', 'date_coordination', 'manual_review']).optional(),
@@ -110,7 +120,7 @@ export const GraphStateSchema = GraphRunInputSchema.extend({
   errorCode: z.string().max(80).optional()
 }).strict()
 
-export const GraphResultSchema = z.object({
+const GraphResultBaseSchema = z.object({
   status: z.enum(['completed', 'awaiting_tool', 'awaiting_confirmation', 'manual_pending', 'fallback']),
   threadId: ThreadIdSchema,
   phase: z.string().min(1).max(80),
@@ -119,14 +129,6 @@ export const GraphResultSchema = z.object({
   coordinationVersion: z.number().int().positive().optional(),
   errorCode: z.string().max(80).optional()
 }).strict()
-
-export type CoordinationPreference = z.infer<typeof CoordinationPreferenceSchema>
-export type PendingAction = z.infer<typeof PendingActionSchema>
-export type SafeToolResult = z.infer<typeof SafeToolResultSchema>
-export type GraphRunInput = z.infer<typeof GraphRunInputSchema>
-export type GraphResumeInput = z.infer<typeof GraphResumeInputSchema>
-export type GraphState = z.infer<typeof GraphStateSchema>
-export type GraphResult = z.infer<typeof GraphResultSchema>
 
 // Phase A coordination contract. This is intentionally additive: the existing
 // graph input/result contract remains available until the runtime migration is
@@ -260,29 +262,21 @@ export function getCoordinationFieldClass(field: string): CoordinationPlanFieldC
     : null
 }
 
-// This is the only boundary adapter for the two historical plan field names.
-// Phase B API and agent-graph code must import this module; handlers may not
-// define a second field mapping. Graph contracts stay canonical and runtime
-// persistence can translate only at this shared boundary.
-export const COORDINATION_FIELD_RUNTIME_ADAPTER = Object.freeze({
-  venue: 'activity_venue',
-  payment: 'payment_preference'
-} as const)
-
+// The runtime adapter is implemented once in shared/coordinationAdapters.cjs.
+// API handlers and agent-graph cross this same boundary; contracts only expose
+// the typed names used by both sides.
+export const COORDINATION_FIELD_RUNTIME_ADAPTER = SHARED_FIELD_RUNTIME_ADAPTER
 export type CoordinationRuntimePlanField = Exclude<CoordinationPlanField, 'venue' | 'payment'>
   | 'activity_venue'
   | 'payment_preference'
 
 export function toCanonicalCoordinationField(field: string): CoordinationPlanField | null {
-  if (field === 'activity_venue') return 'venue'
-  if (field === 'payment_preference') return 'payment'
-  return CoordinationPlanFieldSchema.safeParse(field).success ? field as CoordinationPlanField : null
+  const canonical = sharedToCanonicalCoordinationField(field)
+  return CoordinationPlanFieldSchema.safeParse(canonical).success ? canonical as CoordinationPlanField : null
 }
 
 export function toRuntimeCoordinationField(field: CoordinationPlanField): CoordinationRuntimePlanField {
-  if (field === 'venue') return COORDINATION_FIELD_RUNTIME_ADAPTER.venue
-  if (field === 'payment') return COORDINATION_FIELD_RUNTIME_ADAPTER.payment
-  return field
+  return sharedToRuntimeCoordinationField(field) as CoordinationRuntimePlanField
 }
 
 export const CoordinationChangeSetSchema = z.object({
@@ -367,6 +361,18 @@ export const CoordinationCommandSchema = z.object({
     && value.target_version !== value.context_ref.coordination_version) {
     context.addIssue({ code: 'custom', path: ['target_version'], message: 'target_version must match context_ref version' })
   }
+  if (['CONFIRM_PREVIEW', 'CANCEL_PREVIEW'].includes(value.type)
+    && value.context_ref?.type !== 'patch_preview') {
+    context.addIssue({ code: 'custom', path: ['context_ref'], message: 'preview command requires patch_preview context_ref' })
+  }
+  if (['CONFIRM_CURRENT_PLAN', 'REJECT_CURRENT_PLAN'].includes(value.type)
+    && value.context_ref?.type !== 'proposal') {
+    context.addIssue({ code: 'custom', path: ['context_ref'], message: 'proposal command requires proposal context_ref' })
+  }
+  if (['ACCEPT_INVITATION', 'DECLINE_INVITATION'].includes(value.type)
+    && value.context_ref?.type !== 'invitation') {
+    context.addIssue({ code: 'custom', path: ['context_ref'], message: 'invitation command requires invitation context_ref' })
+  }
 })
 
 export type CoordinationCommand = z.infer<typeof CoordinationCommandSchema>
@@ -414,96 +420,25 @@ export const CoordinationEventTypeSchema = z.enum([
 
 export type CoordinationEventType = z.infer<typeof CoordinationEventTypeSchema>
 
-// Lowercase runtime values are compatibility aliases only. New code must emit
-// CoordinationEventType values and cross this adapter at the persistence edge.
-export const COORDINATION_EVENT_TYPE_RUNTIME_ADAPTER: Readonly<Record<CoordinationEventType, string>> = Object.freeze({
-  INVITATION_CREATED: 'invitation_created',
-  INVITATION_ACCEPTED: 'invitation_accepted',
-  INVITATION_DECLINED: 'invitation_declined',
-  INVITATION_EXPIRED: 'invitation_expired',
-  APPLICATION_SUBMITTED: 'application_submitted',
-  PREFERENCES_UPDATED: 'preference_changed',
-  COORDINATION_QUEUED: 'processing_queued',
-  PLAN_CHANGE_PROPOSED: 'plan_change_proposed',
-  PLAN_CHANGE_COMMITTED: 'plan_change_committed',
-  PROPOSAL_GENERATED: 'proposal_generated',
-  PARTNER_QUESTION: 'partner_question',
-  PARTNER_RESPONSE: 'partner_response',
-  ARRIVED: 'arrived',
-  ARRIVAL_HINT_UPDATED: 'arrival_hint_updated',
-  ARRIVAL_STATUS_REQUESTED: 'arrival_status_requested',
-  DELAY_NOTICE: 'delay_notice',
-  PROPOSAL_CONFIRMED: 'proposal_confirmed',
-  PROPOSAL_REJECTED: 'proposal_rejected',
-  COORDINATION_CANCELLED: 'coordination_cancelled',
-  ARRANGED: 'arranged',
-  NO_OVERLAP: 'no_overlap',
-  OVERLAP_FOUND: 'overlap_found',
-  RECOORDINATION_STARTED: 'recoordination_started',
-  MANUAL_HANDOFF: 'manual_handoff',
-  COORDINATION_UPDATED: 'coordination_updated',
-  PROCESSING_FAILED: 'processing_failed',
-  QA_COORDINATION_RESET: 'qa_coordination_reset',
-  COORDINATION_CLOSED: 'coordination_closed',
-  COORDINATION_EXPIRED: 'coordination_expired',
-  PARTICIPANT_MET_CONFIRMED: 'participant_met_confirmed',
-  PARTICIPANT_NOT_FOUND: 'participant_not_found',
-  PARTICIPANT_MISMATCH: 'participant_mismatch',
-  MEETING_ARRIVED: 'meeting_arrived',
-  MEETING_NOT_FOUND: 'meeting_not_found',
-  MEETING_MISMATCH: 'meeting_mismatch',
-  POLITE_DECLINE: 'polite_decline',
-  SHARE_TRIGGER: 'share_trigger',
-  PROPOSAL_READY: 'proposal_ready'
-})
-
-export const COORDINATION_EVENT_TYPE_LEGACY_ALIASES: Readonly<Record<string, CoordinationEventType>> = Object.freeze({
-  application_sent: 'APPLICATION_SUBMITTED',
-  preference_updated: 'PREFERENCES_UPDATED',
-  partner_preference_changed: 'PREFERENCES_UPDATED',
-  partner_inquiry: 'PARTNER_QUESTION',
-  counter_offer_ready: 'PLAN_CHANGE_PROPOSED',
-  participant_arrived: 'ARRIVED',
-  coordination_arranged: 'ARRANGED',
-  application_received: 'APPLICATION_SUBMITTED',
-  coordination_expiring: 'COORDINATION_EXPIRED',
-  new_overlap_found: 'OVERLAP_FOUND',
-  updated: 'COORDINATION_UPDATED'
-})
-
-const DYNAMIC_COORDINATION_EVENT_TYPE_ALIASES = Object.freeze([
-  { prefix: 'meeting_arrived:', type: 'MEETING_ARRIVED' as CoordinationEventType },
-  { prefix: 'meeting_not_found:', type: 'MEETING_NOT_FOUND' as CoordinationEventType },
-  { prefix: 'meeting_mismatch:', type: 'MEETING_MISMATCH' as CoordinationEventType }
-])
+// Lowercase runtime values are compatibility aliases only. The map itself is
+// shared with the API persistence boundary so there is one event vocabulary.
+export const COORDINATION_EVENT_TYPE_RUNTIME_ADAPTER = SHARED_EVENT_TYPE_RUNTIME_ADAPTER as Readonly<Record<CoordinationEventType, string>>
+export const COORDINATION_EVENT_TYPE_LEGACY_ALIASES = SHARED_EVENT_TYPE_LEGACY_ALIASES as Readonly<Record<string, CoordinationEventType>>
 
 // Migration inventory for the current release branch's coordination event_type
 // values. Preferred runtime names come from the canonical adapter; legacy names
 // below are compatibility aliases until Phase B migration.
-export const COORDINATION_EVENT_TYPE_MIGRATION_INVENTORY: ReadonlyArray<readonly [string, CoordinationEventType]> = Object.freeze([
-  ...Object.entries(COORDINATION_EVENT_TYPE_RUNTIME_ADAPTER)
-    .map(([type, runtimeValue]) => [runtimeValue, type as CoordinationEventType] as const),
-  ...Object.entries(COORDINATION_EVENT_TYPE_LEGACY_ALIASES)
-    .map(([runtimeValue, type]) => [runtimeValue, type] as const),
-  ['meeting_arrived:<digest>', 'MEETING_ARRIVED'] as const,
-  ['meeting_not_found:<digest>', 'MEETING_NOT_FOUND'] as const,
-  ['meeting_mismatch:<digest>', 'MEETING_MISMATCH'] as const
-])
+export const COORDINATION_EVENT_TYPE_MIGRATION_INVENTORY = SHARED_EVENT_TYPE_MIGRATION_INVENTORY as ReadonlyArray<readonly [string, CoordinationEventType]>
 
 export function toCanonicalCoordinationEventType(value: string): CoordinationEventType | null {
-  const canonical = CoordinationEventTypeSchema.safeParse(value)
-  if (canonical.success) return canonical.data
-  const runtimeEntry = Object.entries(COORDINATION_EVENT_TYPE_RUNTIME_ADAPTER)
-    .find(([, runtimeValue]) => runtimeValue === value)
-  if (runtimeEntry) return runtimeEntry[0] as CoordinationEventType
-  if (COORDINATION_EVENT_TYPE_LEGACY_ALIASES[value]) return COORDINATION_EVENT_TYPE_LEGACY_ALIASES[value]
-  const dynamicEntry = DYNAMIC_COORDINATION_EVENT_TYPE_ALIASES
-    .find(({ prefix }) => value.startsWith(prefix))
-  return dynamicEntry ? dynamicEntry.type : null
+  const canonical = sharedToCanonicalCoordinationEventType(value)
+  return CoordinationEventTypeSchema.safeParse(canonical).success ? canonical as CoordinationEventType : null
 }
 
 export function toRuntimeCoordinationEventType(value: CoordinationEventType): string {
-  return COORDINATION_EVENT_TYPE_RUNTIME_ADAPTER[value]
+  const runtime = sharedToRuntimeCoordinationEventType(value)
+  if (!runtime) throw new Error('unknown_coordination_event_type')
+  return runtime
 }
 
 const SENSITIVE_PROJECTION_VALUE = /(?:\b1[3-9]\d{9}\b|\bo[A-Za-z0-9_-]{20,}\b|\b(?:sk|api)[-_][A-Za-z0-9_-]{8,}\b)/i
@@ -584,3 +519,110 @@ export const CoordinationErrorPayloadSchema = z.object({
 }).strict()
 
 export type CoordinationErrorPayload = z.infer<typeof CoordinationErrorPayloadSchema>
+
+// Phase B graph workflow state. The graph receives this sanitized projection
+// from the API on every round; checkpoint values are only workflow memory.
+export const CoordinationCanonicalPlanSchema = z.object({
+  date: z.string().max(32).optional(),
+  period: z.string().max(32).optional(),
+  start_time: z.string().max(16).optional(),
+  activity: z.string().max(80).optional(),
+  activity_detail: z.string().max(160).optional(),
+  venue: z.string().max(160).optional(),
+  area: z.string().max(80).optional(),
+  budget: z.string().max(40).optional(),
+  payment: z.string().max(40).optional(),
+  duration: z.string().max(40).optional(),
+  meet_point: z.string().max(160).optional(),
+  arrival_status: z.enum(['not_arrived', 'arrived', 'found_partner']).optional(),
+  arrival_hint: z.string().max(160).optional(),
+  delay_minutes: z.number().int().min(0).max(180).optional(),
+  public_location: z.string().max(160).optional(),
+  appearance_hint: z.string().max(160).optional()
+}).strict()
+
+export const CoordinationCanonicalArrivalStateSchema = z.object({
+  status: z.string().max(40).optional(),
+  hint: z.string().max(160).optional(),
+  delay_minutes: z.number().int().min(0).max(180).optional(),
+  last_event_id: z.number().int().positive().optional()
+}).strict()
+
+export const CoordinationCanonicalStateSchema = z.object({
+  coordination_id: z.number().int().positive(),
+  coordination_version: z.number().int().positive(),
+  status: z.string().min(1).max(80),
+  business_state: z.string().max(80).optional(),
+  party: z.enum(['A', 'B']),
+  current_plan: CoordinationCanonicalPlanSchema.nullable(),
+  canonical_overlap: CanonicalOverlapSchema.optional(),
+  shared_state: SharedCoordinationStateSchema.optional(),
+  own_preference: CoordinationPreferenceSchema.optional(),
+  partner_progress: z.enum(['waiting', 'submitted', 'accepted', 'confirmed']).optional(),
+  confirmation_snapshot: ConfirmationSnapshotSchema.optional(),
+  invitation_version: z.number().int().positive().optional(),
+  current_proposal_id: z.number().int().positive().optional(),
+  arrival_state: CoordinationCanonicalArrivalStateSchema.optional()
+}).strict()
+
+export type CoordinationCanonicalPlan = z.infer<typeof CoordinationCanonicalPlanSchema>
+export type CoordinationCanonicalState = z.infer<typeof CoordinationCanonicalStateSchema>
+
+export const PendingPreviewSchema = z.object({
+  patchId: z.number().int().positive().optional(),
+  baseVersion: z.number().int().positive(),
+  candidatePlan: CoordinationCanonicalPlanSchema,
+  candidateChanges: CoordinationChangeSetSchema.default({}),
+  partnerRequest: CoordinationPartnerRequestSchema.optional(),
+  contextRef: CoordinationContextRefSchema.optional()
+}).strict()
+
+export type PendingPreview = z.infer<typeof PendingPreviewSchema>
+
+export const GraphRunInputSchema = GraphRunInputBaseSchema.extend({
+  canonicalState: CoordinationCanonicalStateSchema.optional(),
+  pendingPreview: PendingPreviewSchema.nullable().optional()
+}).strict()
+
+export const GraphResumeInputSchema = GraphResumeInputBaseSchema.extend({
+  canonicalState: CoordinationCanonicalStateSchema.optional(),
+  pendingPreview: PendingPreviewSchema.nullable().optional()
+}).strict().superRefine((value, context) => {
+  if (value.operation === 'resume_tool' && !value.toolResult) {
+    context.addIssue({ code: 'custom', message: 'toolResult is required for resume_tool' })
+  }
+  if (value.operation === 'resume_confirmation' && !value.confirmation) {
+    context.addIssue({ code: 'custom', message: 'confirmation is required for resume_confirmation' })
+  }
+})
+
+export const GraphStateSchema = GraphStateBaseSchema.extend({
+  canonicalState: CoordinationCanonicalStateSchema.optional(),
+  candidatePlan: CoordinationCanonicalPlanSchema.nullable().default(null),
+  candidateChanges: CoordinationChangeSetSchema.default({}),
+  baseVersion: z.number().int().positive().optional(),
+  contextRef: CoordinationContextRefSchema.optional(),
+  coordinationCommand: CoordinationCommandSchema.nullable().default(null),
+  pendingPreview: PendingPreviewSchema.nullable().default(null),
+  pendingTool: PendingActionSchema.nullable().default(null),
+  resumeToolResult: SafeToolResultSchema.optional()
+}).strict()
+
+export const GraphResultSchema = GraphResultBaseSchema.extend({
+  canonicalState: CoordinationCanonicalStateSchema.optional(),
+  candidatePlan: CoordinationCanonicalPlanSchema.nullable().default(null),
+  candidateChanges: CoordinationChangeSetSchema.default({}),
+  baseVersion: z.number().int().positive().optional(),
+  contextRef: CoordinationContextRefSchema.optional(),
+  coordinationCommand: CoordinationCommandSchema.nullable().default(null),
+  pendingPreview: PendingPreviewSchema.nullable().default(null),
+  pendingTool: PendingActionSchema.nullable().default(null)
+}).strict()
+
+export type CoordinationPreference = z.infer<typeof CoordinationPreferenceSchema>
+export type PendingAction = z.infer<typeof PendingActionSchema>
+export type SafeToolResult = z.infer<typeof SafeToolResultSchema>
+export type GraphRunInput = z.infer<typeof GraphRunInputSchema>
+export type GraphResumeInput = z.infer<typeof GraphResumeInputSchema>
+export type GraphState = z.infer<typeof GraphStateSchema>
+export type GraphResult = z.infer<typeof GraphResultSchema>

@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { CoordinationCommandSchema, type CoordinationCommand } from './contracts.js'
 import { sanitizeGraphText } from './sanitize.js'
 
 const ToolRequestSchema = z.object({
@@ -12,6 +13,7 @@ const RawDecisionSchema = z.object({
   risk_level: z.enum(['safe', 'low', 'medium', 'high', 'critical']).default('safe'),
   route: z.enum(['frontline', 'faq', 'complaint', 'safety', 'date_coordination', 'manual_review']),
   tool_request: ToolRequestSchema.nullable().default(null),
+  coordination_command: CoordinationCommandSchema.nullable().default(null),
   suggested_actions: z.array(z.string().max(120)).max(5).default([])
 }).strict()
 
@@ -27,6 +29,7 @@ export type ModelDecision = {
   riskLevel: 'safe' | 'low' | 'medium' | 'high' | 'critical'
   route: 'frontline' | 'faq' | 'complaint' | 'safety' | 'date_coordination' | 'manual_review'
   toolRequest: { tool: string; arguments: Record<string, unknown> } | null
+  coordinationCommand?: CoordinationCommand | null
   suggestedActions: string[]
 }
 
@@ -78,7 +81,8 @@ type DecisionModelConfig = {
 
 const SYSTEM_PROMPT = [
   'Return one JSON object only.',
-  'Allowed keys: intent, reply_draft, risk_level, route, tool_request, suggested_actions.',
+  'Allowed keys: intent, reply_draft, risk_level, route, tool_request, coordination_command, suggested_actions.',
+  'For date_coordination, coordination_command is the only semantic decision output. Use canonical fields and include target_version or context_ref for every plan mutation.',
   'Never request raw database access, payment mutation, membership mutation, account bans, secrets, contact details, exact addresses, OpenID, or another user raw messages.',
   'Do not claim any business action succeeded. Business services execute actions after validation.'
 ].join(' ')
@@ -124,6 +128,7 @@ function parseDecisionContent(content: string): ModelDecision {
     riskLevel: parsed.data.risk_level,
     route: parsed.data.route,
     toolRequest: parsed.data.tool_request,
+    coordinationCommand: parsed.data.coordination_command,
     suggestedActions: parsed.data.suggested_actions.map((item) => sanitizeGraphText(item, 120))
   }
 }
