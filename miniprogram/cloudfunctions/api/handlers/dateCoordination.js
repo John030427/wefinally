@@ -156,7 +156,7 @@ function participant(coordination, userId) {
 }
 
 async function qaResetAllowedFor(user, coordination, resolveDep) {
-  if (!coordination || Number(coordination.is_test_data || 0) !== 1) return false
+  if (!coordination) return false
   const { canResetCoordination } = require('../lib/qaPairResetPolicy')
   if (typeof resolveDep !== 'function') return false
   const users = await Promise.all([

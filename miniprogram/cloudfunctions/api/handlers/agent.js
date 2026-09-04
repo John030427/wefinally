@@ -87,7 +87,7 @@ function publicMessage(row) {
     create_time: row.create_time
   }
   if (row.patch_preview) result.patch_preview = sanitizeOutput(row.patch_preview)
-  if (row.context_ref) result.context_ref = sanitizeOutput(row.context_ref)
+  if (Object.prototype.hasOwnProperty.call(row, 'context_ref')) result.context_ref = row.context_ref ? sanitizeOutput(row.context_ref) : null
   if (row.handoff) result.handoff = sanitizeOutput(row.handoff)
   if (row.event_card) result.event_card = sanitizeOutput(row.event_card)
   else if (row.coordination_event_id || row.coordination_event_key) {
@@ -459,7 +459,7 @@ function createAgentHandlers(overrides = {}) {
             event_type: runtimeType,
             actor_user_id: Number(user.id),
             coordination_version: Number(current.coordination_version || 1),
-            idempotency_suffix: `graph:${session.id}:${userMessage.id}`,
+            idempotency_suffix: String(args.idempotencySuffix || `graph:${session.id}:${userMessage.id}`).slice(0, 60),
             changed_dimensions: Array.isArray(args.changedDimensions) ? args.changedDimensions : [],
             relay_text: sanitizeOutput(String(relay.text || partnerRequest.topic || '')).slice(0, 240),
             partner_request: partnerRequest
@@ -568,6 +568,29 @@ function createAgentHandlers(overrides = {}) {
         },
         publish_coordination_event: (args) => graphEvent(args, 'COORDINATION_UPDATED'),
         notify_coordination_partner: (args) => graphEvent(args, 'PARTNER_QUESTION'),
+        record_arrival_and_request_partner_status: async (args) => {
+          const arrival = await graphEvent({
+            ...args,
+            eventType: 'ARRIVED',
+            idempotencySuffix: `arrival:${Number(coordination.id)}:${Number(user.id)}`,
+            relay: { type: 'ARRIVAL_STATUS', text: '我已到达。' }
+          }, 'ARRIVED')
+          const requested = await graphEvent({
+            ...args,
+            eventType: 'ARRIVAL_STATUS_REQUESTED',
+            idempotencySuffix: `arrival-status:${session.id}:${userMessage.id}`
+          }, 'ARRIVAL_STATUS_REQUESTED')
+          return {
+            ok: true,
+            data: {
+              arrivalEventId: arrival.data.eventId,
+              requestEventId: requested.data.eventId,
+              eventType: requested.data.eventType,
+              coordinationVersion: requested.data.coordinationVersion,
+              status: requested.data.status
+            }
+          }
+        },
         get_coordination_status: async (args) => {
           const current = await dep('byId')('date_coordination', Number(args.coordinationId))
           if (!current) throw new Error('日期协调不存在')
@@ -718,7 +741,7 @@ function createAgentHandlers(overrides = {}) {
               coordination_command: dateGraphResult.coordinationCommand || null,
               candidate_plan: dateGraphResult.candidatePlan || null,
               pending_preview: dateGraphResult.pendingPreview || null,
-              ...(resultContextRef ? { context_ref: resultContextRef } : {})
+              context_ref: resultContextRef
             })
             await markSeen()
             return {

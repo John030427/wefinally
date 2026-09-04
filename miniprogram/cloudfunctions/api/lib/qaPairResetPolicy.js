@@ -39,8 +39,7 @@ function realQaUser(user) {
     || Number(user.qa_test_run_enabled || 0) === 1
 }
 
-function syntheticTestCoordination(coordination) {
-  if (!coordination || Number(coordination.is_test_data || 0) !== 1) return false
+function syntheticCoordinationMarker(coordination) {
   return Boolean(String(
     coordination.synthetic_partner_mode
       || coordination.synthetic_partner_journey
@@ -51,10 +50,16 @@ function syntheticTestCoordination(coordination) {
   ).trim())
 }
 
+function syntheticTestCoordination(coordination) {
+  return Boolean(coordination)
+    && Number(coordination.is_test_data || 0) === 1
+    && syntheticCoordinationMarker(coordination)
+}
+
 function canResetCoordination(actor, coordination, participants = []) {
-  if (!realQaUser(actor) || !coordination || Number(coordination.is_test_data || 0) !== 1) return false
+  if (!realQaUser(actor) || !coordination) return false
   if (![Number(coordination.user_a_id), Number(coordination.user_b_id)].includes(Number(actor.id))) return false
-  if (syntheticTestCoordination(coordination)) return true
+  if (syntheticCoordinationMarker(coordination)) return syntheticTestCoordination(coordination)
   const expectedIds = [Number(coordination.user_a_id), Number(coordination.user_b_id)]
   const users = expectedIds.map((id) => (participants || []).find((user) => Number(user && user.id) === id)).filter(Boolean)
   if (users.length !== 2 || users.some((user) => !realQaUser(user))) return false

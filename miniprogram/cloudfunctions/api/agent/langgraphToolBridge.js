@@ -12,7 +12,8 @@ const GRAPH_TOOL_ALLOWLIST = Object.freeze({
   get_coordination_overlap: ['hasOverlap', 'missingFields', 'proposal', 'coordinationVersion'],
   get_coordination_status: ['status', 'businessState', 'coordinationVersion', 'missingDimensions'],
   get_match_status: ['status', 'matchId'],
-  notify_coordination_partner: ['notificationId', 'status', 'coordinationVersion']
+  notify_coordination_partner: ['notificationId', 'status', 'coordinationVersion'],
+  record_arrival_and_request_partner_status: ['arrivalEventId', 'requestEventId', 'eventType', 'coordinationVersion', 'status']
 })
 
 const COORDINATION_TOOLS = new Set([
@@ -27,7 +28,8 @@ const COORDINATION_TOOLS = new Set([
   'publish_coordination_event',
   'get_coordination_overlap',
   'get_coordination_status',
-  'notify_coordination_partner'
+  'notify_coordination_partner',
+  'record_arrival_and_request_partner_status'
 ])
 
 function plainObject(value) {

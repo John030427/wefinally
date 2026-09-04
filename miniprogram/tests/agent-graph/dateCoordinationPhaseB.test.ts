@@ -224,6 +224,20 @@ test('partner inquiry and relay emit structured event tool requests without chan
   assert.equal(relay.pendingTool?.arguments.coordinationVersion, 3)
 })
 
+test('combined arrival records self arrival before asking partner status in one tool request', async () => {
+  const result = await invoke({
+    type: 'ARRIVAL_AND_ASK_PARTNER_STATUS',
+    partner_request: { type: 'ASK_ARRIVAL', topic: '我已到达，请告知你的到达状态和公共集合点。' },
+    context_ref: { type: 'meeting_status', coordination_id: 716, coordination_version: 3 },
+    confidence: 0.99
+  } as unknown as CoordinationCommand)
+  assert.equal(result.phase, 'awaiting_tool')
+  assert.equal(result.pendingTool?.type, 'record_arrival_and_request_partner_status')
+  assert.equal(result.pendingTool?.arguments.coordinationVersion, 3)
+  assert.equal(result.pendingTool?.arguments.contextRef?.type, 'meeting_status')
+  assert.equal(result.coordinationVersion, 3)
+})
+
 test('invitation, confirmation, arrival and clarification commands all route structurally', async () => {
   const invitation = await invoke({
     type: 'ACCEPT_INVITATION',

@@ -148,6 +148,7 @@ export const CoordinationCommandTypeSchema = z.enum([
   'ARRIVAL_STATUS',
   'ARRIVAL_HINT',
   'ASK_PARTNER_ARRIVAL',
+  'ARRIVAL_AND_ASK_PARTNER_STATUS',
   'DELAY_NOTICE',
   'RELAY_MESSAGE',
   'CANCEL_COORDINATION',
@@ -341,7 +342,8 @@ export const CoordinationCommandSchema = z.object({
   if (CHANGE_COMMANDS.has(value.type) && Object.keys(value.changes).length === 0) {
     context.addIssue({ code: 'custom', path: ['changes'], message: 'change command requires at least one change' })
   }
-  if ((value.type === 'ASK_PARTNER' || value.type === 'PROPOSE_CHANGE_AND_ASK_PARTNER' || value.type === 'ASK_PARTNER_ARRIVAL')
+  if ((value.type === 'ASK_PARTNER' || value.type === 'PROPOSE_CHANGE_AND_ASK_PARTNER' || value.type === 'ASK_PARTNER_ARRIVAL'
+    || value.type === 'ARRIVAL_AND_ASK_PARTNER_STATUS')
     && !value.partner_request) {
     context.addIssue({ code: 'custom', path: ['partner_request'], message: 'partner request is required' })
   }

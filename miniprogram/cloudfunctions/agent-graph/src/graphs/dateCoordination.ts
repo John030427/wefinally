@@ -417,6 +417,20 @@ function partnerAction(state: DateCoordinationState): Partial<DateCoordinationSt
   return { phase: 'awaiting_tool', pendingAction: pending, pendingTool: pending, errorCode: undefined }
 }
 
+function arrivalAndAskPartnerStatusAction(state: DateCoordinationState): Partial<DateCoordinationState> {
+  const command = state.coordinationCommand
+  if (!command || command.type !== 'ARRIVAL_AND_ASK_PARTNER_STATUS' || !command.partner_request) {
+    return { errorCode: 'invalid_command', ...clearToolState() }
+  }
+  const pending = action('record_arrival_and_request_partner_status', {
+    coordinationId: state.coordinationId,
+    coordinationVersion: state.coordinationVersion,
+    contextRef: state.contextRef,
+    partnerRequest: command.partner_request
+  })
+  return { phase: 'awaiting_tool', pendingAction: pending, pendingTool: pending, errorCode: undefined }
+}
+
 function eventAction(state: DateCoordinationState): Partial<DateCoordinationState> {
   const command = state.coordinationCommand
   if (!command || !command.relay) return { errorCode: 'invalid_command', ...clearToolState() }
@@ -445,6 +459,7 @@ function routeCommand(state: DateCoordinationState): string {
   if (type === 'QUERY_STATUS') return 'replyFromCanonicalState'
   if (type === 'PROPOSE_CHANGE' || type === 'PROPOSE_CHANGE_AND_ASK_PARTNER') return 'applyPlanIntent'
   if (type === 'ASK_PARTNER' || type === 'ASK_PARTNER_ARRIVAL') return 'partnerAction'
+  if (type === 'ARRIVAL_AND_ASK_PARTNER_STATUS') return 'arrivalAndAskPartnerStatusAction'
   if (['ARRIVAL_STATUS', 'ARRIVAL_HINT', 'DELAY_NOTICE', 'RELAY_MESSAGE'].includes(type || '')) return 'eventAction'
   return 'commandAction'
 }
@@ -583,6 +598,7 @@ export function buildDateCoordinationGraph(dependencies: DateCoordinationGraphDe
     }))
     .addNode('applyPlanIntent', (state) => applyPlanIntent(state))
     .addNode('partnerAction', (state) => partnerAction(state))
+    .addNode('arrivalAndAskPartnerStatusAction', (state) => arrivalAndAskPartnerStatusAction(state))
     .addNode('eventAction', (state) => eventAction(state))
     .addNode('commandAction', (state) => commandAction(state))
     .addNode('finishError', (state) => ({ phase: 'error', replyDraft: '', ...clearToolState() }))
@@ -629,6 +645,7 @@ export function buildDateCoordinationGraph(dependencies: DateCoordinationGraphDe
     .addEdge('replyFromCanonicalState', END)
     .addEdge('applyPlanIntent', END)
     .addEdge('partnerAction', END)
+    .addEdge('arrivalAndAskPartnerStatusAction', END)
     .addEdge('eventAction', END)
     .addEdge('commandAction', END)
     .addEdge('finishError', END)

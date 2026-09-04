@@ -2,6 +2,7 @@ const { get, post } = require('../../utils/request')
 const { API_PATHS } = require('../../utils/constants')
 const { formatDate } = require('../../utils/util')
 const { buildPatchSuccessCopy } = require('./patchStatusCopy')
+const { activeContextFromMessages, activeContextAfterResponse, contextRefPayload } = require('./contextRefLifecycle')
 
 const AGENT_TYPES = {
   PLATFORM_SERVICE: 'platform_service',
@@ -122,6 +123,7 @@ function normalizeEventCard(raw) {
 function assistantMessage(item, index) {
   const patchPreview = normalizePatchPreview(item && item.patch_preview, item && item.requires_confirmation)
   const eventCard = normalizeEventCard(item && item.event_card)
+  const hasContextRef = Boolean(item && Object.prototype.hasOwnProperty.call(item, 'context_ref'))
   return {
     id: `b_${item.id || index}`,
     content: item.ai_content || item.reply || item.content || '已收到您的咨询',
@@ -133,6 +135,7 @@ function assistantMessage(item, index) {
       || (patchPreview && patchPreview.contextRef)
       || (eventCard && eventCard.contextRef)
       || null,
+    contextResolved: hasContextRef && !item.context_ref,
     handoff: item && item.handoff && item.handoff.available ? item.handoff : null
   }
 }
@@ -156,18 +159,6 @@ function normalizeMessages(raw) {
     }
   })
   return flat
-}
-
-function activeContextFromMessages(messages) {
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index]
-    const patch = message.patchPreview
-    if (patch && ['pending_confirmation', 'pending_primary_selection'].includes(String(patch.status || '')) && patch.contextRef) {
-      return patch.contextRef
-    }
-    if (message.contextRef) return message.contextRef
-  }
-  return null
 }
 
 function decodePrompt(value) {
@@ -355,16 +346,14 @@ Page({
       content: text,
       message: text,
       agent_type: this.data.agentType,
-      ...(this.data.activeContextRef ? { context_ref: this.data.activeContextRef } : {})
-    }, this.data.handoffContext || {}), { showError: false })
+    }, contextRefPayload(this.data.activeContextRef), this.data.handoffContext || {}), { showError: false })
   },
 
   async sendLegacyMessage(text) {
     return post(API_PATHS.CHAT_SEND, Object.assign({
       message: text,
       content: text,
-      ...(this.data.activeContextRef ? { context_ref: this.data.activeContextRef } : {})
-    }, this.data.handoffContext || {}), { showError: false })
+    }, contextRefPayload(this.data.activeContextRef), this.data.handoffContext || {}), { showError: false })
   },
 
   async onSend() {
@@ -395,7 +384,7 @@ Page({
       })
       this.setData({
         messages: [...this.data.messages, botMsg],
-        activeContextRef: botMsg.contextRef || activeContextFromMessages([...this.data.messages, botMsg]),
+        activeContextRef: activeContextAfterResponse(this.data.messages, botMsg),
         scrollToView: `msg-${botMsg.id}`
       })
     } catch (err) {
@@ -540,7 +529,7 @@ Page({
       }
       this.setData({
         messages: [...messages, notice],
-        activeContextRef: action === 'confirm' ? null : activeContextFromMessages(messages),
+        activeContextRef: null,
         scrollToView: `msg-${notice.id}`
       })
     } catch (err) {

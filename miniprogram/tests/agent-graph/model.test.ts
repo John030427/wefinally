@@ -146,7 +146,7 @@ test('date coordinator prompt documents the complete command contract and ground
     'QUERY_STATUS', 'PROPOSE_CHANGE', 'ASK_PARTNER', 'PROPOSE_CHANGE_AND_ASK_PARTNER',
     'CONFIRM_PREVIEW', 'CANCEL_PREVIEW', 'CONFIRM_CURRENT_PLAN', 'REJECT_CURRENT_PLAN',
     'ACCEPT_INVITATION', 'DECLINE_INVITATION', 'ARRIVAL_STATUS', 'ARRIVAL_HINT',
-    'ASK_PARTNER_ARRIVAL', 'DELAY_NOTICE', 'RELAY_MESSAGE', 'CANCEL_COORDINATION', 'CLARIFY'
+    'ASK_PARTNER_ARRIVAL', 'ARRIVAL_AND_ASK_PARTNER_STATUS', 'DELAY_NOTICE', 'RELAY_MESSAGE', 'CANCEL_COORDINATION', 'CLARIFY'
   ]) assert.match(systemPrompt, new RegExp(command))
   for (const field of [
     'date', 'period', 'start_time', 'activity', 'activity_detail', 'venue', 'area',
@@ -161,6 +161,8 @@ test('date coordinator prompt documents the complete command contract and ground
     '奶茶改吃饭', '酸菜鱼', '只问对方意见', '还是上一个', '我到了', '你在哪',
     '白T黑裤', '晚到10分钟', 'flexible', 'AA', '预算', '时长'
   ]) assert.match(systemPrompt, new RegExp(phrase))
+  assert.match(systemPrompt, /ARRIVAL_AND_ASK_PARTNER_STATUS/)
+  assert.match(systemPrompt, /先记录本人 ARRIVED，再发送 ARRIVAL_STATUS_REQUESTED/)
   assert.match(systemPrompt, /A preview is only written after confirmation/)
   assert.match(systemPrompt, /Do not claim any business action succeeded/)
 })

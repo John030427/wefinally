@@ -17,6 +17,7 @@ async function main() {
     'get_coordination_status',
     'get_match_status',
     'notify_coordination_partner',
+    'record_arrival_and_request_partner_status',
     'publish_coordination_event',
     'reject_date_application',
     'respond_date_invitation'
@@ -38,6 +39,42 @@ async function main() {
   }, context, services)
   assert.deepStrictEqual(result, { ok: true, data: { previewId: 'preview_1', status: 'pending' } })
   assert.strictEqual(calls, 1)
+
+  let arrivalToolCalls = []
+  const arrivalResult = await executeGraphTool({
+    type: 'record_arrival_and_request_partner_status',
+    arguments: {
+      coordinationId: 716,
+      coordinationVersion: 3,
+      contextRef: { type: 'meeting_status', coordination_id: 716, coordination_version: 3 }
+    }
+  }, context, {
+    record_arrival_and_request_partner_status: async (args, safeContext) => {
+      arrivalToolCalls.push({ args, safeContext })
+      return {
+        ok: true,
+        data: {
+          arrivalEventId: 801,
+          requestEventId: 802,
+          eventType: 'ARRIVAL_STATUS_REQUESTED',
+          coordinationVersion: safeContext.coordinationVersion,
+          status: 'projected',
+          private_location: 'never'
+        }
+      }
+    }
+  })
+  assert.deepStrictEqual(arrivalResult, {
+    ok: true,
+    data: {
+      arrivalEventId: 801,
+      requestEventId: 802,
+      eventType: 'ARRIVAL_STATUS_REQUESTED',
+      coordinationVersion: 3,
+      status: 'projected'
+    }
+  })
+  assert.equal(arrivalToolCalls.length, 1)
 
   await assert.rejects(() => executeGraphTool({ type: 'drop_database', arguments: {} }, context, services), /tool_not_allowed/)
   await assert.rejects(() => executeGraphTool({
