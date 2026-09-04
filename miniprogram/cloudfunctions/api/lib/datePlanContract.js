@@ -297,7 +297,7 @@ function validateDatePlan(planInput = {}, stage = 'final') {
   } else if (stage === 'draft') {
     if (resolution.status === 'resolved') {
       const conflict = activityVenueConflict(plan.activity, resolution.activity_venue)
-      if (conflict) {
+      if (conflict && planInput.venue_choice_mode !== 'meet_first') {
         conflicts.push(conflict)
         clarification = conflict.message
       }
@@ -307,8 +307,9 @@ function validateDatePlan(planInput = {}, stage = 'final') {
   if (!clarification && missing.includes('activity_venue')) {
     clarification = resolution.clarification || '想在哪里见面？商场、商圈或具体店名都可以'
   }
-  if (!clarification && plan.activity === '电影' && /星巴克|咖啡/.test(plan.meet_point || plan.activity_venue || '')) {
-    clarification = '星巴克可以作为集合点，但看电影还需要具体电影院作为活动场地。'
+  if (!clarification && planInput.venue_choice_mode !== 'meet_first'
+    && activityVenueConflict(plan.activity, plan.activity_venue)) {
+    clarification = '请确认是否先在这里碰面，再去看电影；影院也可以双方同意后再商量。'
   }
 
   return {
