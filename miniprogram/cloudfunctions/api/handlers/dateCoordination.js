@@ -48,7 +48,7 @@ const {
   buildCoordinationViewModel
 } = require('../lib/invitationCoordination')
 const { buildCoordinationEventCard } = require('../lib/coordinationProjection')
-const { toCanonicalCoordinationEventType } = require('../../agent-graph/shared/coordinationAdapters.cjs')
+const { toCanonicalCoordinationEventType } = require('../lib/coordinationAdapters.cjs')
 
 function coordinationSubmissionError(code, message, httpCode = 409) {
   const error = new Error(message)
@@ -155,10 +155,15 @@ function participant(coordination, userId) {
   return [Number(coordination.user_a_id), Number(coordination.user_b_id)].includes(Number(userId))
 }
 
-function qaResetAllowedFor(user, coordination) {
+async function qaResetAllowedFor(user, coordination, resolveDep) {
   if (!coordination || Number(coordination.is_test_data || 0) !== 1) return false
-  const { isRealQaUser } = require('../lib/qaPairResetPolicy')
-  return isRealQaUser(user) && participant(coordination, user.id)
+  const { canResetCoordination } = require('../lib/qaPairResetPolicy')
+  if (typeof resolveDep !== 'function') return false
+  const users = await Promise.all([
+    resolveDep('byId')('user', Number(coordination.user_a_id)),
+    resolveDep('byId')('user', Number(coordination.user_b_id))
+  ])
+  return canResetCoordination(user, coordination, users)
 }
 
 function deadlinePassed(value, now) {
@@ -429,7 +434,7 @@ function createDateCoordinationHandlers(overrides = {}) {
     return defaults[name]
   }
 
-  async function enqueueProjectionRetry(operation, coordination, payload, error) {
+  async function enqueueProjectionRetry(operation, coordination, payload, error, projectionKind = '') {
     try {
       const eventType = String(payload && payload.event_type || operation)
       const actor = Number(payload && (payload.actor_user_id || payload.user_id) || 0)
@@ -443,6 +448,7 @@ function createDateCoordinationHandlers(overrides = {}) {
         operation,
         coordination_id: Number(coordination && coordination.id || 0),
         coordination_version: version,
+        projection_kind: String(projectionKind || ''),
         payload,
         status: 'pending',
         attempts: 0,
@@ -1286,7 +1292,7 @@ function createDateCoordinationHandlers(overrides = {}) {
         my_application: mine && mine.application
       }), role),
       is_test_data: Number(coordination.is_test_data || 0) === 1,
-      qa_reset_allowed: qaResetAllowedFor(user, coordination),
+      qa_reset_allowed: await qaResetAllowedFor(user, coordination, dep),
       test_data_badge: fixtureSceneBadge(Object.assign({}, coordination, {
         fixture_journey: coordination.synthetic_partner_journey
       })),
@@ -1366,7 +1372,7 @@ function createDateCoordinationHandlers(overrides = {}) {
   async function qaReset(data, wxContext) {
     const user = await dep('currentUser')(wxContext)
     const coordination = await dep('byId')('date_coordination', coordinationId(data))
-    if (!qaResetAllowedFor(user, coordination)) {
+    if (!await qaResetAllowedFor(user, coordination, dep)) {
       throw coordinationSubmissionError('QA_RESET_FORBIDDEN', '仅限授权 QA 测试账号重置测试协调', 403)
     }
     const { executeQaCoordinationReset } = require('../lib/qaPairResetService')
@@ -1381,6 +1387,13 @@ function createDateCoordinationHandlers(overrides = {}) {
       claimIfStatus: dep('claimIfStatus'),
       publishCoordinationEvent: dep('publishCoordinationEvent'),
       writeInboxNotification: dep('writeInboxNotification'),
+      enqueueProjectionRetry: (operation, current, payload, error, projectionKind) => enqueueProjectionRetry(
+        operation,
+        current,
+        payload,
+        error,
+        projectionKind
+      ),
       now: dep('now')
     })
     const updated = await dep('byId')('date_coordination', coordinationId(data))

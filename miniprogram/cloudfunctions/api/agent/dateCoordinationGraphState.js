@@ -3,7 +3,7 @@ const { buildInvitationCard, invitationProposalOf, invitationVersionOf } = requi
 const {
   toCanonicalCoordinationPlan,
   toCanonicalCoordinationChanges
-} = require('../../agent-graph/shared/coordinationAdapters.cjs')
+} = require('../lib/coordinationAdapters.cjs')
 
 function uniqueStrings(values, limit, maxLength) {
   return [...new Set((values || [])
@@ -43,6 +43,53 @@ function budgetBand(value) {
 
 function emptyPreference() {
   return { dateWindows: [], regions: [], venueTypes: [] }
+}
+
+function positiveId(value) {
+  const id = Number(value)
+  return Number.isSafeInteger(id) && id > 0 ? id : 0
+}
+
+function normalizeContextRef(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const coordinationId = positiveId(value.coordination_id || value.coordinationId)
+  const coordinationVersion = positiveId(value.coordination_version || value.coordinationVersion)
+  const type = String(value.type || '')
+  if (!coordinationId || !coordinationVersion) return null
+  if (type === 'proposal') {
+    const proposalId = positiveId(value.proposal_id || value.proposalId)
+    return proposalId ? { type, coordination_id: coordinationId, coordination_version: coordinationVersion, proposal_id: proposalId } : null
+  }
+  if (type === 'patch_preview') {
+    const patchId = positiveId(value.patch_id || value.patchId)
+    return patchId ? { type, coordination_id: coordinationId, coordination_version: coordinationVersion, patch_id: patchId } : null
+  }
+  if (type === 'invitation') {
+    const invitationVersion = positiveId(value.invitation_version || value.invitationVersion)
+    return invitationVersion ? { type, coordination_id: coordinationId, coordination_version: coordinationVersion, invitation_version: invitationVersion } : null
+  }
+  if (type === 'partner_inquiry') {
+    const inquiryId = positiveId(value.inquiry_id || value.inquiryId)
+    const eventId = positiveId(value.event_id || value.eventId)
+    if (!inquiryId && !eventId) return null
+    return {
+      type,
+      coordination_id: coordinationId,
+      coordination_version: coordinationVersion,
+      ...(inquiryId ? { inquiry_id: inquiryId } : {}),
+      ...(eventId ? { event_id: eventId } : {})
+    }
+  }
+  if (type === 'meeting_status') {
+    const eventId = positiveId(value.event_id || value.eventId)
+    return {
+      type,
+      coordination_id: coordinationId,
+      coordination_version: coordinationVersion,
+      ...(eventId ? { event_id: eventId } : {})
+    }
+  }
+  return null
 }
 
 function safePreference(application) {
@@ -248,6 +295,25 @@ function buildDateCoordinationGraphInput(coordination, applications, user, optio
     ? toCanonicalCoordinationPlan(runtimePlan)
     : null
   const pendingPreview = pendingPreviewFromBackend(options.pendingPatch, currentPlan, coordination.id)
+  const proposalId = positiveId(runtimePlan && (runtimePlan.id || runtimePlan.proposal_id))
+  const suppliedContextRef = normalizeContextRef(options.contextRef)
+  const activeContextRef = suppliedContextRef
+    || (pendingPreview && pendingPreview.contextRef)
+    || (proposalId
+      ? {
+        type: 'proposal',
+        coordination_id: Number(coordination.id),
+        coordination_version: version,
+        proposal_id: proposalId
+      }
+      : (invitationVersionOf(coordination, initiatorApp) > 0
+        ? {
+          type: 'invitation',
+          coordination_id: Number(coordination.id),
+          coordination_version: version,
+          invitation_version: invitationVersionOf(coordination, initiatorApp)
+        }
+        : null))
   const canonicalState = {
     coordination_id: Number(coordination.id),
     coordination_version: version,
@@ -306,7 +372,8 @@ function buildDateCoordinationGraphInput(coordination, applications, user, optio
     partnerProgress: partnerProgress(coordination, applications, confirmations, user),
     confirmationSnapshot: snapshot,
     canonicalState,
-    pendingPreview: pendingPreview || null
+    pendingPreview: pendingPreview || null,
+    ...(activeContextRef ? { contextRef: activeContextRef } : {})
   }
 }
 
@@ -315,5 +382,6 @@ module.exports = {
   safePreference,
   latestApplication,
   canonicalFromBackend,
-  buildDateCoordinationGraphInput
+  buildDateCoordinationGraphInput,
+  normalizeContextRef
 }

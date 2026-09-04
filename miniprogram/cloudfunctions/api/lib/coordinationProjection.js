@@ -4,7 +4,7 @@ const {
   toCanonicalCoordinationPlan,
   toCanonicalCoordinationEventType,
   toRuntimeCoordinationEventType
-} = require('../../agent-graph/shared/coordinationAdapters.cjs')
+} = require('./coordinationAdapters.cjs')
 
 const CORE_PLAN_FIELDS = Object.freeze(['date', 'start_time', 'activity', 'venue'])
 const SOFT_PLAN_FIELDS = Object.freeze(['area', 'budget', 'payment', 'duration'])
@@ -78,6 +78,7 @@ function buildCoordinationEventCard(input = {}) {
     event.changed_dimensions || shareableSummary.changed_dimensions
   )
   const eventId = Number(event.id || event.event_id || event.coordination_event_id || 0)
+  const factRefs = event.safe_payload && typeof event.safe_payload === 'object' ? event.safe_payload : {}
   const card = {
     source: 'coordination_event',
     event_id: eventId,
@@ -89,6 +90,40 @@ function buildCoordinationEventCard(input = {}) {
     changed_dimensions_text: changedDimensions.map((item) => DIMENSION_LABELS[item]).join('、'),
     proposal_key: String(event.proposal_key || safeSummary.proposal_key || '').slice(0, 120),
     summary
+  }
+  const proposalId = Number(factRefs.proposal_id || event.proposal_id || 0)
+  const patchId = Number(factRefs.patch_id || event.patch_id || 0)
+  const inquiryId = Number(factRefs.inquiry_id || event.inquiry_id || 0)
+  if (proposalId > 0) {
+    card.proposal_id = proposalId
+    card.context_ref = {
+      type: 'proposal',
+      coordination_id: card.coordination_id,
+      coordination_version: card.coordination_version,
+      proposal_id: proposalId
+    }
+  } else if (patchId > 0) {
+    card.patch_id = patchId
+    card.context_ref = {
+      type: 'patch_preview',
+      coordination_id: card.coordination_id,
+      coordination_version: card.coordination_version,
+      patch_id: patchId
+    }
+  } else if (inquiryId > 0 || ['PARTNER_QUESTION', 'PARTNER_RESPONSE'].includes(canonicalType)) {
+    card.context_ref = {
+      type: 'partner_inquiry',
+      coordination_id: card.coordination_id,
+      coordination_version: card.coordination_version,
+      ...(inquiryId > 0 ? { inquiry_id: inquiryId } : (eventId > 0 ? { event_id: eventId } : {}))
+    }
+  } else if (['ARRIVED', 'ARRIVAL_HINT_UPDATED', 'ARRIVAL_STATUS_REQUESTED', 'DELAY_NOTICE', 'MEETING_ARRIVED', 'MEETING_NOT_FOUND', 'MEETING_MISMATCH'].includes(canonicalType)) {
+    card.context_ref = {
+      type: 'meeting_status',
+      coordination_id: card.coordination_id,
+      coordination_version: card.coordination_version,
+      ...(eventId > 0 ? { event_id: eventId } : {})
+    }
   }
   return card
 }

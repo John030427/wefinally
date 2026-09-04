@@ -1,6 +1,7 @@
 const { get, post } = require('../../utils/request')
 const { API_PATHS } = require('../../utils/constants')
 const { formatDate } = require('../../utils/util')
+const { buildPatchSuccessCopy } = require('./patchStatusCopy')
 
 const AGENT_TYPES = {
   PLATFORM_SERVICE: 'platform_service',
@@ -89,7 +90,17 @@ function normalizePatchPreview(raw, requiresConfirmation) {
       }
     }),
     affectsExistingProposal: Boolean(preview.affects_existing_proposal),
-    willNotifyPartner: Boolean(preview.will_notify_partner)
+    willNotifyPartner: Boolean(preview.will_notify_partner),
+    contextRef: patch.context_ref || patch.contextRef || preview.context_ref || preview.contextRef || (
+      patch.id && patch.base_version
+        ? {
+          type: 'patch_preview',
+          coordination_id: Number(patch.coordination_id || 0),
+          coordination_version: Number(patch.base_version),
+          patch_id: Number(patch.id)
+        }
+        : null
+    )
   }
 }
 
@@ -103,7 +114,8 @@ function normalizeEventCard(raw) {
     changedDimensions: Array.isArray(card.changed_dimensions) ? card.changed_dimensions : [],
     changedDimensionsText: String(card.changed_dimensions_text || ''),
     proposalKey: String(card.proposal_key || ''),
-    summary: String(card.summary || '')
+    summary: String(card.summary || ''),
+    contextRef: card.context_ref || card.contextRef || null
   }
 }
 
@@ -117,6 +129,10 @@ function assistantMessage(item, index) {
     timeText: formatDate(item.create_time || item.createdAt || item.time, 'HH:mm'),
     patchPreview,
     eventCard,
+    contextRef: item && (item.context_ref || item.contextRef)
+      || (patchPreview && patchPreview.contextRef)
+      || (eventCard && eventCard.contextRef)
+      || null,
     handoff: item && item.handoff && item.handoff.available ? item.handoff : null
   }
 }
@@ -131,7 +147,8 @@ function normalizeMessages(raw) {
         id: `u_${item.id || index}`,
         content: item.user_content || item.question || item.content || '',
         isBot: false,
-        timeText
+        timeText,
+        contextRef: item.context_ref || item.contextRef || null
       })
     }
     if (item.ai_content || item.reply || item.role === 'assistant') {
@@ -139,6 +156,18 @@ function normalizeMessages(raw) {
     }
   })
   return flat
+}
+
+function activeContextFromMessages(messages) {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index]
+    const patch = message.patchPreview
+    if (patch && ['pending_confirmation', 'pending_primary_selection'].includes(String(patch.status || '')) && patch.contextRef) {
+      return patch.contextRef
+    }
+    if (message.contextRef) return message.contextRef
+  }
+  return null
 }
 
 function decodePrompt(value) {
@@ -167,6 +196,7 @@ Page({
     coordinatorWelcome: '',
     coordinatorReadOnly: false,
     patchSubmitting: false,
+    activeContextRef: null,
     supportCode: '',
     supportCodeState: 'loading',
     supportCodeError: ''
@@ -296,6 +326,7 @@ Page({
     this.setData({
       pageState: 'success',
       messages,
+      activeContextRef: activeContextFromMessages(messages),
       scrollToView: `msg-${messages[messages.length - 1].id}`
     })
     this.autoSendHandoffMessage()
@@ -323,12 +354,17 @@ Page({
     return post(`${API_PATHS.AGENT_SESSIONS}/${sessionId}/messages`, Object.assign({
       content: text,
       message: text,
-      agent_type: this.data.agentType
+      agent_type: this.data.agentType,
+      ...(this.data.activeContextRef ? { context_ref: this.data.activeContextRef } : {})
     }, this.data.handoffContext || {}), { showError: false })
   },
 
   async sendLegacyMessage(text) {
-    return post(API_PATHS.CHAT_SEND, Object.assign({ message: text, content: text }, this.data.handoffContext || {}), { showError: false })
+    return post(API_PATHS.CHAT_SEND, Object.assign({
+      message: text,
+      content: text,
+      ...(this.data.activeContextRef ? { context_ref: this.data.activeContextRef } : {})
+    }, this.data.handoffContext || {}), { showError: false })
   },
 
   async onSend() {
@@ -357,7 +393,11 @@ Page({
         content,
         timeText: formatDate(new Date(), 'HH:mm')
       })
-      this.setData({ messages: [...this.data.messages, botMsg], scrollToView: `msg-${botMsg.id}` })
+      this.setData({
+        messages: [...this.data.messages, botMsg],
+        activeContextRef: botMsg.contextRef || activeContextFromMessages([...this.data.messages, botMsg]),
+        scrollToView: `msg-${botMsg.id}`
+      })
     } catch (err) {
       wx.showToast({ title: (err && err.message) || '发送失败，请重试', icon: 'none', duration: 3000 })
     } finally {
@@ -480,7 +520,7 @@ Page({
 
     this.setData({ patchSubmitting: true })
     try {
-      await post(
+      const response = await post(
         `${API_PATHS.DATE_COORDINATIONS}/${this.data.coordinationId}/application-patches/${patchId}/${action}`,
         { patch_id: patchId, patchId },
         { showError: false }
@@ -493,12 +533,16 @@ Page({
       const notice = {
         id: `b_${Date.now()}`,
         content: action === 'confirm'
-          ? (isCreate ? '约会申请已发送给对方，正在等待回应。' : '修改已确认，我已更新约会条件并通知对方。')
+          ? buildPatchSuccessCopy(response)
           : (isCreate ? '好的，这份申请已暂不发送。' : '好的，已暂不修改，原来的约会条件会继续保留。'),
         isBot: true,
         timeText: formatDate(new Date(), 'HH:mm')
       }
-      this.setData({ messages: [...messages, notice], scrollToView: `msg-${notice.id}` })
+      this.setData({
+        messages: [...messages, notice],
+        activeContextRef: action === 'confirm' ? null : activeContextFromMessages(messages),
+        scrollToView: `msg-${notice.id}`
+      })
     } catch (err) {
       this.handlePatchError(err)
     } finally {

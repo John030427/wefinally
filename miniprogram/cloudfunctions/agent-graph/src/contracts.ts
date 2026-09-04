@@ -581,6 +581,7 @@ export type PendingPreview = z.infer<typeof PendingPreviewSchema>
 
 export const GraphRunInputSchema = GraphRunInputBaseSchema.extend({
   canonicalState: CoordinationCanonicalStateSchema.optional(),
+  contextRef: CoordinationContextRefSchema.optional(),
   pendingPreview: PendingPreviewSchema.nullable().optional()
 }).strict()
 

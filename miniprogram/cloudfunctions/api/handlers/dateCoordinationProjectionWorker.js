@@ -37,9 +37,21 @@ async function processCoordinationProjectionOutbox({ deps = defaultDeps(), limit
       if (row.operation === 'publish_coordination_event') {
         const coordination = await deps.byId('date_coordination', Number(row.coordination_id))
         if (!coordination) throw new Error('DATE_COORDINATION_NOT_FOUND')
-        await deps.publishCoordinationEvent({ coordination, event: payload })
+        const published = await deps.publishCoordinationEvent({ coordination, event: payload })
+        if (row.projection_kind === 'qa_reset_event') {
+          await deps.updateByDoc('date_coordination', coordination, {
+            qa_reset_event_status: 'projected',
+            qa_reset_event_id: Number(published && published.event && published.event.id || published && published.id || 0) || null
+          })
+        }
       } else if (row.operation === 'write_inbox_notification') {
         await deps.writeInboxNotification(payload)
+        if (row.projection_kind === 'qa_reset_notification') {
+          const coordination = await deps.byId('date_coordination', Number(row.coordination_id))
+          if (coordination) await deps.updateByDoc('date_coordination', coordination, {
+            qa_reset_notification_status: 'projected'
+          })
+        }
       } else if (row.operation === 'queue_reminder') {
         const existing = await deps.first('agent_notification_job', { idempotency_key: payload.idempotency_key })
         if (!existing) await deps.addWithId('agent_notification_job', payload, 'agent_notification_job')

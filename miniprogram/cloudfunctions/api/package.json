@@ -2,6 +2,9 @@
   "name": "wefinally-api",
   "version": "1.0.0",
   "main": "index.js",
+  "scripts": {
+    "build:deployable": "node scripts/build-deployable.cjs"
+  },
   "dependencies": {
     "bcryptjs": "^2.4.3",
     "@cloudbase/node-sdk": "^3.16.0",

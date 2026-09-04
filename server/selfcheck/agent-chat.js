@@ -302,6 +302,19 @@ async function main() {
   assert.notStrictEqual(dateGraphPayloads[1].actorRef, dateGraphPayload.actorRef)
   assert.strictEqual(dateGraphPayloads[1].party, 'B')
   assert(deps.tables.agent_run.some((row) => row.provider === 'langgraph' && row.session_id === coordinator.id))
+  const activeContextRef = {
+    type: 'meeting_status',
+    coordination_id: 50,
+    coordination_version: 1
+  }
+  await handlers.send({
+    session_id: coordinator.id,
+    message: '我到了，你在哪？',
+    context_ref: activeContextRef
+  }, contextA)
+  assert.deepStrictEqual(dateGraphPayloads.at(-1).contextRef, activeContextRef)
+  const contextHistory = await handlers.messages({ id: coordinator.id }, contextA)
+  assert(contextHistory.messages.some((message) => JSON.stringify(message.context_ref) === JSON.stringify(activeContextRef)))
   const graphJson = JSON.stringify(dateGraphPayload)
   for (const forbidden of ['share_message', 'other_requirements', 'transport_constraints', '不公开', 'openid', 'phone']) {
     assert.strictEqual(graphJson.includes(forbidden), false)

@@ -3,11 +3,11 @@
 const {
   assertConfirmText,
   qaError,
-  isRealQaUser,
+  canResetCoordination,
   resolveQaPair,
   DEFAULT_QA_COHORT
 } = require('./qaPairResetPolicy')
-const { toRuntimeCoordinationEventType } = require('../../agent-graph/shared/coordinationAdapters.cjs')
+const { toRuntimeCoordinationEventType } = require('./coordinationAdapters.cjs')
 
 const REQUEST_ID_RE = /^[A-Za-z0-9_-]{8,80}$/
 const PAGE_SIZE = 100
@@ -90,18 +90,30 @@ function resetUserPatch(timestamp) {
 async function executeQaCoordinationReset(input = {}, deps = {}) {
   const actor = input.actor || {}
   const coordination = input.coordination
-  if (!isRealQaUser(actor)) throw qaError('QA_RESET_FORBIDDEN', '仅限授权 QA 测试账号重置', 403)
-  if (!coordination || Number(coordination.is_test_data || 0) !== 1) {
-    throw qaError('QA_RESET_FORBIDDEN', '仅限测试协调可以重置', 403)
-  }
-  if (![Number(coordination.user_a_id), Number(coordination.user_b_id)].includes(Number(actor.id))) {
-    throw qaError('QA_RESET_FORBIDDEN', '无权重置该约会协调', 403)
+  const participants = coordination && typeof deps.byId === 'function'
+    ? await Promise.all([
+      deps.byId('user', Number(coordination.user_a_id)),
+      deps.byId('user', Number(coordination.user_b_id))
+    ])
+    : []
+  if (!canResetCoordination(actor, coordination, participants)) {
+    throw qaError('QA_RESET_FORBIDDEN', '仅限合成测试协调或同一 QA 测试组的双方真实账号重置', 403)
   }
   if (String(input.confirmText || '') !== QA_COORDINATION_RESET_CONFIRM_TEXT) {
     throw qaError('QA_RESET_CONFIRM_REQUIRED', `请确认“${QA_COORDINATION_RESET_CONFIRM_TEXT}”`, 400)
   }
   if (coordination.business_state === 'qa_reset' && coordination.status === 'closed') {
-    return { id: Number(coordination.id), status: 'closed', reset: false, idempotent: true, event_status: 'projected' }
+    return {
+      id: Number(coordination.id),
+      status: 'closed',
+      reset: false,
+      idempotent: true,
+      event_id: Number(coordination.qa_reset_event_id || 0) || null,
+      event_status: coordination.qa_reset_event_status || 'pending',
+      notification_status: coordination.qa_reset_notification_status || 'pending',
+      projection_pending: (coordination.qa_reset_event_status || 'pending') !== 'projected'
+        || (coordination.qa_reset_notification_status || 'pending') === 'pending'
+    }
   }
   const timestamp = deps.now()
   const resetPatch = {
@@ -127,7 +139,17 @@ async function executeQaCoordinationReset(input = {}, deps = {}) {
         ? await deps.byId('date_coordination', Number(coordination.id))
         : null
       if (latest && latest.business_state === 'qa_reset' && latest.status === 'closed') {
-        return { id: Number(latest.id), status: 'closed', reset: false, idempotent: true, event_status: 'projected' }
+        return {
+          id: Number(latest.id),
+          status: 'closed',
+          reset: false,
+          idempotent: true,
+          event_id: Number(latest.qa_reset_event_id || 0) || null,
+          event_status: latest.qa_reset_event_status || 'pending',
+          notification_status: latest.qa_reset_notification_status || 'pending',
+          projection_pending: (latest.qa_reset_event_status || 'pending') !== 'projected'
+            || (latest.qa_reset_notification_status || 'pending') === 'pending'
+        }
       }
       throw qaError('QA_RESET_CONFLICT', '当前协调已发生变化，请刷新后重试', 409)
     }
@@ -150,6 +172,7 @@ async function executeQaCoordinationReset(input = {}, deps = {}) {
   }
   let eventStatus = 'pending'
   let eventId = null
+  let eventError = null
   try {
     const event = await deps.publishCoordinationEvent({
       coordination: updated,
@@ -161,10 +184,19 @@ async function executeQaCoordinationReset(input = {}, deps = {}) {
         idempotency_suffix: 'qa_reset'
       }
     })
-    eventId = event && (event.id || event.event_id) || null
+    eventId = event && (event.id || event.event_id || event.event && (event.event.id || event.event.event_id)) || null
     eventStatus = 'projected'
   } catch (error) {
+    eventError = error
     console.warn('coordination qa-reset event skipped:', error && (error.message || error))
+    if (typeof deps.enqueueProjectionRetry === 'function') {
+      await deps.enqueueProjectionRetry('publish_coordination_event', updated, {
+        event_type: QA_COORDINATION_RESET_EVENT_TYPE,
+        actor_user_id: Number(actor.id),
+        coordination_version: Number(coordination.coordination_version || 1),
+        idempotency_suffix: 'qa_reset'
+      }, error, 'qa_reset_event')
+    }
   }
   const partnerId = Number(actor.id) === Number(coordination.user_a_id)
     ? Number(coordination.user_b_id)
@@ -185,8 +217,25 @@ async function executeQaCoordinationReset(input = {}, deps = {}) {
       notificationStatus = 'projected'
     } catch (error) {
       console.warn('inbox qa-reset notification skipped:', error && (error.message || error))
+      if (typeof deps.enqueueProjectionRetry === 'function') {
+        await deps.enqueueProjectionRetry('write_inbox_notification', updated, {
+          coordination: updated,
+          user_id: partnerId,
+          event_type: QA_COORDINATION_RESET_EVENT_TYPE,
+          coordination_version: Number(coordination.coordination_version || 1),
+          title: '本轮协调已关闭',
+          body: '本轮协调已由测试人员关闭，如需继续请重新发起邀请。',
+          stage: 'qa_coordination_reset'
+        }, error, 'qa_reset_notification')
+      }
     }
   }
+  const projectionPatch = {
+    qa_reset_event_status: eventStatus,
+    qa_reset_event_id: eventId,
+    qa_reset_notification_status: notificationStatus
+  }
+  updated = await deps.updateByDoc('date_coordination', updated, projectionPatch)
   const sessions = await deps.list('agent_session', { coordination_id: Number(coordination.id) }, 200)
   for (const session of sessions || []) {
     if (!['closed', 'cancelled'].includes(String(session.status || ''))) {
@@ -200,7 +249,8 @@ async function executeQaCoordinationReset(input = {}, deps = {}) {
     idempotent: false,
     event_id: eventId,
     event_status: eventStatus,
-    notification_status: notificationStatus
+    notification_status: notificationStatus,
+    projection_pending: Boolean(eventError) || notificationStatus === 'pending'
   }
 }
 

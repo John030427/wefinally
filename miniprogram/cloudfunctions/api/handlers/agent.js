@@ -10,14 +10,14 @@ const { createDateCoordinationHandlers } = require('./dateCoordination')
 const { readHumanServiceConfig, buildHumanServiceHandoff } = require('../agent/humanService')
 const { readLangGraphConfig, createActorRef, createThreadId, runLangGraphStep } = require('../agent/langgraphClient')
 const { executeGraphTool } = require('../agent/langgraphToolBridge')
-const { buildDateCoordinationGraphInput } = require('../agent/dateCoordinationGraphState')
+const { buildDateCoordinationGraphInput, normalizeContextRef } = require('../agent/dateCoordinationGraphState')
 const { buildResumeSummary } = require('../lib/coordinationConcurrency')
 const { publishCoordinationEvent } = require('../agent/dateCoordinationEvents')
 const {
   toRuntimeCoordinationChanges,
   toCanonicalCoordinationEventType,
   toRuntimeCoordinationEventType
-} = require('../../agent-graph/shared/coordinationAdapters.cjs')
+} = require('../lib/coordinationAdapters.cjs')
 const {
   canOpenCoordinatorChat,
   canWriteCoordinatorAction,
@@ -87,6 +87,7 @@ function publicMessage(row) {
     create_time: row.create_time
   }
   if (row.patch_preview) result.patch_preview = sanitizeOutput(row.patch_preview)
+  if (row.context_ref) result.context_ref = sanitizeOutput(row.context_ref)
   if (row.handoff) result.handoff = sanitizeOutput(row.handoff)
   if (row.event_card) result.event_card = sanitizeOutput(row.event_card)
   else if (row.coordination_event_id || row.coordination_event_key) {
@@ -301,6 +302,12 @@ function createAgentHandlers(overrides = {}) {
     const session = await ownedSession(data.session_id || data.sessionId, user)
     const content = String(data.message || data.content || '').trim()
     if (!content) throw new Error('请输入内容')
+    const rawContextRef = data.context_ref || data.contextRef
+    const contextRef = rawContextRef ? normalizeContextRef(rawContextRef) : null
+    if (rawContextRef && (!contextRef || (session.agent_type === AGENT_TYPES.DATE_COORDINATOR
+      && Number(contextRef.coordination_id) !== Number(session.coordination_id)))) {
+      throw new Error('invalid_context_ref')
+    }
     if (session.status === 'manual_pending') {
       return {
         session_id: session.id,
@@ -337,7 +344,7 @@ function createAgentHandlers(overrides = {}) {
       }
     }
     if (session.agent_type === AGENT_TYPES.LOVE_ADVISOR) await enforceLoveQuota(user)
-    const userMessage = await saveMessage(session, user, 'user', content)
+    const userMessage = await saveMessage(session, user, 'user', content, contextRef ? { context_ref: contextRef } : {})
 
     const risk = classifyRisk(content)
     if (!risk.allowed) {
@@ -615,7 +622,8 @@ function createAgentHandlers(overrides = {}) {
           .sort((a, b) => Number(b.id || 0) - Number(a.id || 0))[0] || null
         const graphInput = buildDateCoordinationGraphInput(coordination, allApplications, user, {
           confirmations,
-          pendingPatch: graphPendingPatch
+          pendingPatch: graphPendingPatch,
+          contextRef
         })
         const refreshGraphInput = async () => {
           const freshCoordination = await dep('byId')('date_coordination', Number(coordination.id))
@@ -631,7 +639,8 @@ function createAgentHandlers(overrides = {}) {
             .sort((a, b) => Number(b.id || 0) - Number(a.id || 0))[0] || null
           return buildDateCoordinationGraphInput(freshCoordination, freshApplications, user, {
             confirmations: freshConfirmations,
-            pendingPatch: freshPendingPatch
+            pendingPatch: freshPendingPatch,
+            contextRef
           })
         }
         try {
@@ -688,11 +697,28 @@ function createAgentHandlers(overrides = {}) {
           }
           if (dateGraphResult && dateGraphResult.status !== 'fallback') {
             const reply = [resumeText, dateGraphResult.replyDraft].filter(Boolean).join('\n') || '我已按当前协调状态处理这次请求。'
+            const clearsActionableContext = [
+              'CONFIRM_PREVIEW',
+              'CANCEL_PREVIEW',
+              'CONFIRM_CURRENT_PLAN',
+              'REJECT_CURRENT_PLAN',
+              'ACCEPT_INVITATION',
+              'DECLINE_INVITATION',
+              'CANCEL_COORDINATION'
+            ].includes(String(dateGraphResult.coordinationCommand && dateGraphResult.coordinationCommand.type || ''))
+              && dateGraphResult.status === 'completed'
+            const resultContextRef = clearsActionableContext
+              ? null
+              : dateGraphResult.contextRef
+              || (dateGraphResult.pendingPreview && dateGraphResult.pendingPreview.contextRef)
+              || graphInput.contextRef
+              || null
             await saveMessage(session, user, 'assistant', reply, {
               graph_phase: dateGraphResult.phase,
               coordination_command: dateGraphResult.coordinationCommand || null,
               candidate_plan: dateGraphResult.candidatePlan || null,
-              pending_preview: dateGraphResult.pendingPreview || null
+              pending_preview: dateGraphResult.pendingPreview || null,
+              ...(resultContextRef ? { context_ref: resultContextRef } : {})
             })
             await markSeen()
             return {
@@ -705,6 +731,7 @@ function createAgentHandlers(overrides = {}) {
               coordination_command: dateGraphResult.coordinationCommand || null,
               candidate_plan: dateGraphResult.candidatePlan || null,
               pending_preview: dateGraphResult.pendingPreview || null,
+              context_ref: resultContextRef,
               requires_confirmation: dateGraphResult.status === 'awaiting_confirmation',
               risk_level: 'safe'
             }

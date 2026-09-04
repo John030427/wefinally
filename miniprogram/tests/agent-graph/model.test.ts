@@ -124,3 +124,43 @@ test('parses date coordination command output as the only semantic command chann
   assert.equal(decision.coordinationCommand?.target_version, 3)
   assert.match(requestPayload, /coordination_command/)
 })
+
+test('date coordinator prompt documents the complete command contract and grounded examples', async () => {
+  let systemPrompt = ''
+  const model = createDecisionModel({
+    provider: 'cloudbase',
+    generateTextImpl: async (input) => {
+      systemPrompt = input.messages.find((message) => message.role === 'system')?.content || ''
+      return { text: JSON.stringify(sampleDecision) }
+    }
+  })
+
+  await model.decide({
+    mode: 'date_coordination',
+    phase: 'parse_command',
+    userText: '帮我处理当前约会协调',
+    safeSummary: ''
+  })
+
+  for (const command of [
+    'QUERY_STATUS', 'PROPOSE_CHANGE', 'ASK_PARTNER', 'PROPOSE_CHANGE_AND_ASK_PARTNER',
+    'CONFIRM_PREVIEW', 'CANCEL_PREVIEW', 'CONFIRM_CURRENT_PLAN', 'REJECT_CURRENT_PLAN',
+    'ACCEPT_INVITATION', 'DECLINE_INVITATION', 'ARRIVAL_STATUS', 'ARRIVAL_HINT',
+    'ASK_PARTNER_ARRIVAL', 'DELAY_NOTICE', 'RELAY_MESSAGE', 'CANCEL_COORDINATION', 'CLARIFY'
+  ]) assert.match(systemPrompt, new RegExp(command))
+  for (const field of [
+    'date', 'period', 'start_time', 'activity', 'activity_detail', 'venue', 'area',
+    'budget', 'payment', 'duration', 'meet_point', 'arrival_status', 'arrival_hint',
+    'delay_minutes', 'public_location', 'appearance_hint'
+  ]) assert.match(systemPrompt, new RegExp(field))
+  for (const contextType of ['proposal', 'patch_preview', 'invitation', 'partner_inquiry', 'meeting_status']) {
+    assert.match(systemPrompt, new RegExp(contextType))
+  }
+  for (const fieldClass of ['core', 'soft', 'meeting']) assert.match(systemPrompt, new RegExp(fieldClass))
+  for (const phrase of [
+    '奶茶改吃饭', '酸菜鱼', '只问对方意见', '还是上一个', '我到了', '你在哪',
+    '白T黑裤', '晚到10分钟', 'flexible', 'AA', '预算', '时长'
+  ]) assert.match(systemPrompt, new RegExp(phrase))
+  assert.match(systemPrompt, /A preview is only written after confirmation/)
+  assert.match(systemPrompt, /Do not claim any business action succeeded/)
+})

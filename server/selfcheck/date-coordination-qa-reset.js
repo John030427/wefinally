@@ -20,6 +20,7 @@ function memoryDeps() {
     user_a_id: 1,
     user_b_id: 2,
     is_test_data: 1,
+    synthetic_partner_mode: 'auto',
     status: 'waiting_confirmations',
     business_state: 'waiting_confirm',
     processing_status: 'queued',

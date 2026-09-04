@@ -10,6 +10,7 @@ import {
   CoordinationCanonicalStateSchema,
   CoordinationChangeSetSchema,
   CoordinationCommandSchema,
+  CoordinationContextRefSchema,
   CoordinationPreferenceSchema,
   PendingActionSchema,
   PendingPreviewSchema,
@@ -268,6 +269,9 @@ function loadCanonicalState(state: DateCoordinationState): Partial<DateCoordinat
   if (!state.canonicalState) return {}
   const canonical = CoordinationCanonicalStateSchema.parse(state.canonicalState)
   const isToolResume = Boolean(state.resumeToolResult)
+  const requestContextRef = state.contextRef
+    ? CoordinationContextRefSchema.parse(state.contextRef)
+    : undefined
   const databasePendingPreview = state.pendingPreview
     ? PendingPreviewSchema.parse(state.pendingPreview)
     : null
@@ -286,7 +290,7 @@ function loadCanonicalState(state: DateCoordinationState): Partial<DateCoordinat
     ...(isToolResume ? {} : {
       candidatePlan: null,
       candidateChanges: {},
-      contextRef: undefined,
+      contextRef: requestContextRef,
       coordinationCommand: null,
       pendingPreview: databasePendingPreview,
       ...clearToolState(),
@@ -313,6 +317,7 @@ function parseCommand(dependencies: DateCoordinationGraphDependencies, state: Da
       confirmationSnapshot: state.confirmationSnapshot || null,
       invitationVersion: state.canonicalState?.invitation_version || null,
       currentProposalId: state.canonicalState?.current_proposal_id || null,
+      contextRef: state.contextRef || null,
       pendingPreview: state.pendingPreview || null
     }
   }).then((decision) => {
@@ -325,7 +330,14 @@ function parseCommand(dependencies: DateCoordinationGraphDependencies, state: Da
 function validateContextVersion(state: DateCoordinationState): Partial<DateCoordinationState> {
   const command = state.coordinationCommand
   if (!command) return { errorCode: state.errorCode || 'invalid_command' }
-  const context = command.context_ref
+  const requestContext = state.contextRef
+  if (requestContext && requestContext.coordination_id !== state.coordinationId) {
+    return { errorCode: 'invalid_context_ref' }
+  }
+  if (requestContext && requestContext.coordination_version !== state.coordinationVersion) {
+    return { errorCode: 'stale_context' }
+  }
+  const context = command.context_ref || requestContext
   if (context && context.coordination_id !== state.coordinationId) return { errorCode: 'invalid_context_ref' }
   const version = context?.coordination_version || command.target_version || state.coordinationVersion
   if (version !== state.coordinationVersion) return { errorCode: 'stale_coordination_version' }
@@ -505,6 +517,14 @@ function applyToolResult(state: DateCoordinationState): Partial<DateCoordination
   const data = result.data || {}
   if (pendingType === 'create_date_application_patch' && state.candidatePlan) {
     const patchId = Number(data.patchId || data.previewId || 0)
+    const previewContext = patchId > 0
+      ? {
+        type: 'patch_preview' as const,
+        coordination_id: state.coordinationId,
+        coordination_version: state.baseVersion || state.coordinationVersion,
+        patch_id: patchId
+      }
+      : state.contextRef
     const pendingPreview = PendingPreviewSchema.parse({
       baseVersion: state.baseVersion || state.coordinationVersion,
       candidatePlan: state.candidatePlan,
@@ -513,23 +533,33 @@ function applyToolResult(state: DateCoordinationState): Partial<DateCoordination
         ? { partnerRequest: state.coordinationCommand.partner_request }
         : {}),
       ...(patchId > 0 ? { patchId } : {}),
-      ...(state.contextRef ? { contextRef: state.contextRef } : {})
+      ...(previewContext ? { contextRef: previewContext } : {})
     })
     return {
       phase: 'awaiting_confirmation',
       lastResult: result,
       resumeToolResult: undefined,
       pendingPreview,
+      contextRef: previewContext,
       ...clearToolState(),
       replyDraft: '修改预览已经生成，确认后才会写入协调状态。',
       errorCode: undefined
     }
   }
+  const clearsActionableContext = [
+    'confirm_date_application_patch',
+    'cancel_date_application_patch',
+    'confirm_date_application',
+    'reject_date_application',
+    'respond_date_invitation',
+    'cancel_coordination'
+  ].includes(String(pendingType || ''))
   return {
     phase: 'completed',
     lastResult: result,
     resumeToolResult: undefined,
     ...clearToolState(),
+    ...(clearsActionableContext ? { contextRef: undefined } : {}),
     replyDraft: '请求已交由后端校验处理，请以当前协调状态为准。',
     errorCode: undefined
   }

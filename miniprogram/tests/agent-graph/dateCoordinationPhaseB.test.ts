@@ -294,6 +294,22 @@ test('stale and unversioned plan mutation commands never produce a plan tool req
   assert.equal(unversioned.errorCode, 'invalid_command')
 })
 
+test('a client supplied context_ref is checked against the freshly loaded database version', async () => {
+  const graph = buildDateCoordinationGraph({
+    checkpointer: new MemorySaver(),
+    model: command({ type: 'QUERY_STATUS' })
+  })
+  const result = await graph.invoke(state(canonical(), {
+    contextRef: {
+      type: 'meeting_status',
+      coordination_id: 716,
+      coordination_version: 2
+    }
+  }), { configurable: { thread_id: 'wf_thread_phase_b_inbound_stale_context' } })
+  assert.equal(result.pendingTool, null)
+  assert.equal(result.errorCode, 'stale_context')
+})
+
 test('tool continuation reloads canonical state and keeps preview facts separate from plan truth', async () => {
   const saver = new MemorySaver()
   const graph = buildDateCoordinationGraph({
@@ -346,6 +362,37 @@ test('preview confirmation uses the DB-loaded pending preview instead of checkpo
   }), { configurable: { thread_id: 'wf_thread_phase_b_preview_confirm' } })
   assert.equal(result.pendingTool?.type, 'confirm_date_application_patch')
   assert.equal(result.pendingTool?.arguments.patchId, 456)
+})
+
+test('completed plan resolution clears the consumed actionable context', async () => {
+  const graph = buildDateCoordinationGraph({
+    checkpointer: new MemorySaver(),
+    model: command({
+      type: 'CONFIRM_PREVIEW',
+      target_version: 3,
+      context_ref: { type: 'patch_preview', coordination_id: 716, coordination_version: 3, patch_id: 456 }
+    })
+  })
+  const preview = {
+    patchId: 456,
+    baseVersion: 3,
+    candidatePlan: canonical().current_plan,
+    candidateChanges: { payment: 'flexible' },
+    contextRef: { type: 'patch_preview', coordination_id: 716, coordination_version: 3, patch_id: 456 }
+  }
+  const action = {
+    type: 'confirm_date_application_patch',
+    arguments: { coordinationId: 716, coordinationVersion: 3, patchId: 456 },
+    requiresConfirmation: false
+  } as const
+  const result = await graph.invoke(state(canonical(), {
+    pendingAction: action,
+    pendingTool: action,
+    pendingPreview: preview,
+    contextRef: preview.contextRef,
+    resumeToolResult: { ok: true, data: { patchId: 456, status: 'applied', coordinationVersion: 4 } }
+  }), { configurable: { thread_id: 'wf_thread_phase_b_context_consumed' } })
+  assert.equal(result.contextRef, undefined)
 })
 
 test('combined preview confirmation carries the partner request into the commit tool', async () => {

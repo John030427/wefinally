@@ -39,6 +39,29 @@ function realQaUser(user) {
     || Number(user.qa_test_run_enabled || 0) === 1
 }
 
+function syntheticTestCoordination(coordination) {
+  if (!coordination || Number(coordination.is_test_data || 0) !== 1) return false
+  return Boolean(String(
+    coordination.synthetic_partner_mode
+      || coordination.synthetic_partner_journey
+      || coordination.synthetic_partner_user_id
+      || coordination.fixture_journey
+      || coordination.fixture_mode
+      || ''
+  ).trim())
+}
+
+function canResetCoordination(actor, coordination, participants = []) {
+  if (!realQaUser(actor) || !coordination || Number(coordination.is_test_data || 0) !== 1) return false
+  if (![Number(coordination.user_a_id), Number(coordination.user_b_id)].includes(Number(actor.id))) return false
+  if (syntheticTestCoordination(coordination)) return true
+  const expectedIds = [Number(coordination.user_a_id), Number(coordination.user_b_id)]
+  const users = expectedIds.map((id) => (participants || []).find((user) => Number(user && user.id) === id)).filter(Boolean)
+  if (users.length !== 2 || users.some((user) => !realQaUser(user))) return false
+  const cohorts = users.map((user) => String(user.qa_match_cohort || '').trim())
+  return Boolean(cohorts[0] && cohorts[0] === cohorts[1] && cohorts[0] === String(actor.qa_match_cohort || cohorts[0]).trim())
+}
+
 function resolveQaPair(actor, candidates) {
   const cohort = String(actor && actor.qa_match_cohort || DEFAULT_QA_COHORT)
   const users = (Array.isArray(candidates) ? candidates : [])
@@ -68,6 +91,8 @@ module.exports = {
   assertConfirmText,
   qaError,
   isRealQaUser: realQaUser,
+  isSyntheticTestCoordination: syntheticTestCoordination,
+  canResetCoordination,
   resolveQaPair,
   preservedCollections
 }

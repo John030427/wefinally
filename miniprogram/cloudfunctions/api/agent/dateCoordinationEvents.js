@@ -2,7 +2,7 @@ const { projectParticipantEvent } = require('../lib/dateCoordinationProcessingPo
 const {
   toCanonicalCoordinationEventType,
   toRuntimeCoordinationEventType
-} = require('../../agent-graph/shared/coordinationAdapters.cjs')
+} = require('../lib/coordinationAdapters.cjs')
 const { buildCoordinationEventCard } = require('../lib/coordinationProjection')
 
 function defaultDeps() {
@@ -25,6 +25,23 @@ function safeChangedDimensions(value) {
   return Array.from(new Set((Array.isArray(value) ? value : [])
     .map((item) => String(item || '').trim())
     .filter((item) => allowed.has(item))))
+}
+
+function positiveId(value) {
+  const id = Number(value)
+  return Number.isSafeInteger(id) && id > 0 ? id : 0
+}
+
+function factReferences(event = {}) {
+  const proposalId = positiveId(event.proposal_id || event.proposal?.id || event.proposal?.proposal_id)
+  const patchId = positiveId(event.patch_id || event.patch?.id)
+  const inquiryId = positiveId(event.inquiry_id || event.partner_inquiry_id)
+  return {
+    ...(proposalId ? { proposal_id: proposalId } : {}),
+    ...(patchId ? { patch_id: patchId } : {}),
+    ...(inquiryId ? { inquiry_id: inquiryId } : {}),
+    changed_dimensions: safeChangedDimensions(event.changed_dimensions)
+  }
 }
 
 async function ensureSession(deps, coordination, userId) {
@@ -71,6 +88,7 @@ async function publishCoordinationEvent(input = {}, overrides) {
       shareable_summary: {
         changed_dimensions: safeChangedDimensions(event.changed_dimensions)
       },
+      safe_payload: factReferences(event),
       safe_summary: {
         stage: projectParticipantEvent(event, { viewer_user_id: 0 }).stage,
         proposal_key: String(event.proposal && event.proposal.proposal_key || ''),
@@ -92,6 +110,7 @@ async function publishCoordinationEvent(input = {}, overrides) {
         id: stored.id,
         coordination_id: coordination.id,
         shareable_summary: stored.shareable_summary,
+        safe_payload: stored.safe_payload,
         safe_summary: stored.safe_summary
       }),
       content: projection.content

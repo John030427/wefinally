@@ -87,7 +87,15 @@ function publicPatch(row) {
     status: row.status,
     preview: row.preview,
     coordination_partner_request: row.coordination_partner_request || null,
-    expires_at: row.expires_at || null
+    expires_at: row.expires_at || null,
+    context_ref: Number(row.id || 0) > 0 && Number(row.base_version || 0) > 0
+      ? {
+        type: 'patch_preview',
+        coordination_id: Number(row.coordination_id),
+        coordination_version: Number(row.base_version),
+        patch_id: Number(row.id)
+      }
+      : null
   }
 }
 
@@ -385,7 +393,14 @@ function createDateApplicationPatchHandlers(overrides = {}) {
       ? Number(coordination.user_b_id)
       : Number(coordination.user_a_id)
     if (coordination.status === STATUS.INVITING_PARTNER) {
-      return { partner_id: partnerId, session_id: 0, shareable_summary: summary, skipped: 'waiting_partner_consent' }
+      return {
+        partner_id: partnerId,
+        session_id: 0,
+        shareable_summary: summary,
+        skipped: 'waiting_partner_consent',
+        partner_notified: false,
+        notification_status: 'skipped'
+      }
     }
     const published = await dep('publishCoordinationEvent')({
       coordination,
@@ -397,6 +412,7 @@ function createDateApplicationPatchHandlers(overrides = {}) {
         changed_dimensions: summary.changed_dimensions
       }
     })
+    let notificationStatus = 'projected'
     try {
       await dep('writeInboxNotification')({
         coordination,
@@ -410,6 +426,7 @@ function createDateApplicationPatchHandlers(overrides = {}) {
       })
     } catch (err) {
       console.warn('inbox preference notification skipped:', err.message || err)
+      notificationStatus = 'pending'
     }
     await dep('addWithId')('agent_notification_job', {
       coordination_id: Number(coordination.id),
@@ -421,7 +438,14 @@ function createDateApplicationPatchHandlers(overrides = {}) {
       attempts: 0
     }, 'agent_notification_job')
     const partnerMessage = published.messages.find((item) => Number(item.user_id) === partnerId)
-    return { partner_id: partnerId, session_id: Number(partnerMessage && partnerMessage.session_id || 0), shareable_summary: summary }
+    return {
+      partner_id: partnerId,
+      session_id: Number(partnerMessage && partnerMessage.session_id || 0),
+      shareable_summary: summary,
+      partner_notified: notificationStatus === 'projected',
+      notification_status: notificationStatus,
+      projection_pending: notificationStatus === 'pending'
+    }
   }
 
   async function confirmForUser(data, user) {
@@ -437,7 +461,13 @@ function createDateApplicationPatchHandlers(overrides = {}) {
       throw new Error(terminalWriteError(coordination.status))
     }
     if (patch.status === 'applied') {
-      return { patch: publicPatch(patch), coordination_version: Number(patch.applied_version || coordination.coordination_version) }
+      return {
+        patch: publicPatch(patch),
+        coordination_version: Number(patch.applied_version || coordination.coordination_version),
+        applied: true,
+        partner_notified: false,
+        skipped: true
+      }
     }
     if (patch.status === 'applying') throw new Error('修改预览正在处理中，请稍后刷新')
     if (patch.status === 'pending_primary_selection' || (patch.preview && patch.preview.primary_resolution_required)) {
@@ -478,8 +508,11 @@ function createDateApplicationPatchHandlers(overrides = {}) {
         coordination_version: oldVersion,
         status: result.status,
         business_state: result.business_state,
+        applied: true,
         application_sent: true,
-        partner_notified: result.status === STATUS.INVITING_PARTNER
+        partner_notified: result.status === STATUS.INVITING_PARTNER,
+        notification_status: result.status === STATUS.INVITING_PARTNER ? 'projected' : 'skipped',
+        skipped: result.status !== STATUS.INVITING_PARTNER
       }
     }
     const rows = await applicationsFor(coordination.id)
@@ -511,7 +544,9 @@ function createDateApplicationPatchHandlers(overrides = {}) {
         status: handedOff.status,
         business_state: handedOff.business_state,
         proposal_generated: false,
-        partner_notified: true
+        applied: true,
+        partner_notified: true,
+        notification_status: 'projected'
       }
     }
     const newVersion = oldVersion + 1
@@ -626,7 +661,11 @@ function createDateApplicationPatchHandlers(overrides = {}) {
         status: committed.coordination.status,
         business_state: committed.coordination.business_state,
         proposal_generated: false,
-        partner_notified: true,
+        applied: true,
+        partner_notified: notification.partner_notified === true,
+        notification_status: notification.notification_status || 'projected',
+        projection_pending: notification.projection_pending === true,
+        skipped: notification.skipped || false,
         partner_session_id: notification.session_id
       }
     }
@@ -701,7 +740,11 @@ function createDateApplicationPatchHandlers(overrides = {}) {
       status: updatedCoordination.status,
       business_state: updatedCoordination.business_state,
       proposal_generated: false,
-      partner_notified: true,
+      applied: true,
+      partner_notified: notification.partner_notified === true,
+      notification_status: notification.notification_status || 'projected',
+      projection_pending: notification.projection_pending === true,
+      skipped: notification.skipped || false,
       partner_session_id: notification.session_id
     }
   }
