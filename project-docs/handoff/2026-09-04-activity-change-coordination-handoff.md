@@ -4,7 +4,7 @@
 
 - 工作树：`D:\wefinal\.worktrees\wefinally-release-20260904`
 - 当前分支：`fix/flexible-date-location-2026-09-04`
-- 本次代码提交：`1c7c8fa`（`fix: make activity changes explicit in date coordination`）
+- 本次代码提交：`5215cd6`（在 `1c7c8fa` 基础上补充模型不可用时的确定性活动修改兜底）
 - 本次范围：复核并修复活动修改、餐饮意图、方案预览和回归测试；不删除生产记录，不修改密钥/运行时/权限。
 - CloudBase 环境：`cloud1-d4gy8l52g08bba326`（ap-shanghai）。此前已部署的 api / agent-graph 代码为 `8f929f0`；本次修复在 Git 上传前尚未部署。
 - `AGENTS.md` 中列出的期望分支为 `fix/release-review-remediation-2026-09-04`，但本工作树实际检出的是上面的发布分支；本次不擅自改名或切换分支。
@@ -30,7 +30,9 @@
 3. 餐饮表达生成同一套可确认 patch：活动设为“吃饭”，菜品写入 `activity_detail`（例如“酸菜鱼”“大二酸菜”），并保留用户已填写的商圈/商场/场地。
 4. 对“问对方是否接受”的表达先生成修改预览，确认后才沿用现有隐私安全通知和双方版本校验；不会把一句询问直接当作对方同意。
 5. `activity_detail` 只在有值时加入归一化结果，保持旧记录字段形状兼容；公开变更维度去重，避免“活动/活动说明”重复显示。
-6. 未改写历史消息、未删除匹配/聊天记录、未改变 LangGraph 状态存储和安全边界。
+6. 方案卡和对方询问卡增加“活动说明”展示，例如“吃饭（酸菜鱼）”，避免只看到泛化的“吃饭”。
+7. 模型暂时不可用时，明确活动修改仍走安全预览；餐饮预览无变化时返回可读错误，不冒泡成 `SERVER_ERROR`。
+8. 未改写历史消息、未删除匹配/聊天记录、未改变 LangGraph 状态存储和安全边界。
 
 ## 预期交互
 
@@ -69,7 +71,7 @@ git diff --check
 
 - 远端：`https://github.com/John030427/wefinally.git`
 - 推送命令：`git push origin fix/flexible-date-location-2026-09-04`
-- 本次代码修复提交：`1c7c8fa`；交接文档提交后，分支最新提交可用 `git log --oneline --max-count=1` 查看。推送后用 `git ls-remote --heads origin fix/flexible-date-location-2026-09-04` 核对远端哈希。
+- 本次代码修复提交：`5215cd6`；交接文档提交后，分支最新提交可用 `git log --oneline --max-count=1` 查看。推送后用 `git ls-remote --heads origin fix/flexible-date-location-2026-09-04` 核对远端哈希。
 - 不执行 force push，不合并 `main`，不把历史实验工作树当发布源。
 
 ## 真机验收
