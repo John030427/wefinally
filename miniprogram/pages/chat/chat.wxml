@@ -77,6 +77,7 @@
               <view class="chat-plan-row" wx:if="{{item.coordinationUpdateCard.timeText}}"><text>时间</text><text>{{item.coordinationUpdateCard.timeText}}</text></view>
               <view class="chat-plan-row" wx:if="{{item.coordinationUpdateCard.activityText}}"><text>活动</text><text>{{item.coordinationUpdateCard.activityText}}</text></view>
               <view class="chat-plan-row" wx:if="{{item.coordinationUpdateCard.venueText}}"><text>活动场地</text><text>{{item.coordinationUpdateCard.venueText}}</text></view>
+              <view class="chat-plan-row" wx:if="{{item.coordinationUpdateCard.openItemsText}}"><text>约定事项</text><text>{{item.coordinationUpdateCard.openItemsText}}</text></view>
               <view class="chat-plan-row" wx:if="{{item.coordinationUpdateCard.meetPointText}}"><text>初步会合范围</text><text>{{item.coordinationUpdateCard.meetPointText}}</text></view>
               <view class="chat-plan-row" wx:if="{{item.coordinationUpdateCard.areaText}}"><text>区域</text><text>{{item.coordinationUpdateCard.areaText}}</text></view>
             </view>

@@ -142,6 +142,7 @@ function safeCard(value) {
       area_text: String(proposal.area_text || proposal.area || '').slice(0, 80),
       activity_text: String(proposal.activity_text || proposal.activity || '').slice(0, 50),
       activity_venue_text: String(proposal.activity_venue_text || proposal.activity_venue || '').slice(0, 80),
+      open_items_text: String(proposal.open_items_text || require('../lib/datePlanContract').locationAgreement(proposal).open_items.map((item) => item.label).join('、')).slice(0, 160),
       meet_point_text: String(proposal.meet_point_text || proposal.meet_point || '').slice(0, 80),
       budget_text: String(proposal.budget_text || proposal.budget || '').slice(0, 50),
       payment_text: String(proposal.payment_text || proposal.payment_mode || proposal.payment_preference || '').slice(0, 50),

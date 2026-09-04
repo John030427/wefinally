@@ -17,7 +17,8 @@ const {
   formatPlanTime,
   canSendInvitation,
   canFinalizePlan,
-  normalizeOpenItems
+  normalizeOpenItems,
+  locationAgreement
 } = require('./meetingPlanPolicy')
 
 const STALE_INVITATION_MESSAGE = '对方刚刚更新了约会安排，请查看最新方案后再确认。'
@@ -65,7 +66,9 @@ const EVIDENCE_FIELDS = Object.freeze([
   'duration',
   'start_time',
   'activity_venue',
-  'meet_point'
+  'meet_point',
+  'venue_choice_mode',
+  'activity_detail'
 ])
 const CANONICAL_JOURNEYS = Object.freeze([
   'accept_direct',
@@ -110,6 +113,7 @@ function publicInvitationProposal(application = {}) {
   if (Number(application.contract_version || 0) >= PLAN_CONTRACT_VERSION
     || meetingPlan.start_time || meetingPlan.activity_venue || meetingPlan.meet_point) {
     Object.assign(proposal, {
+      ...locationAgreement(application),
       contract_version: PLAN_CONTRACT_VERSION,
       start_time: meetingPlan.start_time,
       activity_venue: meetingPlan.activity_venue,
@@ -265,6 +269,7 @@ function publicPrimaryProposal(input = {}, context = {}) {
   if (Number(input.contract_version || 0) >= PLAN_CONTRACT_VERSION
     || meetingPlan.start_time || meetingPlan.activity_venue || meetingPlan.meet_point) {
     Object.assign(proposal, {
+      ...locationAgreement(input),
       contract_version: PLAN_CONTRACT_VERSION,
       start_time: meetingPlan.start_time,
       activity_venue: meetingPlan.activity_venue,
@@ -323,6 +328,7 @@ function preferenceHasSlot(prefs, date, period) {
 
 function primaryFitsPreferenceExceptPayment(primary, prefs) {
   if (!isPrimaryProposalDraftComplete(primary) || !prefs) return false
+  if (locationAgreement(primary).venue_choice_mode !== locationAgreement(prefs).venue_choice_mode) return false
   if (!preferenceHasSlot(prefs, primary.date, primary.period)) return false
   if (!(prefs.areas || []).includes(primary.area)) return false
   if (!(prefs.activities || []).includes(primary.activity)) return false
@@ -499,6 +505,7 @@ function resolvePrimaryAfterPreferenceChange(previous, prefs, context = {}, sele
   next.start_time = String(prefs && prefs.start_time || '')
   next.activity_venue = String(prefs && prefs.activity_venue || '')
   next.meet_point = String(prefs && prefs.meet_point || '')
+  Object.assign(next, locationAgreement(prefs))
   const required = fields.length > 0
   const synced = syncPrimaryPaymentFromPreference(next, prefs, context.user_a_id, context.user_b_id)
   const primary = synced || publicPrimaryProposal(next, context)
@@ -556,6 +563,7 @@ function derivePrimaryFromSingletonPrefs(prefs, userAId, userBId) {
     start_time: prefs.start_time,
     activity_venue: prefs.activity_venue,
     meet_point: prefs.meet_point,
+    ...locationAgreement(prefs),
     payment_mode: payment.payment_mode,
     payer_user_id: payment.payer_user_id
   }, { user_a_id: userAId, user_b_id: userBId })
@@ -632,7 +640,7 @@ function buildInvitationCard(primaryOrPrefs = {}, version = 1, options = {}) {
     venue_status: readiness.venue_resolution && readiness.venue_resolution.status || (readiness.ready ? 'resolved' : 'needs_specific_venue'),
     venue_guidance: readiness.venue_resolution && readiness.venue_resolution.location_precision === 'area'
       ? (primary && primary.venue_choice_mode === 'choose_on_arrival'
-        ? '双方已确认到场后再选具体店'
+        ? '建议到场后再选具体店，需双方确认当前方案'
         : '地点较宽泛，可到场后再选店；不是错误')
       : (readiness.venue_resolution && readiness.venue_resolution.status === 'needs_specific_venue'
         ? '还需要一个见面地点，商场、商圈或具体店名都可以'
@@ -837,6 +845,8 @@ function buildProposalCard(proposal, options = {}) {
     : planReadiness(proposal)
   return {
     id: Number(proposal.id || 0),
+    ...locationAgreement(proposal),
+    open_items_text: locationAgreement(proposal).open_items.map((item) => item.label).join('、'),
     proposal_key: proposal.proposal_key || '',
     coordination_version: Number(proposal.coordination_version || 1),
     source: proposal.source || 'backend',
@@ -896,6 +906,7 @@ function buildDirectAcceptProposal(primary, version, options = {}) {
     start_time: proposal.start_time || '',
     activity_venue: proposal.activity_venue || '',
     meet_point: proposal.meet_point || '',
+    ...locationAgreement(proposal),
     payment_mode: proposal.payment_mode,
     payer_user_id: proposal.payer_user_id,
     payment_preference: proposal.payment_mode === 'aa' || proposal.payment_mode === 'flexible'

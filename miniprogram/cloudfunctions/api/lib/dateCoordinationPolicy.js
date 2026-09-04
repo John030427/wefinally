@@ -25,7 +25,8 @@ const {
   normalizeMeetingPlanFields,
   venueResolution,
   activityVenueConflict,
-  normalizeFlexibleLocation
+  normalizeFlexibleLocation,
+  locationAgreement
 } = require('./meetingPlanPolicy')
 const { attachPublicError } = require('./businessError')
 
@@ -118,12 +119,6 @@ function normalizeApplication(input = {}, now = new Date()) {
       const error = new Error(resolution.clarification || '想在哪里见面？商场、商圈或具体店名都可以')
       throw attachPublicError(error, 'LOCATION_REQUIRED')
     }
-    const venueConflict = activityVenueConflict(normalized.activities[0], resolution.activity_venue)
-    if (venueConflict) {
-      const error = new Error(venueConflict.message)
-      error.code = venueConflict.code
-      throw attachPublicError(error, venueConflict.code || 'ACTIVITY_VENUE_CONFLICT')
-    }
     Object.assign(normalized, {
       contract_version: PLAN_CONTRACT_VERSION,
       start_time: meetingPlan.start_time,
@@ -132,7 +127,7 @@ function normalizeApplication(input = {}, now = new Date()) {
       activity_detail: resolution.activity_detail || textValue(input.activity_detail, 40),
       location_precision: resolution.location_precision,
       venue_choice_mode: resolution.venue_choice_mode || 'named_location',
-      open_items: Array.isArray(input.open_items) ? input.open_items.slice(0, 8) : undefined,
+      ...locationAgreement({ ...input, activities: normalized.activities, activity_venue: resolution.activity_venue }),
       venue_resolution: venueResolution(normalized.activities[0], resolution.activity_venue),
       meet_point: meetingPlan.meet_point,
       arrival_hint: meetingPlan.arrival_hint
@@ -236,8 +231,11 @@ function computeOverlap(applicationA, applicationB, options = {}) {
   if (!duration) missing.push('duration')
   if (modernPlan && !startTime) missing.push('exact_time')
   if (modernPlan && !activityVenue) missing.push('activity_venue')
+  const modeA = locationAgreement(applicationA).venue_choice_mode
+  const modeB = locationAgreement(applicationB).venue_choice_mode
+  if (modeA !== modeB) missing.push('activity_venue')
   const compatibleActivities = modernPlan && activityVenue
-    ? activities.filter((activity) => !activityVenueConflict(activity, activityVenue))
+    ? activities.filter((activity) => modeA === 'meet_first' || !activityVenueConflict(activity, activityVenue))
     : activities
   if (modernPlan && activities.length && !compatibleActivities.length) missing.push('activity_venue')
   if (missing.length) return { proposals: [], missing_dimensions: missing }
@@ -272,6 +270,11 @@ function computeOverlap(applicationA, applicationB, options = {}) {
             contract_version: PLAN_CONTRACT_VERSION,
             start_time: startTime,
             activity_venue: activityVenue,
+            ...locationAgreement({
+              activity, activity_venue: activityVenue,
+              venue_choice_mode: applicationA.venue_choice_mode === applicationB.venue_choice_mode
+                ? applicationA.venue_choice_mode : 'named_location'
+            }),
             meet_point: meetPoint
           })
         }

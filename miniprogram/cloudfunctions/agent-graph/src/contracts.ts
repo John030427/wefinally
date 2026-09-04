@@ -114,6 +114,8 @@ export const ConfirmationSnapshotSchema = z.object({
 }).strict()
 
 export const DatePlanV3Schema = z.object({
+  venue_choice_mode: z.enum(['named_location', 'choose_on_arrival', 'meet_first']).optional(),
+  open_items: z.array(z.object({ key: z.string(), label: z.string(), accepted_by: z.array(z.number()) }).strict()).optional(),
   contract_version: z.number().int().positive(),
   date: z.string().max(10),
   period: z.string().max(20),

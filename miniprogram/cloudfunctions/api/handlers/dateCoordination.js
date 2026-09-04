@@ -676,7 +676,7 @@ function createDateCoordinationHandlers(overrides = {}) {
       })
       if (!isPrimaryProposalComplete(primary)) {
         if (isPrimaryProposalDraftComplete(primary)) {
-          throw businessError('DATE_VENUE_NEEDS_CLARIFICATION', '具体门店还未确认，请先和 AI 继续协调')
+          throw businessError('DATE_VENUE_NEEDS_CLARIFICATION', '请先确认这里是会合地点还是活动场地，可与 AI 继续协调')
         }
         const err = new Error('当前建议安排不完整，请先和 AI 协调其他安排，或等待发起方更新方案')
         err.code = 'PRIMARY_PROPOSAL_INCOMPLETE'

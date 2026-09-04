@@ -21,7 +21,9 @@ const PATCHABLE_FIELDS = Object.freeze([
   'start_time',
   'activity_venue',
   'meet_point',
-  'arrival_hint'
+  'arrival_hint',
+  'venue_choice_mode',
+  'activity_detail'
 ])
 
 const DIMENSION_LABELS = Object.freeze({
@@ -37,7 +39,9 @@ const DIMENSION_LABELS = Object.freeze({
   start_time: 'exact_time',
   activity_venue: 'activity_venue',
   meet_point: 'meet_point',
-  arrival_hint: 'arrival_hint'
+  arrival_hint: 'arrival_hint',
+  venue_choice_mode: 'activity_venue',
+  activity_detail: 'activity'
 })
 
 const PUBLIC_CHANGE_LABELS = Object.freeze({
@@ -50,10 +54,15 @@ const PUBLIC_CHANGE_LABELS = Object.freeze({
   start_time: '具体时间',
   activity_venue: '活动场地',
   meet_point: '集合点',
-  arrival_hint: '到场识别提示'
+  arrival_hint: '到场识别提示',
+  venue_choice_mode: '地点安排方式',
+  activity_detail: '活动说明'
 })
 
 function displayValue(value) {
+  if (value === 'meet_first') return '先在约定地点碰面，影院待商量'
+  if (value === 'choose_on_arrival') return '门店到场后商量'
+  if (value === 'named_location') return '按约定地点安排'
   if (Array.isArray(value)) return value.map(displayValue).filter(Boolean).join('、')
   if (value && typeof value === 'object') {
     if (value.date) {

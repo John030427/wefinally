@@ -249,6 +249,7 @@ function buildDatePlanV3(input = {}) {
   const area = firstOf(input, ['area'], 40)
     || text(Array.isArray(input.areas) ? input.areas[0] : '', 40)
   return {
+    ...locationAgreement(input),
     contract_version: PLAN_CONTRACT_VERSION,
     date: text(input.date || (Array.isArray(input.availability) && input.availability[0] && input.availability[0].date) || '', 10),
     period,
@@ -289,7 +290,7 @@ function validateDatePlan(planInput = {}, stage = 'final') {
     const conflict = resolution.status === 'resolved'
       ? activityVenueConflict(plan.activity, resolution.activity_venue)
       : null
-    if (conflict) {
+    if (conflict && planInput.venue_choice_mode !== 'meet_first' && stage === 'final') {
       conflicts.push(conflict)
       clarification = conflict.message
     }
@@ -385,12 +386,14 @@ function interpretNlPlanUtterance(rawText, baseInput = {}) {
     })
   }
   if (/星巴克只是集合点|集合点.*星巴克|星巴克.*集合点|先在星巴克碰面|先碰面再去/.test(textValue)) {
+    const hasCinema = /影院|影城|电影院/.test(base.activity_venue || '')
     return emptyIntent({
       intent: 'modify_specific_dimensions',
       changed_dimensions: ['meet_point'],
       candidate_values: {
-        meet_point: '星巴克',
-        open_items: [{ key: 'cinema_tbd', label: '影院待商量', accepted_by: [] }]
+        activity_venue: hasCinema ? base.activity_venue : (/星巴克/.test(textValue) ? '星巴克' : base.activity_venue),
+        meet_point: /星巴克/.test(textValue) ? '星巴克' : base.activity_venue,
+        venue_choice_mode: hasCinema ? 'named_location' : 'meet_first'
       },
       confidence: 0.92
     })
@@ -507,7 +510,11 @@ function applyStructuredPlanIntent(intentInput = {}, baseInput = {}) {
   if ((changed.includes('area') || hasCandidate('area')) && hasCandidate('area')) next.area = text(candidates.area, 40)
   if ((changed.includes('activity') || hasCandidate('activity')) && hasCandidate('activity')) {
     next.activity = text(candidates.activity, 20)
-    if (!changed.includes('activity_venue') && !hasCandidate('activity_venue')) next.activity_venue = ''
+    if (!changed.includes('activity_venue') && !hasCandidate('activity_venue')
+      && normalizeFlexibleLocation(next.activity, next.activity_venue).location_precision !== 'area') {
+      next.activity_venue = ''
+      next.venue_choice_mode = 'named_location'
+    }
   }
   if ((changed.includes('activity_venue') || hasCandidate('activity_venue')) && hasCandidate('activity_venue')) {
     next.activity_venue = text(candidates.activity_venue, 80)
@@ -525,7 +532,7 @@ function applyStructuredPlanIntent(intentInput = {}, baseInput = {}) {
   if ((changed.includes('duration') || hasCandidate('duration')) && hasCandidate('duration')) next.duration = text(candidates.duration, 40)
 
   // Deterministic conflict gate: movie + coffee brand as venue needs clarification unless meet_point-only.
-  if (next.activity === '电影' && /^(?:星巴克|瑞幸|喜茶|奈雪)$/.test(next.activity_venue)) {
+  if (next.activity === '电影' && /^(?:星巴克|瑞幸|喜茶|奈雪)$/.test(next.activity_venue) && next.venue_choice_mode !== 'meet_first') {
     return {
       intent,
       changed_dimensions: changed,
@@ -533,7 +540,7 @@ function applyStructuredPlanIntent(intentInput = {}, baseInput = {}) {
       confidence: Number(intentInput.confidence || 0),
       needs_clarification: true,
       clarification: '先在星巴克碰面，再去看电影吗？如果是，影院可以标成待商量。',
-      plan: Object.assign({}, next, { activity_venue: '', meet_point: next.meet_point || next.activity_venue })
+      plan: Object.assign({}, next, { meet_point: next.meet_point || next.activity_venue })
     }
   }
 
@@ -546,9 +553,8 @@ function applyStructuredPlanIntent(intentInput = {}, baseInput = {}) {
     needs_clarification: false,
     clarification: '',
     plan: Object.assign({}, built, {
-      venue_choice_mode: next.venue_choice_mode || '',
+      ...locationAgreement(next),
       activity_detail: next.activity_detail || '',
-      open_items: normalizeOpenItems(next.open_items)
     })
   }
 }
@@ -695,11 +701,7 @@ function canSendInvitation(planInput = {}) {
     missing: validation.missing.concat(validation.plan.start_time || planInput.start_time ? [] : ['start_time']),
     clarification: validation.clarification,
     plan: validation.plan,
-    open_items: normalizeOpenItems(planInput.open_items || (
-      validation.plan.location_precision === 'area' && planInput.venue_choice_mode === 'choose_on_arrival'
-        ? [{ key: 'store_on_arrival', label: '门店到场后商量', accepted_by: [] }]
-        : []
-    ))
+    open_items: locationAgreement(planInput).open_items
   }
 }
 
@@ -708,24 +710,41 @@ function canFinalizePlan(planInput = {}, options = {}) {
   if (!invitation.ok) {
     return Object.assign({}, invitation, { ok: false, stage: 'final' })
   }
-  const openItems = normalizeOpenItems(planInput.open_items || invitation.open_items)
-  const accepterIds = Array.isArray(options.accepter_user_ids) ? options.accepter_user_ids.map(Number) : []
+  const openItems = invitation.open_items
+  const accepterIds = [...new Set((options.accepter_user_ids || []).map(Number).filter((id) => Number.isSafeInteger(id) && id > 0))]
+  // These IDs must be derived from current-version database confirmations by the caller.
+  // Never trust accepted_by supplied by a client or an LLM.
+  const confirmedIds = new Set((options.confirmed_user_ids || []).map(Number))
+  const finalValidation = validateDatePlan(planInput, 'final')
   const unresolved = openItems.filter((item) => {
-    const accepted = Array.isArray(item.accepted_by) ? item.accepted_by.map(Number) : []
-    if (!accepterIds.length) return accepted.length < 2
-    return accepterIds.some((id) => !accepted.includes(id))
+    return accepterIds.length !== 2 || accepterIds.some((id) => !confirmedIds.has(id))
   })
   return {
-    ok: unresolved.length === 0,
-    missing: unresolved.length ? ['open_items'] : [],
+    ok: finalValidation.valid && unresolved.length === 0,
+    missing: [...finalValidation.missing, ...(unresolved.length ? ['open_items'] : [])],
     clarification: unresolved.length
       ? `还有未双方确认的事项：${unresolved.map((item) => item.label).join('、')}`
-      : '',
+      : finalValidation.clarification,
     plan: invitation.plan,
     open_items: openItems,
     unresolved_open_items: unresolved,
     stage: 'final'
   }
+}
+
+// Server-owned labels and deterministic obligations; input cannot forge consent or
+// hide mandatory open items by sending open_items: [].
+function locationAgreement(input = {}) {
+  const mode = ['named_location', 'choose_on_arrival', 'meet_first'].includes(input.venue_choice_mode)
+    ? input.venue_choice_mode : 'named_location'
+  const activity = input.activity || (input.activities || [])[0] || ''
+  const openItems = []
+  if (mode === 'choose_on_arrival') openItems.push({ key: 'store_on_arrival', label: '门店到场后商量', accepted_by: [] })
+  if (mode === 'meet_first') openItems.push({ key: 'cinema_tbd', label: '先在约定地点碰面，影院待商量', accepted_by: [] })
+  if (activityVenueConflict(activity, input.activity_venue) && mode !== 'meet_first') {
+    openItems.push({ key: 'location_role', label: '请确认此处是否为会合地点', accepted_by: [] })
+  }
+  return { venue_choice_mode: mode, open_items: openItems }
 }
 
 function normalizeOpenItems(items) {
@@ -792,6 +811,7 @@ module.exports = {
   canSendInvitation,
   canFinalizePlan,
   normalizeOpenItems,
+  locationAgreement,
   interpretNlPlanUtterance,
   applyStructuredPlanIntent
 }

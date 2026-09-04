@@ -73,6 +73,7 @@ function deriveVenueClarification(form) {
   const activity = String(form && form.activities && form.activities[0] || '').trim()
   const mode = String(form && form.venue_choice_mode || '')
   if (!value || !activity) return null
+  if (mode === 'meet_first') return { areaHint: value, activityDetail: activity, missingText: '先在这里碰面，影院待商量；发送后需对方确认', soft: true }
   if (mode === 'choose_on_arrival') {
     return {
       areaHint: value,
@@ -875,8 +876,9 @@ Page({
   },
 
   markChooseOnArrival() {
+    const mode = (this.data.form.activities || [])[0] === '电影' ? 'meet_first' : 'choose_on_arrival'
     const nextForm = Object.assign({}, this.data.form, {
-      venue_choice_mode: this.data.form.venue_choice_mode === 'choose_on_arrival' ? 'named_location' : 'choose_on_arrival'
+      venue_choice_mode: this.data.form.venue_choice_mode === mode ? 'named_location' : mode
     })
     this.setData({
       'form.venue_choice_mode': nextForm.venue_choice_mode,

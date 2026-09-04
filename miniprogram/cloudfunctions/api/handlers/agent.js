@@ -100,11 +100,12 @@ function applyExactTimeToDecision(decision, content, currentApplication) {
 
 function movieVenueClarification(content, application) {
   const text = String(content || '')
+  if (/先.*(?:碰面|见面|集合)|只是集合点/.test(text) || (application && application.venue_choice_mode === 'meet_first')) return ''
   if (!/电影|看电影/.test(text)) return ''
   const venueText = `${text} ${String(application && application.activity_venue || '')}`
   if (/电影院|影城|影院/.test(venueText)) return ''
   if (/星巴克|咖啡店|咖啡馆/.test(`${text} ${String(application && application.areas || '')}`)) {
-    return '你确认了“看电影”，但当前只看到星巴克。星巴克可以作为集合点，但还需要具体电影院作为活动场地。你想去哪家电影院？'
+    return '先在星巴克碰面，再去看电影吗？可以回复“先在这里碰面，影院到时商量”，我会先生成修改预览。'
   }
   return ''
 }
@@ -1055,7 +1056,8 @@ function createAgentHandlers(overrides = {}) {
             areas: ['行政区或公共商圈'],
             activities: ['咖啡|吃饭|奶茶|散步|看展|电影|桌游，最多3项'],
             start_time: 'HH:mm；用户说晚上8点时必须输出20:00，并将period设为night',
-            activity_venue: '具体公共活动场地，例如某电影院；不能把星巴克当作电影院',
+            activity_venue: '用户约定的公共见面地点，可为商圈、商场或门店；原文保留',
+            venue_choice_mode: 'named_location|choose_on_arrival|meet_first；用户明确先在这里碰面再去影院时用meet_first',
             area_hint: '已确认的大致区域或商圈，例如大运中心附近',
             activity_detail: '已确认的活动或餐饮类型，例如椰子鸡',
             venue_resolution: '{ status: resolved|needs_specific_venue, missing_fields: [activity_venue] }',
@@ -1076,6 +1078,7 @@ function createAgentHandlers(overrides = {}) {
             '活动与场地歧义时必须澄清：例如“电影+星巴克”要询问是否先在星巴克碰面再去影院；不能静默拼接，也不能直接硬拒绝',
             '地点允许商圈/商场/公共场馆或具体门店：用户填写的“大运中心”“万象城”应保留在activity_venue，location_precision=area；纯菜品如“椰子鸡”写入activity_detail并询问地点，不得假装已有地点',
             '宽泛地点可以发送邀请与最终确认，不得反复强迫补具体门店；用户明确“到场后再选店”时应记录venue_choice_mode=choose_on_arrival并停止追问',
+            '用户确认先在星巴克碰面再看电影时，保留activity_venue并将venue_choice_mode设为meet_first；影院待商量由服务器生成。不能填写accepted_by或假称双方已经同意',
             '最终方案必须有activity_venue（可为商圈级）；meet_point只是可选的初步会合范围。到场后可转述用户主动提供的吧台旁、靠窗座位等公共现场位置',
             '到场识别使用arrival_hint，只能转述用户主动提供的非敏感穿搭或手持物，不能声称AI验证了现实身份',
             '明确修改请求返回 intent=modify_date_application 和 create_date_application_patch，arguments 只包含用户明确修改的字段',

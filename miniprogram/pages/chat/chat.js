@@ -161,6 +161,7 @@ function normalizeCoordinationUpdateCard(raw) {
     areaText: String(proposal.area_text || ''),
     activityText: String(proposal.activity_text || ''),
     venueText: String(proposal.activity_venue_text || ''),
+    openItemsText: String(proposal.open_items_text || ''),
     meetPointText: String(proposal.meet_point_text || ''),
     budgetText: String(proposal.budget_text || ''),
     paymentText: String(proposal.payment_text || ''),

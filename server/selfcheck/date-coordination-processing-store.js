@@ -59,7 +59,14 @@ function fakeDatabase(seed = {}) {
     collection,
     async createCollection(name) { table(name) },
     runTransaction(handler) {
-      const result = transactionTail.then(() => handler({ collection }))
+      const result = transactionTail.then(async () => {
+        const snapshot = JSON.parse(JSON.stringify(state))
+        try { return await handler({ collection }) } catch (error) {
+          for (const key of Object.keys(state)) delete state[key]
+          Object.assign(state, snapshot)
+          throw error
+        }
+      })
       transactionTail = result.catch(() => undefined)
       return result
     }
@@ -239,7 +246,40 @@ async function main() {
   assert.strictEqual(stale.reason, 'stale_processing_version')
   assert.strictEqual(Object.keys(fake.state.date_proposals).length, 4)
 
-  console.log('PASS CloudBase coordination processing store is CAS-safe and idempotent')
+  const flexible = { contract_version: 3, date: '2026-09-06', period: 'night', start_time: '20:00',
+    area: '南山', activity: '吃饭', activity_venue: '万象城', budget: '50-100',
+    payment_mode: 'aa', duration: 'about-1h', venue_choice_mode: 'choose_on_arrival',
+    open_items: [{ key: 'store_on_arrival', label: '门店到场后商量', accepted_by: [1, 2] }] }
+  for (const id of [56, 57]) {
+    const c = { _id: `date_coordination_${id}`, id, user_a_id: 1, user_b_id: 2,
+      status: 'waiting_confirmations', coordination_version: 2 }
+    const p = { ...flexible, _id: `date_coordination_proposal_${id}`, id, coordination_id: id,
+      coordination_version: 2, status: 'active' }
+    if (id === 57) Object.assign(p, { activity: '电影', activity_venue: '星巴克', venue_choice_mode: 'named_location' })
+    fake.state.date_coordinations[c._id] = c
+    fake.state.date_proposals[p._id] = p
+    // A stale version's confirmation and forged accepted_by cannot finalize.
+    fake.state.date_confirmations[`date-confirmation-${id}-2-v1`] = {
+      user_id: 2, decision: 'confirm', proposal_id: id, coordination_version: 1 }
+    assert.strictEqual((await db.commitCoordinationConfirmation(c, p, { user_id: 1, decision: 'confirm' }, now)).arranged, false)
+    if (id === 56) {
+      assert.strictEqual((await db.commitCoordinationConfirmation(c, p, { user_id: 2, decision: 'confirm' }, now)).arranged, true)
+    } else {
+      await assert.rejects(db.commitCoordinationConfirmation(c, p, { user_id: 2, decision: 'confirm' }, now), /待澄清/)
+      assert.strictEqual(fake.state.date_coordinations[c._id].status, 'waiting_confirmations')
+      assert.strictEqual(fake.state.date_confirmations[`date-confirmation-${id}-2-v2`], undefined)
+    }
+  }
+  const direct = { _id: 'date_coordination_58', id: 58, user_a_id: 1, user_b_id: 2,
+    status: 'inviting_partner', coordination_version: 1, invitation_version: 1,
+    invitation_primary_proposal: flexible }
+  fake.state.date_coordinations[direct._id] = direct
+  const accepted = await db.commitDirectInvitationAccept({ coordination: direct, inviteeUserId: 2,
+    invitationVersion: 1, proposalData: { ...flexible, proposal_key: 'flexible-direct' } }, now)
+  assert.strictEqual(accepted.arranged, true)
+  assert.strictEqual(accepted.proposal.venue_choice_mode, 'choose_on_arrival')
+  assert.deepStrictEqual(accepted.proposal.open_items[0].accepted_by, [])
+  console.log('PASS CloudBase coordination processing store is CAS-safe and idempotent; flexible finalization uses transaction confirmations')
 }
 
 main().catch((error) => {

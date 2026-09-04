@@ -4,6 +4,8 @@ const collections = require('./collections')
 const { withCollectionBootstrap } = require('./collectionBootstrapPolicy')
 const { OFFICIAL_SUPPORT_CODE, isTestUser, testSupportCode } = require('../agent/userIdentity')
 const { documentOrNull } = require('./documentReadPolicy')
+const { canFinalizePlan, locationAgreement } = require('./datePlanContract')
+const { businessError } = require('./businessError')
 const {
   isExpiredInvitationRow,
   invitingPartnerDeadlinePassed,
@@ -789,9 +791,18 @@ async function commitDirectInvitationAccept(input = {}, timestamp = now()) {
     }
 
     let proposal = await adapter.byDocId('date_coordination_proposal', proposalDocId)
+    // The invitation sender confirmed this version by sending it; the authenticated
+    // invitee is explicitly accepting the same stored invitation in this transaction.
+    const storedPrimary = current.invitation_primary_proposal || proposalData
+    const finalGate = Number(storedPrimary.contract_version || 1) < 2 ? { ok: true } : canFinalizePlan(storedPrimary, {
+      accepter_user_ids: [current.user_a_id, current.user_b_id],
+      confirmed_user_ids: [current.user_a_id, inviteeUserId]
+    })
+    if (!finalGate.ok) throw businessError('PRIMARY_PROPOSAL_INCOMPLETE', '请先明确会合地点和待商量事项，再接受方案')
     if (!proposal) {
       const proposalId = await adapter.nextCounter('date_coordination_proposal')
       proposal = await adapter.setByDocId('date_coordination_proposal', proposalDocId, Object.assign({}, proposalData, {
+        ...locationAgreement(storedPrimary),
         id: proposalId,
         coordination_id: Number(current.id),
         coordination_version: coordVersion,
@@ -1237,6 +1248,13 @@ async function commitCoordinationConfirmation(coordination, proposal, input = {}
       && item.decision === 'confirm'
       && Number(item.proposal_id) === Number(storedProposal.id)
       && Number(item.coordination_version) === version)
+    if (arranged && Number(storedProposal.contract_version || 1) >= 2) {
+      const finalGate = canFinalizePlan(storedProposal, {
+        accepter_user_ids: [current.user_a_id, current.user_b_id],
+        confirmed_user_ids: participantConfirmations.map((item) => item.user_id)
+      })
+      if (!finalGate.ok) throw businessError('PRIMARY_PROPOSAL_INCOMPLETE', '当前方案还有待澄清事项，请先调整方案')
+    }
     const updated = arranged
       ? await adapter.updateByDoc('date_coordination', current, {
         status: 'arranged',

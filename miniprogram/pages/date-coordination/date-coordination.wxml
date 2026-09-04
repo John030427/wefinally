@@ -53,7 +53,7 @@
             <view class="plan-kicker">当前有效版本 · V{{coordinationDisplay.version}}</view>
             <view class="section-title">AI 协调方案</view>
           </view>
-          <view class="plan-ready-pill {{currentPlanCard.meeting_ready ? 'ready' : 'pending'}}">{{currentPlanCard.meeting_ready ? '可以赴约' : '待补充'}}</view>
+          <view class="plan-ready-pill {{coordination.status === 'arranged' ? 'ready' : 'pending'}}">{{coordination.status === 'arranged' ? '双方已确认' : '待双方确认'}}</view>
         </view>
         <view class="plan-conflict" wx:if="{{currentPlanCard.meeting_conflict}}">{{currentPlanCard.meeting_conflict.message}}</view>
         <view class="fact-row"><text class="fact-label">时间</text><text class="fact-value">{{currentPlanCard.time_text || '待确认'}}</text></view>
@@ -234,7 +234,7 @@
         <input class="input field-input" maxlength="80" placeholder="商圈、商场或具体店名都可以，例如万象城、大运中心四季椰林" value="{{form.activity_venue}}" data-key="activity_venue" bindinput="onInput" />
         <view class="field-help">地点可以宽泛；双方确认同一版本后才会生效。</view>
         <view class="choice-list" wx:if="{{form.activity_venue}}">
-          <view class="choice-tag {{form.venue_choice_mode === 'choose_on_arrival' ? 'selected' : ''}}" bindtap="markChooseOnArrival" hover-class="choice-tag-pressed">到场后再选店</view>
+          <view class="choice-tag {{form.venue_choice_mode !== 'named_location' ? 'selected' : ''}}" bindtap="markChooseOnArrival" hover-class="choice-tag-pressed">{{form.activities[0] === '电影' ? '先在这里碰面，影院待商量' : '到场后再选店'}}</view>
         </view>
         <view class="venue-clarification-card" wx:if="{{venueClarificationCard}}">
           <view class="venue-clarification-title">{{venueClarificationCard.soft ? '轻提示' : '还需要确认'}}</view>

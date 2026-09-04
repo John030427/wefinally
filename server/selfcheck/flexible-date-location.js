@@ -10,7 +10,7 @@ const {
 } = require('../../miniprogram/cloudfunctions/api/lib/meetingPlanPolicy')
 const { normalizeApplication } = require('../../miniprogram/cloudfunctions/api/lib/dateCoordinationPolicy')
 const {
-  resolvePrimaryInvitationProposal
+  resolvePrimaryInvitationProposal, publicPrimaryProposal, buildInvitationCard, buildDirectAcceptProposal, mergeInvitationWithOverrides
 } = require('../../miniprogram/cloudfunctions/api/lib/invitationCoordination')
 const { reconcileDerivedFields } = require('../../miniprogram/cloudfunctions/api/lib/dateApplicationDerivedFields')
 
@@ -135,8 +135,46 @@ function main() {
   assert.strictEqual(blockedFinal.ok, false)
   const acceptedFinal = canFinalizePlan(Object.assign({}, arrivalPlan, {
     open_items: [{ key: 'store_on_arrival', label: '门店到场后商量', accepted_by: [1, 2] }]
-  }), { accepter_user_ids: [1, 2] })
+  }), { accepter_user_ids: [1, 2], confirmed_user_ids: [1, 2] })
   assert.strictEqual(acceptedFinal.ok, true)
+
+  const untrusted = Object.assign({}, arrivalPlan, { contract_version: 2, payment_mode: 'aa',
+    open_items: [{ key: 'store_on_arrival', label: '门店到场后商量', accepted_by: [1, 2] }] })
+  const stored = publicPrimaryProposal(untrusted, { user_a_id: 1, user_b_id: 2 })
+  assert.strictEqual(stored.venue_choice_mode, 'choose_on_arrival')
+  assert.strictEqual(stored.open_items.length, 1)
+  assert.deepStrictEqual(stored.open_items[0].accepted_by, [])
+  assert.strictEqual(canFinalizePlan(stored, { accepter_user_ids: [1, 2] }).ok, false)
+  assert.strictEqual(canFinalizePlan({ ...stored, open_items: [] }, { accepter_user_ids: [1, 2] }).ok, false)
+  assert.strictEqual(canFinalizePlan(stored, { accepter_user_ids: [1, 2], confirmed_user_ids: [1] }).ok, false)
+  const card = buildInvitationCard(stored, 1, { user_a_id: 1, user_b_id: 2 })
+  assert.strictEqual(card.final_ready, false)
+  assert.ok(card.open_items_text.includes('门店到场后商量'))
+  assert.ok(!card.venue_guidance.includes('双方已确认'))
+  assert.strictEqual(buildDirectAcceptProposal(stored, 1).open_items.length, 1)
+  const prefs = normalizeApplication({ ...baseInput('万象城'), venue_choice_mode: 'choose_on_arrival' }, NOW)
+  assert.strictEqual(mergeInvitationWithOverrides(prefs, {}).venue_choice_mode, 'choose_on_arrival')
+  const { computeOverlap } = require('../../miniprogram/cloudfunctions/api/lib/dateCoordinationPolicy')
+  const overlap = computeOverlap(prefs, prefs, { version: 2, user_a_id: 1, user_b_id: 2 })
+  assert.strictEqual(overlap.proposals[0].open_items.length, 1)
+  assert.ok(computeOverlap(prefs, { ...prefs, venue_choice_mode: 'named_location' }, { version: 2, user_a_id: 1, user_b_id: 2 }).missing_dimensions.length)
+  const movie = normalizeApplication({ ...baseInput('星巴克'), activities: ['电影'] }, NOW)
+  assert.strictEqual(movie.activity_venue, '星巴克')
+  assert.strictEqual(movie.open_items[0].key, 'location_role')
+  const moviePrimary = publicPrimaryProposal({ ...untrusted, activity: '电影', activity_venue: '星巴克', venue_choice_mode: 'named_location' })
+  assert.strictEqual(canSendInvitation(moviePrimary).ok, true)
+  assert.strictEqual(canFinalizePlan(moviePrimary, { accepter_user_ids: [1, 2], confirmed_user_ids: [1, 2] }).ok, false)
+  const clarified = { ...moviePrimary, venue_choice_mode: 'meet_first' }
+  assert.strictEqual(canFinalizePlan(clarified, { accepter_user_ids: [1, 2], confirmed_user_ids: [1, 2] }).ok, true)
+  const { applyStructuredPlanIntent, interpretNlPlanUtterance } = require('../../miniprogram/cloudfunctions/api/lib/datePlanContract')
+  const activityChange = applyStructuredPlanIntent(interpretNlPlanUtterance('时间不变只改活动成咖啡', arrivalPlan), arrivalPlan)
+  assert.strictEqual(activityChange.plan.activity_venue, '万象城')
+  const meetingFirst = applyStructuredPlanIntent(interpretNlPlanUtterance('先在星巴克碰面', moviePrimary), moviePrimary)
+  assert.strictEqual(meetingFirst.plan.venue_choice_mode, 'meet_first')
+  assert.strictEqual(meetingFirst.needs_clarification, false)
+  const { previewApplicationChange } = require('../../miniprogram/cloudfunctions/api/lib/dateApplicationPatchPolicy')
+  const preview = previewApplicationChange(movie, { venue_choice_mode: 'meet_first' }, { now: NOW })
+  assert.strictEqual(preview.after.venue_choice_mode, 'meet_first')
 
   console.log('PASS flexible date location normalize + invitation range')
 }

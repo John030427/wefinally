@@ -11,7 +11,8 @@ const {
   validateDatePlan,
   canSendInvitation,
   canFinalizePlan,
-  normalizeOpenItems
+  normalizeOpenItems,
+  locationAgreement
 } = require('./datePlanContract')
 const { attachPublicError } = require('./businessError')
 
@@ -118,5 +119,6 @@ module.exports = {
   validateDatePlan,
   canSendInvitation,
   canFinalizePlan,
-  normalizeOpenItems
+  normalizeOpenItems,
+  locationAgreement
 }
