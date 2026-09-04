@@ -2,6 +2,7 @@ const { STATUS, normalizeApplication, nextStatus } = require('../lib/dateCoordin
 const { QA_REAL_DEVICE_MATCH_COHORT, QA_REGISTRATION_PUBLIC_FLAG } = require('../lib/qaRegistrationReplayPolicy')
 const { isInternalQaAccount } = require('../lib/testIdentityPolicy')
 const { businessError } = require('../lib/businessError')
+const { dateError, RECOVERY } = require('../lib/dateCoordinationErrors')
 const { MEMBER_STATUS, memberStatus } = require('../lib/memberPolicy')
 const { createReminderJob } = require('../agent/notificationJobs')
 const { assertOfflineDatingAllowed } = require('../lib/testFixturePolicy')
@@ -946,14 +947,14 @@ function createDateCoordinationHandlers(overrides = {}) {
 
   async function saveApplicationForUser(data, user) {
     const coordination = await dep('byId')('date_coordination', coordinationId(data))
-    if (!coordination) throw new Error('日期协调不存在')
-    if (!participant(coordination, user.id)) throw new Error('无权操作该日期协调')
+    if (!coordination) throw dateError('CURRENT_STATE_INVALID', '日期协调不存在', RECOVERY.REFRESH)
+    if (!participant(coordination, user.id)) throw dateError('FORBIDDEN', '无权操作该日期协调', RECOVERY.REFRESH)
     const isInitiatorDraft = coordination.status === STATUS.COLLECTING_INITIATOR
     if (isInitiatorDraft && Number(coordination.user_a_id) !== Number(user.id)) {
-      throw new Error('请等待发起方填写约会偏好并发出邀请')
+      throw dateError('WAITING_PARTNER', '请等待发起方填写约会偏好并发出邀请', RECOVERY.WAIT_PARTNER)
     }
     if (![STATUS.COLLECTING_INITIATOR, STATUS.COLLECTING_PREFERENCES].includes(coordination.status)) {
-      throw new Error('当前状态不能提交日期申请')
+      throw dateError('CURRENT_STATE_INVALID', '当前状态不能提交日期申请', RECOVERY.REFRESH)
     }
     const now = dep('now')()
     if (deadlinePassed(coordination.application_deadline_at, now)) {

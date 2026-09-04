@@ -524,12 +524,14 @@ exports.main = async (event = {}) => {
     if (publicCode) {
       const publicMessage = String(err.publicMessage || err.message || publicCode).slice(0, 40)
       const numericCode = Number(err && err.code)
-      return {
+      const payload = {
         success: false,
         code: numericCode === 403 ? 403 : (numericCode === 400 ? 400 : 500),
         error: publicCode,
         message: publicMessage
       }
+      if (err && err.recovery) payload.recovery = String(err.recovery)
+      return payload
     }
     const numericCode = Number(err && err.code)
     const code = numericCode === 403 ? 403 : (numericCode === 400 ? 400 : 500)

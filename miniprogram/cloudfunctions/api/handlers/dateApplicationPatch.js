@@ -1,6 +1,7 @@
 const { normalizeApplication, STATUS } = require('../lib/dateCoordinationPolicy')
 const { enrichChangesWithDerivedClears } = require('../lib/dateApplicationDerivedFields')
 const { attachPublicError } = require('../lib/businessError')
+const { dateError, RECOVERY } = require('../lib/dateCoordinationErrors')
 const {
   PATCHABLE_FIELDS,
   previewApplicationChange,
@@ -304,10 +305,10 @@ function createDateApplicationPatchHandlers(overrides = {}) {
 
   async function createPreviewForUser(data, user, session) {
     const coordination = await dep('byId')('date_coordination', Number(data.coordination_id || 0))
-    if (!owns(coordination, user && user.id)) throw new Error('无权修改该约会协调')
+    if (!owns(coordination, user && user.id)) throw dateError('FORBIDDEN', '无权修改该约会协调', RECOVERY.REFRESH)
     if (isExpiredInvitationRow(coordination)) throw invitationExpiredError()
     if (WRITE_BLOCKED_STATUSES.includes(coordination.status) || !canModifyApplication(coordination, user, { hasOwnApplication: true })) {
-      throw new Error(terminalWriteError(coordination.status))
+      throw dateError('CURRENT_STATE_INVALID', terminalWriteError(coordination.status), RECOVERY.REFRESH)
     }
     const version = Number(coordination.coordination_version || 1)
     const rows = await applicationsFor(coordination.id)
@@ -321,7 +322,7 @@ function createDateApplicationPatchHandlers(overrides = {}) {
           application: initialChanges
         }), user, session)
       }
-      throw new Error('请先完成自己的约会偏好表单')
+      throw dateError('DATE_APPLICATION_INVALID', '请先完成自己的约会偏好表单', RECOVERY.COMPLETE_FORM)
     }
     const changes = enrichChangesWithDerivedClears(mine.application, cleanChanges(data.changes))
     const activeProposals = await dep('list')('date_coordination_proposal', {
@@ -397,23 +398,23 @@ function createDateApplicationPatchHandlers(overrides = {}) {
 
   async function createInitialPreviewForUser(data, user, session) {
     const coordination = await dep('byId')('date_coordination', Number(data.coordination_id || 0))
-    if (!owns(coordination, user && user.id)) throw new Error('无权创建该约会申请')
+    if (!owns(coordination, user && user.id)) throw dateError('FORBIDDEN', '无权创建该约会申请', RECOVERY.REFRESH)
     if (WRITE_BLOCKED_STATUSES.includes(coordination.status) || !canModifyApplication(coordination, user, { hasOwnApplication: false })) {
-      throw new Error(terminalWriteError(coordination.status))
+      throw dateError('CURRENT_STATE_INVALID', terminalWriteError(coordination.status), RECOVERY.REFRESH)
     }
     const version = Number(coordination.coordination_version || 1)
     const rows = await applicationsFor(coordination.id)
     const mine = latestForUser(rows, user.id, version)
-    if (mine && mine.application) throw new Error('约会申请已经存在，请使用修改预览')
+    if (mine && mine.application) throw dateError('CURRENT_STATE_INVALID', '约会申请已经存在，请使用修改预览', RECOVERY.REFRESH)
     const initiatorApp = latestForUser(rows, coordination.user_a_id, version)
     const invitation = invitationProposalOf(coordination, initiatorApp)
     const rawInput = unwrapApplicationInput(data.application || data.changes || {})
     const rawKeys = rawInput && typeof rawInput === 'object' && !Array.isArray(rawInput)
       ? Object.keys(rawInput)
       : []
-    if (!rawKeys.length) throw new Error('请至少补充一项自己的约会条件')
+    if (!rawKeys.length) throw dateError('DATE_APPLICATION_INVALID', '请至少补充一项自己的约会条件', RECOVERY.COMPLETE_FORM)
     if (rawKeys.some((key) => !PATCHABLE_FIELDS.includes(key))) {
-      throw new Error('约会申请参数格式无效，请重新说明时间或其他条件')
+      throw dateError('DATE_APPLICATION_INVALID', '约会申请参数格式无效，请重新说明时间或其他条件', RECOVERY.COMPLETE_FORM)
     }
     const merged = invitation.areas.length
       ? mergeInvitationWithOverrides(invitation, rawInput)

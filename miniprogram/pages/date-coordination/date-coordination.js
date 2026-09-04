@@ -24,6 +24,11 @@ const PUBLIC_ERROR_COPY = {
   DATE_VENUE_NEEDS_CLARIFICATION: '具体门店还未确认，请先和 AI 继续协调',
   COUNTER_OFFER_STALE: '对方刚更新了调整方案，请先看一下最新版本',
   COORDINATION_FINALIZED: '本轮协调已结束，不能继续修改安排',
+  CURRENT_STATE_INVALID: '当前状态已变化，请刷新后再试',
+  WAITING_PARTNER: '请等待对方完成回应',
+  FORBIDDEN: '无权操作该约会协调',
+  DATE_APPLICATION_INVALID: '约会安排格式有误，请检查后重试',
+  CLIENT_UPGRADE_REQUIRED: '请更新测试版后再继续操作',
   QA_RESET_CONFIRM_REQUIRED: '请先确认重置文案后再试',
   QA_RESET_FORBIDDEN: '当前账号无权重置本轮协调'
 }
@@ -34,7 +39,8 @@ const REFRESH_ERROR_CODES = {
   INVITATION_EXPIRED: true,
   STALE_COORDINATION_VERSION: true,
   COUNTER_OFFER_STALE: true,
-  COORDINATION_FINALIZED: true
+  COORDINATION_FINALIZED: true,
+  CURRENT_STATE_INVALID: true
 }
 
 function errorCodeOf(err) {
@@ -752,8 +758,27 @@ Page({
 
   notifyActionError(err, fallback) {
     const code = errorCodeOf(err)
+    const recovery = String((err && (err.recovery || err.data && err.data.recovery)) || '')
     wx.showToast({ title: publicErrorToast(err, fallback), icon: 'none', duration: 3000 })
-    if (REFRESH_ERROR_CODES[code]) this.refreshCoordination()
+    if (recovery === 'refresh' || REFRESH_ERROR_CODES[code]) {
+      this.refreshCoordination()
+      return
+    }
+    if (recovery === 'complete_form') {
+      this.setData({ showApplicationForm: true, showOptionalForm: true })
+      return
+    }
+    if (recovery === 'open_coordinator') {
+      setTimeout(() => this.goCoordinator(), 300)
+      return
+    }
+    if (recovery === 'contact_support') {
+      wx.showModal({
+        title: '需要人工协助',
+        content: '请通过官方客服继续处理，不要私下交换联系方式。',
+        showCancel: false
+      })
+    }
   },
 
   async updateArrivalHint() {
