@@ -821,24 +821,31 @@ function createAgentHandlers(overrides = {}) {
       // privacy-safe partner notification path.
       const mealDetail = mealInquiryDetail(content)
       if (mealDetail && directOwnApplication && directOwnApplication.application) {
-        const mealPreview = await patchHandlers.createPreviewForUser({
-          coordination_id: Number(coordination.id),
-          session_id: Number(session.id),
-          source_message_id: Number(userMessage.id || 0),
-          changes: { activities: ['吃饭'], activity_detail: mealDetail }
-        }, user, session)
-        const reply = `我理解你是想把活动改为吃饭（${mealDetail}），并询问对方是否接受。我先整理修改预览；你确认后才会通知对方。`
-        await recordTool(session, user, PATCH_TOOL, 'completed')
-        await saveMessage(session, user, 'assistant', reply, { patch_preview: mealPreview })
-        return {
-          session_id: session.id,
-          agent_type: session.agent_type,
-          reply,
-          tool: PATCH_TOOL,
-          patch_preview: mealPreview,
-          requires_confirmation: true,
-          risk_level: 'safe',
-          suggested_actions: ['confirm_patch', 'cancel_patch']
+        try {
+          const mealPreview = await patchHandlers.createPreviewForUser({
+            coordination_id: Number(coordination.id),
+            session_id: Number(session.id),
+            source_message_id: Number(userMessage.id || 0),
+            changes: { activities: ['吃饭'], activity_detail: mealDetail }
+          }, user, session)
+          const reply = `我理解你是想把活动改为吃饭（${mealDetail}），并询问对方是否接受。我先整理修改预览；你确认后才会通知对方。`
+          await recordTool(session, user, PATCH_TOOL, 'completed')
+          await saveMessage(session, user, 'assistant', reply, { patch_preview: mealPreview })
+          return {
+            session_id: session.id,
+            agent_type: session.agent_type,
+            reply,
+            tool: PATCH_TOOL,
+            patch_preview: mealPreview,
+            requires_confirmation: true,
+            risk_level: 'safe',
+            suggested_actions: ['confirm_patch', 'cancel_patch']
+          }
+        } catch (err) {
+          await recordTool(session, user, PATCH_TOOL, 'failed', 'invalid_meal_change')
+          const reply = `我理解你想安排“吃饭（${mealDetail}）”，但当前方案没有可应用的变化：${err.message || '请换一种说法再试'}`
+          await saveMessage(session, user, 'assistant', reply)
+          return { session_id: session.id, agent_type: session.agent_type, reply, tool_failed: true, risk_level: 'safe' }
         }
       }
       const inquiryActionIntent = pendingInquiryMessage && !pendingPatchEarly ? pendingActionIntent(content) : ''
@@ -1100,11 +1107,13 @@ function createAgentHandlers(overrides = {}) {
         PARTNER_INQUIRY_TOOL,
         TOOL_NAMES.MATCH
       ]
-      let decision = await dep('generateDecision')({
-        agentType: session.agent_type,
-        message: content,
-        context,
-        prompt: JSON.stringify({
+      let decision
+      try {
+        decision = await dep('generateDecision')({
+          agentType: session.agent_type,
+          message: content,
+          context,
+          prompt: JSON.stringify({
           agent_role: 'WeFinally AI约会协调员',
           current_date: dep('now')().toISOString().slice(0, 10),
           user_message: content,
@@ -1150,8 +1159,23 @@ function createAgentHandlers(overrides = {}) {
             '只生成修改预览，绝不直接修改数据库',
             '不得输出另一方原始回答、原因或隐私'
           ]
-        }).slice(0, 7000)
-      })
+          }).slice(0, 7000)
+        })
+      } catch (err) {
+        // If the model is temporarily unavailable, an unambiguous activity
+        // change still has a safe deterministic path to a confirmation preview.
+        const deterministic = applyDeterministicActivityChange({
+          intent: 'clarify_scope',
+          replyDraft: '',
+          riskLevel: 'safe'
+        }, content, ownApplicationRow && ownApplicationRow.application)
+        if (!deterministic || deterministic.intent !== 'modify_date_application') throw err
+        decision = Object.assign(deterministic, {
+          provider: 'backend',
+          fallback: true,
+          errorCode: 'deterministic_activity_fallback'
+        })
+      }
       decision = applyDeterministicActivityChange(
         decision,
         content,

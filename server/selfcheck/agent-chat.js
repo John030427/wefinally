@@ -153,6 +153,7 @@ function fakeDeps() {
       return true
     },
     async generateDecision(input) {
+      if (input.message === '模型不可用但改为吃饭') throw new Error('simulated model outage')
       if (input.message === '请把这份约会申请整理给我确认') {
         return {
           intent: 'create_date_application',
@@ -460,6 +461,13 @@ async function main() {
   assert.strictEqual(dishOnly.requires_confirmation, true)
   assert.strictEqual(dishOnly.patch_preview.preview.after.activities[0], '吃饭')
   assert.strictEqual(dishOnly.patch_preview.preview.after.activity_detail, '大二酸菜')
+  const modelFallbackActivity = await handlers.send({
+    session_id: coordinator.id,
+    message: '模型不可用但改为吃饭'
+  }, contextA)
+  assert.strictEqual(modelFallbackActivity.provider, 'backend')
+  assert.strictEqual(modelFallbackActivity.requires_confirmation, true)
+  assert.strictEqual(modelFallbackActivity.patch_preview.preview.after.activities[0], '吃饭')
   const historyB = await handlers.messages({ id: coordinatorB.id }, contextB)
   assert.strictEqual(JSON.stringify(historyB).includes('不想看电影'), false)
 
