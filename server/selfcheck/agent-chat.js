@@ -128,6 +128,7 @@ function fakeDeps() {
       return (tables[name] || []).find((row) => Number(row.id) === Number(value)) || null
     },
     async addWithId(name, data) {
+      if (!tables[name]) tables[name] = []
       const row = { id: ++id, ...data, create_time: deps.now(), update_time: deps.now() }
       tables[name].push(row)
       return row

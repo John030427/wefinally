@@ -28,6 +28,7 @@ const BOOTSTRAP_COLLECTIONS = new Set([
   'controlled_date_scenario_run',
   'qa_pair_reset_run',
   'qa_pair_reset_audit',
+  'date_submission_outbox',
   'coordination_notification',
   'coordination_notification_dedupe',
   'agent_message_dedupe',

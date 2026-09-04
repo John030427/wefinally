@@ -882,14 +882,33 @@ Page({
         wx.showToast({ title: '约会申请已提交', icon: 'success' })
         return
       }
+      const storageKey = `date_submit_req_${this.data.coordinationId}_${Number((this.data.coordination && this.data.coordination.coordination_version) || 1)}`
+      let requestId = this.data.submitRequestId || ''
+      try {
+        if (!requestId) requestId = String(wx.getStorageSync(storageKey) || '')
+      } catch (err) {
+        requestId = ''
+      }
+      if (!requestId) {
+        requestId = `submit_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`
+        try { wx.setStorageSync(storageKey, requestId) } catch (err) { /* ignore */ }
+        this.setData({ submitRequestId: requestId })
+      }
       const payload = serializeApplication(this.data.form)
+      payload.request_id = requestId
+      payload.expected_coordination_version = Number((this.data.coordination && this.data.coordination.coordination_version) || 1)
       if (invitationPrimaryProposal) {
         payload.invitation_primary_proposal = invitationPrimaryProposal
       }
       const result = await put(`${API_PATHS.DATE_COORDINATIONS}/${this.data.coordinationId}/application`, payload, { showError: false })
+      try { wx.removeStorageSync(storageKey) } catch (err) { /* ignore */ }
+      this.setData({ submitRequestId: '' })
       this.applyCoordination(normalizeCoordination(result))
+      const notificationPending = String(result && result.notification_status || '') === 'pending'
       wx.showToast({
-        title: wasInitiatorDraft ? '已保存偏好，正在邀请对方' : '已提交约会偏好',
+        title: wasInitiatorDraft
+          ? (notificationPending ? '已保存，通知处理中' : '已保存偏好，正在邀请对方')
+          : '已提交约会偏好',
         icon: 'success'
       })
       if (wasInitiatorDraft && needsVenueClarification) {

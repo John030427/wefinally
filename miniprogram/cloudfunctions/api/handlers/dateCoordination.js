@@ -16,6 +16,12 @@ const {
 } = require('../lib/syntheticPartnerJourney')
 const { MAX_COORDINATION_ROUNDS, roundNumber, canStartAnotherRound, enqueueProcessing } = require('../lib/dateCoordinationProcessingPolicy')
 const { publishCoordinationEvent, attachMemoryIdempotentCreates } = require('../agent/dateCoordinationEvents')
+const {
+  commitDateApplicationSubmission,
+  projectDateSubmission,
+  attachMemoryTransaction
+} = require('../lib/dateApplicationSubmission')
+const crypto = require('crypto')
 const { publicState: publicMeetingState, applyMeetingCheckIn } = require('../lib/meetingCheckInService')
 const {
   buildStructuredCounterProposal,
@@ -127,6 +133,7 @@ function defaultDeps() {
     publishCoordinationEvent,
     flagEnabled: require('../lib/flags').flagEnabled,
     now: db.now,
+    transaction: (work) => db.withCollection('date_submission_outbox', () => db.withCollection('date_coordination_application', () => db.withCollection('date_coordination', () => db.transaction(work)))),
     writeInboxNotification(input) {
       const { notifyInbox } = require('../lib/coordinationInbox')
       return notifyInbox(input)
@@ -417,6 +424,11 @@ function createDateCoordinationHandlers(overrides = {}) {
         addWithId: overrides.addWithId,
         now: overrides.now
       }))
+    }
+    if (name === 'transaction' && unitMode
+      && !Object.prototype.hasOwnProperty.call(overrides, 'transaction')) {
+      attachMemoryTransaction(overrides)
+      return overrides.transaction
     }
     if (name === 'writeInboxNotification' && !overrides.writeInboxNotification && unitMode) {
       return (input) => {
@@ -949,6 +961,7 @@ function createDateCoordinationHandlers(overrides = {}) {
       throw businessError('COORDINATION_FINALIZED', '本次约会协调已结束')
     }
     const version = Number(coordination.coordination_version || 1)
+    const expectedVersion = Number(data.expected_coordination_version || data.expected_version || version)
     const evidence = data.preference_evidence && typeof data.preference_evidence === 'object'
       ? data.preference_evidence
       : allExplicitEvidence()
@@ -970,123 +983,61 @@ function createDateCoordinationHandlers(overrides = {}) {
     if (isInitiatorDraft) {
       invitationPrimary = resolvePrimaryInvitationProposal(data, application, primaryContext)
     }
-    const query = { coordination_id: Number(coordination.id), user_id: Number(user.id), coordination_version: version }
-    const existing = await dep('first')('date_coordination_application', query)
     const applicationSource = String(data.application_source || (isInitiatorDraft ? 'initiator_invitation' : 'invitee_full_form'))
     const acceptedBaseVersion = Number(data.accepted_base_invitation_version || coordination.accepted_base_invitation_version || 0)
-    // Per-party preference_version: 首版 = coordination 版本；每次更新 +1（Requirement 18）
-    const nextPreferenceVersion = existing
-      ? Number(existing.preference_version || existing.coordination_version || version || 1) + 1
-      : Number(version || 1)
-    if (existing) {
-      await dep('updateByDoc')('date_coordination_application', existing, {
-        application,
-        submitted_at: now,
-        preference_version: nextPreferenceVersion,
-        preference_evidence: evidence,
-        source: applicationSource,
-        accepted_base_invitation_version: acceptedBaseVersion || existing.accepted_base_invitation_version || 0
-      })
-    } else {
-      await dep('addWithId')('date_coordination_application', Object.assign({}, query, {
-        application,
-        submitted_at: now,
-        preference_version: nextPreferenceVersion,
-        preference_evidence: evidence,
-        source: applicationSource,
-        accepted_base_invitation_version: acceptedBaseVersion
-      }), 'date_coordination_application')
-    }
-    await dep('publishCoordinationEvent')({
-      coordination,
-      event: {
-        event_type: 'application_submitted',
-        actor_user_id: Number(user.id),
-        coordination_version: version
-      }
-    })
-
-    if (isInitiatorDraft) {
-      const invitationDeadline = addHours(now, 48)
-      const invitationProposal = publicInvitationProposal(application)
-      const updated = await dep('updateByDoc')('date_coordination', coordination, {
-        status: nextStatus(coordination.status, 'initiator_submitted'),
-        business_state: 'waiting_partner',
-        invitation_deadline_at: invitationDeadline,
-        application_deadline_at: null,
-        invitation_proposal: invitationProposal,
-        invitation_primary_proposal: invitationPrimary,
-        invitation_version: nextPreferenceVersion,
-        initiator_agreed_invitation_version: nextPreferenceVersion,
-        invitee_intent: ''
-      })
-      const notification = createReminderJob({
-        coordinationId: coordination.id,
-        userId: coordination.user_b_id,
-        stage: 'invitation_created',
-        deadlineAt: invitationDeadline,
-        now
-      })
-      if (notification) {
-        const queued = await dep('first')('agent_notification_job', {
-          idempotency_key: notification.idempotency_key
-        })
-        if (!queued) await dep('addWithId')('agent_notification_job', notification, 'agent_notification_job')
-      }
-      try {
-        await dep('writeInboxNotification')({
-          coordination: updated,
-          user_id: Number(updated.user_b_id),
-          event_type: 'invitation_created',
-          coordination_version: Number(updated.coordination_version || 1),
-          title: '新的约会协调邀请',
-          body: '你收到了一个约会协调邀请，请打开协调页查看并决定是否参与。',
-          stage: 'invitation_created'
-        })
-      } catch (err) {
-        console.warn('inbox invitation-created notification skipped:', err.message || err)
-      }
-      // Synthetic B: accept/reject via the same invitation service as a real partner
-      await maybeAdvanceSyntheticPartner(updated)
-      const afterSynthetic = await dep('byId')('date_coordination', Number(updated.id))
-      return detailFor(afterSynthetic || updated, user)
-    }
-
-    const applications = await dep('list')('date_coordination_application', {
+    const explicitRequestId = String(data.request_id || '').trim().slice(0, 80)
+    const requestId = explicitRequestId || `legacy:${crypto.createHash('sha256').update(JSON.stringify({
       coordination_id: Number(coordination.id),
-      coordination_version: version
-    }, 10)
-    const applicationsByUser = new Map(applications.map((item) => [Number(item.user_id), item.application]))
-    const applicationA = applicationsByUser.get(Number(coordination.user_a_id))
-    const applicationB = applicationsByUser.get(Number(coordination.user_b_id))
-    if (!applicationA || !applicationB) return detailFor(coordination, user)
+      user_id: Number(user.id),
+      version,
+      application
+    })).digest('hex').slice(0, 24)}`
 
-    const queued = enqueueProcessing(coordination, { version, now })
-    const updated = await dep('updateByDoc')('date_coordination', coordination, {
-      status: queued.status,
-      business_state: queued.business_state,
-      processing_status: queued.processing_status,
-      processing_version: queued.processing_version,
-      processing_token: '',
-      processing_attempts: 0,
-      processing_started_at: null,
-      processing_completed_at: null,
-      processing_error_code: '',
-      last_event_at: queued.last_event_at,
-      missing_dimensions: [],
-      confirmation_deadline_at: null,
-      last_changed_by_user_id: Number(user.id),
-      last_changed_dimensions: changedDimensions
+    const committed = await commitDateApplicationSubmission({
+      coordination_id: Number(coordination.id),
+      actor_user_id: Number(user.id),
+      expected_version: expectedVersion,
+      request_id: requestId,
+      application,
+      preference_evidence: evidence,
+      application_source: applicationSource,
+      accepted_base_invitation_version: acceptedBaseVersion,
+      invitation_primary_proposal: invitationPrimary,
+      changed_dimensions: changedDimensions
+    }, {
+      first: dep('first'),
+      list: dep('list'),
+      byId: dep('byId'),
+      addWithId: dep('addWithId'),
+      updateByDoc: dep('updateByDoc'),
+      now: dep('now'),
+      transaction: dep('transaction'),
+      publishCoordinationEvent: dep('publishCoordinationEvent'),
+      writeInboxNotification: dep('writeInboxNotification')
     })
-    await dep('publishCoordinationEvent')({
-      coordination: updated,
-      event: {
-        event_type: 'processing_queued',
-        actor_user_id: Number(user.id),
-        coordination_version: version
-      }
+
+    const projected = await projectDateSubmission(committed.outbox, {
+      first: dep('first'),
+      byId: dep('byId'),
+      addWithId: dep('addWithId'),
+      updateByDoc: dep('updateByDoc'),
+      now: dep('now'),
+      publishCoordinationEvent: dep('publishCoordinationEvent'),
+      writeInboxNotification: dep('writeInboxNotification')
     })
-    return detailFor(updated, user)
+
+    let latest = committed.coordination
+    if (isInitiatorDraft) {
+      await maybeAdvanceSyntheticPartner(latest)
+      latest = await dep('byId')('date_coordination', Number(latest.id)) || latest
+    }
+    const detail = await detailFor(latest, user)
+    return Object.assign({}, detail, {
+      saved: true,
+      notification_status: projected.projected ? 'projected' : 'pending',
+      request_id: requestId,
+      idempotent: Boolean(committed.idempotent)
+    })
   }
 
   async function detailFor(coordination, user) {

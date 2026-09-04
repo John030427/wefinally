@@ -610,7 +610,11 @@ function createAgentHandlers(overrides = {}) {
         writeInboxNotification: (input) => dep('notifyInbox')(input),
         now: dep('now')
       }
-      if (overrides.unitMode === true) coordinationHandlerDeps.unitMode = true
+      if (overrides.unitMode === true) {
+        coordinationHandlerDeps.unitMode = true
+        if (overrides.tables) coordinationHandlerDeps.tables = overrides.tables
+        if (overrides.rows) coordinationHandlerDeps.rows = overrides.rows
+      }
       if (overrides.unitMode !== true || Object.prototype.hasOwnProperty.call(overrides, 'publishCoordinationEvent')) {
         coordinationHandlerDeps.publishCoordinationEvent = dep('publishCoordinationEvent')
       }
@@ -633,7 +637,11 @@ function createAgentHandlers(overrides = {}) {
         saveApplicationForUser: coordinationHandlers.saveApplicationForUser,
         writeInboxNotification: (input) => dep('notifyInbox')(input)
       }
-      if (overrides.unitMode === true) patchHandlerDeps.unitMode = true
+      if (overrides.unitMode === true) {
+        patchHandlerDeps.unitMode = true
+        if (overrides.tables) patchHandlerDeps.tables = overrides.tables
+        if (overrides.rows) patchHandlerDeps.rows = overrides.rows
+      }
       if (overrides.unitMode !== true || Object.prototype.hasOwnProperty.call(overrides, 'publishCoordinationEvent')) {
         patchHandlerDeps.publishCoordinationEvent = dep('publishCoordinationEvent')
       }

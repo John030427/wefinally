@@ -63,5 +63,6 @@ module.exports = {
   fixture_response_job: 'fixture_response_jobs',
   controlled_date_scenario_run: 'controlled_date_scenario_runs',
   qa_pair_reset_run: 'qa_pair_reset_runs',
-  qa_pair_reset_audit: 'qa_pair_reset_audits'
+  qa_pair_reset_audit: 'qa_pair_reset_audits',
+  date_submission_outbox: 'date_submission_outboxes'
 }
