@@ -24,6 +24,7 @@ const {
 } = require('../lib/dateCoordinationAccessPolicy')
 const { coordinatorWelcomeText } = require('../lib/invitationCoordination')
 const { exactTimeFromText, periodForStartTime } = require('../lib/meetingPlanPolicy')
+const { interpretNlPlanUtterance } = require('../lib/datePlanContract')
 const {
   publicState: publicMeetingState,
   applyMeetingCheckIn
@@ -98,6 +99,25 @@ function applyExactTimeToDecision(decision, content, currentApplication) {
   return decision
 }
 
+// A short explicit activity change must not depend on model wording. Keep nuanced
+// negotiation and partner inquiries on the model path, but route unambiguous change
+// phrases through the deterministic preview pipeline.
+function applyDeterministicActivityChange(decision, content, currentApplication) {
+  const textValue = String(content || '')
+  if (!decision || /询问|问对方|通知对方|告诉对方/.test(textValue)) return decision
+  if (!/改成|改为|调整为|只改活动|活动改|换成/.test(textValue)) return decision
+  const interpreted = interpretNlPlanUtterance(textValue, currentApplication || {})
+  const activity = interpreted && interpreted.candidate_values && interpreted.candidate_values.activity
+  if (!activity || interpreted.intent !== 'modify_specific_dimensions') return decision
+  const request = { tool: PATCH_TOOL, arguments: { activities: [activity] } }
+  return Object.assign({}, decision, {
+    intent: 'modify_date_application',
+    toolRequest: request,
+    tool_request: request,
+    replyDraft: `我理解你要把活动改为“${activity}”，先生成修改预览，请确认后生效。`
+  })
+}
+
 function movieVenueClarification(content, application) {
   const text = String(content || '')
   if (/先.*(?:碰面|见面|集合)|只是集合点/.test(text) || (application && application.venue_choice_mode === 'meet_first')) return ''
@@ -108,6 +128,13 @@ function movieVenueClarification(content, application) {
     return '先在星巴克碰面，再去看电影吗？可以回复“先在这里碰面，影院到时商量”，我会先生成修改预览。'
   }
   return ''
+}
+
+function mealInquiryDetail(content) {
+  const textValue = String(content || '')
+  if (!/(?:问对面|问问对方|询问对方|问对方).*(?:吃|餐|菜)|(?:我想吃|想吃|吃酸菜鱼|酸菜鱼|大二酸菜)/.test(textValue)) return ''
+  const match = textValue.match(/(酸菜鱼|大二酸菜|椰子鸡|火锅|烤肉|日料|粤菜|川菜)/)
+  return match ? match[1] : ''
 }
 
 function pendingActionIntent(content) {
@@ -782,6 +809,38 @@ function createAgentHandlers(overrides = {}) {
       } else if (pendingInquiryMessage && earlyActionIntent === 'confirm' && !pendingPatchEarly) {
         // keep existing inquiry confirm path
       }
+
+      const directOwnApplication = await dep('first')('date_coordination_application', {
+        coordination_id: Number(coordination.id),
+        user_id: Number(user.id)
+      }).catch(() => null)
+
+      // A request such as “时间我 ok，问对面想不想吃酸菜鱼” is an explicit
+      // activity proposal, not a generic chat question. Create a normal, user-
+      // confirmable patch preview; its confirmation will use the existing
+      // privacy-safe partner notification path.
+      const mealDetail = mealInquiryDetail(content)
+      if (mealDetail && directOwnApplication && directOwnApplication.application) {
+        const mealPreview = await patchHandlers.createPreviewForUser({
+          coordination_id: Number(coordination.id),
+          session_id: Number(session.id),
+          source_message_id: Number(userMessage.id || 0),
+          changes: { activities: ['吃饭'], activity_detail: mealDetail }
+        }, user, session)
+        const reply = `我理解你是想把活动改为吃饭（${mealDetail}），并询问对方是否接受。我先整理修改预览；你确认后才会通知对方。`
+        await recordTool(session, user, PATCH_TOOL, 'completed')
+        await saveMessage(session, user, 'assistant', reply, { patch_preview: mealPreview })
+        return {
+          session_id: session.id,
+          agent_type: session.agent_type,
+          reply,
+          tool: PATCH_TOOL,
+          patch_preview: mealPreview,
+          requires_confirmation: true,
+          risk_level: 'safe',
+          suggested_actions: ['confirm_patch', 'cancel_patch']
+        }
+      }
       const inquiryActionIntent = pendingInquiryMessage && !pendingPatchEarly ? pendingActionIntent(content) : ''
       if (pendingInquiryMessage && inquiryActionIntent === 'confirm') {
         const latestCoordination = await dep('byId')('date_coordination', Number(coordination.id))
@@ -1093,6 +1152,11 @@ function createAgentHandlers(overrides = {}) {
           ]
         }).slice(0, 7000)
       })
+      decision = applyDeterministicActivityChange(
+        decision,
+        content,
+        ownApplicationRow && ownApplicationRow.application
+      )
       decision = applyExactTimeToDecision(decision, content, ownApplicationRow && ownApplicationRow.application)
       await dep('addWithId')('agent_run', {
         session_id: session.id,

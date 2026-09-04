@@ -58,6 +58,7 @@
         <view class="plan-conflict" wx:if="{{currentPlanCard.meeting_conflict}}">{{currentPlanCard.meeting_conflict.message}}</view>
         <view class="fact-row"><text class="fact-label">时间</text><text class="fact-value">{{currentPlanCard.time_text || '待确认'}}</text></view>
         <view class="fact-row"><text class="fact-label">活动</text><text class="fact-value">{{currentPlanCard.activity_text || '待确认'}}</text></view>
+        <view class="fact-row" wx:if="{{currentPlanCard.activity_detail_text}}"><text class="fact-label">活动说明</text><text class="fact-value">{{currentPlanCard.activity_detail_text}}</text></view>
         <view class="fact-row"><text class="fact-label">见面地点</text><text class="fact-value">{{currentPlanCard.activity_venue_text || '待确认'}}</text></view>
         <view class="fact-row" wx:if="{{currentPlanCard.open_items_text}}"><text class="fact-label">未定事项</text><text class="fact-value">{{currentPlanCard.open_items_text}}</text></view>
         <view class="fact-row"><text class="fact-label">初步会合范围</text><text class="fact-value">{{currentPlanCard.meet_point_text || '到场前再确认'}}</text></view>
@@ -103,6 +104,7 @@
         <view class="fact-row"><text class="fact-label">时间</text><text class="fact-value">{{counterOfferCard.proposal_card.time_text}}</text></view>
         <view class="fact-row"><text class="fact-label">区域</text><text class="fact-value">{{counterOfferCard.proposal_card.area_text}}</text></view>
         <view class="fact-row"><text class="fact-label">活动</text><text class="fact-value">{{counterOfferCard.proposal_card.activity_text}}</text></view>
+        <view class="fact-row" wx:if="{{counterOfferCard.proposal_card.activity_detail_text}}"><text class="fact-label">活动说明</text><text class="fact-value">{{counterOfferCard.proposal_card.activity_detail_text}}</text></view>
         <view class="fact-row"><text class="fact-label">活动场地</text><text class="fact-value">{{counterOfferCard.proposal_card.activity_venue_text || '待确认'}}</text></view>
         <view class="fact-row"><text class="fact-label">初步会合范围</text><text class="fact-value">{{counterOfferCard.proposal_card.meet_point_text || '到场前再确认'}}</text></view>
         <view class="fact-row"><text class="fact-label">预算</text><text class="fact-value">{{counterOfferCard.proposal_card.budget_text}}</text></view>

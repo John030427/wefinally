@@ -372,10 +372,10 @@ function interpretNlPlanUtterance(rawText, baseInput = {}) {
   }
   const chooseOnArrival = interpretChooseOnArrival(textValue, base)
   if (chooseOnArrival) return chooseOnArrival
-  if (/时间不变.*只改活动|只改活动|活动改成|换成.*(?:电影|吃饭|咖啡|奶茶|看展|桌游)/.test(textValue)
+  if (/时间不变.*只改活动|只改活动|活动改(?:成|为)|(?:改成|改为|调整为|换成).*(?:电影|吃饭|咖啡|奶茶|看展|桌游)|换成.*(?:电影|吃饭|咖啡|奶茶|看展|桌游)/.test(textValue)
     && !exactTimeFromText(textValue, { period: base.period })) {
-    const activityMatch = textValue.match(/(电影|吃饭|咖啡|奶茶|看展|桌游|椰子鸡)/)
-    let activity = activityMatch ? activityMatch[1] : ''
+    const activityMatches = [...textValue.matchAll(/(电影|吃饭|咖啡|奶茶|看展|桌游|椰子鸡)/g)]
+    let activity = activityMatches.length ? activityMatches[activityMatches.length - 1][1] : ''
     if (activity === '椰子鸡') activity = '吃饭'
     return emptyIntent({
       intent: 'modify_specific_dimensions',

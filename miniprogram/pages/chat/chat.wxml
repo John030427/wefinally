@@ -138,7 +138,7 @@
               <view class="patch-value-row"><text class="patch-value-label">拟询问</text><text class="patch-value after">{{change.afterText}}</text></view>
             </view>
             <view wx:if="{{item.partnerInquiryPreview.unchangedText}}" class="patch-inherited">保持不变：{{item.partnerInquiryPreview.unchangedText}}</view>
-            <view class="patch-notice">完整安排：{{item.partnerInquiryPreview.timeText}} · {{item.partnerInquiryPreview.activityText}} · {{item.partnerInquiryPreview.venueText || '活动场地待确认'}} · 集合于{{item.partnerInquiryPreview.meetPointText || '待确认'}} · {{item.partnerInquiryPreview.areaText}}</view>
+            <view class="patch-notice">完整安排：{{item.partnerInquiryPreview.timeText}} · {{item.partnerInquiryPreview.activitySummaryText || item.partnerInquiryPreview.activityText}} · {{item.partnerInquiryPreview.venueText || '活动场地待确认'}} · 集合于{{item.partnerInquiryPreview.meetPointText || '待确认'}} · {{item.partnerInquiryPreview.areaText}}</view>
             <view class="patch-notice">确认前不会通知对方；发送后对方可以接受或继续调整。</view>
             <view wx:if="{{item.partnerInquiryPreview.status === 'pending_confirmation'}}" class="patch-actions">
               <button class="patch-confirm" data-action="confirm" bindtap="onPartnerInquiryAction" disabled="{{sending}}">{{item.partnerInquiryPreview.confirmLabel}}</button>

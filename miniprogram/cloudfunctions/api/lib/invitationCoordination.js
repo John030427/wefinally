@@ -650,6 +650,9 @@ function buildInvitationCard(primaryOrPrefs = {}, version = 1, options = {}) {
       : (prefs ? formatAvailabilityRange(prefs.availability) : '待确认'),
     area_text: complete ? (primary.area || '待确认') : (formatList(prefs && prefs.areas) || '待确认'),
     activity_text: complete ? (primary.activity || '待确认') : (formatList(prefs && prefs.activities) || '待确认'),
+    activity_detail_text: complete
+      ? (primary.activity_detail || '')
+      : (prefs && prefs.activity_detail || ''),
     activity_venue_text: primary && primary.activity_venue || '待确认',
     meet_point_text: primary && primary.meet_point || '到场前再确认',
     arrival_hint_text: '可在确认约会后补充',
@@ -871,6 +874,7 @@ function buildProposalCard(proposal, options = {}) {
       : '待确认',
     area_text: proposal.area || '待确认',
     activity_text: proposal.activity || '待确认',
+    activity_detail_text: proposal.activity_detail || '',
     activity_venue_text: proposal.activity_venue || '待确认',
     meet_point_text: proposal.meet_point || '到场前再确认',
     arrival_hint_text: '可在确认约会后补充',

@@ -10,7 +10,7 @@ const {
 } = require('../../miniprogram/cloudfunctions/api/lib/meetingPlanPolicy')
 const { normalizeApplication } = require('../../miniprogram/cloudfunctions/api/lib/dateCoordinationPolicy')
 const {
-  resolvePrimaryInvitationProposal, publicPrimaryProposal, buildInvitationCard, buildDirectAcceptProposal, mergeInvitationWithOverrides
+  resolvePrimaryInvitationProposal, publicPrimaryProposal, buildInvitationCard, buildProposalCard, buildDirectAcceptProposal, mergeInvitationWithOverrides
 } = require('../../miniprogram/cloudfunctions/api/lib/invitationCoordination')
 const { reconcileDerivedFields } = require('../../miniprogram/cloudfunctions/api/lib/dateApplicationDerivedFields')
 
@@ -151,6 +151,9 @@ function main() {
   assert.strictEqual(card.final_ready, false)
   assert.ok(card.open_items_text.includes('门店到场后商量'))
   assert.ok(!card.venue_guidance.includes('双方已确认'))
+  const mealCard = buildProposalCard(Object.assign({}, arrivalPlan, { activity_detail: '酸菜鱼' }))
+  assert.strictEqual(mealCard.activity_text, '吃饭')
+  assert.strictEqual(mealCard.activity_detail_text, '酸菜鱼')
   assert.strictEqual(buildDirectAcceptProposal(stored, 1).open_items.length, 1)
   const prefs = normalizeApplication({ ...baseInput('万象城'), venue_choice_mode: 'choose_on_arrival' }, NOW)
   assert.strictEqual(mergeInvitationWithOverrides(prefs, {}).venue_choice_mode, 'choose_on_arrival')
@@ -169,6 +172,9 @@ function main() {
   const { applyStructuredPlanIntent, interpretNlPlanUtterance } = require('../../miniprogram/cloudfunctions/api/lib/datePlanContract')
   const activityChange = applyStructuredPlanIntent(interpretNlPlanUtterance('时间不变只改活动成咖啡', arrivalPlan), arrivalPlan)
   assert.strictEqual(activityChange.plan.activity_venue, '万象城')
+  const directActivityChange = interpretNlPlanUtterance('改为吃饭', arrivalPlan)
+  assert.strictEqual(directActivityChange.candidate_values.activity, '吃饭')
+  assert.strictEqual(interpretNlPlanUtterance('不想看电影了，帮我改成咖啡', arrivalPlan).candidate_values.activity, '咖啡')
   const meetingFirst = applyStructuredPlanIntent(interpretNlPlanUtterance('先在星巴克碰面', moviePrimary), moviePrimary)
   assert.strictEqual(meetingFirst.plan.venue_choice_mode, 'meet_first')
   assert.strictEqual(meetingFirst.needs_clarification, false)

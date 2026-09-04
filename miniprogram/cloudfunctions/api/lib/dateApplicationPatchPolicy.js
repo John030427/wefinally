@@ -150,9 +150,9 @@ function previewApplicationChange(currentApplication, changes, options = {}) {
 }
 
 function shareableSummary(preview) {
-  const dimensions = (preview && preview.changed_fields || [])
+  const dimensions = [...new Set((preview && preview.changed_fields || [])
     .map((field) => DIMENSION_LABELS[field])
-    .filter(Boolean)
+    .filter(Boolean))]
   return {
     changed_dimensions: dimensions,
     requires_partner_response: dimensions.some((item) => [

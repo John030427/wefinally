@@ -35,6 +35,7 @@ const PATCH_FIELD_LABELS = {
   share_message: '对方可见内容',
   start_time: '具体时间',
   activity_venue: '活动场地',
+  activity_detail: '活动说明',
   meet_point: '初步会合范围',
   arrival_hint: '到场识别提示'
 }
@@ -132,6 +133,11 @@ function normalizePartnerInquiryPreview(raw, incoming = false) {
     timeText: String(card.time_text || ''),
     areaText: String(card.area_text || ''),
     activityText: String(card.activity_text || ''),
+    activityDetailText: String(card.activity_detail_text || ''),
+    activitySummaryText: [
+      String(card.activity_text || ''),
+      card.activity_detail_text ? `（${String(card.activity_detail_text)}）` : ''
+    ].filter(Boolean).join(''),
     venueText: String(card.activity_venue_text || ''),
     meetPointText: String(card.meet_point_text || ''),
     budgetText: String(card.budget_text || ''),

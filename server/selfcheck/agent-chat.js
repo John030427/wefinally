@@ -446,6 +446,20 @@ async function main() {
   assert.deepStrictEqual(patchReply.patch_preview.preview.before.activities, ['电影'])
   assert.deepStrictEqual(patchReply.patch_preview.preview.after.activities, ['咖啡'])
   assert.strictEqual(deps.tables.date_coordination[0].coordination_version, 1)
+  const mealInquiry = await handlers.send({
+    session_id: coordinator.id,
+    message: '时间我ok，问对面想不想吃酸菜鱼'
+  }, contextA)
+  assert.strictEqual(mealInquiry.requires_confirmation, true)
+  assert.strictEqual(mealInquiry.patch_preview.preview.after.activities[0], '吃饭')
+  assert.strictEqual(mealInquiry.patch_preview.preview.after.activity_detail, '酸菜鱼')
+  const dishOnly = await handlers.send({
+    session_id: coordinator.id,
+    message: '我想吃大二酸菜'
+  }, contextA)
+  assert.strictEqual(dishOnly.requires_confirmation, true)
+  assert.strictEqual(dishOnly.patch_preview.preview.after.activities[0], '吃饭')
+  assert.strictEqual(dishOnly.patch_preview.preview.after.activity_detail, '大二酸菜')
   const historyB = await handlers.messages({ id: coordinatorB.id }, contextB)
   assert.strictEqual(JSON.stringify(historyB).includes('不想看电影'), false)
 

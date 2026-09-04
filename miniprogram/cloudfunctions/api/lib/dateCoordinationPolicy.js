@@ -92,8 +92,13 @@ function normalizeApplication(input = {}, now = new Date()) {
     duration: enumValue(input.duration, DURATIONS, '约会时长'),
     transport_constraints: textValue(input.transport_constraints, 100),
     other_requirements: textValue(input.other_requirements, 100),
-    share_message: textValue(input.share_message, 100)
+    share_message: textValue(input.share_message, 100),
+    // Keep a user-provided dish/activity detail even while the application is
+    // still on the preference (non-final) contract. Do not add an empty field
+    // to legacy records so their normalized shape remains backwards compatible.
   }
+  const activityDetail = textValue(input.activity_detail, 40)
+  if (activityDetail) normalized.activity_detail = activityDetail
   const usesMeetingPlan = Number(input.contract_version || 0) >= PLAN_CONTRACT_VERSION
     || meetingPlan.start_time || meetingPlan.activity_venue || meetingPlan.meet_point || meetingPlan.arrival_hint
   if (usesMeetingPlan) {
