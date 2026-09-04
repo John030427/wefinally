@@ -114,6 +114,21 @@
   background: #fffafa;
 }
 
+.qa-reset-card {
+  margin: 24rpx 0;
+  background: #fff8f7;
+  border: 1rpx solid #f0c8c0;
+}
+
+.qa-reset-card .public-note {
+  color: #8b625c;
+}
+
+.qa-reset-btn {
+  color: #b64f4b;
+  border-color: #d9938b;
+}
+
 .proposal-reject-btn {
   margin-top: 18rpx;
 }

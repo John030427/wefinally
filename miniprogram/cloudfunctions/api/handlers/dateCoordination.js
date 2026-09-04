@@ -112,6 +112,7 @@ function defaultDeps() {
     byId: db.byId,
     addWithId: db.addWithId,
     updateByDoc: db.updateByDoc,
+    claimIfStatus: db.claimIfStatus,
     acquireFixtureResponseJob: db.acquireFixtureResponseJob,
     upsertConfirmation,
     updateConfirmationState,
@@ -152,6 +153,12 @@ function coordinationId(data) {
 
 function participant(coordination, userId) {
   return [Number(coordination.user_a_id), Number(coordination.user_b_id)].includes(Number(userId))
+}
+
+function qaResetAllowedFor(user, coordination) {
+  if (!coordination || Number(coordination.is_test_data || 0) !== 1) return false
+  const { isRealQaUser } = require('../lib/qaPairResetPolicy')
+  return isRealQaUser(user) && participant(coordination, user.id)
 }
 
 function deadlinePassed(value, now) {
@@ -1279,6 +1286,7 @@ function createDateCoordinationHandlers(overrides = {}) {
         my_application: mine && mine.application
       }), role),
       is_test_data: Number(coordination.is_test_data || 0) === 1,
+      qa_reset_allowed: qaResetAllowedFor(user, coordination),
       test_data_badge: fixtureSceneBadge(Object.assign({}, coordination, {
         fixture_journey: coordination.synthetic_partner_journey
       })),
@@ -1353,6 +1361,32 @@ function createDateCoordinationHandlers(overrides = {}) {
       throw new Error('当前不是分步测试模式')
     }
     await maybeAdvanceSyntheticPartner(coordination, { force: true })
+  }
+
+  async function qaReset(data, wxContext) {
+    const user = await dep('currentUser')(wxContext)
+    const coordination = await dep('byId')('date_coordination', coordinationId(data))
+    if (!qaResetAllowedFor(user, coordination)) {
+      throw coordinationSubmissionError('QA_RESET_FORBIDDEN', '仅限授权 QA 测试账号重置测试协调', 403)
+    }
+    const { executeQaCoordinationReset } = require('../lib/qaPairResetService')
+    const result = await executeQaCoordinationReset({
+      actor: user,
+      coordination,
+      confirmText: data.confirm_text
+    }, {
+      list: dep('list'),
+      byId: dep('byId'),
+      updateByDoc: dep('updateByDoc'),
+      claimIfStatus: dep('claimIfStatus'),
+      publishCoordinationEvent: dep('publishCoordinationEvent'),
+      writeInboxNotification: dep('writeInboxNotification'),
+      now: dep('now')
+    })
+    const updated = await dep('byId')('date_coordination', coordinationId(data))
+    return Object.assign({}, result, {
+      coordination: updated ? await detailFor(updated, user) : null
+    })
   }
 
   async function confirmProposal(data, wxContext) {
@@ -1618,7 +1652,8 @@ function createDateCoordinationHandlers(overrides = {}) {
     recoordinate,
     retryProcessing,
     maybeAdvanceSyntheticPartner,
-    advanceSynthetic
+    advanceSynthetic,
+    qaReset
   }
 }
 
@@ -1642,6 +1677,7 @@ module.exports = {
   recoordinate: handler('recoordinate'),
   retryProcessing: handler('retryProcessing'),
   advanceSynthetic: handler('advanceSynthetic'),
+  qaReset: handler('qaReset'),
   createDateCoordinationHandlers,
   processCoordinationDeadlines,
   upsertConfirmation,

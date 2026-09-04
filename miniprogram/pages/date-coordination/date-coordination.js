@@ -76,6 +76,7 @@ function buildCoordinationDisplay(coordination) {
     )),
     showCoordinateInstead: Boolean(vm.show_coordinate_instead || (status === 'inviting_partner' && role === 'invitee')),
     showDecline: Boolean(vm.show_decline || (status === 'inviting_partner' && role === 'invitee')),
+    qaResetAllowed: Boolean(coordination && coordination.qa_reset_allowed),
     showApplicationForm: vm.show_application_form !== undefined
       ? Boolean(vm.show_application_form)
       : Boolean(coordination && coordination.can_submit_application && status === 'collecting_initiator'),
@@ -159,6 +160,7 @@ Page({
     showAcceptInvitation: false,
     showCoordinateInstead: false,
     showDecline: false,
+    showQaReset: false,
     showApplicationForm: false,
     showOptionalFullForm: false,
     showOptionalForm: false,
@@ -167,6 +169,7 @@ Page({
     proposalCard: null,
     resultCard: null,
     advancingSynthetic: false,
+    qaResetting: false,
     coordinatorHeroText: '正在寻找双方共同安排。你可以随时和 AI 约会协调员沟通。',
     refreshingCoordination: false,
     fixtureSimulation: null,
@@ -350,6 +353,7 @@ Page({
       showAcceptInvitation: Boolean(coordinationDisplay.showAcceptInvitation),
       showCoordinateInstead: Boolean(coordinationDisplay.showCoordinateInstead),
       showDecline: Boolean(coordinationDisplay.showDecline),
+      showQaReset: Boolean(coordinationDisplay.qaResetAllowed),
       showApplicationForm: Boolean(canonicalViewModel.form_policy && canonicalViewModel.form_policy.show_initial_form)
         || Boolean(this.data.showOptionalForm && coordinationDisplay.showOptionalFullForm),
       showOptionalFullForm: Boolean(coordinationDisplay.showOptionalFullForm),
@@ -754,6 +758,32 @@ Page({
     } finally {
       this.setData({ advancingSynthetic: false })
     }
+  },
+
+  qaReset() {
+    if (!this.data.coordinationId || this.data.qaResetting || !this.data.showQaReset) return
+    wx.showModal({
+      title: '重置本轮协调？',
+      content: '仅关闭当前测试协调并使旧方案、确认和协调会话失效；不会删除注册资料、画像/RAG、会员、订单或普通恋爱助手聊天。',
+      confirmText: '确认重置',
+      success: async (modal) => {
+        if (!modal.confirm) return
+        this.setData({ qaResetting: true })
+        try {
+          const result = await post(
+            `${API_PATHS.DATE_COORDINATIONS}/${this.data.coordinationId}${API_PATHS.DATE_COORDINATION_QA_RESET}`,
+            { confirm_text: '重新开始本轮测试' },
+            { showError: false }
+          )
+          this.applyCoordination(normalizeCoordination(result))
+          wx.showToast({ title: '本轮协调已重置', icon: 'success' })
+        } catch (err) {
+          wx.showToast({ title: (err && err.message) || '暂时无法重置本轮协调', icon: 'none' })
+        } finally {
+          this.setData({ qaResetting: false })
+        }
+      }
+    })
   },
 
   goService() {

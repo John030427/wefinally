@@ -3,12 +3,16 @@
 const {
   assertConfirmText,
   qaError,
+  isRealQaUser,
   resolveQaPair,
   DEFAULT_QA_COHORT
 } = require('./qaPairResetPolicy')
+const { toRuntimeCoordinationEventType } = require('../../agent-graph/shared/coordinationAdapters.cjs')
 
 const REQUEST_ID_RE = /^[A-Za-z0-9_-]{8,80}$/
 const PAGE_SIZE = 100
+const QA_COORDINATION_RESET_CONFIRM_TEXT = '重新开始本轮测试'
+const QA_COORDINATION_RESET_EVENT_TYPE = toRuntimeCoordinationEventType('QA_COORDINATION_RESET')
 
 function uniqueRows(rows) {
   const seen = new Set()
@@ -80,6 +84,123 @@ function resetUserPatch(timestamp) {
     qa_match_run_id: '',
     qa_match_run_started_at: null,
     update_time: timestamp
+  }
+}
+
+async function executeQaCoordinationReset(input = {}, deps = {}) {
+  const actor = input.actor || {}
+  const coordination = input.coordination
+  if (!isRealQaUser(actor)) throw qaError('QA_RESET_FORBIDDEN', '仅限授权 QA 测试账号重置', 403)
+  if (!coordination || Number(coordination.is_test_data || 0) !== 1) {
+    throw qaError('QA_RESET_FORBIDDEN', '仅限测试协调可以重置', 403)
+  }
+  if (![Number(coordination.user_a_id), Number(coordination.user_b_id)].includes(Number(actor.id))) {
+    throw qaError('QA_RESET_FORBIDDEN', '无权重置该约会协调', 403)
+  }
+  if (String(input.confirmText || '') !== QA_COORDINATION_RESET_CONFIRM_TEXT) {
+    throw qaError('QA_RESET_CONFIRM_REQUIRED', `请确认“${QA_COORDINATION_RESET_CONFIRM_TEXT}”`, 400)
+  }
+  if (coordination.business_state === 'qa_reset' && coordination.status === 'closed') {
+    return { id: Number(coordination.id), status: 'closed', reset: false, idempotent: true, event_status: 'projected' }
+  }
+  const timestamp = deps.now()
+  const resetPatch = {
+    status: 'closed',
+    business_state: 'qa_reset',
+    processing_status: 'idle',
+    processing_token: null,
+    confirmation_deadline_at: null,
+    counter_offer: null,
+    qa_reset_at: timestamp,
+    qa_reset_by_user_id: Number(actor.id)
+  }
+  let updated = null
+  if (typeof deps.claimIfStatus === 'function') {
+    updated = await deps.claimIfStatus(
+      'date_coordination',
+      coordination,
+      String(coordination.status || ''),
+      resetPatch
+    )
+    if (!updated) {
+      const latest = typeof deps.byId === 'function'
+        ? await deps.byId('date_coordination', Number(coordination.id))
+        : null
+      if (latest && latest.business_state === 'qa_reset' && latest.status === 'closed') {
+        return { id: Number(latest.id), status: 'closed', reset: false, idempotent: true, event_status: 'projected' }
+      }
+      throw qaError('QA_RESET_CONFLICT', '当前协调已发生变化，请刷新后重试', 409)
+    }
+  } else {
+    updated = await deps.updateByDoc('date_coordination', coordination, resetPatch)
+  }
+  const related = [
+    ['agent_notification_job', ['delivered', 'cancelled', 'failed', 'skipped', 'sent', 'expired'], 'cancelled'],
+    ['date_application_patch', ['applied', 'cancelled', 'expired'], 'cancelled'],
+    ['date_coordination_proposal', ['superseded'], 'superseded'],
+    ['date_coordination_confirmation', ['superseded'], 'superseded']
+  ]
+  for (const [name, terminalStatuses, nextStatus] of related) {
+    const rows = await deps.list(name, { coordination_id: Number(coordination.id) }, 200)
+    for (const row of rows || []) {
+      if (!terminalStatuses.includes(String(row.status || ''))) {
+        await deps.updateByDoc(name, row, { status: nextStatus })
+      }
+    }
+  }
+  let eventStatus = 'pending'
+  let eventId = null
+  try {
+    const event = await deps.publishCoordinationEvent({
+      coordination: updated,
+      allowCreate: false,
+      event: {
+        event_type: QA_COORDINATION_RESET_EVENT_TYPE,
+        actor_user_id: Number(actor.id),
+        coordination_version: Number(coordination.coordination_version || 1),
+        idempotency_suffix: 'qa_reset'
+      }
+    })
+    eventId = event && (event.id || event.event_id) || null
+    eventStatus = 'projected'
+  } catch (error) {
+    console.warn('coordination qa-reset event skipped:', error && (error.message || error))
+  }
+  const partnerId = Number(actor.id) === Number(coordination.user_a_id)
+    ? Number(coordination.user_b_id)
+    : Number(coordination.user_a_id)
+  let notificationStatus = 'not_applicable'
+  if (partnerId > 0 && typeof deps.writeInboxNotification === 'function') {
+    notificationStatus = 'pending'
+    try {
+      await deps.writeInboxNotification({
+        coordination: updated,
+        user_id: partnerId,
+        event_type: QA_COORDINATION_RESET_EVENT_TYPE,
+        coordination_version: Number(coordination.coordination_version || 1),
+        title: '本轮协调已关闭',
+        body: '本轮协调已由测试人员关闭，如需继续请重新发起邀请。',
+        stage: 'qa_coordination_reset'
+      })
+      notificationStatus = 'projected'
+    } catch (error) {
+      console.warn('inbox qa-reset notification skipped:', error && (error.message || error))
+    }
+  }
+  const sessions = await deps.list('agent_session', { coordination_id: Number(coordination.id) }, 200)
+  for (const session of sessions || []) {
+    if (!['closed', 'cancelled'].includes(String(session.status || ''))) {
+      await deps.updateByDoc('agent_session', session, { status: 'closed' })
+    }
+  }
+  return {
+    id: Number(updated.id),
+    status: 'closed',
+    reset: true,
+    idempotent: false,
+    event_id: eventId,
+    event_status: eventStatus,
+    notification_status: notificationStatus
   }
 }
 
@@ -287,6 +408,9 @@ async function executeQaPairReset(input = {}, deps = {}) {
 }
 
 module.exports = {
+  QA_COORDINATION_RESET_EVENT_TYPE,
+  QA_COORDINATION_RESET_CONFIRM_TEXT,
+  executeQaCoordinationReset,
   executeQaPairReset,
   getQaPairResetStatus,
   assertQaPairResetNotBlockingMatch,

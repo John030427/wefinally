@@ -46,6 +46,7 @@ const API_PATHS = {
   CHAT_HISTORY: '/api/chat/history',
   AGENT_SESSIONS: '/api/agent/sessions',
   DATE_COORDINATIONS: '/api/date-coordinations',
+  DATE_COORDINATION_QA_RESET: '/qa-reset',
   NOTIFICATIONS: '/api/notifications',
   NOTIFICATIONS_UNREAD: '/api/notifications/unread',
   NOTIFICATIONS_READ: '/api/notifications/read',

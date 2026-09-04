@@ -215,6 +215,10 @@ function projectParticipantEvent(event = {}, context = {}) {
       stage: 'manual_handoff',
       content: '自动协调轮次已用完，当前已转人工客服继续协助。'
     },
+    qa_coordination_reset: {
+      stage: 'qa_coordination_reset',
+      content: '本轮测试协调已关闭，旧方案、确认和协调会话已失效。'
+    },
     processing_failed: {
       stage: 'processing_failed',
       content: '协调方案暂时生成失败，系统会安全重试；如持续失败可联系人工客服。'

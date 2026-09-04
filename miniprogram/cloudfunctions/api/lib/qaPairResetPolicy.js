@@ -67,6 +67,7 @@ module.exports = {
   QA_PAIR_RESET_CONFIRM_TEXT,
   assertConfirmText,
   qaError,
+  isRealQaUser: realQaUser,
   resolveQaPair,
   preservedCollections
 }

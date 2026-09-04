@@ -82,6 +82,12 @@
       <button class="outline-btn full-btn" bindtap="goService">联系人工客服</button>
     </view>
 
+    <view class="qa-reset-card card" wx:if="{{coordination.qa_reset_allowed}}">
+      <view class="section-title">QA 测试工具</view>
+      <view class="public-note">仅限授权内部测试账号。重置会关闭当前协调并让旧方案、确认和会话失效，审计记录会保留。</view>
+      <button class="outline-btn compact-btn qa-reset-btn" bindtap="qaReset" loading="{{qaResetting}}" disabled="{{qaResetting}}">重置本轮协调</button>
+    </view>
+
     <view class="fact-card card" wx:if="{{invitationCard && !canonicalViewModel.current_plan && (coordination.status === 'inviting_partner' || coordination.status === 'collecting_initiator' || !sharedCoordination.ready)}}">
       <view class="section-title">{{coordinationDisplay.receivedInvitation ? '第一次约会邀请' : '你的建议'}}</view>
       <view class="fact-row"><text class="fact-label">时间</text><text class="fact-value">{{invitationCard.time_text}}</text></view>
