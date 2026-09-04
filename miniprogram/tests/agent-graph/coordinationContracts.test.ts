@@ -8,6 +8,12 @@ import {
   CoordinationErrorPayloadSchema,
   CoordinationEventSchema,
   CoordinationEventTypeSchema,
+  COORDINATION_FIELD_RUNTIME_ADAPTER,
+  COORDINATION_EVENT_TYPE_RUNTIME_ADAPTER,
+  toCanonicalCoordinationEventType,
+  toCanonicalCoordinationField,
+  toRuntimeCoordinationEventType,
+  toRuntimeCoordinationField,
   getCoordinationFieldClass
 } from '../../cloudfunctions/agent-graph/src/contracts.js'
 
@@ -16,6 +22,30 @@ const contextRef = {
   coordination_id: 716,
   coordination_version: 6,
   patch_id: 456
+}
+const proposalContext = {
+  type: 'proposal' as const,
+  coordination_id: 716,
+  coordination_version: 6,
+  proposal_id: 654
+}
+const invitationContext = {
+  type: 'invitation' as const,
+  coordination_id: 716,
+  coordination_version: 1,
+  invitation_id: 123
+}
+const partnerInquiryContext = {
+  type: 'partner_inquiry' as const,
+  coordination_id: 716,
+  coordination_version: 6,
+  inquiry_id: 321
+}
+const meetingStatusContext = {
+  type: 'meeting_status' as const,
+  coordination_id: 716,
+  coordination_version: 6,
+  event_id: 987
 }
 
 test('accepts the complete structured command matrix', () => {
@@ -33,7 +63,7 @@ test('accepts the complete structured command matrix', () => {
       type: 'ASK_PARTNER',
       target_version: 6,
       partner_request: { type: 'ASK_ACCEPTANCE', topic: '周六晚上吃酸菜鱼' },
-      context_ref: { ...contextRef, type: 'partner_inquiry' }
+      context_ref: partnerInquiryContext
     },
     {
       type: 'PROPOSE_CHANGE_AND_ASK_PARTNER',
@@ -46,34 +76,34 @@ test('accepts the complete structured command matrix', () => {
     },
     { type: 'CONFIRM_PREVIEW', target_version: 6, context_ref: contextRef },
     { type: 'CANCEL_PREVIEW', target_version: 6, context_ref: contextRef },
-    { type: 'CONFIRM_CURRENT_PLAN', target_version: 6, context_ref: { ...contextRef, type: 'proposal' } },
-    { type: 'REJECT_CURRENT_PLAN', target_version: 6, context_ref: { ...contextRef, type: 'proposal' } },
-    { type: 'ACCEPT_INVITATION', target_version: 1, context_ref: { ...contextRef, type: 'invitation', coordination_version: 1 } },
-    { type: 'DECLINE_INVITATION', target_version: 1, context_ref: { ...contextRef, type: 'invitation', coordination_version: 1 } },
+    { type: 'CONFIRM_CURRENT_PLAN', target_version: 6, context_ref: proposalContext },
+    { type: 'REJECT_CURRENT_PLAN', target_version: 6, context_ref: proposalContext },
+    { type: 'ACCEPT_INVITATION', target_version: 1, context_ref: invitationContext },
+    { type: 'DECLINE_INVITATION', target_version: 1, context_ref: invitationContext },
     {
       type: 'ARRIVAL_STATUS',
       relay: { type: 'ARRIVAL_STATUS', text: '我到了' },
-      context_ref: { ...contextRef, type: 'meeting_status' }
+      context_ref: meetingStatusContext
     },
     {
       type: 'ARRIVAL_HINT',
       relay: { type: 'ARRIVAL_HINT', text: '今天穿白T黑裤' },
-      context_ref: { ...contextRef, type: 'meeting_status' }
+      context_ref: meetingStatusContext
     },
     {
       type: 'ASK_PARTNER_ARRIVAL',
       partner_request: { type: 'ASK_ARRIVAL', topic: '询问对方是否到达' },
-      context_ref: { ...contextRef, type: 'meeting_status' }
+      context_ref: meetingStatusContext
     },
     {
       type: 'DELAY_NOTICE',
       relay: { type: 'DELAY_NOTICE', text: '我可能晚10分钟' },
-      context_ref: { ...contextRef, type: 'meeting_status' }
+      context_ref: meetingStatusContext
     },
     {
       type: 'RELAY_MESSAGE',
       relay: { type: 'SAFE_NOTE', text: '我在商场北门' },
-      context_ref: { ...contextRef, type: 'meeting_status' }
+      context_ref: meetingStatusContext
     },
     { type: 'CANCEL_COORDINATION', target_version: 6, context_ref: contextRef },
     { type: 'CLARIFY', needs_clarification: true, clarification: '你想调整时间还是活动？' }
@@ -101,9 +131,25 @@ test('combination intent is one change set with explicit preserved fields', () =
 
 test('context_ref is versioned and rejects unknown or incomplete context', () => {
   assert.equal(CoordinationContextRefSchema.safeParse(contextRef).success, true)
+  assert.equal(CoordinationContextRefSchema.safeParse(proposalContext).success, true)
+  assert.equal(CoordinationContextRefSchema.safeParse(partnerInquiryContext).success, true)
+  assert.equal(CoordinationContextRefSchema.safeParse({
+    ...partnerInquiryContext,
+    inquiry_id: undefined,
+    event_id: 988
+  }).success, true)
   assert.equal(CoordinationContextRefSchema.safeParse({
     type: 'proposal',
     coordination_id: 716
+  }).success, false)
+  assert.equal(CoordinationContextRefSchema.safeParse({
+    type: 'patch_preview',
+    coordination_id: 716,
+    coordination_version: 6
+  }).success, false)
+  assert.equal(CoordinationContextRefSchema.safeParse({
+    ...partnerInquiryContext,
+    inquiry_id: undefined
   }).success, false)
   assert.equal(CoordinationContextRefSchema.safeParse({
     ...contextRef,
@@ -114,6 +160,23 @@ test('context_ref is versioned and rejects unknown or incomplete context', () =>
     target_version: 5,
     context_ref: contextRef
   }).success, false)
+})
+
+test('plan mutation commands are always bound to a target version or context_ref', () => {
+  for (const type of ['PROPOSE_CHANGE', 'PROPOSE_CHANGE_AND_ASK_PARTNER'] as const) {
+    assert.equal(CoordinationCommandSchema.safeParse({
+      type,
+      changes: { activity: '吃饭' },
+      partner_request: type === 'PROPOSE_CHANGE_AND_ASK_PARTNER'
+        ? { type: 'ASK_ACCEPTANCE', topic: '一起吃饭吗' }
+        : undefined
+    }).success, false, type)
+  }
+  assert.equal(CoordinationCommandSchema.safeParse({
+    type: 'PROPOSE_CHANGE',
+    target_version: 6,
+    changes: { activity: '吃饭' }
+  }).success, true)
 })
 
 test('commands reject unknown keys, unsafe plan fields and incomplete clarification', () => {
@@ -177,6 +240,64 @@ test('event contract covers canonical events and rejects legacy or sensitive pro
     safe_payload: { original_message: '对方原话' },
     idempotency_key: 'coordination:716:v7:ARRIVED:1'
   }).success, false)
+  assert.equal(CoordinationEventSchema.safeParse({
+    coordination_id: 716,
+    coordination_version: 7,
+    event_type: 'PLAN_CHANGE_COMMITTED',
+    actor_user_id: 1,
+    safe_payload: { venue: '商场' },
+    idempotency_key: 'coordination:716:v7:PLAN_CHANGE_COMMITTED:1'
+  }).success, false)
+  assert.equal(CoordinationEventSchema.safeParse({
+    coordination_id: 716,
+    coordination_version: 7,
+    event_type: 'PLAN_CHANGE_COMMITTED',
+    actor_user_id: 1,
+    safe_payload: {
+      proposal_id: 654,
+      patch_id: 456,
+      changed_dimensions: ['venue', 'payment']
+    },
+    idempotency_key: 'coordination:716:v7:PLAN_CHANGE_COMMITTED:2'
+  }).success, true)
+})
+
+test('canonical plan fields have one venue/payment runtime adapter', () => {
+  assert.deepEqual(COORDINATION_FIELD_RUNTIME_ADAPTER, {
+    venue: 'activity_venue',
+    payment: 'payment_preference'
+  })
+  assert.equal(toCanonicalCoordinationField('venue'), 'venue')
+  assert.equal(toCanonicalCoordinationField('activity_venue'), 'venue')
+  assert.equal(toCanonicalCoordinationField('payment_preference'), 'payment')
+  assert.equal(toCanonicalCoordinationField('unknown_field'), null)
+  assert.equal(toRuntimeCoordinationField('venue'), 'activity_venue')
+  assert.equal(toRuntimeCoordinationField('payment'), 'payment_preference')
+  assert.equal(toRuntimeCoordinationField('activity'), 'activity')
+  assert.equal(CoordinationCommandSchema.safeParse({
+    type: 'PROPOSE_CHANGE',
+    target_version: 6,
+    changes: { activity_venue: '商场' }
+  }).success, false)
+})
+
+test('runtime event_type values normalize through one canonical event vocabulary', () => {
+  assert.equal(toCanonicalCoordinationEventType('PROPOSAL_GENERATED'), 'PROPOSAL_GENERATED')
+  assert.equal(toCanonicalCoordinationEventType('proposal_generated'), 'PROPOSAL_GENERATED')
+  assert.equal(toCanonicalCoordinationEventType('application_sent'), 'APPLICATION_SUBMITTED')
+  assert.equal(toCanonicalCoordinationEventType('coordination_arranged'), 'ARRANGED')
+  assert.equal(toCanonicalCoordinationEventType('not_a_coordination_event'), null)
+  assert.equal(toRuntimeCoordinationEventType('PROPOSAL_GENERATED'), 'proposal_generated')
+  assert.equal(toRuntimeCoordinationEventType('PREFERENCES_UPDATED'), 'preference_changed')
+  assert.equal(CoordinationEventSchema.safeParse({
+    coordination_id: 716,
+    coordination_version: 7,
+    event_type: 'proposal_generated',
+    actor_user_id: 1,
+    safe_payload: {},
+    idempotency_key: 'coordination:716:v7:proposal_generated:1'
+  }).success, false)
+  assert.equal(COORDINATION_EVENT_TYPE_RUNTIME_ADAPTER.PROCESSING_FAILED, 'processing_failed')
 })
 
 test('plan field classification separates core, soft preference and live meeting state', () => {

@@ -154,14 +154,57 @@ export const CoordinationCommandTypeSchema = z.enum([
 
 export type CoordinationCommandType = z.infer<typeof CoordinationCommandTypeSchema>
 
-export const CoordinationContextRefSchema = z.object({
-  type: z.enum(['proposal', 'invitation', 'patch_preview', 'partner_inquiry', 'meeting_status']),
+const CoordinationContextRefBase = {
   coordination_id: z.number().int().positive(),
-  coordination_version: z.number().int().positive(),
-  proposal_id: z.number().int().positive().optional(),
-  patch_id: z.number().int().positive().optional(),
+  coordination_version: z.number().int().positive()
+} as const
+
+const CoordinationProposalContextRefSchema = z.object({
+  ...CoordinationContextRefBase,
+  type: z.literal('proposal'),
+  proposal_id: z.number().int().positive()
+}).strict()
+
+const CoordinationInvitationContextRefSchema = z.object({
+  ...CoordinationContextRefBase,
+  type: z.literal('invitation'),
+  invitation_id: z.number().int().positive()
+}).strict()
+
+const CoordinationPatchPreviewContextRefSchema = z.object({
+  ...CoordinationContextRefBase,
+  type: z.literal('patch_preview'),
+  patch_id: z.number().int().positive()
+}).strict()
+
+const CoordinationPartnerInquiryContextRefSchema = z.object({
+  ...CoordinationContextRefBase,
+  type: z.literal('partner_inquiry'),
+  inquiry_id: z.number().int().positive().optional(),
   event_id: z.number().int().positive().optional()
 }).strict()
+
+const CoordinationMeetingStatusContextRefSchema = z.object({
+  ...CoordinationContextRefBase,
+  type: z.literal('meeting_status'),
+  event_id: z.number().int().positive()
+}).strict()
+
+export const CoordinationContextRefSchema = z.discriminatedUnion('type', [
+  CoordinationProposalContextRefSchema,
+  CoordinationInvitationContextRefSchema,
+  CoordinationPatchPreviewContextRefSchema,
+  CoordinationPartnerInquiryContextRefSchema,
+  CoordinationMeetingStatusContextRefSchema
+]).superRefine((value, context) => {
+  if (value.type === 'partner_inquiry' && !value.inquiry_id && !value.event_id) {
+    context.addIssue({
+      code: 'custom',
+      path: ['inquiry_id'],
+      message: 'partner_inquiry context requires inquiry_id or event_id'
+    })
+  }
+})
 
 export type CoordinationContextRef = z.infer<typeof CoordinationContextRefSchema>
 
@@ -217,6 +260,29 @@ export function getCoordinationFieldClass(field: string): CoordinationPlanFieldC
     : null
 }
 
+// This is the only boundary adapter for the two historical plan field names.
+// Graph contracts stay canonical; runtime persistence can translate at this boundary.
+export const COORDINATION_FIELD_RUNTIME_ADAPTER = Object.freeze({
+  venue: 'activity_venue',
+  payment: 'payment_preference'
+} as const)
+
+export type CoordinationRuntimePlanField = Exclude<CoordinationPlanField, 'venue' | 'payment'>
+  | 'activity_venue'
+  | 'payment_preference'
+
+export function toCanonicalCoordinationField(field: string): CoordinationPlanField | null {
+  if (field === 'activity_venue') return 'venue'
+  if (field === 'payment_preference') return 'payment'
+  return CoordinationPlanFieldSchema.safeParse(field).success ? field as CoordinationPlanField : null
+}
+
+export function toRuntimeCoordinationField(field: CoordinationPlanField): CoordinationRuntimePlanField {
+  if (field === 'venue') return COORDINATION_FIELD_RUNTIME_ADAPTER.venue
+  if (field === 'payment') return COORDINATION_FIELD_RUNTIME_ADAPTER.payment
+  return field
+}
+
 export const CoordinationChangeSetSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   period: CoordinationPeriodSchema.optional(),
@@ -253,6 +319,8 @@ const CHANGE_COMMANDS = new Set<CoordinationCommandType>([
   'PROPOSE_CHANGE_AND_ASK_PARTNER'
 ])
 const VERSION_BOUND_COMMANDS = new Set<CoordinationCommandType>([
+  'PROPOSE_CHANGE',
+  'PROPOSE_CHANGE_AND_ASK_PARTNER',
   'CONFIRM_PREVIEW',
   'CANCEL_PREVIEW',
   'CONFIRM_CURRENT_PLAN',
@@ -308,8 +376,10 @@ export const CoordinationEventTypeSchema = z.enum([
   'INVITATION_EXPIRED',
   'APPLICATION_SUBMITTED',
   'PREFERENCES_UPDATED',
+  'COORDINATION_QUEUED',
   'PLAN_CHANGE_PROPOSED',
   'PLAN_CHANGE_COMMITTED',
+  'PROPOSAL_GENERATED',
   'PARTNER_QUESTION',
   'PARTNER_RESPONSE',
   'ARRIVED',
@@ -322,18 +392,62 @@ export const CoordinationEventTypeSchema = z.enum([
   'ARRANGED',
   'NO_OVERLAP',
   'RECOORDINATION_STARTED',
-  'MANUAL_HANDOFF'
+  'MANUAL_HANDOFF',
+  'COORDINATION_UPDATED',
+  'PROCESSING_FAILED'
 ])
 
 export type CoordinationEventType = z.infer<typeof CoordinationEventTypeSchema>
 
-const SafeProjectionScalarSchema = z.union([
-  z.string().max(500),
-  z.number(),
-  z.boolean(),
-  z.null()
-])
-const SENSITIVE_PROJECTION_KEY = /phone|mobile|openid|open_id|secret|api.?key|private.?key|original|raw|exact.?address|share.?message|other.?requirements|transport.?constraints/i
+// Lowercase runtime values are compatibility aliases only. New code must emit
+// CoordinationEventType values and cross this adapter at the persistence edge.
+export const COORDINATION_EVENT_TYPE_RUNTIME_ADAPTER: Readonly<Record<CoordinationEventType, string>> = Object.freeze({
+  INVITATION_CREATED: 'invitation_created',
+  INVITATION_ACCEPTED: 'invitation_accepted',
+  INVITATION_DECLINED: 'invitation_declined',
+  INVITATION_EXPIRED: 'invitation_expired',
+  APPLICATION_SUBMITTED: 'application_submitted',
+  PREFERENCES_UPDATED: 'preference_changed',
+  COORDINATION_QUEUED: 'processing_queued',
+  PLAN_CHANGE_PROPOSED: 'plan_change_proposed',
+  PLAN_CHANGE_COMMITTED: 'plan_change_committed',
+  PROPOSAL_GENERATED: 'proposal_generated',
+  PARTNER_QUESTION: 'partner_question',
+  PARTNER_RESPONSE: 'partner_response',
+  ARRIVED: 'arrived',
+  ARRIVAL_HINT_UPDATED: 'arrival_hint_updated',
+  ARRIVAL_STATUS_REQUESTED: 'arrival_status_requested',
+  DELAY_NOTICE: 'delay_notice',
+  PROPOSAL_CONFIRMED: 'proposal_confirmed',
+  PROPOSAL_REJECTED: 'proposal_rejected',
+  COORDINATION_CANCELLED: 'coordination_cancelled',
+  ARRANGED: 'arranged',
+  NO_OVERLAP: 'no_overlap',
+  RECOORDINATION_STARTED: 'recoordination_started',
+  MANUAL_HANDOFF: 'manual_handoff',
+  COORDINATION_UPDATED: 'coordination_updated',
+  PROCESSING_FAILED: 'processing_failed'
+})
+
+export const COORDINATION_EVENT_TYPE_LEGACY_ALIASES: Readonly<Record<string, CoordinationEventType>> = Object.freeze({
+  application_sent: 'APPLICATION_SUBMITTED',
+  preference_updated: 'PREFERENCES_UPDATED',
+  coordination_arranged: 'ARRANGED'
+})
+
+export function toCanonicalCoordinationEventType(value: string): CoordinationEventType | null {
+  const canonical = CoordinationEventTypeSchema.safeParse(value)
+  if (canonical.success) return canonical.data
+  const runtimeEntry = Object.entries(COORDINATION_EVENT_TYPE_RUNTIME_ADAPTER)
+    .find(([, runtimeValue]) => runtimeValue === value)
+  if (runtimeEntry) return runtimeEntry[0] as CoordinationEventType
+  return COORDINATION_EVENT_TYPE_LEGACY_ALIASES[value] || null
+}
+
+export function toRuntimeCoordinationEventType(value: CoordinationEventType): string {
+  return COORDINATION_EVENT_TYPE_RUNTIME_ADAPTER[value]
+}
+
 const SENSITIVE_PROJECTION_VALUE = /(?:\b1[3-9]\d{9}\b|\bo[A-Za-z0-9_-]{20,}\b|\b(?:sk|api)[-_][A-Za-z0-9_-]{8,}\b)/i
 
 function containsSensitiveProjection(value: unknown): boolean {
@@ -342,16 +456,27 @@ function containsSensitiveProjection(value: unknown): boolean {
   return false
 }
 
-export const CoordinationSafePayloadSchema = z.record(
-  z.string().min(1).max(40),
-  z.union([SafeProjectionScalarSchema, z.array(SafeProjectionScalarSchema).max(20)])
-).superRefine((payload, context) => {
-  for (const [key, value] of Object.entries(payload)) {
-    if (SENSITIVE_PROJECTION_KEY.test(key) || containsSensitiveProjection(value)) {
-      context.addIssue({ code: 'custom', path: [key], message: 'unsafe projection field' })
-    }
+const SafeProjectionTextSchema = z.string().max(120).superRefine((value, context) => {
+  if (containsSensitiveProjection(value)) {
+    context.addIssue({ code: 'custom', message: 'unsafe projection value' })
   }
 })
+
+// Events carry only fact references and changed dimensions. UI plan values must
+// always be read from canonical coordination state, never copied into events.
+export const CoordinationEventSafePayloadSchema = z.object({
+  proposal_id: z.number().int().positive().optional(),
+  patch_id: z.number().int().positive().optional(),
+  inquiry_id: z.number().int().positive().optional(),
+  source_event_id: z.number().int().positive().optional(),
+  changed_dimensions: z.array(CoordinationPlanFieldSchema).max(16).optional(),
+  status: SafeProjectionTextSchema.optional(),
+  action: SafeProjectionTextSchema.optional(),
+  round_number: z.number().int().min(1).max(20).optional()
+}).strict()
+
+// Compatibility export for Phase A consumers; it is the same canonical schema.
+export const CoordinationSafePayloadSchema = CoordinationEventSafePayloadSchema
 
 export const CoordinationEventSchema = z.object({
   coordination_id: z.number().int().positive(),
