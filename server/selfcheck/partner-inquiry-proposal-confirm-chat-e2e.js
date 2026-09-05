@@ -228,7 +228,23 @@ function createHarness() {
     invokeGraphFunction: async (name, payload) => {
       assert.strictEqual(name, 'agent-graph')
       return graphResult(payload)
-    }
+    },
+    transaction: async (work) => work({
+      now,
+      byDocId: async (name, id) => (rows[name] || []).find((row) => String(row._id) === String(id)) || null,
+      byId: async (name, id) => (rows[name] || []).find((row) => Number(row.id) === Number(id)) || null,
+      list: async (name, query) => (rows[name] || []).filter((row) => matches(row, query)),
+      addWithId: deps.addWithId,
+      updateByDoc: deps.updateByDoc,
+      setByDocId: async (name, id, data) => {
+        const collection = rows[name] || (rows[name] = [])
+        const existing = collection.find((row) => String(row._id) === String(id))
+        if (existing) return deps.updateByDoc(name, existing, data)
+        const row = Object.assign({ _id: String(id), id: data.id || ++nextId, create_time: now(), update_time: now() }, data)
+        collection.push(row)
+        return row
+      }
+    })
   }
   return { rows, deps }
 }
@@ -246,7 +262,9 @@ async function main() {
   assert.strictEqual(rows.date_application_patch[0].status, 'applied')
   assert.strictEqual(rows.date_coordination_proposal.length, 1, 'A partner-inquiry patch must create one active proposal')
   assert.strictEqual(rows.date_coordination[0].status, STATUS.WAITING_CONFIRMATIONS)
-  assert.strictEqual(rows.date_coordination_confirmation.some((row) => Number(row.user_id) === 1), true)
+  const aConfirmation = rows.date_coordination_confirmation.find((row) => Number(row.user_id) === 1)
+  assert(aConfirmation)
+  assert.strictEqual(aConfirmation._id, 'date-confirmation-90-1-v2', 'partner inquiry confirmation must use the canonical confirmation document id')
 
   const partnerMessage = rows.agent_message.find((row) => Number(row.user_id) === 2 && row.coordination_event_id)
   assert(partnerMessage && partnerMessage.event_card && partnerMessage.event_card.context_ref)
