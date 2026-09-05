@@ -289,14 +289,20 @@ function createDateApplicationPatchHandlers(overrides = {}) {
     return dep('list')('date_coordination_application', { coordination_id: Number(coordinationId) }, 200)
   }
 
-  async function partnerInquiryContextForPatch(patch, coordination) {
+  async function proposalCreatingContextForPatch(patch, coordination) {
     const sourceMessageId = Number(patch && patch.source_message_id || 0)
     if (!sourceMessageId) return null
     const sourceMessage = await dep('byId')('agent_message', sourceMessageId).catch(() => null)
     const contextRef = sourceMessage && sourceMessage.context_ref
-    if (!contextRef || contextRef.type !== 'partner_inquiry') return null
+    if (!contextRef || !['partner_inquiry', 'proposal'].includes(contextRef.type)) return null
     if (Number(contextRef.coordination_id) !== Number(coordination && coordination.id)) return null
     if (Number(contextRef.coordination_version) !== Number(patch && patch.base_version)) return null
+    if (contextRef.type === 'proposal') {
+      const proposal = await dep('byId')('date_coordination_proposal', Number(contextRef.proposal_id || 0)).catch(() => null)
+      if (!proposal
+        || Number(proposal.coordination_id) !== Number(coordination && coordination.id)
+        || Number(proposal.coordination_version) !== Number(patch && patch.base_version)) return null
+    }
     return contextRef
   }
 
@@ -1016,10 +1022,10 @@ function createDateApplicationPatchHandlers(overrides = {}) {
       applied_version: newVersion,
       applied_at: dep('now')()
     })
-    const partnerInquiryContext = await partnerInquiryContextForPatch(patch, coordination)
+    const proposalCreatingContext = await proposalCreatingContextForPatch(patch, coordination)
     let partnerProposal = null
     let proposalCoordination = updatedCoordination
-    if (partnerInquiryContext) {
+    if (proposalCreatingContext) {
       const generated = await persistPartnerInquiryProposal(
         updatedCoordination,
         user,

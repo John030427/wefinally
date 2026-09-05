@@ -124,7 +124,7 @@ function scriptedDateGraph(name, payload) {
     ? { date: SAT, period: 'afternoon' }
     : (payload.userText === '区域也可以换成车公庙'
       ? { area: '车公庙' }
-      : (payload.userText === '火锅更好' ? { activity_detail: '火锅更好' } : null))
+      : (payload.userText === '火锅更好' ? { activity: '火锅' } : null))
   if (changes) {
     return {
       result: {
@@ -178,6 +178,7 @@ function memoryDb(seedCoordination) {
   db.first = async (name, q) => (tables[name] || []).find((row) => matches(row, q)) || null
   db.list = async (name, q, limit) => (tables[name] || []).filter((row) => matches(row, q)).slice(0, Number(limit) || 100)
   db.byId = async (name, id) => (tables[name] || []).find((row) => Number(row.id) === Number(id)) || null
+  db.byDocId = async (name, id) => (tables[name] || []).find((row) => String(row._id) === String(id)) || null
   db.addWithId = async (name, data, prefix) => {
     const row = Object.assign({ id: ++nextId, _id: (prefix || name) + '_' + (nextId + 1), create_time: db.now(), update_time: db.now() }, data)
     if (!row._id) row._id = (prefix || name) + '_' + row.id
@@ -191,6 +192,23 @@ function memoryDb(seedCoordination) {
     if (idx >= 0) tables[name][idx] = updated
     return updated
   }
+  db.setByDocId = async (name, id, data) => {
+    const existing = await db.byDocId(name, id)
+    if (existing) return db.updateByDoc(name, existing, data)
+    const row = Object.assign({ id: ++nextId, _id: String(id), create_time: db.now(), update_time: db.now() }, data)
+    if (!tables[name]) tables[name] = []
+    tables[name].push(row)
+    return row
+  }
+  db.transaction = async (work) => work({
+    now: db.now,
+    byId: db.byId,
+    byDocId: db.byDocId,
+    list: db.list,
+    addWithId: db.addWithId,
+    updateByDoc: db.updateByDoc,
+    setByDocId: db.setByDocId
+  })
   db.claimPendingPatch = async (patch) => {
     const current = (tables.date_application_patch || []).find((r) => Number(r.id) === Number(patch.id))
     if (!current || current.status !== 'pending_confirmation') return false
@@ -266,7 +284,7 @@ async function main() {
   const coordination = createDateCoordinationHandlers(coordinationDeps)
   const patches = createDateApplicationPatchHandlers({
     currentUser, first: db.first, list: db.list, byId: db.byId, addWithId: db.addWithId, updateByDoc: db.updateByDoc,
-    claimPendingPatch: db.claimPendingPatch, now,
+    claimPendingPatch: db.claimPendingPatch, transaction: db.transaction, now,
     publishCoordinationEvent: publishEvent,
     writeInboxNotification: writeInbox,
     saveApplicationForUser: coordination.saveApplicationForUser
@@ -274,7 +292,7 @@ async function main() {
   const agent = createAgentHandlers({
     currentUser, first: db.first, list: db.list, byId: db.byId, addWithId: db.addWithId, updateByDoc: db.updateByDoc,
     claimPendingPatch: db.claimPendingPatch, now,
-    transaction: null,
+    transaction: db.transaction,
     commitConfirmation: db.commitConfirmation,
     publishCoordinationEvent: publishEvent,
     writeInboxNotification: writeInbox,
@@ -403,10 +421,26 @@ async function main() {
     { id: 601, coordination_id: 60, user_id: 1, coordination_version: 3, application: app({ activities: ['吃饭'] }) },
     { id: 602, coordination_id: 60, user_id: 2, coordination_version: 3, application: app({ activities: ['吃饭'] }) }
   )
+  db.tables.date_coordination_proposal.push({
+    id: 603,
+    coordination_id: 60,
+    coordination_version: 3,
+    proposal_key: `v3-${FRI}-evening-南山-吃饭`,
+    date: FRI,
+    period: 'evening',
+    area: '南山',
+    activity: '吃饭',
+    budget: '100-200',
+    payment_preference: 'aa',
+    duration: '1-2h',
+    source: 'backend',
+    status: 'active'
+  })
   const counterSession = await agent.createSession({ agent_type: 'date_coordinator', coordination_id: 60 }, { userIndex: 1 })
   const counterPreviewChat = await agent.send({
     session_id: counterSession.id,
     message: '火锅更好',
+    context_ref: { type: 'proposal', coordination_id: 60, coordination_version: 3, proposal_id: 603 },
     client_request_id: 'bilateral-b-counter-preview-v3'
   }, { userIndex: 1 })
   assert.ok(counterPreviewChat.pending_preview, 'B counter chat must create a preview')
@@ -418,9 +452,24 @@ async function main() {
   }, { userIndex: 1 })
   assert.strictEqual(counterApplied.provider, 'langgraph', 'B counter confirmation must use Graph chat')
   assert.strictEqual(db.tables.date_coordination.find((row) => Number(row.id) === 60).coordination_version, 4, 'B counter confirmation must create a new canonical version')
+  const activeCounterProposal = db.tables.date_coordination_proposal.find((row) => Number(row.coordination_id) === 60 && Number(row.coordination_version) === 4 && row.status === 'active')
+  assert.ok(activeCounterProposal, 'confirming a proposal-context counter must create a new active proposal')
+  assert.strictEqual(activeCounterProposal.activity, '火锅')
+  assert.ok(db.tables.date_coordination_confirmation.some((row) => row._id === 'date-confirmation-60-2-v4' && Number(row.proposal_id) === Number(activeCounterProposal.id)), 'counter author confirmation must use the canonical version-bound id')
   const counterRelay = db.tables.agent_message.find((row) => Number(row.user_id) === 1 && Number(row.coordination_id) === 60 && row.event_type === 'preference_changed')
-  assert.ok(counterRelay && String(counterRelay.content).includes('火锅更好'), 'A AI must receive the concrete B counter relay')
+  assert.ok(counterRelay && String(counterRelay.content).includes('火锅'), 'A AI must receive the concrete B counter relay')
   assert.strictEqual(String(counterRelay.content).includes('吃饭'), false, 'counter relay must not copy the old private source text')
+  assert.strictEqual(counterRelay.event_card.context_ref.type, 'proposal', 'A must receive the new proposal as the actionable counter context')
+  assert.strictEqual(Number(counterRelay.event_card.context_ref.proposal_id), Number(activeCounterProposal.id))
+  const counterInitiatorSession = db.tables.agent_session.find((row) => Number(row.user_id) === 1 && Number(row.coordination_id) === 60)
+  const counterAccepted = await agent.send({
+    session_id: counterInitiatorSession.id,
+    message: '可以',
+    context_ref: counterRelay.event_card.context_ref,
+    client_request_id: 'bilateral-a-counter-accept-v4'
+  }, { userIndex: 0 })
+  assert.strictEqual(counterAccepted.provider, 'langgraph', 'A counter acceptance must use Graph chat')
+  assert.strictEqual(db.tables.date_coordination.find((row) => Number(row.id) === 60).status, STATUS.ARRANGED, 'A chat acceptance must arrange the counter proposal')
   const counterHistory = await agent.messages({ id: counterSession.id }, { userIndex: 1 })
   const counterPatchMessages = counterHistory.messages.filter((row) => row.patch_preview)
   assert.ok(counterPatchMessages.length >= 1, 'counter preview must remain in chat history')
@@ -429,7 +478,10 @@ async function main() {
   assert.strictEqual(latestCounterPatch.context_ref, null, 'applied counter patch must not resurrect an actionable context')
 
   // ======== privacy ========
-  const bMessages = db.tables.agent_message.filter((r) => r.user_id === 2)
+  const primaryScenarioSessionIds = new Set(db.tables.agent_session
+    .filter((row) => Number(row.user_id) === 2 && Number(row.coordination_id) === 50)
+    .map((row) => Number(row.id)))
+  const bMessages = db.tables.agent_message.filter((row) => primaryScenarioSessionIds.has(Number(row.session_id)))
   const bText = JSON.stringify(bMessages.map((r) => r.content)) + JSON.stringify(db.tables.coordination_notification.map((r) => ({ body: r.body, payload: r.payload_json })))
   assert.strictEqual(bText.includes('周六下午也可以'), false, 'partner never sees A raw message')
   assert.strictEqual(bText.includes('南山'), false, 'partner never sees A raw area')
