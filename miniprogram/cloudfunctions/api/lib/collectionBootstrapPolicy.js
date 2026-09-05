@@ -32,6 +32,7 @@ const BOOTSTRAP_COLLECTIONS = new Set([
   'date_coordination_event_dedupe',
   'coordination_notification_dedupe',
   'date_submission_outbox',
+  'agent_session_dedupe',
   'coordination_notification',
   'user_notification_cursor',
   'partner_commission_ledger',

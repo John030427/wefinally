@@ -72,6 +72,7 @@ assert.strictEqual(canBootstrapCollection('controlled_date_scenario_run'), true)
 assert.strictEqual(canBootstrapCollection('date_coordination_event_dedupe'), true)
 assert.strictEqual(canBootstrapCollection('coordination_notification_dedupe'), true)
 assert.strictEqual(canBootstrapCollection('date_submission_outbox'), true)
+assert.strictEqual(canBootstrapCollection('agent_session_dedupe'), true)
 assert.strictEqual(canBootstrapCollection('user'), false)
 assert.strictEqual(isMissingCollectionError(new Error('collection not exists: agent_sessions')), true)
 assert.strictEqual(isMissingCollectionError(new Error('permission denied')), false)
@@ -108,7 +109,8 @@ async function bootstrapChecks() {
   for (const [logicalName, physicalName] of [
     ['date_coordination_event_dedupe', 'date_coordination_event_dedupe'],
     ['coordination_notification_dedupe', 'coordination_notification_dedupe'],
-    ['date_submission_outbox', 'date_submission_outbox']
+    ['date_submission_outbox', 'date_submission_outbox'],
+    ['agent_session_dedupe', 'agent_session_dedupe']
   ]) {
     let attempts = 0
     let creates = 0
