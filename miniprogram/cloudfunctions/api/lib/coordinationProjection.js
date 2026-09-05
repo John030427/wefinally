@@ -11,6 +11,7 @@ const SOFT_PLAN_FIELDS = Object.freeze(['area', 'budget', 'payment', 'duration']
 
 const DIMENSION_LABELS = Object.freeze({
   availability: '时间',
+  time: '时间',
   date: '日期',
   period: '时段',
   start_time: '开始时间',

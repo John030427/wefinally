@@ -142,7 +142,7 @@ async function serviceChecks() {
   assert.strictEqual(tables.date_coordination_application.filter((row) => row.coordination_version === 2).length, 2)
   assert.strictEqual(tables.date_coordination_proposal.filter((row) => row.coordination_version === 2).length, 0)
   const partnerMessage = tables.agent_message.find((row) => row.session_id === 200)
-  assert(partnerMessage.content.includes('对方的约会条件发生调整'))
+  assert(partnerMessage.content.includes('对方想把'))
   assert.strictEqual(partnerMessage.content.includes('电影'), false)
   assert.strictEqual(partnerMessage.content.includes('不想'), false)
   assert.strictEqual(tables.date_coordination_event.length, 1)

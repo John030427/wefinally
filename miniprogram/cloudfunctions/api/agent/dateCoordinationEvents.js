@@ -21,7 +21,7 @@ function eventKey(coordination, event) {
 }
 
 function safeChangedDimensions(value) {
-  const allowed = new Set(['availability', 'area', 'activity', 'budget', 'payment', 'duration'])
+  const allowed = new Set(['availability', 'time', 'area', 'activity', 'budget', 'payment', 'duration'])
   return Array.from(new Set((Array.isArray(value) ? value : [])
     .map((item) => String(item || '').trim())
     .filter((item) => allowed.has(item))))

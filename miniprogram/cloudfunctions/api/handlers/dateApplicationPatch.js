@@ -427,7 +427,9 @@ function createDateApplicationPatchHandlers(overrides = {}) {
         actor_user_id: Number(user.id),
         coordination_version: Number(version),
         has_proposal: Boolean(proposalCreated),
-        changed_dimensions: summary.changed_dimensions
+        changed_dimensions: summary.changed_dimensions,
+        patch_id: Number(summary.patch_id || 0),
+        relay_text: summary.relay_text
       }
     })
     let notificationStatus = 'projected'
@@ -671,7 +673,9 @@ function createDateApplicationPatchHandlers(overrides = {}) {
         await dep('updateByDoc')('date_application_patch', patch, { status: 'pending_confirmation' })
         throw err
       }
-      const summary = shareableSummary(patch.preview)
+      const summary = Object.assign({}, shareableSummary(patch.preview), {
+        patch_id: Number(patch.id)
+      })
       const notification = await notifyPartner(committed.coordination, user, summary, false, newVersion)
       return {
         patch: publicPatch(committed.patch || patch),
@@ -750,7 +754,9 @@ function createDateApplicationPatchHandlers(overrides = {}) {
       applied_version: newVersion,
       applied_at: dep('now')()
     })
-    const summary = shareableSummary(patch.preview)
+    const summary = Object.assign({}, shareableSummary(patch.preview), {
+      patch_id: Number(patch.id)
+    })
     const notification = await notifyPartner(updatedCoordination, user, summary, false, newVersion)
     return {
       patch: publicPatch(appliedPatch),

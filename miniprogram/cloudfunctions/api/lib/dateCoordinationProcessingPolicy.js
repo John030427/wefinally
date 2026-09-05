@@ -143,9 +143,10 @@ function projectParticipantEvent(event = {}, context = {}) {
       stage: mine ? 'my_preference_changed' : 'partner_preference_changed',
       content: mine
         ? '你确认的偏好修改已记录，系统会按新版本重新协调。'
-        : (event.has_proposal
+        : (safeRelayText(event.relay_text)
+          || (event.has_proposal
             ? '对方的约会条件发生调整，系统已生成新的候选方案，请在协调页查看。'
-            : '对方的约会条件发生调整，系统正在按新版本重新协调。')
+            : '对方的约会条件发生调整，系统正在按新版本重新协调。'))
     },
     proposal_generated: {
       stage: 'proposal_generated',

@@ -317,6 +317,14 @@ async function main() {
   assert.strictEqual(String(confirmReply.reply).includes('协调事实已更新'), true, 'patch applied via agent confirm')
   assert.strictEqual(db.tables.date_coordination[0].coordination_version, 2, 'coordination version bumped after confirm')
   assert.strictEqual(db.tables.date_coordination[0].status, STATUS.COMPUTING_OVERLAP)
+  const partnerRelay = db.tables.agent_message.find((row) => Number(row.user_id) === 2 && row.event_type === 'preference_changed' && Number(row.coordination_version) === 2)
+  assert.ok(partnerRelay, 'partner must receive an assistant relay for the committed patch')
+  assert.ok(String(partnerRelay.content).includes('时间'), 'partner relay must name the changed dimension')
+  const committedEvent = db.tables.date_coordination_event.find((row) => row.event_type === 'preference_changed' && Number(row.coordination_version) === 2)
+  assert.ok(committedEvent, 'committed patch must have one canonical coordination event')
+  assert.strictEqual(Number(committedEvent.safe_payload.patch_id), Number(first.pending_preview.patchId))
+  assert.deepStrictEqual(committedEvent.safe_payload.changed_dimensions, ['time'])
+  assert.strictEqual(Object.prototype.hasOwnProperty.call(committedEvent.safe_payload, 'activity'), false, 'event payload must keep plan truth in DB')
   const aAppV2 = db.tables.date_coordination_application.filter((r) => r.user_id === 1 && r.coordination_version === 2)[0].application
   assert.ok(JSON.stringify(aAppV2).includes(SAT), 'A updated availability persisted')
   const aRowV2 = db.tables.date_coordination_application.filter((r) => r.user_id === 1 && r.coordination_version === 2)[0]
@@ -343,9 +351,13 @@ async function main() {
   const proposalId = detailA.proposals[0].id
   const afterA = await coordination.confirmProposal({ coordination_id: 50, proposal_id: proposalId, coordination_version: 3, decision: 'confirm' }, { userIndex: 0 })
   assert.notStrictEqual(afterA.status, STATUS.ARRANGED, 'A alone cannot arrange')
+  const partnerSession = await agent.createSession({ agent_type: 'date_coordinator', coordination_id: 50 }, { userIndex: 1 })
+  const partnerHistory = await agent.messages({ id: partnerSession.id }, { userIndex: 1 })
+  assert.ok(partnerHistory.messages.some((row) => row.event_card && row.event_card.patch_id === Number(first.pending_preview.patchId)), 'B AI session must expose the committed patch event card')
   const afterB = await coordination.confirmProposal({ coordination_id: 50, proposal_id: proposalId, coordination_version: 3, decision: 'confirm' }, { userIndex: 1 })
   assert.strictEqual(afterB.status, STATUS.ARRANGED, 'B confirm => arranged')
   assert.strictEqual(db.tables.date_coordination[0].final_proposal_id, Number(proposalId))
+  assert.ok(db.tables.agent_message.some((row) => Number(row.user_id) === 1 && row.event_type === 'proposal_confirmed' && String(row.content).includes('对方已确认')), 'A AI session must receive B confirmation')
 
   // ======== privacy ========
   const bMessages = db.tables.agent_message.filter((r) => r.user_id === 2)
