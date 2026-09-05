@@ -1,7 +1,7 @@
 const GRAPH_TOOL_ALLOWLIST = Object.freeze({
-  confirm_date_application: ['status', 'coordinationVersion', 'applicationSent', 'partnerNotified'],
+  confirm_date_application: ['status', 'coordinationVersion', 'applicationSent', 'partnerNotified', 'applied', 'projection_pending', 'notification_status', 'skipped', 'event_status'],
   reject_date_application: ['status', 'coordinationVersion', 'businessState'],
-  confirm_date_application_patch: ['patchId', 'status', 'coordinationVersion', 'applicationSent', 'partnerNotified'],
+  confirm_date_application_patch: ['patchId', 'status', 'coordinationVersion', 'applicationSent', 'partnerNotified', 'applied', 'projection_pending', 'notification_status', 'skipped', 'event_status'],
   cancel_date_application_patch: ['patchId', 'status', 'coordinationVersion'],
   create_date_application_patch: ['patchId', 'status', 'coordinationVersion'],
   create_date_application_preview: ['previewId', 'status', 'coordinationVersion'],

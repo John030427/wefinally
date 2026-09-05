@@ -534,8 +534,13 @@ function createAgentHandlers(overrides = {}) {
             patchId: Number(applied.patch && applied.patch.id || args.patchId),
             status: applied.status || (applied.patch && applied.patch.status) || 'applied',
             coordinationVersion: Number(applied.coordination_version || args.coordinationVersion),
+            applied: applied.applied === true,
             applicationSent: applied.application_sent === true,
-            partnerNotified: applied.partner_notified === true
+            partnerNotified: applied.partner_notified === true,
+            projection_pending: applied.projection_pending === true,
+            notification_status: applied.notification_status || '',
+            skipped: applied.skipped === true,
+            event_status: applied.event_status || ''
           } }
         },
         cancel_date_application_patch: async (args) => {

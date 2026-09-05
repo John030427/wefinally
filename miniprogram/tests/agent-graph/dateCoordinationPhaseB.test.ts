@@ -354,7 +354,39 @@ test('tool continuation reloads canonical state and keeps preview facts separate
   assert.equal(second.pendingTool, null)
   assert.equal(second.pendingPreview?.patchId, 456)
   assert.equal(second.pendingPreview?.baseVersion, 3)
-  assert.match(second.replyDraft, /确认后才会写入/)
+  assert.match(second.replyDraft, /确认后我会更新约会方案/)
+})
+
+test('preview resume reply names changed fields and preserves unchanged plan facts', async () => {
+  const graph = buildDateCoordinationGraph({
+    checkpointer: new MemorySaver(),
+    model: command({
+      type: 'PROPOSE_CHANGE_AND_ASK_PARTNER',
+      target_version: 3,
+      changes: { activity: '吃饭', activity_detail: '大鱼' },
+      preserve: ['date', 'period', 'start_time', 'area', 'payment', 'duration'],
+      partner_request: { type: 'ASK_ACCEPTANCE', topic: '吃饭·大鱼可以吗？' },
+      context_ref: { type: 'proposal', coordination_id: 716, coordination_version: 3, proposal_id: 99 }
+    })
+  })
+  const first = await graph.invoke(state(canonical()), { configurable: { thread_id: 'wf_thread_phase_b_dynamic_preview_copy' } })
+  const second = await graph.invoke({
+    ...state(canonical()),
+    pendingAction: first.pendingAction,
+    pendingTool: first.pendingTool,
+    pendingPreview: first.pendingPreview,
+    candidatePlan: first.candidatePlan,
+    candidateChanges: first.candidateChanges,
+    baseVersion: first.baseVersion,
+    contextRef: first.contextRef,
+    coordinationCommand: first.coordinationCommand,
+    resumeToolResult: { ok: true, data: { patchId: 456, status: 'pending_confirmation', coordinationVersion: 3 } }
+  }, { configurable: { thread_id: 'wf_thread_phase_b_dynamic_preview_copy' } })
+
+  assert.equal(second.phase, 'awaiting_confirmation')
+  assert.match(second.replyDraft, /活动.*咖啡.*手冲咖啡.*吃饭.*大鱼/)
+  assert.match(second.replyDraft, /区域、费用方式、时长保持当前安排/)
+  assert.match(second.replyDraft, /确认后.*询问对方/)
 })
 
 test('preview confirmation uses the DB-loaded pending preview instead of checkpoint-only context', async () => {
@@ -408,6 +440,37 @@ test('completed plan resolution clears the consumed actionable context', async (
     resumeToolResult: { ok: true, data: { patchId: 456, status: 'applied', coordinationVersion: 4 } }
   }), { configurable: { thread_id: 'wf_thread_phase_b_context_consumed' } })
   assert.equal(result.contextRef, undefined)
+})
+
+test('preview confirmation reply is grounded in backend projection status', async () => {
+  const graph = buildDateCoordinationGraph({
+    checkpointer: new MemorySaver(),
+    model: command({
+      type: 'CONFIRM_PREVIEW',
+      target_version: 3,
+      context_ref: { type: 'patch_preview', coordination_id: 716, coordination_version: 3, patch_id: 456 }
+    })
+  })
+  const action = {
+    type: 'confirm_date_application_patch',
+    arguments: { coordinationId: 716, coordinationVersion: 3, patchId: 456 },
+    requiresConfirmation: false
+  } as const
+  const projected = await graph.invoke(state(canonical(), {
+    pendingAction: action,
+    pendingTool: action,
+    contextRef: { type: 'patch_preview', coordination_id: 716, coordination_version: 3, patch_id: 456 },
+    resumeToolResult: { ok: true, data: { patchId: 456, status: 'waiting_partner', applied: true, partnerNotified: true, coordinationVersion: 4 } }
+  }), { configurable: { thread_id: 'wf_thread_phase_b_grounded_confirm' } })
+  assert.match(projected.replyDraft, /已确认这次调整，并已同步给对方/)
+
+  const pending = await graph.invoke(state(canonical(), {
+    pendingAction: action,
+    pendingTool: action,
+    contextRef: { type: 'patch_preview', coordination_id: 716, coordination_version: 3, patch_id: 456 },
+    resumeToolResult: { ok: true, data: { patchId: 456, status: 'waiting_partner', applied: true, projection_pending: true, partnerNotified: false, coordinationVersion: 4 } }
+  }), { configurable: { thread_id: 'wf_thread_phase_b_grounded_confirm_pending' } })
+  assert.match(pending.replyDraft, /已确认这次调整，正在向对方同步/)
 })
 
 test('combined preview confirmation carries the partner request into the commit tool', async () => {

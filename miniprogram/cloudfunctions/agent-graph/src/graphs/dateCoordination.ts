@@ -265,6 +265,84 @@ function clearToolState() {
   return { pendingAction: null, pendingTool: null }
 }
 
+const PREVIEW_FIELD_LABELS: Readonly<Record<string, string>> = Object.freeze({
+  date: '日期',
+  period: '时段',
+  start_time: '开始时间',
+  activity: '活动',
+  activity_detail: '活动细节',
+  venue: '场地',
+  area: '区域',
+  budget: '预算',
+  payment: '费用方式',
+  duration: '时长'
+})
+
+const PREVIEW_VALUE_LABELS: Readonly<Record<string, Readonly<Record<string, string>>>> = Object.freeze({
+  period: { morning: '上午', afternoon: '下午', evening: '晚上', night: '夜间' },
+  payment: { aa: 'AA', self_pays: '各付各的', partner_pays: '对方请客', flexible: '双方灵活' },
+  duration: { 'about-1h': '约1小时', '1-2h': '1-2小时', '2-3h': '2-3小时', flexible: '时长灵活' }
+})
+
+function previewValue(field: string, value: unknown): string {
+  if (value === undefined || value === null || String(value).trim() === '') return '未设置'
+  const mapped = PREVIEW_VALUE_LABELS[field]?.[String(value)]
+  return mapped || String(value)
+}
+
+function activityValue(plan: CoordinationCanonicalPlan): string {
+  return [plan.activity, plan.activity_detail]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .join('·') || '未设置'
+}
+
+function buildPreviewReply(state: DateCoordinationState): string {
+  const current = state.canonicalState?.current_plan || {}
+  const candidate = state.candidatePlan || current
+  const changes = state.candidateChanges || {}
+  const changedFields = Object.keys(changes)
+  const descriptions: string[] = []
+  const activityChanged = changedFields.includes('activity') || changedFields.includes('activity_detail')
+  if (activityChanged) {
+    descriptions.push(`活动从“${activityValue(current)}”改为“${activityValue(candidate)}”`)
+  }
+  for (const field of changedFields) {
+    if (field === 'activity' || field === 'activity_detail') continue
+    const label = PREVIEW_FIELD_LABELS[field] || field
+    descriptions.push(`${label}从“${previewValue(field, current[field as keyof CoordinationCanonicalPlan])}”改为“${previewValue(field, candidate[field as keyof CoordinationCanonicalPlan])}”`)
+  }
+  const changeText = descriptions.length ? `你想把${descriptions.join('，')}。` : '你想调整当前约会安排。'
+  const preserveFields = ['venue', 'area', 'budget', 'payment', 'duration']
+    .filter((field) => !changedFields.includes(field) && state.coordinationCommand?.preserve.includes(field as CoordinationCommand['preserve'][number]))
+  const preserveLabels = preserveFields.map((field) => PREVIEW_FIELD_LABELS[field] || field)
+  const preserveText = preserveLabels.length
+    ? `${preserveLabels.join('、')}保持当前安排。`
+    : '其他未调整的安排保持不变。'
+  const partnerText = state.coordinationCommand?.partner_request
+    ? '，并询问对方是否接受这次调整'
+    : ''
+  return `${changeText}\n${preserveText}\n确认后我会更新约会方案${partnerText}。`
+}
+
+function buildConfirmationReply(result: SafeToolResult, pendingType: string): string {
+  if (!['confirm_date_application_patch', 'confirm_date_application'].includes(pendingType)) {
+    return '请求已交由后端校验处理，请以当前协调状态为准。'
+  }
+  const data = result.data || {}
+  const applied = data.applied === true
+  if (!applied) return '这次调整还没有生效，请重新确认。'
+  const projectionPending = data.projection_pending === true || data.event_status === 'pending' || data.notification_status === 'pending'
+  if (projectionPending) return '已确认这次调整，正在向对方同步。'
+  if (data.partnerNotified === true || data.partner_notified === true || data.event_status === 'projected') {
+    return '已确认这次调整，并已同步给对方。'
+  }
+  if (data.skipped === true || data.notification_status === 'skipped') {
+    return '已确认这次调整，当前未发送额外通知，请以最新协调状态为准。'
+  }
+  return '已确认这次调整，请以最新协调状态为准。'
+}
+
 function loadCanonicalState(state: DateCoordinationState): Partial<DateCoordinationState> {
   if (!state.canonicalState) return {}
   const canonical = CoordinationCanonicalStateSchema.parse(state.canonicalState)
@@ -557,7 +635,7 @@ function applyToolResult(state: DateCoordinationState): Partial<DateCoordination
       pendingPreview,
       contextRef: previewContext,
       ...clearToolState(),
-      replyDraft: '修改预览已经生成，确认后才会写入协调状态。',
+      replyDraft: buildPreviewReply(state),
       errorCode: undefined
     }
   }
@@ -569,13 +647,14 @@ function applyToolResult(state: DateCoordinationState): Partial<DateCoordination
     'respond_date_invitation',
     'cancel_coordination'
   ].includes(String(pendingType || ''))
+  const replyDraft = buildConfirmationReply(result, String(pendingType || ''))
   return {
     phase: 'completed',
     lastResult: result,
     resumeToolResult: undefined,
     ...clearToolState(),
     ...(clearsActionableContext ? { contextRef: undefined } : {}),
-    replyDraft: '请求已交由后端校验处理，请以当前协调状态为准。',
+    replyDraft,
     errorCode: undefined
   }
 }
