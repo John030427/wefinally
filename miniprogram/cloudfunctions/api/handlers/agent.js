@@ -5,7 +5,7 @@ const { searchReviewedKnowledge } = require('../agent/knowledge')
 const { BUILTIN_KNOWLEDGE_ARTICLES } = require('../agent/knowledgeSeeds')
 const { generateDecision } = require('../agent/provider')
 const { TOOL_NAMES, inferTool, executeTool } = require('../agent/toolRegistry')
-const { createDateApplicationPatchHandlers, claimPendingPatch } = require('./dateApplicationPatch')
+const { createDateApplicationPatchHandlers, claimPendingPatch, publicPatch } = require('./dateApplicationPatch')
 const { createDateCoordinationHandlers } = require('./dateCoordination')
 const { readHumanServiceConfig, buildHumanServiceHandoff } = require('../agent/humanService')
 const { readLangGraphConfig, createActorRef, createThreadId, runLangGraphStep } = require('../agent/langgraphClient')
@@ -743,6 +743,16 @@ function createAgentHandlers(overrides = {}) {
           }
           if (dateGraphResult && dateGraphResult.status !== 'fallback') {
             const reply = [resumeText, dateGraphResult.replyDraft].filter(Boolean).join('\n') || '我已按当前协调状态处理这次请求。'
+            const pendingPreviewId = dateGraphResult.pendingPreview && (
+              dateGraphResult.pendingPreview.patchId || dateGraphResult.pendingPreview.patch_id
+            )
+            const pendingPreviewRow = pendingPreviewId
+              ? await dep('byId')('date_application_patch', Number(pendingPreviewId))
+              : null
+            const patchPreview = pendingPreviewRow
+              && ['pending_confirmation', 'pending_primary_selection'].includes(String(pendingPreviewRow.status || ''))
+              ? sanitizeOutput(publicPatch(pendingPreviewRow))
+              : null
             const clearsActionableContext = [
               'CONFIRM_PREVIEW',
               'CANCEL_PREVIEW',
@@ -764,6 +774,7 @@ function createAgentHandlers(overrides = {}) {
               coordination_command: dateGraphResult.coordinationCommand || null,
               candidate_plan: dateGraphResult.candidatePlan || null,
               pending_preview: dateGraphResult.pendingPreview || null,
+              patch_preview: patchPreview,
               context_ref: resultContextRef
             })
             await markSeen()
@@ -777,6 +788,7 @@ function createAgentHandlers(overrides = {}) {
               coordination_command: dateGraphResult.coordinationCommand || null,
               candidate_plan: dateGraphResult.candidatePlan || null,
               pending_preview: dateGraphResult.pendingPreview || null,
+              patch_preview: patchPreview,
               context_ref: resultContextRef,
               requires_confirmation: dateGraphResult.status === 'awaiting_confirmation',
               risk_level: 'safe'

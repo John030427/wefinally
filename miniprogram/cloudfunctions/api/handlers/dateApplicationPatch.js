@@ -816,5 +816,6 @@ module.exports = {
   confirm: handlers.confirm,
   cancel: handlers.cancel,
   createDateApplicationPatchHandlers,
-  claimPendingPatch
+  claimPendingPatch,
+  publicPatch
 }
