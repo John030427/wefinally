@@ -132,6 +132,13 @@ function buildCoordinationEventCard(input = {}) {
       coordination_version: card.coordination_version,
       ...(inquiryId > 0 ? { inquiry_id: inquiryId } : (eventId > 0 ? { event_id: eventId } : {}))
     }
+  } else if (!isOwnEvent && canonicalType === 'PREFERENCES_UPDATED' && eventId > 0) {
+    card.context_ref = {
+      type: 'partner_inquiry',
+      coordination_id: card.coordination_id,
+      coordination_version: card.coordination_version,
+      event_id: eventId
+    }
   } else if (['ARRIVED', 'ARRIVAL_HINT_UPDATED', 'ARRIVAL_STATUS_REQUESTED', 'DELAY_NOTICE', 'MEETING_ARRIVED', 'MEETING_NOT_FOUND', 'MEETING_MISMATCH'].includes(canonicalType)) {
     card.context_ref = {
       type: 'meeting_status',

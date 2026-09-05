@@ -34,6 +34,7 @@ const {
   invitingPartnerDeadlinePassed,
   persistExpiredInvitationRecord,
   publicInvitationProposal,
+  formatAvailability,
   buildInvitationCard,
   invitationVersionOf,
   invitationProposalOf,
@@ -56,6 +57,60 @@ function coordinationSubmissionError(code, message, httpCode = 409) {
   error.errorCode = code
   error.httpCode = httpCode
   return error
+}
+
+function samePreferenceFact(left, right) {
+  return JSON.stringify(left === undefined ? null : left) === JSON.stringify(right === undefined ? null : right)
+}
+
+function buildApplicationSubmissionEvent(coordination, application, actorUserId, isInitiatorDraft) {
+  const base = coordination && coordination.invitation_proposal && typeof coordination.invitation_proposal === 'object'
+    ? coordination.invitation_proposal
+    : {}
+  if (isInitiatorDraft) {
+    return {
+      event_type: 'application_submitted',
+      actor_user_id: Number(actorUserId),
+      coordination_version: Number(coordination.coordination_version || 1)
+    }
+  }
+
+  const changedDimensions = []
+  const changes = []
+  if (!samePreferenceFact(base.availability, application.availability)) {
+    changedDimensions.push('time')
+    changes.push(`时间调整到${formatAvailability(application.availability) || '新的可约时间'}`)
+  }
+  const fields = [
+    ['areas', 'area', '区域'],
+    ['activities', 'activity', '活动'],
+    ['budget', 'budget', '预算'],
+    ['payment_preference', 'payment', '费用方式'],
+    ['duration', 'duration', '时长']
+  ]
+  for (const [runtimeField, dimension, label] of fields) {
+    if (samePreferenceFact(base[runtimeField], application[runtimeField])) continue
+    changedDimensions.push(dimension)
+    const value = Array.isArray(application[runtimeField])
+      ? application[runtimeField].filter(Boolean).join('、')
+      : String(application[runtimeField] || '新的安排')
+    changes.push(`${label}调整为“${value}”`)
+  }
+
+  if (!changedDimensions.length) {
+    return {
+      event_type: 'application_submitted',
+      actor_user_id: Number(actorUserId),
+      coordination_version: Number(coordination.coordination_version || 1)
+    }
+  }
+  return {
+    event_type: 'preference_changed',
+    actor_user_id: Number(actorUserId),
+    coordination_version: Number(coordination.coordination_version || 1),
+    changed_dimensions: changedDimensions,
+    relay_text: `对方更倾向把${changes.join('，')}。其他安排保持不变。`
+  }
 }
 
 async function upsertConfirmation(existing, data) {
@@ -984,11 +1039,12 @@ function createDateCoordinationHandlers(overrides = {}) {
       }
     }
 
-    const applicationEvent = {
-      event_type: 'application_submitted',
-      actor_user_id: Number(user.id),
-      coordination_version: version
-    }
+    const applicationEvent = buildApplicationSubmissionEvent(
+      coordination,
+      application,
+      user.id,
+      isInitiatorDraft
+    )
     try {
       await dep('publishCoordinationEvent')({ coordination: updated, event: applicationEvent })
     } catch (err) {
