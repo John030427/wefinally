@@ -98,6 +98,18 @@ function buildResumeSummary(events = [], lastSeenVersion = 0) {
   return { has_updates: true, lines: Array.from(new Set(lines)) }
 }
 
+function buildActiveContextSummary(events = [], contextRef = null) {
+  if (!contextRef || contextRef.type !== 'partner_inquiry' || Number(contextRef.event_id || 0) <= 0) return ''
+  const event = (events || []).find((row) => Number(row.id || row.event_id || 0) === Number(contextRef.event_id))
+  const safeSummary = event && event.safe_summary && typeof event.safe_summary === 'object'
+    ? event.safe_summary
+    : null
+  return String(safeSummary && (safeSummary.relay_text || safeSummary.content) || '')
+    .replace(/[\u0000-\u001f\u007f]/g, ' ')
+    .trim()
+    .slice(0, 240)
+}
+
 function chooseAdjustmentParty(input = {}) {
   const last = String(input.last_adjustment_requested_party || '')
   const aFlexible = input.a_has_flexibility !== false
@@ -114,5 +126,6 @@ module.exports = {
   applyPreferencePatch,
   mergeConcurrentPreferencePatches,
   buildResumeSummary,
+  buildActiveContextSummary,
   chooseAdjustmentParty
 }
