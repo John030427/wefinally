@@ -236,6 +236,22 @@ function createDateApplicationPatchHandlers(overrides = {}) {
     return dep('list')('date_coordination_application', { coordination_id: Number(coordinationId) }, 200)
   }
 
+  async function supersedePendingPreviews(coordinationId, userId) {
+    const rows = await dep('list')('date_application_patch', {
+      coordination_id: Number(coordinationId),
+      user_id: Number(userId)
+    }, 100)
+    const pending = rows.filter((row) => ['pending_confirmation', 'pending_primary_selection'].includes(String(row.status || '')))
+    for (const row of pending) {
+      await dep('updateByDoc')('date_application_patch', row, {
+        status: 'superseded',
+        superseded_at: dep('now')(),
+        superseded_reason: 'replaced_by_new_preview'
+      })
+    }
+    return pending
+  }
+
   function latestForUser(rows, userId, maxVersion) {
     return rows
       .filter((row) => Number(row.user_id) === Number(userId) && Number(row.coordination_version || 0) <= Number(maxVersion))
@@ -319,6 +335,7 @@ function createDateApplicationPatchHandlers(overrides = {}) {
         }
       }
     }
+    await supersedePendingPreviews(coordination.id, user.id)
     const now = dep('now')()
     const created = await dep('addWithId')('date_application_patch', {
       coordination_id: Number(coordination.id),
@@ -371,6 +388,7 @@ function createDateApplicationPatchHandlers(overrides = {}) {
       affects_existing_proposal: false,
       will_notify_partner: true
     }
+    await supersedePendingPreviews(coordination.id, user.id)
     const now = dep('now')()
     const created = await dep('addWithId')('date_application_patch', {
       coordination_id: Number(coordination.id),

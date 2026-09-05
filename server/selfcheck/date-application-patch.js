@@ -96,12 +96,20 @@ async function serviceChecks() {
     }
   }
   const handlers = createDateApplicationPatchHandlers(deps)
-  const pending = await handlers.createPreviewForUser({
+  const initialPending = await handlers.createPreviewForUser({
     coordination_id: 50,
     session_id: 100,
     changes: { activities: ['咖啡'], budget: 'under-50' },
     source_message_id: 88
   }, tables.user[0])
+  const pending = await handlers.createPreviewForUser({
+    coordination_id: 50,
+    session_id: 100,
+    changes: { activities: ['散步'], budget: 'under-50' },
+    source_message_id: 89
+  }, tables.user[0])
+  assert.strictEqual(tables.date_application_patch.find((row) => Number(row.id) === Number(initialPending.id)).status, 'superseded', 'a newer complete proposal supersedes the previous preview')
+  assert.strictEqual(tables.date_application_patch.filter((row) => row.status === 'pending_confirmation').length, 1, 'one actionable preview remains')
   assert.strictEqual(pending.status, 'pending_confirmation')
   assert.strictEqual(pending.base_version, 1)
   assert.deepStrictEqual(pending.preview.before.activities, ['电影'])
