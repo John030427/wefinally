@@ -538,7 +538,7 @@ function createAgentHandlers(overrides = {}) {
         await saveMessage(session, user, 'assistant', reply)
         return finalize({ session_id: session.id, agent_type: session.agent_type, reply, declined: false })
       }
-      if (coordination && isTerminalCoordination(coordination.status) && !canWriteCoordinatorAction(coordination, user, { hasOwnApplication: Boolean(ownApp) })) {
+      if (coordination && coordination.status !== 'arranged' && isTerminalCoordination(coordination.status) && !canWriteCoordinatorAction(coordination, user, { hasOwnApplication: Boolean(ownApp) })) {
         const role = isInitiator(coordination, user) ? 'initiator' : 'invitee'
         const reply = coordinatorWelcomeText(coordination, role) || terminalWriteError(coordination.status)
         await saveMessage(session, user, 'assistant', reply)
