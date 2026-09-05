@@ -178,6 +178,7 @@ function defaultDeps() {
     commitInvitationResponse: db.commitInvitationResponse,
     commitPreAcceptInvitationPatch: db.commitPreAcceptInvitationPatch,
     expireIfCurrent: expireCoordinationIfCurrent,
+    processCoordinationTasks: (...args) => require('./dateCoordinationWorker').processCoordinationTasks(...args),
     publishCoordinationEvent,
     now: db.now,
     writeInboxNotification(input) {
@@ -515,6 +516,21 @@ function createDateCoordinationHandlers(overrides = {}) {
       console.warn('coordination projection outbox skipped:', outboxError.message || outboxError)
       return null
     }
+  }
+
+  async function processQueuedImmediately(coordination) {
+    if (!coordination || coordination.status !== STATUS.COMPUTING_OVERLAP) return coordination
+    if (overrides.first && overrides.addWithId
+      && !Object.prototype.hasOwnProperty.call(overrides, 'processCoordinationTasks')) return coordination
+    const processTasks = dep('processCoordinationTasks')
+    if (typeof processTasks !== 'function') return coordination
+    try {
+      await processTasks({ limit: 1, coordinationId: Number(coordination.id) })
+    } catch (error) {
+      // Keep the queued task for report-worker recovery when the synchronous path fails.
+      console.warn('coordination immediate processing deferred:', error.message || error)
+    }
+    return await dep('byId')('date_coordination', Number(coordination.id)) || coordination
   }
 
   async function create(data, wxContext) {
@@ -1150,6 +1166,7 @@ function createDateCoordinationHandlers(overrides = {}) {
           coordination_version: version
         }, err)
       }
+      updated = await processQueuedImmediately(updated)
       return detailFor(updated, user)
     }
 
@@ -1193,6 +1210,7 @@ function createDateCoordinationHandlers(overrides = {}) {
         coordination_version: version
       }, err)
     }
+    updated = await processQueuedImmediately(updated)
     return detailFor(updated, user)
   }
 

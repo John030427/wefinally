@@ -75,10 +75,14 @@ async function notificationProcessorChecks() {
   const root = path.resolve(__dirname, '../..')
   const apiIndex = fs.readFileSync(path.join(root, 'miniprogram/cloudfunctions/api/index.js'), 'utf8')
   const worker = fs.readFileSync(path.join(root, 'miniprogram/cloudfunctions/report-worker/index.js'), 'utf8')
+  const cloudbaseConfig = JSON.parse(fs.readFileSync(path.join(root, 'miniprogram/cloudbaserc.json'), 'utf8'))
+  const reportWorkerConfig = JSON.parse(fs.readFileSync(path.join(root, 'miniprogram/cloudfunctions/report-worker/config.json'), 'utf8'))
   assert(apiIndex.includes("case 'processWorkerTasks':"))
   assert(apiIndex.includes('processCoordinationTasks'))
   assert(apiIndex.includes('coordination_task_limit'))
   assert(worker.includes("action: 'processWorkerTasks'"))
+  assert(cloudbaseConfig.functions.some((item) => item.name === 'report-worker'), 'report-worker must be in the release function matrix')
+  assert(reportWorkerConfig.triggers.some((item) => item.type === 'timer'), 'report-worker timer must remain configured')
 }
 
 assert.deepEqual(retentionDays({ AGENT_MESSAGE_RETENTION_DAYS: '30' }), { messages: 30, toolCalls: 365, memories: 365 })
