@@ -4,12 +4,7 @@ const { memberStatus, MEMBER_STATUS, canUseMatching } = require('./memberPolicy'
 const { isVipActive } = require('./format')
 const { rankCandidates, scoreDetailFor } = require('./matchPolicy')
 const { buildQaMatchCycle } = require('./matchCycleService')
-const {
-  normalizeJourneyInput,
-  ensureQaFixturePool,
-  listQaFixtureCandidates,
-  filterCandidatesByJourney
-} = require('./qaFixturePool')
+const { normalizeJourneyInput, ensureQaFixturePool, filterCandidatesByJourney } = require('./qaFixturePool')
 const { fixtureSceneBadge } = require('./syntheticPartnerJourney')
 
 function deny(message, code = 403) {
@@ -132,7 +127,7 @@ function createMatchTestRunHandlers(deps) {
         } }))
       }
       await ensureQaFixturePool(user, deps)
-      let candidates = (await listQaFixtureCandidates(deps, 50) || [])
+      let candidates = (await deps.list('user', { status: 1 }, 200) || [])
         .filter((item) => Number(item.id) !== Number(user.id))
         .filter((item) => isSyntheticFixture(item) && canUseFixtureForMatch(user, item, deps.now()))
         .filter((item) => memberStatus(item) === MEMBER_STATUS.APPROVED)
@@ -144,13 +139,9 @@ function createMatchTestRunHandlers(deps) {
           message: `没有符合「${fixtureJourney}」场景的测试画像，请稍后重试`
         } }))
       }
+      const settings = await deps.list('user_match_setting', {}, 200)
       const settingsByUserId = {}
-      const ownerSetting = await deps.first('user_match_setting', { user_id: user.id })
-      if (ownerSetting) settingsByUserId[String(user.id)] = ownerSetting
-      for (const candidate of candidates) {
-        const row = await deps.first('user_match_setting', { user_id: candidate.id })
-        if (row) settingsByUserId[String(candidate.id)] = row
-      }
+      ;(settings || []).forEach((row) => { settingsByUserId[String(row.user_id)] = row })
       const ranked = rankCandidates(user, candidates, settingsByUserId)
       const reranked = await deps.semanticRerank(ranked, user, settingsByUserId)
       if (!reranked || reranked.applied !== true) {
