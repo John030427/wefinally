@@ -16,7 +16,7 @@ const STATUS = Object.freeze({
 })
 
 const PERIODS = ['morning', 'afternoon', 'evening', 'night']
-const ACTIVITIES = ['咖啡', '吃饭', '奶茶', '散步', '看展', '电影', '桌游']
+const ACTIVITIES = ['咖啡', '吃饭', '奶茶', '散步', '看展', '电影', '桌游', '椰子鸡', '火锅', '寿司郎']
 const BUDGETS = ['under-50', '50-100', '100-200', 'over-200', 'flexible']
 const PAYMENT_PREFERENCES = ['aa', 'partner_pays', 'self_pays', 'flexible']
 const DURATIONS = ['about-1h', '1-2h', '2-3h', 'flexible']
