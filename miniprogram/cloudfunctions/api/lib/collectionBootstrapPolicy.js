@@ -2,6 +2,7 @@ const BOOTSTRAP_COLLECTIONS = new Set([
   'system_counters',
   'agent_session',
   'agent_message',
+  'agent_message_dedupe',
   'agent_run',
   'agent_tool_audit',
   'agent_tool_call',

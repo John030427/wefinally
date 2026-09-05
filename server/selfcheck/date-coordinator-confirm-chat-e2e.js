@@ -7,6 +7,7 @@ const { MemorySaver } = require(`${graphRoot}/node_modules/@langchain/langgraph`
 const { createAgentGraphMain } = require(`${graphRoot}/dist/src/index.js`)
 const { publishCoordinationEvent } = require('../../miniprogram/cloudfunctions/api/agent/dateCoordinationEvents')
 const { createAgentHandlers } = require('../../miniprogram/cloudfunctions/api/handlers/agent')
+const { processCoordinationProjectionOutbox } = require('../../miniprogram/cloudfunctions/api/handlers/dateCoordinationProjectionWorker')
 const { STATUS } = require('../../miniprogram/cloudfunctions/api/lib/dateCoordinationPolicy')
 
 function app() {
@@ -67,9 +68,11 @@ function main() {
     agent_run: [],
     agent_tool_call: [],
     agent_message_dedupe: [],
-    coordination_notification: []
+    coordination_notification: [],
+    coordination_projection_outbox: []
   }
   let nextId = 2000
+  let failPublish = true
   const now = () => new Date('2026-09-05T00:00:00.000Z')
   const matches = (row, query) => Object.keys(query || {}).every((key) => row[key] === query[key])
   const deps = {
@@ -103,11 +106,14 @@ function main() {
       }, 'date_confirmation')
       return { coordination: current, confirmation, arranged: false, idempotent: false }
     },
-    publishCoordinationEvent: (input) => publishCoordinationEvent(input, {
-      first: deps.first,
-      addWithId: deps.addWithId,
-      now
-    }),
+    publishCoordinationEvent: async (input) => {
+      if (failPublish) throw new Error('forced_confirmation_projection_failure')
+      return publishCoordinationEvent(input, {
+        first: deps.first,
+        addWithId: deps.addWithId,
+        now
+      })
+    },
     writeInboxNotification: async () => null,
     transaction: null,
     claimPendingPatch: async () => false,
@@ -156,11 +162,18 @@ function main() {
     message: '可以',
     context_ref: proposalContext,
     client_request_id: 'review-confirm-chat-b-1'
-  }, { userIndex: 1 }).then((reply) => {
+  }, { userIndex: 1 }).then(async (reply) => {
     assert.strictEqual(reply.provider, 'langgraph')
-    assert.match(reply.reply, /已确认这次调整，并已同步给对方/)
+    assert.match(reply.reply, /已确认这次调整，正在向对方同步/)
+    assert.strictEqual(reply.projection_pending, true)
     assert.strictEqual(rows.date_coordination_confirmation.some((row) => Number(row.user_id) === 2 && Number(row.proposal_id) === 801), true)
+    assert.strictEqual(rows.date_coordination_confirmation.length, 1)
+    assert.strictEqual(rows.coordination_projection_outbox.length, 1)
+    failPublish = false
+    const retry = await processCoordinationProjectionOutbox({ deps, limit: 10 })
+    assert.strictEqual(retry.completed, 1)
     assert.strictEqual(rows.agent_message.some((row) => Number(row.user_id) === 1 && row.event_type === 'proposal_confirmed'), true)
+    assert.strictEqual(rows.agent_message.filter((row) => Number(row.user_id) === 1 && row.event_type === 'proposal_confirmed').length, 1)
     console.log('PASS - date coordinator current plan confirm chat E2E')
   }).catch((error) => {
     console.error(error.stack || error.message)

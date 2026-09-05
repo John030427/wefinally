@@ -1522,15 +1522,25 @@ function createDateCoordinationHandlers(overrides = {}) {
       decision: 'confirm'
     }, dep('now')())
     const updated = committed.coordination
-    await dep('publishCoordinationEvent')({
-      coordination: updated,
-      event: {
-        event_type: decision === 'confirm' ? 'proposal_confirmed' : 'proposal_rejected',
-        actor_user_id: Number(user.id),
-        coordination_version: version,
-        proposal
+    let projectionPending = false
+    let eventStatus = 'projected'
+    let notificationStatus = 'projected'
+    const projectEvent = async (event, projectionKind) => {
+      try {
+        await dep('publishCoordinationEvent')({ coordination: updated, event })
+      } catch (err) {
+        projectionPending = true
+        eventStatus = 'pending'
+        await enqueueProjectionRetry('publish_coordination_event', updated, event, err, projectionKind)
       }
-    })
+    }
+    await projectEvent({
+      event_type: decision === 'confirm' ? 'proposal_confirmed' : 'proposal_rejected',
+      actor_user_id: Number(user.id),
+      coordination_version: version,
+      idempotency_suffix: `proposal:${Number(proposal.id)}:${decision}:${Number(user.id)}`,
+      proposal
+    }, 'proposal_confirmation_event')
     if (decision === 'confirm') {
       const partnerId = Number(updated.user_a_id) === Number(user.id)
         ? Number(updated.user_b_id)
@@ -1550,26 +1560,42 @@ function createDateCoordinationHandlers(overrides = {}) {
         })
       } catch (err) {
         console.warn('inbox confirm notification skipped:', err.message || err)
+        notificationStatus = 'pending'
+        projectionPending = true
+        await enqueueProjectionRetry('write_inbox_notification', updated, {
+          user_id: partnerId,
+          event_type: isArranged ? 'arranged' : 'proposal_confirmed',
+          coordination_version: Number(updated.coordination_version || version),
+          title: isArranged ? '双方已确认最终方案' : '对方已确认方案',
+          body: isArranged
+            ? '双方已确认最终方案，约会安排已经形成。'
+            : '对方已确认当前的候选方案，正在等待你的确认。',
+          stage: isArranged ? 'arranged' : 'proposal_confirmed'
+        }, err, 'proposal_confirmation_notification')
       }
     }
     if (updated.status === STATUS.ARRANGED) {
-      await dep('publishCoordinationEvent')({
-        coordination: updated,
-        event: {
-          event_type: 'arranged',
-          actor_user_id: Number(user.id),
-          coordination_version: version,
-          proposal
-        }
-      })
+      await projectEvent({
+        event_type: 'arranged',
+        actor_user_id: Number(user.id),
+        coordination_version: version,
+        idempotency_suffix: `proposal:${Number(proposal.id)}:arranged:${Number(user.id)}`,
+        proposal
+      }, 'arranged_event')
       return Object.assign(await detailFor(updated, user), {
         applied: true,
-        partner_notified: true
+        partner_notified: !projectionPending,
+        projection_pending: projectionPending,
+        notification_status: notificationStatus,
+        event_status: eventStatus
       })
     }
     return Object.assign(await detailFor(updated, user), {
       applied: true,
-      partner_notified: true
+      partner_notified: !projectionPending,
+      projection_pending: projectionPending,
+      notification_status: notificationStatus,
+      event_status: eventStatus
     })
   }
 

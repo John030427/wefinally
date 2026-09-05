@@ -162,6 +162,33 @@ function createDateApplicationPatchHandlers(overrides = {}) {
     return defaults[name]
   }
 
+  async function enqueueProjectionRetry(operation, coordination, payload, error, projectionKind = '') {
+    try {
+      const eventType = String(payload && payload.event_type || operation)
+      const actor = Number(payload && (payload.actor_user_id || payload.user_id) || 0)
+      const version = Number(payload && (payload.coordination_version || payload.event_coordination_version)
+        || coordination && coordination.coordination_version || 1)
+      const key = `coordination:${Number(coordination && coordination.id || 0)}:v${version}:${operation}:${eventType}:${actor}`
+      const existing = await dep('first')('coordination_projection_outbox', { idempotency_key: key }).catch(() => null)
+      if (existing) return existing
+      return await dep('addWithId')('coordination_projection_outbox', {
+        idempotency_key: key,
+        operation,
+        coordination_id: Number(coordination && coordination.id || 0),
+        coordination_version: version,
+        projection_kind: String(projectionKind || ''),
+        payload,
+        status: 'pending',
+        attempts: 0,
+        last_error_code: String(error && (error.code || error.message) || 'projection_failed').slice(0, 120),
+        create_time: dep('now')()
+      }, 'coordination_projection_outbox')
+    } catch (outboxError) {
+      console.warn('coordination projection outbox skipped:', outboxError.message || outboxError)
+      return null
+    }
+  }
+
   async function memoryCommitPreAcceptInvitationPatch(input = {}) {
     const {
       coordination,
@@ -510,18 +537,24 @@ function createDateApplicationPatchHandlers(overrides = {}) {
         notification_status: 'skipped'
       }
     }
-    const published = await dep('publishCoordinationEvent')({
-      coordination,
-      event: {
-        event_type: 'preference_changed',
-        actor_user_id: Number(user.id),
-        coordination_version: Number(version),
-        has_proposal: Boolean(proposalCreated),
-        changed_dimensions: summary.changed_dimensions,
-        patch_id: Number(summary.patch_id || 0),
-        relay_text: summary.relay_text
-      }
-    })
+    const eventPayload = {
+      event_type: 'preference_changed',
+      actor_user_id: Number(user.id),
+      coordination_version: Number(version),
+      idempotency_suffix: `patch:${Number(summary.patch_id || 0)}`,
+      has_proposal: Boolean(proposalCreated),
+      changed_dimensions: summary.changed_dimensions,
+      patch_id: Number(summary.patch_id || 0),
+      relay_text: summary.relay_text
+    }
+    let published = null
+    let eventStatus = 'projected'
+    try {
+      published = await dep('publishCoordinationEvent')({ coordination, event: eventPayload })
+    } catch (err) {
+      eventStatus = 'pending'
+      await enqueueProjectionRetry('publish_coordination_event', coordination, eventPayload, err, 'patch_partner_event')
+    }
     let notificationStatus = 'projected'
     try {
       await dep('writeInboxNotification')({
@@ -537,24 +570,50 @@ function createDateApplicationPatchHandlers(overrides = {}) {
     } catch (err) {
       console.warn('inbox preference notification skipped:', err.message || err)
       notificationStatus = 'pending'
+      await enqueueProjectionRetry('write_inbox_notification', coordination, {
+        user_id: partnerId,
+        event_type: 'preference_changed',
+        coordination_version: Number(version),
+        title: '对方更新了可约条件',
+        body: '对方更新了可约时间，目前双方在共同条件上可能出现新的交集。请进入查看共同进度。',
+        changed_dimensions: summary.changed_dimensions || [],
+        stage: 'preference_changed'
+      }, err, 'patch_partner_notification')
     }
-    await dep('addWithId')('agent_notification_job', {
-      coordination_id: Number(coordination.id),
-      user_id: partnerId,
-      stage: 'preference_changed',
-      idempotency_key: `date:${coordination.id}:${partnerId}:preference_changed:v${version}`,
-      scheduled_at: dep('now')(),
-      status: 'pending',
-      attempts: 0
-    }, 'agent_notification_job')
-    const partnerMessage = published.messages.find((item) => Number(item.user_id) === partnerId)
+    try {
+      await dep('addWithId')('agent_notification_job', {
+        coordination_id: Number(coordination.id),
+        user_id: partnerId,
+        stage: 'preference_changed',
+        idempotency_key: `date:${coordination.id}:${partnerId}:preference_changed:v${version}`,
+        scheduled_at: dep('now')(),
+        status: 'pending',
+        attempts: 0
+      }, 'agent_notification_job')
+    } catch (err) {
+      await enqueueProjectionRetry('queue_reminder', coordination, {
+        coordination_id: Number(coordination.id),
+        user_id: partnerId,
+        stage: 'preference_changed',
+        idempotency_key: `date:${coordination.id}:${partnerId}:preference_changed:v${version}`,
+        scheduled_at: dep('now')(),
+        status: 'pending',
+        attempts: 0
+      }, err, 'patch_partner_notification_job')
+    }
+    const projectionPending = eventStatus === 'pending' || notificationStatus === 'pending'
+    const partnerMessage = published && published.messages
+      ? published.messages.find((item) => Number(item.user_id) === partnerId)
+      : null
     return {
       partner_id: partnerId,
       session_id: Number(partnerMessage && partnerMessage.session_id || 0),
       shareable_summary: summary,
-      partner_notified: notificationStatus === 'projected',
+      partner_notified: !projectionPending,
       notification_status: notificationStatus,
-      projection_pending: notificationStatus === 'pending'
+      event_status: eventStatus,
+      projection_pending: projectionPending,
+      partner_session_id: Number(partnerMessage && partnerMessage.session_id || 0)
     }
   }
 
@@ -639,15 +698,23 @@ function createDateApplicationPatchHandlers(overrides = {}) {
         applied_version: oldVersion,
         applied_at: dep('now')()
       })
-      await dep('publishCoordinationEvent')({
-        coordination: handedOff,
-        event: {
-          event_type: 'manual_handoff',
-          actor_user_id: Number(user.id),
-          coordination_version: oldVersion,
-          round_number: 5
-        }
-      })
+      const manualHandoffEvent = {
+        event_type: 'manual_handoff',
+        actor_user_id: Number(user.id),
+        coordination_version: oldVersion,
+        idempotency_suffix: `patch:${Number(patch.id)}`,
+        round_number: 5
+      }
+      let manualEventStatus = 'projected'
+      try {
+        await dep('publishCoordinationEvent')({
+          coordination: handedOff,
+          event: manualHandoffEvent
+        })
+      } catch (err) {
+        manualEventStatus = 'pending'
+        await enqueueProjectionRetry('publish_coordination_event', handedOff, manualHandoffEvent, err, 'patch_manual_handoff')
+      }
       return {
         patch: publicPatch(referredPatch),
         coordination_version: oldVersion,
@@ -655,8 +722,10 @@ function createDateApplicationPatchHandlers(overrides = {}) {
         business_state: handedOff.business_state,
         proposal_generated: false,
         applied: true,
-        partner_notified: true,
-        notification_status: 'projected'
+        partner_notified: manualEventStatus === 'projected',
+        notification_status: manualEventStatus,
+        event_status: manualEventStatus,
+        projection_pending: manualEventStatus === 'pending'
       }
     }
     const newVersion = oldVersion + 1
@@ -776,6 +845,7 @@ function createDateApplicationPatchHandlers(overrides = {}) {
         applied: true,
         partner_notified: notification.partner_notified === true,
         notification_status: notification.notification_status || 'projected',
+        event_status: notification.event_status || 'projected',
         projection_pending: notification.projection_pending === true,
         skipped: notification.skipped || false,
         partner_session_id: notification.session_id
@@ -857,6 +927,7 @@ function createDateApplicationPatchHandlers(overrides = {}) {
       applied: true,
       partner_notified: notification.partner_notified === true,
       notification_status: notification.notification_status || 'projected',
+      event_status: notification.event_status || 'projected',
       projection_pending: notification.projection_pending === true,
       skipped: notification.skipped || false,
       partner_session_id: notification.session_id

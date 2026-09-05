@@ -214,6 +214,7 @@ async function runLangGraphStep(input, deps = {}) {
   }, deps)
   return Object.assign(resumed, {
     toolName,
+    toolResult,
     ...(toolResult && toolResult.ok === false
       ? { toolErrorCode: String(toolResult.code || 'tool_failed').slice(0, 120) }
       : {})

@@ -33,6 +33,7 @@ const { buildCoordinationEventCard } = require('../lib/coordinationProjection')
 
 const FREE_DAILY_LIMIT = 5
 const VIP_DAILY_LIMIT = 30
+const CLIENT_REQUEST_LEASE_MS = 120000
 const localClientRequestClaims = new Map()
 
 function dateCoordinatorFallback(code) {
@@ -78,6 +79,7 @@ function defaultDeps() {
     addWithId: db.addWithId,
     updateByDoc: db.updateByDoc,
     transaction: db.transaction,
+    ensureCollection: db.ensureCollection,
     claimPendingPatch,
     commitConfirmation: db.commitCoordinationConfirmation,
     publishCoordinationEvent,
@@ -229,34 +231,91 @@ function createAgentHandlers(overrides = {}) {
     const transaction = Object.prototype.hasOwnProperty.call(overrides, 'transaction')
       ? overrides.transaction
       : (overrides.first && overrides.addWithId ? null : dep('transaction'))
+    const ensureCollection = Object.prototype.hasOwnProperty.call(overrides, 'ensureCollection')
+      ? overrides.ensureCollection
+      : (overrides.first && overrides.addWithId ? null : dep('ensureCollection'))
+    if (typeof ensureCollection === 'function') await ensureCollection('agent_message_dedupe')
     const work = async (adapter) => {
+      const timestamp = adapter.now ? adapter.now() : dep('now')()
       const existing = await adapter.byDocId('agent_message_dedupe', documentId)
-      if (existing) return { claimed: false, row: existing }
+      const existingRow = existing && Object.assign({ _id: documentId }, existing)
+      const leaseExpiresAt = existingRow && existingRow.lease_expires_at
+        ? new Date(existingRow.lease_expires_at).getTime()
+        : 0
+      const expired = existingRow
+        && existingRow.status === 'processing'
+        && (!leaseExpiresAt || leaseExpiresAt <= new Date(timestamp).getTime())
+      if (existingRow && existingRow.status === 'completed') return { claimed: false, row: existingRow }
+      if (existingRow && existingRow.status === 'processing' && !expired) return { claimed: false, row: existingRow }
+      const existingMessages = existingRow && typeof adapter.list === 'function'
+        ? await adapter.list('agent_message', {
+          session_id: Number(session.id),
+          user_id: Number(user.id),
+          client_request_id: normalized
+        }, 10)
+        : []
       const row = {
+        ...(existingRow || {}),
         session_id: Number(session.id),
         user_id: Number(user.id),
         client_request_id: normalized,
         status: 'processing',
         response: null,
-        create_time: adapter.now ? adapter.now() : dep('now')()
+        attempts: Number(existingRow && existingRow.attempts || 0) + 1,
+        lease_expires_at: new Date(new Date(timestamp).getTime() + CLIENT_REQUEST_LEASE_MS),
+        reclaimed_from: expired ? 'failed_retryable' : String(existingRow && existingRow.status || ''),
+        reclaimed_at: expired ? timestamp : (existingRow && existingRow.reclaimed_at || null),
+        user_message_id: Number(existingRow && existingRow.user_message_id
+          || (existingMessages[0] && existingMessages[0].id) || 0),
+        create_time: existingRow && existingRow.create_time ? existingRow.create_time : timestamp
       }
       await adapter.setByDocId('agent_message_dedupe', documentId, row)
       return { claimed: true, row: Object.assign({ _id: documentId }, row) }
     }
     if (typeof transaction === 'function') return transaction(work)
     const previous = localClientRequestClaims.get(documentId)
-    if (previous) return { claimed: false, row: previous }
+    const previousLeaseExpiresAt = previous && previous.lease_expires_at
+      ? new Date(previous.lease_expires_at).getTime()
+      : 0
+    const previousExpired = previous
+      && previous.status === 'processing'
+      && (!previousLeaseExpiresAt || previousLeaseExpiresAt <= dep('now')().getTime())
+    if (previous && previous.status === 'completed') return { claimed: false, row: previous }
+    if (previous && previous.status === 'processing' && !previousExpired) return { claimed: false, row: previous }
     const row = {
+      ...(previous || {}),
       _id: documentId,
       session_id: Number(session.id),
       user_id: Number(user.id),
       client_request_id: normalized,
       status: 'processing',
       response: null,
-      create_time: dep('now')()
+      attempts: Number(previous && previous.attempts || 0) + 1,
+      lease_expires_at: new Date(dep('now')().getTime() + CLIENT_REQUEST_LEASE_MS),
+      reclaimed_from: previousExpired ? 'failed_retryable' : String(previous && previous.status || ''),
+      reclaimed_at: previousExpired ? dep('now')() : (previous && previous.reclaimed_at || null),
+      user_message_id: Number(previous && previous.user_message_id || 0),
+      create_time: previous && previous.create_time ? previous.create_time : dep('now')()
     }
     localClientRequestClaims.set(documentId, row)
     return { claimed: true, row }
+  }
+
+  async function bindClientRequestMessage(claim, userMessage) {
+    if (!claim || !claim.row || !claim.row._id || !userMessage || !userMessage.id) return
+    const transaction = Object.prototype.hasOwnProperty.call(overrides, 'transaction')
+      ? overrides.transaction
+      : (overrides.first && overrides.addWithId ? null : dep('transaction'))
+    const work = async (adapter) => {
+      const current = await adapter.byDocId('agent_message_dedupe', claim.row._id)
+      if (!current) return
+      await adapter.setByDocId('agent_message_dedupe', claim.row._id, Object.assign({}, current, {
+        user_message_id: Number(userMessage.id)
+      }))
+    }
+    if (typeof transaction === 'function') await transaction(work)
+    else localClientRequestClaims.set(claim.row._id, Object.assign({}, claim.row, { user_message_id: Number(userMessage.id) }))
+    claim.row.user_message_id = Number(userMessage.id)
   }
 
   async function completeClientRequest(claim, response) {
@@ -270,6 +329,7 @@ function createAgentHandlers(overrides = {}) {
       await adapter.setByDocId('agent_message_dedupe', claim.row._id, Object.assign({}, current, {
         status: 'completed',
         response,
+        lease_expires_at: null,
         completed_at: adapter.now ? adapter.now() : dep('now')()
       }))
       return response
@@ -278,6 +338,7 @@ function createAgentHandlers(overrides = {}) {
     localClientRequestClaims.set(claim.row._id, Object.assign({}, claim.row, {
       status: 'completed',
       response,
+      lease_expires_at: null,
       completed_at: dep('now')()
     }))
     return response
@@ -490,10 +551,20 @@ function createAgentHandlers(overrides = {}) {
       }
     }
     if (session.agent_type === AGENT_TYPES.LOVE_ADVISOR) await enforceLoveQuota(user)
-    const userMessage = await saveMessage(session, user, 'user', content, Object.assign(
+    const existingUserMessage = requestClaim && requestClaim.row && Number(requestClaim.row.user_message_id || 0) > 0
+      ? await dep('byId')('agent_message', Number(requestClaim.row.user_message_id))
+      : (requestClaim && clientRequestId
+          ? (await dep('list')('agent_message', {
+            session_id: Number(session.id),
+            user_id: Number(user.id),
+            client_request_id: clientRequestId
+          }, 10)).filter((row) => row.role === 'user')[0] || null
+          : null)
+    const userMessage = existingUserMessage || await saveMessage(session, user, 'user', content, Object.assign(
       contextRef ? { context_ref: contextRef } : {},
       clientRequestId ? { client_request_id: clientRequestId } : {}
     ))
+    await bindClientRequestMessage(requestClaim, userMessage)
 
     const risk = classifyRisk(content)
     if (!risk.allowed) {
@@ -587,7 +658,7 @@ function createAgentHandlers(overrides = {}) {
         if (Object.prototype.hasOwnProperty.call(overrides, name)) coordinationHandlerDeps[name] = overrides[name]
       }
       const coordinationHandlers = createDateCoordinationHandlers(coordinationHandlerDeps)
-      const patchHandlers = createDateApplicationPatchHandlers({
+      const patchHandlerOverrides = {
         first: dep('first'),
         list: dep('list'),
         byId: dep('byId'),
@@ -599,7 +670,11 @@ function createAgentHandlers(overrides = {}) {
         claimPendingPatch: dep('claimPendingPatch'),
         now: dep('now'),
         saveApplicationForUser: coordinationHandlers.saveApplicationForUser
-      })
+      }
+      for (const name of ['publishCoordinationEvent', 'writeInboxNotification']) {
+        if (Object.prototype.hasOwnProperty.call(overrides, name)) patchHandlerOverrides[name] = dep(name)
+      }
+      const patchHandlers = createDateApplicationPatchHandlers(patchHandlerOverrides)
       const graphEvent = async (args, fallbackEventType) => {
         const current = await dep('byId')('date_coordination', Number(args.coordinationId || coordination.id))
         if (!current) throw new Error('日期协调不存在')
@@ -704,7 +779,10 @@ function createAgentHandlers(overrides = {}) {
             coordinationVersion: Number(confirmed.coordination_version || args.coordinationVersion),
             applicationSent: false,
             applied: confirmed.applied === true,
-            partnerNotified: confirmed.partner_notified !== false
+            partnerNotified: confirmed.partner_notified === true,
+            projection_pending: confirmed.projection_pending === true,
+            notification_status: confirmed.notification_status || '',
+            event_status: confirmed.event_status || ''
           } }
         },
         reject_date_application: async (args) => {
@@ -900,6 +978,10 @@ function createAgentHandlers(overrides = {}) {
           }
           if (dateGraphResult && dateGraphResult.status !== 'fallback') {
             const reply = [resumeText, dateGraphResult.replyDraft].filter(Boolean).join('\n') || '我已按当前协调状态处理这次请求。'
+            const graphToolData = graphStep && graphStep.toolResult && graphStep.toolResult.data
+              && typeof graphStep.toolResult.data === 'object'
+              ? graphStep.toolResult.data
+              : {}
             const pendingPreviewId = dateGraphResult.pendingPreview && (
               dateGraphResult.pendingPreview.patchId || dateGraphResult.pendingPreview.patch_id
             )
@@ -932,7 +1014,10 @@ function createAgentHandlers(overrides = {}) {
               candidate_plan: dateGraphResult.candidatePlan || null,
               pending_preview: dateGraphResult.pendingPreview || null,
               patch_preview: patchPreview,
-              context_ref: resultContextRef
+              context_ref: resultContextRef,
+              partner_notified: graphToolData.partnerNotified === true,
+              projection_pending: graphToolData.projection_pending === true,
+              event_status: graphToolData.event_status || ''
             })
             await markSeen()
             return finalize({
@@ -948,6 +1033,9 @@ function createAgentHandlers(overrides = {}) {
               patch_preview: patchPreview,
               context_ref: resultContextRef,
               requires_confirmation: dateGraphResult.status === 'awaiting_confirmation',
+              partner_notified: graphToolData.partnerNotified === true,
+              projection_pending: graphToolData.projection_pending === true,
+              event_status: graphToolData.event_status || '',
               risk_level: 'safe'
             })
           }
