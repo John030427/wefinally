@@ -359,6 +359,23 @@ async function main() {
   assert.strictEqual(db.tables.date_coordination[0].final_proposal_id, Number(proposalId))
   assert.ok(db.tables.agent_message.some((row) => Number(row.user_id) === 1 && row.event_type === 'proposal_confirmed' && String(row.content).includes('对方已确认')), 'A AI session must receive B confirmation')
 
+  // ======== B: counter proposal is projected back to A ========
+  const counterCoordination = coordinationRow({ id: 60, status: STATUS.WAITING_CONFIRMATIONS, version: 3 })
+  db.tables.date_coordination.push(counterCoordination)
+  db.tables.date_coordination_application.push(
+    { id: 601, coordination_id: 60, user_id: 1, coordination_version: 3, application: app({ activities: ['吃饭'] }) },
+    { id: 602, coordination_id: 60, user_id: 2, coordination_version: 3, application: app({ activities: ['吃饭'] }) }
+  )
+  const counterPreview = await patches.createPreviewForUser({
+    coordination_id: 60,
+    changes: { activities: ['看展'] }
+  }, db.tables.user[1])
+  const counterApplied = await patches.confirmForUser({ coordination_id: 60, patch_id: counterPreview.id }, db.tables.user[1])
+  assert.strictEqual(counterApplied.coordination_version, 4, 'B counter confirmation must create a new canonical version')
+  const counterRelay = db.tables.agent_message.find((row) => Number(row.user_id) === 1 && Number(row.coordination_id) === 60 && row.event_type === 'preference_changed')
+  assert.ok(counterRelay && String(counterRelay.content).includes('看展'), 'A AI must receive the concrete B counter relay')
+  assert.strictEqual(String(counterRelay.content).includes('吃饭'), false, 'counter relay must not copy the old private source text')
+
   // ======== privacy ========
   const bMessages = db.tables.agent_message.filter((r) => r.user_id === 2)
   const bText = JSON.stringify(bMessages.map((r) => r.content)) + JSON.stringify(db.tables.coordination_notification.map((r) => ({ body: r.body, payload: r.payload_json })))
