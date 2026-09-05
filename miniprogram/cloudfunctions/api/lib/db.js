@@ -494,11 +494,10 @@ function transactionAdapter(rawTransaction) {
     byDocId: txByDocId,
     byId: txById,
     list: async (name, query, limit = 100) => {
-      let cursor = collection(name)
-      for (const [key, value] of Object.entries(query || {})) {
-        cursor = cursor.where({ [key]: value })
-      }
-      const result = await cursor.limit(Math.max(1, Math.min(Number(limit || 100), 500))).get()
+      const result = await collection(name)
+        .where(query || {})
+        .limit(Math.max(1, Math.min(Number(limit || 100), 500)))
+        .get()
       return result.data || []
     },
     nextCounter: txNextCounter,
