@@ -288,15 +288,22 @@ function buildDateCoordinationGraphInput(coordination, applications, user, optio
   }
   const confirmations = options.confirmations || []
   const snapshot = confirmationSnapshot(coordination, confirmations, user)
-  const actionRequired = canonicalOverlap.hasOverlap
+  const persistedPlan = persistedProposal
+    ? Object.assign({}, toCanonicalCoordinationPlan(persistedProposal), {
+      proposal_id: Number(persistedProposal.id)
+    })
+    : null
+  const actionRequired = persistedPlan
     ? 'confirm_or_adjust'
-    : (canonicalOverlap.missingDimensions.includes('own_preference')
-      ? 'clarify_overrides'
-      : (canonicalOverlap.missingDimensions.includes('partner')
-        ? (waitingInviteePreference ? 'wait_invitee_preference' : 'wait_partner')
-        : 'adjust_unresolved_dimension'))
+    : (canonicalOverlap.hasOverlap
+      ? 'confirm_or_adjust'
+      : (canonicalOverlap.missingDimensions.includes('own_preference')
+        ? 'clarify_overrides'
+        : (canonicalOverlap.missingDimensions.includes('partner')
+          ? (waitingInviteePreference ? 'wait_invitee_preference' : 'wait_partner')
+          : 'adjust_unresolved_dimension')))
   const invitationProposal = invitationProposalOf(coordination, initiatorApp)
-  const runtimePlan = canonicalOverlap.proposal || invitationProposal
+  const runtimePlan = persistedPlan || canonicalOverlap.proposal || invitationProposal
   const currentPlan = runtimePlan && Object.keys(runtimePlan).length
     ? toCanonicalCoordinationPlan(runtimePlan)
     : null
@@ -333,7 +340,7 @@ function buildDateCoordinationGraphInput(coordination, applications, user, optio
       commonArea: canonicalOverlap.commonArea,
       commonActivity: canonicalOverlap.commonActivity,
       missingDimensions: canonicalOverlap.missingDimensions,
-      activeProposalSummary: canonicalOverlap.proposal,
+      activeProposalSummary: persistedPlan || canonicalOverlap.proposal,
       actionRequired
     },
     own_preference: ownPreference,
@@ -362,7 +369,7 @@ function buildDateCoordinationGraphInput(coordination, applications, user, optio
       paymentCompatibility: canonicalOverlap.paymentCompatibility,
       durationCompatibility: canonicalOverlap.durationCompatibility,
       missingDimensions: canonicalOverlap.missingDimensions,
-      activeProposalSummary: canonicalOverlap.proposal,
+      activeProposalSummary: persistedPlan || canonicalOverlap.proposal,
       actionRequired
     },
     partnerProgress: partnerProgress(coordination, applications, confirmations, user),
