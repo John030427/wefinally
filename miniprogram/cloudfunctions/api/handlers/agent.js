@@ -82,6 +82,7 @@ function defaultDeps() {
     ensureCollection: db.ensureCollection,
     claimPendingPatch,
     commitConfirmation: db.commitCoordinationConfirmation,
+    commitApplication: db.commitCoordinationApplication,
     publishCoordinationEvent,
     writeInboxNotification(input) {
       const { notifyInbox } = require('../lib/coordinationInbox')
@@ -653,6 +654,10 @@ function createAgentHandlers(overrides = {}) {
         addWithId: dep('addWithId'),
         updateByDoc: dep('updateByDoc'),
         now: dep('now')
+      }
+      if (Object.prototype.hasOwnProperty.call(overrides, 'commitApplication')
+        || !(overrides.first && overrides.addWithId)) {
+        coordinationHandlerDeps.commitApplication = dep('commitApplication')
       }
       for (const name of ['commitConfirmation', 'publishCoordinationEvent', 'writeInboxNotification']) {
         if (Object.prototype.hasOwnProperty.call(overrides, name)) coordinationHandlerDeps[name] = overrides[name]
