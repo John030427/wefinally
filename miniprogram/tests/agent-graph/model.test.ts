@@ -235,3 +235,35 @@ test('date coordinator prompt documents the complete command contract and ground
   assert.match(systemPrompt, /A preview is only written after confirmation/)
   assert.match(systemPrompt, /Do not claim any business action succeeded/)
 })
+
+test('date coordinator prompt preserves concrete facts accepted from a safe partner inquiry', async () => {
+  let systemPrompt = ''
+  const model = createDecisionModel({
+    provider: 'cloudbase',
+    generateTextImpl: async (input) => {
+      systemPrompt = input.messages.find((message) => message.role === 'system')?.content || ''
+      return { text: JSON.stringify(sampleDecision) }
+    }
+  })
+
+  await model.decide({
+    mode: 'date_coordination',
+    phase: 'parse_command',
+    userText: '周日可以，但不喝奶茶，吃椰子鸡吧',
+    safeSummary: '对方更倾向把时间调整到9月13日（周日）傍晚。其他安排保持不变。',
+    context: {
+      currentPlan: { date: '2026-09-12', period: 'evening', activity: '奶茶' },
+      contextRef: {
+        type: 'partner_inquiry',
+        coordination_id: 716,
+        coordination_version: 1,
+        event_id: 50
+      }
+    }
+  })
+
+  assert.match(systemPrompt, /safe partner relay/)
+  assert.match(systemPrompt, /explicitly accepts/)
+  assert.match(systemPrompt, /carry the accepted concrete fact into changes/)
+  assert.match(systemPrompt, /do not fall back to the old current_plan value/)
+})
