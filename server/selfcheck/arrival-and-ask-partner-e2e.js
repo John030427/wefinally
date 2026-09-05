@@ -11,8 +11,8 @@ const coordination = {
   id: 716,
   user_a_id: 101,
   user_b_id: 102,
-  status: 'waiting_confirmations',
-  business_state: 'coordinating',
+  status: 'arranged',
+  business_state: 'completed',
   coordination_version: 1,
   invitation_version: 1,
   current_proposal_id: 0,
@@ -59,14 +59,36 @@ const deps = {
   claimPendingPatch: async () => false,
   invokeGraphFunction: async (_name, payload) => {
     if (payload.operation === 'resume_tool') {
+      const delayed = payload.toolResult && payload.toolResult.data && payload.toolResult.data.eventType === 'delay_notice'
       return { result: { success: true, data: {
         status: 'completed',
         threadId: payload.threadId,
         phase: 'completed',
-        replyDraft: '已记录你的到场，并已向对方询问到场状态。',
+        replyDraft: delayed ? '已记录你会晚到10分钟，并已同步给对方。' : '已记录你的到场，并已向对方询问到场状态。',
         coordinationVersion: 1,
-        coordinationCommand: { type: 'ARRIVAL_AND_ASK_PARTNER_STATUS' },
+        coordinationCommand: { type: delayed ? 'DELAY_NOTICE' : 'ARRIVAL_AND_ASK_PARTNER_STATUS' },
         contextRef: null
+      } } }
+    }
+    if (payload.userText === '我晚10分钟') {
+      return { result: { success: true, data: {
+        status: 'awaiting_tool',
+        threadId: payload.threadId,
+        phase: 'awaiting_tool',
+        replyDraft: '',
+        coordinationVersion: 1,
+        coordinationCommand: { type: 'DELAY_NOTICE', relay: { type: 'DELAY_NOTICE', text: '我会晚到10分钟' } },
+        contextRef: null,
+        pendingAction: {
+          type: 'publish_coordination_event',
+          arguments: {
+            coordinationId: 716,
+            coordinationVersion: 1,
+            eventType: 'DELAY_NOTICE',
+            relay: { type: 'DELAY_NOTICE', text: '我会晚到10分钟' }
+          },
+          requiresConfirmation: false
+        }
       } } }
     }
     return { result: { success: true, data: {
@@ -94,16 +116,23 @@ const deps = {
 ;(async () => {
   const handlers = createAgentHandlers(deps)
   const session = await handlers.createSession({ agent_type: 'date_coordinator', coordination_id: 716 }, { user_id: 101 })
+  const delayed = await handlers.send({ session_id: session.id, message: '我晚10分钟', client_request_id: 'arranged-delay-716' }, { user_id: 101 })
+  assert.equal(delayed.provider, 'langgraph', 'arranged coordination must still reach Graph for live meeting state')
+  assert.equal(delayed.coordination_version, 1)
+  assert.equal(rows.date_coordination_event[0].event_type, 'delay_notice')
+  assert.equal(coordination.coordination_version, 1, 'delay does not bump coordination version')
+  assert(rows.agent_message.some((message) => message.user_id === 102 && message.event_type === 'delay_notice'))
+
   const contextRef = { type: 'meeting_status', coordination_id: 716, coordination_version: 1 }
   const first = await handlers.send({ session_id: session.id, message: '我到了，你在哪', context_ref: contextRef }, { user_id: 101 })
   assert.equal(first.provider, 'langgraph')
   assert.equal(first.coordination_version, 1)
   assert.deepStrictEqual(first.context_ref, contextRef)
-  assert.deepStrictEqual(rows.date_coordination_event.map((event) => event.event_type), ['arrived', 'arrival_status_requested'])
-  assert.equal(rows.date_coordination_event[0].coordination_version, 1)
+  assert.deepStrictEqual(rows.date_coordination_event.map((event) => event.event_type), ['delay_notice', 'arrived', 'arrival_status_requested'])
   assert.equal(rows.date_coordination_event[1].coordination_version, 1)
+  assert.equal(rows.date_coordination_event[2].coordination_version, 1)
   assert.equal(coordination.coordination_version, 1, 'live arrival events do not bump coordination version')
-  assert.equal(rows.date_coordination_event[0].actor_user_id, 101)
+  assert.equal(rows.date_coordination_event[1].actor_user_id, 101)
   assert(rows.agent_message.some((message) => message.user_id === 102 && message.event_type === 'arrival_status_requested'))
 
   const second = await handlers.send({ session_id: session.id, message: '我到了，你在哪', context_ref: contextRef }, { user_id: 101 })
