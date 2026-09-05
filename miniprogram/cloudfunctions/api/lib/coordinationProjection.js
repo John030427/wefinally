@@ -11,6 +11,7 @@ const SOFT_PLAN_FIELDS = Object.freeze(['area', 'budget', 'payment', 'duration']
 
 const DIMENSION_LABELS = Object.freeze({
   availability: '时间',
+  time: '时间',
   date: '日期',
   period: '时段',
   start_time: '开始时间',
@@ -91,6 +92,9 @@ function buildCoordinationEventCard(input = {}) {
     proposal_key: String(event.proposal_key || safeSummary.proposal_key || '').slice(0, 120),
     summary
   }
+  const viewerUserId = Number(input.viewer_user_id || input.viewerUserId || 0)
+  const actorUserId = Number(event.actor_user_id || 0)
+  const isOwnEvent = viewerUserId > 0 && actorUserId > 0 && viewerUserId === actorUserId
   const proposalId = Number(factRefs.proposal_id || event.proposal_id || 0)
   const patchId = Number(factRefs.patch_id || event.patch_id || 0)
   const inquiryId = Number(factRefs.inquiry_id || event.inquiry_id || 0)
@@ -102,13 +106,24 @@ function buildCoordinationEventCard(input = {}) {
       coordination_version: card.coordination_version,
       proposal_id: proposalId
     }
-  } else if (patchId > 0) {
+  } else if (patchId > 0 && isOwnEvent) {
     card.patch_id = patchId
     card.context_ref = {
       type: 'patch_preview',
       coordination_id: card.coordination_id,
       coordination_version: card.coordination_version,
       patch_id: patchId
+    }
+  } else if (patchId > 0 && eventId > 0) {
+    // The patch id remains an audit/reference fact, but a partner must not be
+    // able to act on the origin user's private patch preview. Their actionable
+    // context is the canonical event/inquiry that was projected to them.
+    card.patch_id = patchId
+    card.context_ref = {
+      type: 'partner_inquiry',
+      coordination_id: card.coordination_id,
+      coordination_version: card.coordination_version,
+      event_id: eventId
     }
   } else if (inquiryId > 0 || ['PARTNER_QUESTION', 'PARTNER_RESPONSE'].includes(canonicalType)) {
     card.context_ref = {

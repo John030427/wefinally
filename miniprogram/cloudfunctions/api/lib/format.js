@@ -4,12 +4,12 @@ function calcAge(birthYear) {
   return new Date().getFullYear() - y
 }
 
-function isVipActive(user) {
+function isVipActive(user, nowValue = new Date()) {
   if (!user) return false
   if (Number(user.free_member || 0) === 1) return true
   if (Number(user.is_vip || 0) !== 1) return false
   if (!user.vip_expire_time) return false
-  return new Date(user.vip_expire_time).getTime() > Date.now()
+  return new Date(user.vip_expire_time).getTime() > new Date(nowValue).getTime()
 }
 
 function genderText(gender) {

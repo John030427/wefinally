@@ -21,7 +21,7 @@ function eventKey(coordination, event) {
 }
 
 function safeChangedDimensions(value) {
-  const allowed = new Set(['availability', 'area', 'activity', 'budget', 'payment', 'duration'])
+  const allowed = new Set(['availability', 'time', 'area', 'activity', 'budget', 'payment', 'duration'])
   return Array.from(new Set((Array.isArray(value) ? value : [])
     .map((item) => String(item || '').trim())
     .filter((item) => allowed.has(item))))
@@ -106,6 +106,7 @@ async function publishCoordinationEvent(input = {}, overrides) {
       partner_user_id: participants.find((id) => id !== userId) || 0
     })
     const eventCard = buildCoordinationEventCard({
+      viewer_user_id: userId,
       event: Object.assign({}, event, {
         id: stored.id,
         coordination_id: coordination.id,

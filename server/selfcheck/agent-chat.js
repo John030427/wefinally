@@ -319,6 +319,47 @@ async function main() {
   for (const forbidden of ['share_message', 'other_requirements', 'transport_constraints', '不公开', 'openid', 'phone']) {
     assert.strictEqual(graphJson.includes(forbidden), false)
   }
+
+  const failingDeps = fakeDeps()
+  failingDeps.env = { LANGGRAPH_ENABLED: 'true', LANGGRAPH_ACTOR_SECRET: 'selfcheck-secret' }
+  const originalAddWithId = failingDeps.addWithId
+  failingDeps.addWithId = async (name, data) => {
+    if (name === 'date_application_patch') {
+      const error = new Error('patch write failed')
+      error.code = 'PATCH_DB_WRITE'
+      throw error
+    }
+    return originalAddWithId(name, data)
+  }
+  failingDeps.invokeGraphFunction = async (_name, payload) => ({
+    result: {
+      success: true,
+      data: {
+        status: 'awaiting_tool',
+        threadId: payload.threadId,
+        phase: 'awaiting_tool',
+        replyDraft: '',
+        pendingAction: {
+          type: 'create_date_application_patch',
+          arguments: { coordinationId: 50, coordinationVersion: 1, changes: { activity: '咖啡' } },
+          requiresConfirmation: true
+        }
+      }
+    }
+  })
+  const failingHandlers = createAgentHandlers(failingDeps)
+  const failingSession = await failingHandlers.createSession({ agent_type: AGENT_TYPES.DATE_COORDINATOR, coordination_id: 50 }, contextA)
+  const failingReply = await failingHandlers.send({ session_id: failingSession.id, message: '把电影改成咖啡' }, contextA)
+  assert.strictEqual(failingReply.provider, 'fallback')
+  assert.strictEqual(failingReply.graph_fallback, 'graph_unavailable')
+  const diagnosticRun = failingDeps.tables.agent_run.at(-1)
+  assert.strictEqual(diagnosticRun.graph_stage, 'execute_graph_tool')
+  assert.strictEqual(diagnosticRun.graph_fallback_code, 'graph_error')
+  assert.strictEqual(diagnosticRun.tool_name, 'create_date_application_patch')
+  assert.strictEqual(diagnosticRun.tool_error_code, 'PATCH_DB_WRITE')
+  assert.strictEqual(diagnosticRun.coordination_id, 50)
+  assert.strictEqual(diagnosticRun.coordination_version, 1)
+
   deps.invokeGraphFunction = async () => { throw new Error('graph offline') }
   await handlers.send({ session_id: coordinator.id, message: '现在协调状态怎么样？' }, contextA)
   assert(deps.tables.agent_run.some((row) => row.provider === 'langgraph'

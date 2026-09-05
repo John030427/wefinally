@@ -121,7 +121,7 @@ function createMatchTestRunHandlers(deps) {
     const claimedRun = claim.batch
     const fixtureJourney = normalizeJourneyInput(claimedRun.fixture_journey || data.fixture_journey || 'coordinate')
     try {
-      if (!canUseMatching({ member_status: memberStatus(user), vipActive: isVipActive(user) })) {
+      if (!canUseMatching({ member_status: memberStatus(user), vipActive: isVipActive(user, deps.now()) })) {
         return publicRun(await deps.completeRun(claimedRun, { patch: {
           status: 'blocked', reason_code: 'not_eligible', message: '资料或会员资格不满足测试匹配条件'
         } }))

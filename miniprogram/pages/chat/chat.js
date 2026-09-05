@@ -3,6 +3,16 @@ const { API_PATHS } = require('../../utils/constants')
 const { formatDate } = require('../../utils/util')
 const { buildPatchSuccessCopy } = require('./patchStatusCopy')
 const { activeContextFromMessages, activeContextAfterResponse, contextRefPayload } = require('./contextRefLifecycle')
+const {
+  createPendingAssistantMessage,
+  completeAssistantMessage,
+  errorAssistantMessage,
+  updateMessageById,
+  nextRotatedWaitingText,
+  elapsedAtLeast,
+  MIN_LOADER_MS,
+  ROTATE_MS
+} = require('../../utils/aiChatWaiting')
 
 const AGENT_TYPES = {
   PLATFORM_SERVICE: 'platform_service',
@@ -61,12 +71,16 @@ function normalizePatchPreview(raw, requiresConfirmation) {
   const preview = patch && patch.preview
   if (!patch || !preview || !Array.isArray(preview.changed_fields)) return null
   const status = patch.status || 'pending_confirmation'
+  const actionable = ['pending_confirmation', 'pending_primary_selection'].includes(String(status))
   const primaryResolutionRequired = Boolean(preview.primary_resolution_required) || status === 'pending_primary_selection'
   return {
     id: String(patch.id || patch.patch_id || ''),
     operation: patch.operation || 'modify',
     status,
-    requiresConfirmation: !primaryResolutionRequired && (
+    title: patch.operation === 'create' ? '💌 约会申请发送预览' : '💗 约会条件修改预览',
+    confirmLabel: patch.operation === 'create' ? '确认发送' : '确认修改',
+    cancelLabel: patch.operation === 'create' ? '暂不发送' : '暂不修改',
+    requiresConfirmation: actionable && !primaryResolutionRequired && (
       requiresConfirmation === true
       || patch.requires_confirmation === true
       || status === 'pending_confirmation'
@@ -92,7 +106,7 @@ function normalizePatchPreview(raw, requiresConfirmation) {
     }),
     affectsExistingProposal: Boolean(preview.affects_existing_proposal),
     willNotifyPartner: Boolean(preview.will_notify_partner),
-    contextRef: patch.context_ref || patch.contextRef || preview.context_ref || preview.contextRef || (
+    contextRef: actionable && (patch.context_ref || patch.contextRef || preview.context_ref || preview.contextRef || (
       patch.id && patch.base_version
         ? {
           type: 'patch_preview',
@@ -101,7 +115,7 @@ function normalizePatchPreview(raw, requiresConfirmation) {
           patch_id: Number(patch.id)
         }
         : null
-    )
+    ))
   }
 }
 
@@ -126,6 +140,7 @@ function assistantMessage(item, index) {
   const hasContextRef = Boolean(item && Object.prototype.hasOwnProperty.call(item, 'context_ref'))
   return {
     id: `b_${item.id || index}`,
+    status: 'completed',
     content: item.ai_content || item.reply || item.content || '已收到您的咨询',
     isBot: true,
     timeText: formatDate(item.create_time || item.createdAt || item.time, 'HH:mm'),
@@ -150,6 +165,7 @@ function normalizeMessages(raw) {
         id: `u_${item.id || index}`,
         content: item.user_content || item.question || item.content || '',
         isBot: false,
+        status: 'completed',
         timeText,
         contextRef: item.context_ref || item.contextRef || null
       })
@@ -167,6 +183,14 @@ function decodePrompt(value) {
     return decodeURIComponent(text)
   } catch (err) {
     return text
+  }
+}
+
+function makeIds() {
+  const stamp = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+  return {
+    requestId: `req_${stamp}`,
+    pendingMessageId: `b_pending_${stamp}`
   }
 }
 
@@ -191,6 +215,91 @@ Page({
     supportCode: '',
     supportCodeState: 'loading',
     supportCodeError: ''
+  },
+
+  _waitingTimer: null,
+  _reconcileTimer: null,
+  _reconcileInFlight: false,
+
+  onUnload() {
+    this.clearWaitingTimers()
+    this.stopCoordinatorReconcile()
+  },
+
+  onShow() {
+    this.pageVisible = true
+    if (this.data.agentType === AGENT_TYPES.DATE_COORDINATOR && this.data.sessionReady) {
+      this.reconcileCoordinatorMessages()
+      this.startCoordinatorReconcile()
+    }
+  },
+
+  onHide() {
+    this.pageVisible = false
+    this.stopCoordinatorReconcile()
+  },
+
+  stopCoordinatorReconcile() {
+    if (this._reconcileTimer) {
+      clearInterval(this._reconcileTimer)
+      this._reconcileTimer = null
+    }
+  },
+
+  startCoordinatorReconcile() {
+    this.stopCoordinatorReconcile()
+    this._reconcileTimer = setInterval(() => {
+      if (this.pageVisible !== false) this.reconcileCoordinatorMessages()
+    }, 15000)
+  },
+
+  async reconcileCoordinatorMessages() {
+    if (this._reconcileInFlight || this.data.sending || this.data.agentType !== AGENT_TYPES.DATE_COORDINATOR) return
+    this._reconcileInFlight = true
+    try {
+      const messages = await this.loadAgentHistory()
+      if (!messages.length) return
+      const currentIds = this.data.messages.map((item) => item && item.id).join(',')
+      const nextIds = messages.map((item) => item && item.id).join(',')
+      if (currentIds !== nextIds || JSON.stringify(this.data.messages) !== JSON.stringify(messages)) {
+        this.setData({
+          messages,
+          activeContextRef: activeContextFromMessages(messages),
+          scrollToView: `msg-${messages[messages.length - 1].id}`
+        })
+      }
+    } catch (err) {
+      // Reconcile is presentation refresh only; the canonical backend remains
+      // authoritative and a transient poll error must not create a turn.
+    } finally {
+      this._reconcileInFlight = false
+    }
+  },
+
+  clearWaitingTimers() {
+    if (this._waitingTimer) {
+      clearInterval(this._waitingTimer)
+      this._waitingTimer = null
+    }
+  },
+
+  replaceMessageById(messageId, updater) {
+    const result = updateMessageById(this.data.messages, messageId, updater)
+    if (!result.found) return null
+    this.setData({ messages: result.messages })
+    return result.message
+  },
+
+  startWaitingCopyRotation(messageId) {
+    this.clearWaitingTimers()
+    this._waitingTimer = setInterval(() => {
+      const current = this.data.messages.find((message) => message.id === messageId)
+      if (!current || current.status !== 'generating') {
+        this.clearWaitingTimers()
+        return
+      }
+      this.replaceMessageById(messageId, nextRotatedWaitingText(current))
+    }, ROTATE_MS)
   },
 
   onLoad(options) {
@@ -320,6 +429,9 @@ Page({
       activeContextRef: activeContextFromMessages(messages),
       scrollToView: `msg-${messages[messages.length - 1].id}`
     })
+    if (this.data.agentType === AGENT_TYPES.DATE_COORDINATOR && this.pageVisible !== false) {
+      this.startCoordinatorReconcile()
+    }
     this.autoSendHandoffMessage()
   },
 
@@ -340,58 +452,136 @@ Page({
     this.setData({ inputText: e.detail.value })
   },
 
-  async sendAgentMessage(text) {
+  async sendAgentMessage(text, clientRequestId) {
     const sessionId = await this.ensureSession()
     return post(`${API_PATHS.AGENT_SESSIONS}/${sessionId}/messages`, Object.assign({
       content: text,
       message: text,
       agent_type: this.data.agentType,
+      client_request_id: clientRequestId,
     }, contextRefPayload(this.data.activeContextRef), this.data.handoffContext || {}), { showError: false })
   },
 
-  async sendLegacyMessage(text) {
+  async sendLegacyMessage(text, clientRequestId) {
     return post(API_PATHS.CHAT_SEND, Object.assign({
       message: text,
       content: text,
+      client_request_id: clientRequestId,
     }, contextRefPayload(this.data.activeContextRef), this.data.handoffContext || {}), { showError: false })
+  },
+
+  async runAssistantTurn({ text, pendingMessageId, requestId, appendUser }) {
+    const startedAt = Date.now()
+    const pending = createPendingAssistantMessage({
+      pendingMessageId,
+      requestId,
+      agentType: this.data.agentType,
+      originalUserText: text,
+      timeText: formatDate(new Date(), 'HH:mm')
+    })
+    const userMsg = {
+      id: `u_${requestId}`,
+      content: text,
+      isBot: false,
+      status: 'completed',
+      timeText: formatDate(new Date(), 'HH:mm'),
+      contextRef: this.data.activeContextRef
+    }
+    const initialMessages = appendUser
+      ? [...this.data.messages, userMsg, pending]
+      : updateMessageById(this.data.messages, pendingMessageId, () => pending).messages
+    this.setData({
+      messages: initialMessages,
+      inputText: appendUser ? '' : this.data.inputText,
+      sending: true,
+      scrollToView: `msg-${pendingMessageId}`
+    })
+    this.startWaitingCopyRotation(pendingMessageId)
+
+    try {
+      let reply
+      try {
+        reply = await this.sendAgentMessage(text, requestId)
+      } catch (err) {
+        if (this.data.agentType !== AGENT_TYPES.PLATFORM_SERVICE) throw err
+        reply = await this.sendLegacyMessage(text, requestId)
+      }
+      const response = typeof reply === 'object' && reply !== null
+        ? reply
+        : { reply: String(reply || '') }
+      const normalized = assistantMessage(response, Date.now())
+      const content = String(
+        response.reply || response.content || response.ai_content || response.answer || response.message || ''
+      ).trim()
+      const waitMs = elapsedAtLeast(startedAt, MIN_LOADER_MS)
+      if (waitMs > 0) await new Promise((resolve) => setTimeout(resolve, waitMs))
+      this.clearWaitingTimers()
+      const completed = completeAssistantMessage(pending, {
+        content,
+        patchPreview: normalized.patchPreview,
+        eventCard: normalized.eventCard,
+        handoff: normalized.handoff,
+        contextRef: normalized.contextRef,
+        contextResolved: normalized.contextResolved,
+        timeText: formatDate(new Date(), 'HH:mm')
+      })
+      const baseMessages = this.data.messages.filter((message) => message.id !== pendingMessageId)
+      const nextMessages = [...baseMessages, completed]
+      this.setData({
+        messages: nextMessages,
+        activeContextRef: activeContextAfterResponse(baseMessages, completed),
+        scrollToView: `msg-${completed.id}`
+      })
+      if (completed.status === 'error') {
+        wx.showToast({ title: completed.errorText, icon: 'none', duration: 3000 })
+      }
+      if (this.data.agentType === AGENT_TYPES.DATE_COORDINATOR) await this.reconcileCoordinatorMessages()
+    } catch (err) {
+      this.clearWaitingTimers()
+      const waitMs = elapsedAtLeast(startedAt, MIN_LOADER_MS)
+      if (waitMs > 0) await new Promise((resolve) => setTimeout(resolve, waitMs))
+      const failed = errorAssistantMessage(
+        this.data.messages.find((message) => message.id === pendingMessageId) || pending,
+        (err && err.message) || '回复生成失败'
+      )
+      this.replaceMessageById(pendingMessageId, () => failed)
+      this.setData({ scrollToView: `msg-${pendingMessageId}` })
+      wx.showToast({ title: failed.errorText, icon: 'none', duration: 3000 })
+    } finally {
+      this.clearWaitingTimers()
+      this.setData({ sending: false })
+    }
   },
 
   async onSend() {
     const text = (this.data.inputText || '').trim()
-    if (!text || this.data.sending) return
+    if (!text || this.data.sending || this.data.coordinatorReadOnly) return
     const app = getApp()
     if (!await app.checkNetwork()) {
       wx.showToast({ title: '网络不可用', icon: 'none' })
       return
     }
+    const { requestId, pendingMessageId } = makeIds()
+    await this.runAssistantTurn({ text, pendingMessageId, requestId, appendUser: true })
+  },
 
-    const userMsg = { id: `u_${Date.now()}`, content: text, isBot: false, timeText: formatDate(new Date(), 'HH:mm') }
-    this.setData({ messages: [...this.data.messages, userMsg], inputText: '', sending: true, scrollToView: `msg-${userMsg.id}` })
-    try {
-      let reply
-      try {
-        reply = await this.sendAgentMessage(text)
-      } catch (err) {
-        if (this.data.agentType !== AGENT_TYPES.PLATFORM_SERVICE) throw err
-        reply = await this.sendLegacyMessage(text)
-      }
-      const content = (reply && (reply.reply || reply.content || reply.ai_content || reply.answer || reply.message)) ||
-        (typeof reply === 'string' ? reply : '感谢你的咨询，我会在信息范围内尽力协助。')
-      const botMsg = Object.assign(assistantMessage(reply || {}, Date.now()), {
-        id: `b_${Date.now()}`,
-        content,
-        timeText: formatDate(new Date(), 'HH:mm')
-      })
-      this.setData({
-        messages: [...this.data.messages, botMsg],
-        activeContextRef: activeContextAfterResponse(this.data.messages, botMsg),
-        scrollToView: `msg-${botMsg.id}`
-      })
-    } catch (err) {
-      wx.showToast({ title: (err && err.message) || '发送失败，请重试', icon: 'none', duration: 3000 })
-    } finally {
-      this.setData({ sending: false })
+  async retryAiMessage(e) {
+    if (this.data.sending || this.data.coordinatorReadOnly) return
+    const messageId = String(e.currentTarget.dataset.messageId || '')
+    const message = this.data.messages.find((item) => item.id === messageId)
+    const text = String(message && message.originalUserText || '').trim()
+    if (!message || message.status !== 'error' || !text) return
+    const app = getApp()
+    if (!await app.checkNetwork()) {
+      wx.showToast({ title: '网络不可用', icon: 'none' })
+      return
     }
+    await this.runAssistantTurn({
+      text,
+      pendingMessageId: messageId,
+      requestId: message.requestId,
+      appendUser: false
+    })
   },
 
   openHumanService(e) {

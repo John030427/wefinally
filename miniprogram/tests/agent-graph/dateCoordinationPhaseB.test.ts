@@ -7,6 +7,7 @@ import {
   buildDateCoordinationGraph,
   type DateCoordinationState
 } from '../../cloudfunctions/agent-graph/src/graphs/dateCoordination.js'
+import { GraphRunInputSchema } from '../../cloudfunctions/agent-graph/src/contracts.js'
 import type { CoordinationCommand, CoordinationCanonicalState } from '../../cloudfunctions/agent-graph/src/contracts.js'
 import type { DecisionInput, DecisionModel } from '../../cloudfunctions/agent-graph/src/model.js'
 
@@ -353,7 +354,39 @@ test('tool continuation reloads canonical state and keeps preview facts separate
   assert.equal(second.pendingTool, null)
   assert.equal(second.pendingPreview?.patchId, 456)
   assert.equal(second.pendingPreview?.baseVersion, 3)
-  assert.match(second.replyDraft, /确认后才会写入/)
+  assert.match(second.replyDraft, /确认后我会更新约会方案/)
+})
+
+test('preview resume reply names changed fields and preserves unchanged plan facts', async () => {
+  const graph = buildDateCoordinationGraph({
+    checkpointer: new MemorySaver(),
+    model: command({
+      type: 'PROPOSE_CHANGE_AND_ASK_PARTNER',
+      target_version: 3,
+      changes: { activity: '吃饭', activity_detail: '大鱼' },
+      preserve: ['date', 'period', 'start_time', 'area', 'payment', 'duration'],
+      partner_request: { type: 'ASK_ACCEPTANCE', topic: '吃饭·大鱼可以吗？' },
+      context_ref: { type: 'proposal', coordination_id: 716, coordination_version: 3, proposal_id: 99 }
+    })
+  })
+  const first = await graph.invoke(state(canonical()), { configurable: { thread_id: 'wf_thread_phase_b_dynamic_preview_copy' } })
+  const second = await graph.invoke({
+    ...state(canonical()),
+    pendingAction: first.pendingAction,
+    pendingTool: first.pendingTool,
+    pendingPreview: first.pendingPreview,
+    candidatePlan: first.candidatePlan,
+    candidateChanges: first.candidateChanges,
+    baseVersion: first.baseVersion,
+    contextRef: first.contextRef,
+    coordinationCommand: first.coordinationCommand,
+    resumeToolResult: { ok: true, data: { patchId: 456, status: 'pending_confirmation', coordinationVersion: 3 } }
+  }, { configurable: { thread_id: 'wf_thread_phase_b_dynamic_preview_copy' } })
+
+  assert.equal(second.phase, 'awaiting_confirmation')
+  assert.match(second.replyDraft, /活动.*咖啡.*手冲咖啡.*吃饭.*大鱼/)
+  assert.match(second.replyDraft, /区域、费用方式、时长保持当前安排/)
+  assert.match(second.replyDraft, /确认后.*询问对方/)
 })
 
 test('preview confirmation uses the DB-loaded pending preview instead of checkpoint-only context', async () => {
@@ -407,6 +440,107 @@ test('completed plan resolution clears the consumed actionable context', async (
     resumeToolResult: { ok: true, data: { patchId: 456, status: 'applied', coordinationVersion: 4 } }
   }), { configurable: { thread_id: 'wf_thread_phase_b_context_consumed' } })
   assert.equal(result.contextRef, undefined)
+})
+
+test('preview confirmation reply is grounded in backend projection status', async () => {
+  const graph = buildDateCoordinationGraph({
+    checkpointer: new MemorySaver(),
+    model: command({
+      type: 'CONFIRM_PREVIEW',
+      target_version: 3,
+      context_ref: { type: 'patch_preview', coordination_id: 716, coordination_version: 3, patch_id: 456 }
+    })
+  })
+  const action = {
+    type: 'confirm_date_application_patch',
+    arguments: { coordinationId: 716, coordinationVersion: 3, patchId: 456 },
+    requiresConfirmation: false
+  } as const
+  const projected = await graph.invoke(state(canonical(), {
+    pendingAction: action,
+    pendingTool: action,
+    contextRef: { type: 'patch_preview', coordination_id: 716, coordination_version: 3, patch_id: 456 },
+    resumeToolResult: { ok: true, data: { patchId: 456, status: 'waiting_partner', applied: true, partnerNotified: true, coordinationVersion: 4 } }
+  }), { configurable: { thread_id: 'wf_thread_phase_b_grounded_confirm' } })
+  assert.match(projected.replyDraft, /已确认这次调整，并已同步给对方/)
+
+  const pending = await graph.invoke(state(canonical(), {
+    pendingAction: action,
+    pendingTool: action,
+    contextRef: { type: 'patch_preview', coordination_id: 716, coordination_version: 3, patch_id: 456 },
+    resumeToolResult: { ok: true, data: { patchId: 456, status: 'waiting_partner', applied: true, projection_pending: true, partnerNotified: false, coordinationVersion: 4 } }
+  }), { configurable: { thread_id: 'wf_thread_phase_b_grounded_confirm_pending' } })
+  assert.match(pending.replyDraft, /已确认这次调整，正在向对方同步/)
+})
+
+test('current plan confirmation reply is grounded only when backend returns applied=true', async () => {
+  const graph = buildDateCoordinationGraph({
+    checkpointer: new MemorySaver(),
+    model: command({
+      type: 'CONFIRM_CURRENT_PLAN',
+      target_version: 3,
+      context_ref: { type: 'proposal', coordination_id: 716, coordination_version: 3, proposal_id: 99 }
+    })
+  })
+  const action = {
+    type: 'confirm_date_application',
+    arguments: { coordinationId: 716, coordinationVersion: 3, proposalId: 99 },
+    requiresConfirmation: false
+  } as const
+  const result = await graph.invoke(state(canonical(), {
+    pendingAction: action,
+    pendingTool: action,
+    contextRef: { type: 'proposal', coordination_id: 716, coordination_version: 3, proposal_id: 99 },
+    resumeToolResult: {
+      ok: true,
+      data: {
+        status: 'arranged',
+        applied: true,
+        partnerNotified: true,
+        coordinationVersion: 3
+      }
+    }
+  }), { configurable: { thread_id: 'wf_thread_current_plan_grounded_confirm' } })
+  assert.match(result.replyDraft, /已确认这次调整/)
+  assert.doesNotMatch(result.replyDraft, /还没有生效/)
+})
+
+test('current plan confirmation names projection pending after canonical commit', async () => {
+  const graph = buildDateCoordinationGraph({
+    checkpointer: new MemorySaver(),
+    model: command({
+      type: 'CONFIRM_CURRENT_PLAN',
+      target_version: 3,
+      context_ref: {
+        type: 'proposal',
+        coordination_id: 716,
+        coordination_version: 3,
+        proposal_id: 99
+      }
+    })
+  })
+  const action = {
+    type: 'confirm_date_application',
+    arguments: { coordinationId: 716, coordinationVersion: 3, proposalId: 99 },
+    requiresConfirmation: false
+  } as const
+  const result = await graph.invoke(state(canonical(), {
+    pendingAction: action,
+    pendingTool: action,
+    contextRef: { type: 'proposal', coordination_id: 716, coordination_version: 3, proposal_id: 99 },
+    resumeToolResult: {
+      ok: true,
+      data: {
+        status: 'waiting_confirmations',
+        coordinationVersion: 3,
+        applied: true,
+        partnerNotified: false,
+        projection_pending: true
+      }
+    }
+  }), { configurable: { thread_id: 'wf_thread_current_plan_grounded_confirm_pending' } })
+  assert.match(result.replyDraft, /正在向对方同步/)
+  assert.doesNotMatch(result.replyDraft, /还没有生效/)
 })
 
 test('combined preview confirmation carries the partner request into the commit tool', async () => {
@@ -499,4 +633,51 @@ test('API canonical graph input uses the same shared venue/payment adapter as ag
   assert.equal(input.canonicalState.current_plan?.venue, undefined)
   assert.equal(input.pendingPreview?.patchId, 456)
   assert.equal((input.pendingPreview?.candidatePlan as Record<string, unknown>).payment, 'flexible')
+})
+
+test('API graph input stays within the strict agent-graph run contract', () => {
+  const coordination = {
+    id: 1788501441438033,
+    user_a_id: 1788246797946266,
+    user_b_id: 1784818962143965,
+    coordination_version: 1,
+    status: 'no_overlap',
+    business_state: 'waiting_partner',
+    invitation_proposal: {
+      date: '2026-09-10',
+      period: 'afternoon',
+      start_time: '13:57',
+      activity: '奶茶',
+      activity_venue: '万象城',
+      area: '南山区',
+      budget: '50-100',
+      payment_preference: 'partner_pays',
+      duration: '1-2h'
+    },
+    invitation_version: 1
+  }
+  const input = apiGraphState.buildDateCoordinationGraphInput(
+    coordination,
+    [],
+    { id: 1784818962143965 },
+    {
+      confirmations: [],
+      contextRef: {
+        type: 'patch_preview',
+        coordination_id: 1788501441438033,
+        coordination_version: 1,
+        patch_id: 1788501674554951
+      }
+    }
+  )
+  const parsed = GraphRunInputSchema.safeParse({
+    operation: 'run',
+    threadId: 'wf_thread_aaaaaaaaaaaaaaaa',
+    actorRef: 'usr_0123456789abcdef0123456789abcdef',
+    mode: 'date_coordination',
+    userText: '周六晚上7点吃椰子鸡可以吗',
+    safeSummary: '真实真机重放',
+    ...input
+  })
+  assert.equal(parsed.success, true, parsed.success ? '' : parsed.error.message)
 })

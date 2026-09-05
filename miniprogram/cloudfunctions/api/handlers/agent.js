@@ -1,3 +1,4 @@
+const crypto = require('crypto')
 const { AGENT_TYPES, isAgentType } = require('../agent/types')
 const { RISK, classifyRisk, sanitizeOutput } = require('../agent/safety')
 const { buildContext } = require('../agent/context')
@@ -5,7 +6,7 @@ const { searchReviewedKnowledge } = require('../agent/knowledge')
 const { BUILTIN_KNOWLEDGE_ARTICLES } = require('../agent/knowledgeSeeds')
 const { generateDecision } = require('../agent/provider')
 const { TOOL_NAMES, inferTool, executeTool } = require('../agent/toolRegistry')
-const { createDateApplicationPatchHandlers, claimPendingPatch } = require('./dateApplicationPatch')
+const { createDateApplicationPatchHandlers, claimPendingPatch, publicPatch } = require('./dateApplicationPatch')
 const { createDateCoordinationHandlers } = require('./dateCoordination')
 const { readHumanServiceConfig, buildHumanServiceHandoff } = require('../agent/humanService')
 const { readLangGraphConfig, createActorRef, createThreadId, runLangGraphStep } = require('../agent/langgraphClient')
@@ -32,6 +33,8 @@ const { buildCoordinationEventCard } = require('../lib/coordinationProjection')
 
 const FREE_DAILY_LIMIT = 5
 const VIP_DAILY_LIMIT = 30
+const CLIENT_REQUEST_LEASE_MS = 120000
+const localClientRequestClaims = new Map()
 
 function dateCoordinatorFallback(code) {
   const rawCode = String(code || 'graph_unavailable')
@@ -47,6 +50,24 @@ function dateCoordinatorFallback(code) {
   }
 }
 
+function graphDiagnosticFields(input = {}) {
+  const bounded = (value, limit) => String(value || '').slice(0, limit)
+  return {
+    graph_stage: bounded(input.graphStage || input.graph_stage, 80),
+    graph_fallback_code: bounded(input.graphFallbackCode || input.graph_fallback_code || input.code, 120),
+    model_error_code: bounded(input.modelErrorCode || input.model_error_code, 120),
+    tool_name: bounded(input.toolName || input.tool_name, 80),
+    tool_error_code: bounded(input.toolErrorCode || input.tool_error_code, 120)
+  }
+}
+
+function clientRequestDocumentId(sessionId, userId, clientRequestId) {
+  return `agent-message-dedupe-${crypto.createHash('sha256')
+    .update(`${Number(sessionId)}:${Number(userId)}:${String(clientRequestId)}`)
+    .digest('hex')
+    .slice(0, 40)}`
+}
+
 function defaultDeps() {
   const db = require('../lib/db')
   const cloud = require('wx-server-sdk')
@@ -57,7 +78,15 @@ function defaultDeps() {
     byId: db.byId,
     addWithId: db.addWithId,
     updateByDoc: db.updateByDoc,
+    transaction: db.transaction,
+    ensureCollection: db.ensureCollection,
     claimPendingPatch,
+    commitConfirmation: db.commitCoordinationConfirmation,
+    publishCoordinationEvent,
+    writeInboxNotification(input) {
+      const { notifyInbox } = require('../lib/coordinationInbox')
+      return notifyInbox(input)
+    },
     now: db.now,
     generateDecision,
     env: process.env,
@@ -77,7 +106,13 @@ function publicSession(row) {
   }
 }
 
-function publicMessage(row) {
+function patchPreviewId(value) {
+  const patch = value && typeof value === 'object' ? value : {}
+  const id = Number(patch.id || patch.patch_id || 0)
+  return Number.isSafeInteger(id) && id > 0 ? id : 0
+}
+
+function publicMessage(row, facts = {}) {
   const result = {
     id: row.id,
     session_id: row.session_id,
@@ -86,10 +121,38 @@ function publicMessage(row) {
     content: sanitizeOutput(String(row.content || '')).slice(0, 2000),
     create_time: row.create_time
   }
-  if (row.patch_preview) result.patch_preview = sanitizeOutput(row.patch_preview)
-  if (Object.prototype.hasOwnProperty.call(row, 'context_ref')) result.context_ref = row.context_ref ? sanitizeOutput(row.context_ref) : null
+  const patchFact = facts.patchFacts && facts.patchFacts.get(patchPreviewId(row.patch_preview))
+  if (row.patch_preview) {
+    result.patch_preview = sanitizeOutput(patchFact
+      ? Object.assign({}, row.patch_preview, publicPatch(patchFact), {
+        status: patchFact.status,
+        preview: patchFact.preview
+      })
+      : row.patch_preview)
+  }
+  if (Object.prototype.hasOwnProperty.call(row, 'context_ref')) {
+    const patchStatus = patchFact && String(patchFact.status || '')
+    const patchIsActionable = ['pending_confirmation', 'pending_primary_selection'].includes(patchStatus)
+    result.context_ref = patchFact && patchPreviewId(row.patch_preview) > 0 && !patchIsActionable
+      ? null
+      : (row.context_ref ? sanitizeOutput(row.context_ref) : null)
+  }
   if (row.handoff) result.handoff = sanitizeOutput(row.handoff)
-  if (row.event_card) result.event_card = sanitizeOutput(row.event_card)
+  const eventFact = facts.eventFacts && facts.eventFacts.get(Number(row.coordination_event_id || 0))
+  if (eventFact) {
+    const eventCard = buildCoordinationEventCard({
+      viewer_user_id: Number(row.user_id || 0),
+      event: Object.assign({}, eventFact, { id: Number(eventFact.id || row.coordination_event_id || 0) }),
+      content: result.content
+    })
+    if (patchFact
+      && !['pending_confirmation', 'pending_primary_selection'].includes(String(patchFact.status || ''))
+      && eventCard.context_ref
+      && eventCard.context_ref.type === 'patch_preview') {
+      eventCard.context_ref = null
+    }
+    result.event_card = sanitizeOutput(eventCard)
+  } else if (row.event_card) result.event_card = sanitizeOutput(row.event_card)
   else if (row.coordination_event_id || row.coordination_event_key) {
     result.event_card = sanitizeOutput(buildCoordinationEventCard({
       event: row,
@@ -120,7 +183,7 @@ function riskReply(category) {
 function createAgentHandlers(overrides = {}) {
   let defaults = null
   function dep(name) {
-    if (overrides[name]) return overrides[name]
+    if (Object.prototype.hasOwnProperty.call(overrides, name)) return overrides[name]
     if (!defaults) defaults = defaultDeps()
     return defaults[name]
   }
@@ -159,6 +222,126 @@ function createAgentHandlers(overrides = {}) {
       }
     }
     return saved
+  }
+
+  async function claimClientRequest(session, user, clientRequestId) {
+    const normalized = String(clientRequestId || '').trim().slice(0, 120)
+    if (!normalized) return null
+    const documentId = clientRequestDocumentId(session.id, user.id, normalized)
+    const transaction = Object.prototype.hasOwnProperty.call(overrides, 'transaction')
+      ? overrides.transaction
+      : (overrides.first && overrides.addWithId ? null : dep('transaction'))
+    const ensureCollection = Object.prototype.hasOwnProperty.call(overrides, 'ensureCollection')
+      ? overrides.ensureCollection
+      : (overrides.first && overrides.addWithId ? null : dep('ensureCollection'))
+    if (typeof ensureCollection === 'function') await ensureCollection('agent_message_dedupe')
+    const work = async (adapter) => {
+      const timestamp = adapter.now ? adapter.now() : dep('now')()
+      const existing = await adapter.byDocId('agent_message_dedupe', documentId)
+      const existingRow = existing && Object.assign({ _id: documentId }, existing)
+      const leaseExpiresAt = existingRow && existingRow.lease_expires_at
+        ? new Date(existingRow.lease_expires_at).getTime()
+        : 0
+      const expired = existingRow
+        && existingRow.status === 'processing'
+        && (!leaseExpiresAt || leaseExpiresAt <= new Date(timestamp).getTime())
+      if (existingRow && existingRow.status === 'completed') return { claimed: false, row: existingRow }
+      if (existingRow && existingRow.status === 'processing' && !expired) return { claimed: false, row: existingRow }
+      const existingMessages = existingRow && typeof adapter.list === 'function'
+        ? await adapter.list('agent_message', {
+          session_id: Number(session.id),
+          user_id: Number(user.id),
+          client_request_id: normalized
+        }, 10)
+        : []
+      const row = {
+        ...(existingRow || {}),
+        session_id: Number(session.id),
+        user_id: Number(user.id),
+        client_request_id: normalized,
+        status: 'processing',
+        response: null,
+        attempts: Number(existingRow && existingRow.attempts || 0) + 1,
+        lease_expires_at: new Date(new Date(timestamp).getTime() + CLIENT_REQUEST_LEASE_MS),
+        reclaimed_from: expired ? 'failed_retryable' : String(existingRow && existingRow.status || ''),
+        reclaimed_at: expired ? timestamp : (existingRow && existingRow.reclaimed_at || null),
+        user_message_id: Number(existingRow && existingRow.user_message_id
+          || (existingMessages[0] && existingMessages[0].id) || 0),
+        create_time: existingRow && existingRow.create_time ? existingRow.create_time : timestamp
+      }
+      await adapter.setByDocId('agent_message_dedupe', documentId, row)
+      return { claimed: true, row: Object.assign({ _id: documentId }, row) }
+    }
+    if (typeof transaction === 'function') return transaction(work)
+    const previous = localClientRequestClaims.get(documentId)
+    const previousLeaseExpiresAt = previous && previous.lease_expires_at
+      ? new Date(previous.lease_expires_at).getTime()
+      : 0
+    const previousExpired = previous
+      && previous.status === 'processing'
+      && (!previousLeaseExpiresAt || previousLeaseExpiresAt <= dep('now')().getTime())
+    if (previous && previous.status === 'completed') return { claimed: false, row: previous }
+    if (previous && previous.status === 'processing' && !previousExpired) return { claimed: false, row: previous }
+    const row = {
+      ...(previous || {}),
+      _id: documentId,
+      session_id: Number(session.id),
+      user_id: Number(user.id),
+      client_request_id: normalized,
+      status: 'processing',
+      response: null,
+      attempts: Number(previous && previous.attempts || 0) + 1,
+      lease_expires_at: new Date(dep('now')().getTime() + CLIENT_REQUEST_LEASE_MS),
+      reclaimed_from: previousExpired ? 'failed_retryable' : String(previous && previous.status || ''),
+      reclaimed_at: previousExpired ? dep('now')() : (previous && previous.reclaimed_at || null),
+      user_message_id: Number(previous && previous.user_message_id || 0),
+      create_time: previous && previous.create_time ? previous.create_time : dep('now')()
+    }
+    localClientRequestClaims.set(documentId, row)
+    return { claimed: true, row }
+  }
+
+  async function bindClientRequestMessage(claim, userMessage) {
+    if (!claim || !claim.row || !claim.row._id || !userMessage || !userMessage.id) return
+    const transaction = Object.prototype.hasOwnProperty.call(overrides, 'transaction')
+      ? overrides.transaction
+      : (overrides.first && overrides.addWithId ? null : dep('transaction'))
+    const work = async (adapter) => {
+      const current = await adapter.byDocId('agent_message_dedupe', claim.row._id)
+      if (!current) return
+      await adapter.setByDocId('agent_message_dedupe', claim.row._id, Object.assign({}, current, {
+        user_message_id: Number(userMessage.id)
+      }))
+    }
+    if (typeof transaction === 'function') await transaction(work)
+    else localClientRequestClaims.set(claim.row._id, Object.assign({}, claim.row, { user_message_id: Number(userMessage.id) }))
+    claim.row.user_message_id = Number(userMessage.id)
+  }
+
+  async function completeClientRequest(claim, response) {
+    if (!claim || !claim.row || !claim.row._id) return response
+    const transaction = Object.prototype.hasOwnProperty.call(overrides, 'transaction')
+      ? overrides.transaction
+      : (overrides.first && overrides.addWithId ? null : dep('transaction'))
+    const work = async (adapter) => {
+      const current = await adapter.byDocId('agent_message_dedupe', claim.row._id)
+      if (!current) return response
+      await adapter.setByDocId('agent_message_dedupe', claim.row._id, Object.assign({}, current, {
+        status: 'completed',
+        response,
+        lease_expires_at: null,
+        completed_at: adapter.now ? adapter.now() : dep('now')()
+      }))
+      return response
+    }
+    if (typeof transaction === 'function') return transaction(work)
+    localClientRequestClaims.set(claim.row._id, Object.assign({}, claim.row, {
+      status: 'completed',
+      response,
+      lease_expires_at: null,
+      completed_at: dep('now')()
+    }))
+    return response
   }
 
   async function createSession(data, wxContext) {
@@ -220,7 +403,17 @@ function createAgentHandlers(overrides = {}) {
     const session = await ownedSession(data.id || data.session_id || data.sessionId, user)
     const rows = await dep('list')('agent_message', { session_id: session.id }, 100)
     rows.sort((a, b) => Number(a.id || 0) - Number(b.id || 0))
-    return { session: publicSession(session), messages: rows.map(publicMessage) }
+    const patchIds = Array.from(new Set(rows.map((row) => patchPreviewId(row.patch_preview)).filter(Boolean)))
+    const eventIds = Array.from(new Set(rows.map((row) => Number(row.coordination_event_id || 0)).filter((id) => id > 0)))
+    const [patchRows, eventRows] = await Promise.all([
+      Promise.all(patchIds.map((id) => dep('byId')('date_application_patch', id).catch(() => null))),
+      Promise.all(eventIds.map((id) => dep('byId')('date_coordination_event', id).catch(() => null)))
+    ])
+    const facts = {
+      patchFacts: new Map(patchRows.filter(Boolean).map((row) => [Number(row.id), row])),
+      eventFacts: new Map(eventRows.filter(Boolean).map((row) => [Number(row.id), row]))
+    }
+    return { session: publicSession(session), messages: rows.map((row) => publicMessage(row, facts)) }
   }
 
   async function createTicketFor(session, user, input) {
@@ -302,6 +495,20 @@ function createAgentHandlers(overrides = {}) {
     const session = await ownedSession(data.session_id || data.sessionId, user)
     const content = String(data.message || data.content || '').trim()
     if (!content) throw new Error('请输入内容')
+    const clientRequestId = String(data.client_request_id || data.clientRequestId || '').trim().slice(0, 120)
+    const requestClaim = clientRequestId ? await claimClientRequest(session, user, clientRequestId) : null
+    if (requestClaim && !requestClaim.claimed) {
+      if (requestClaim.row && requestClaim.row.status === 'completed' && requestClaim.row.response) return requestClaim.row.response
+      return {
+        session_id: session.id,
+        agent_type: session.agent_type,
+        reply: '上一次请求仍在处理中，请稍后刷新协调状态。',
+        provider: 'deduplicated',
+        deduplicated: true,
+        pending: true
+      }
+    }
+    const finalize = (response) => completeClientRequest(requestClaim, response)
     const rawContextRef = data.context_ref || data.contextRef
     const contextRef = rawContextRef ? normalizeContextRef(rawContextRef) : null
     if (rawContextRef && (!contextRef || (session.agent_type === AGENT_TYPES.DATE_COORDINATOR
@@ -309,13 +516,13 @@ function createAgentHandlers(overrides = {}) {
       throw new Error('invalid_context_ref')
     }
     if (session.status === 'manual_pending') {
-      return {
+      return finalize({
         session_id: session.id,
         agent_type: session.agent_type,
         reply: '你的会话已转人工客服，请耐心等待工作人员回复。',
         manual_pending: true,
         handoff: buildHumanServiceHandoff()
-      }
+      })
     }
     if (session.agent_type === AGENT_TYPES.DATE_COORDINATOR && Number(session.coordination_id || 0)) {
       const coordination = await dep('byId')('date_coordination', Number(session.coordination_id))
@@ -328,23 +535,36 @@ function createAgentHandlers(overrides = {}) {
       if (coordination && coordination.status === 'inviting_partner' && isInvitee(coordination, user)) {
         const reply = inviteeCoordinatorBlockedError()
         await saveMessage(session, user, 'assistant', reply)
-        return { session_id: session.id, agent_type: session.agent_type, reply, declined: false }
+        return finalize({ session_id: session.id, agent_type: session.agent_type, reply, declined: false })
       }
       if (coordination && isTerminalCoordination(coordination.status) && !canWriteCoordinatorAction(coordination, user, { hasOwnApplication: Boolean(ownApp) })) {
         const role = isInitiator(coordination, user) ? 'initiator' : 'invitee'
         const reply = coordinatorWelcomeText(coordination, role) || terminalWriteError(coordination.status)
         await saveMessage(session, user, 'assistant', reply)
-        return {
+        return finalize({
           session_id: session.id,
           agent_type: session.agent_type,
           reply,
           declined: coordination.status === 'invitation_declined',
           read_only: true
-        }
+        })
       }
     }
     if (session.agent_type === AGENT_TYPES.LOVE_ADVISOR) await enforceLoveQuota(user)
-    const userMessage = await saveMessage(session, user, 'user', content, contextRef ? { context_ref: contextRef } : {})
+    const existingUserMessage = requestClaim && requestClaim.row && Number(requestClaim.row.user_message_id || 0) > 0
+      ? await dep('byId')('agent_message', Number(requestClaim.row.user_message_id))
+      : (requestClaim && clientRequestId
+          ? (await dep('list')('agent_message', {
+            session_id: Number(session.id),
+            user_id: Number(user.id),
+            client_request_id: clientRequestId
+          }, 10)).filter((row) => row.role === 'user')[0] || null
+          : null)
+    const userMessage = existingUserMessage || await saveMessage(session, user, 'user', content, Object.assign(
+      contextRef ? { context_ref: contextRef } : {},
+      clientRequestId ? { client_request_id: clientRequestId } : {}
+    ))
+    await bindClientRequestMessage(requestClaim, userMessage)
 
     const risk = classifyRisk(content)
     if (!risk.allowed) {
@@ -353,7 +573,7 @@ function createAgentHandlers(overrides = {}) {
       }
       const reply = riskReply(risk.category)
       await saveMessage(session, user, 'assistant', reply, { risk_level: risk.category })
-      return { session_id: session.id, agent_type: session.agent_type, reply, risk_level: risk.category, manual_pending: risk.category === RISK.HIGH_RISK }
+      return finalize({ session_id: session.id, agent_type: session.agent_type, reply, risk_level: risk.category, manual_pending: risk.category === RISK.HIGH_RISK })
     }
 
     const graphConfig = readLangGraphConfig(dep('env'))
@@ -407,14 +627,14 @@ function createAgentHandlers(overrides = {}) {
             error_code: graphResult.errorCode || ''
           }, 'agent_run')
           await saveMessage(session, user, 'assistant', reply, { graph_phase: graphResult.phase })
-          return {
+          return finalize({
             session_id: session.id,
             agent_type: session.agent_type,
             reply,
             provider: 'langgraph',
             manual_pending: graphResult.status === 'manual_pending',
             risk_level: 'safe'
-          }
+          })
         }
       } catch (_) {
         // A typed graph/config/tool failure deliberately falls through to the legacy path.
@@ -426,24 +646,35 @@ function createAgentHandlers(overrides = {}) {
       if (!coordination || ![Number(coordination.user_a_id), Number(coordination.user_b_id)].includes(Number(user.id))) {
         throw new Error('无权读取该约会协调任务')
       }
-      const coordinationHandlers = createDateCoordinationHandlers({
+      const coordinationHandlerDeps = {
         first: dep('first'),
         list: dep('list'),
         byId: dep('byId'),
         addWithId: dep('addWithId'),
         updateByDoc: dep('updateByDoc'),
         now: dep('now')
-      })
-      const patchHandlers = createDateApplicationPatchHandlers({
+      }
+      for (const name of ['commitConfirmation', 'publishCoordinationEvent', 'writeInboxNotification']) {
+        if (Object.prototype.hasOwnProperty.call(overrides, name)) coordinationHandlerDeps[name] = overrides[name]
+      }
+      const coordinationHandlers = createDateCoordinationHandlers(coordinationHandlerDeps)
+      const patchHandlerOverrides = {
         first: dep('first'),
         list: dep('list'),
         byId: dep('byId'),
         addWithId: dep('addWithId'),
         updateByDoc: dep('updateByDoc'),
+        transaction: Object.prototype.hasOwnProperty.call(overrides, 'transaction')
+          ? dep('transaction')
+          : (overrides.first && overrides.addWithId ? null : dep('transaction')),
         claimPendingPatch: dep('claimPendingPatch'),
         now: dep('now'),
         saveApplicationForUser: coordinationHandlers.saveApplicationForUser
-      })
+      }
+      for (const name of ['publishCoordinationEvent', 'writeInboxNotification']) {
+        if (Object.prototype.hasOwnProperty.call(overrides, name)) patchHandlerOverrides[name] = dep(name)
+      }
+      const patchHandlers = createDateApplicationPatchHandlers(patchHandlerOverrides)
       const graphEvent = async (args, fallbackEventType) => {
         const current = await dep('byId')('date_coordination', Number(args.coordinationId || coordination.id))
         if (!current) throw new Error('日期协调不存在')
@@ -523,8 +754,13 @@ function createAgentHandlers(overrides = {}) {
             patchId: Number(applied.patch && applied.patch.id || args.patchId),
             status: applied.status || (applied.patch && applied.patch.status) || 'applied',
             coordinationVersion: Number(applied.coordination_version || args.coordinationVersion),
+            applied: applied.applied === true,
             applicationSent: applied.application_sent === true,
-            partnerNotified: applied.partner_notified === true
+            partnerNotified: applied.partner_notified === true,
+            projection_pending: applied.projection_pending === true,
+            notification_status: applied.notification_status || '',
+            skipped: applied.skipped === true,
+            event_status: applied.event_status || ''
           } }
         },
         cancel_date_application_patch: async (args) => {
@@ -538,7 +774,16 @@ function createAgentHandlers(overrides = {}) {
             proposal_id: Number(args.proposalId || 0),
             decision: 'confirm'
           }, user)
-          return { ok: true, data: { status: confirmed.status, coordinationVersion: Number(confirmed.coordination_version || args.coordinationVersion), applicationSent: false, partnerNotified: true } }
+          return { ok: true, data: {
+            status: confirmed.status,
+            coordinationVersion: Number(confirmed.coordination_version || args.coordinationVersion),
+            applicationSent: false,
+            applied: confirmed.applied === true,
+            partnerNotified: confirmed.partner_notified === true,
+            projection_pending: confirmed.projection_pending === true,
+            notification_status: confirmed.notification_status || '',
+            event_status: confirmed.event_status || ''
+          } }
         },
         reject_date_application: async (args) => {
           const rejected = await coordinationHandlers.confirmProposalForUser({
@@ -605,6 +850,9 @@ function createAgentHandlers(overrides = {}) {
       const allApplications = await dep('list')('date_coordination_application', {
         coordination_id: Number(coordination.id)
       }, 200)
+      const allProposals = await dep('list')('date_coordination_proposal', {
+        coordination_id: Number(coordination.id)
+      }, 50).catch(() => [])
       const confirmations = await dep('list')('date_coordination_confirmation', {
         coordination_id: Number(coordination.id)
       }, 50).catch(() => [])
@@ -620,18 +868,22 @@ function createAgentHandlers(overrides = {}) {
           last_seen_coordination_version: Number(coordination.coordination_version || 1)
         }).catch(() => null)
       }
-      const recordGraphFailure = async (code) => dep('addWithId')('agent_run', {
-        session_id: session.id,
-        user_id: user.id,
-        agent_type: session.agent_type,
-        coordination_id: Number(coordination.id),
-        coordination_version: Number(coordination.coordination_version || 1),
-        status: 'fallback',
-        provider: 'langgraph',
-        intent: 'date_coordination_state',
-        risk_level: 'safe',
-        error_code: String(code || 'graph_unavailable').slice(0, 80)
-      }, 'agent_run')
+      const recordGraphFailure = async (diagnostic = {}) => {
+        const fields = graphDiagnosticFields(diagnostic)
+        return dep('addWithId')('agent_run', {
+          session_id: session.id,
+          user_id: user.id,
+          agent_type: session.agent_type,
+          coordination_id: Number(coordination.id),
+          coordination_version: Number(coordination.coordination_version || 1),
+          status: 'fallback',
+          provider: 'langgraph',
+          intent: 'date_coordination_state',
+          risk_level: 'safe',
+          error_code: String(diagnostic.code || fields.graph_fallback_code || 'graph_unavailable').slice(0, 120),
+          ...fields
+        }, 'agent_run')
+      }
       let graphFailure = { kind: 'disabled', code: 'graph_disabled' }
       if (graphConfig.enabled) {
         graphFailure = { kind: 'fallback', code: 'graph_unavailable' }
@@ -646,12 +898,14 @@ function createAgentHandlers(overrides = {}) {
         const graphInput = buildDateCoordinationGraphInput(coordination, allApplications, user, {
           confirmations,
           pendingPatch: graphPendingPatch,
+          proposals: allProposals,
           contextRef
         })
         const refreshGraphInput = async () => {
           const freshCoordination = await dep('byId')('date_coordination', Number(coordination.id))
           const freshApplications = await dep('list')('date_coordination_application', { coordination_id: Number(coordination.id) }, 200)
           const freshConfirmations = await dep('list')('date_coordination_confirmation', { coordination_id: Number(coordination.id) }, 50).catch(() => [])
+          const freshProposals = await dep('list')('date_coordination_proposal', { coordination_id: Number(coordination.id) }, 50).catch(() => [])
           const freshPendingPatches = await dep('list')('date_application_patch', {
             coordination_id: Number(coordination.id),
             session_id: Number(session.id),
@@ -663,6 +917,7 @@ function createAgentHandlers(overrides = {}) {
           return buildDateCoordinationGraphInput(freshCoordination, freshApplications, user, {
             confirmations: freshConfirmations,
             pendingPatch: freshPendingPatch,
+            proposals: freshProposals,
             contextRef
           })
         }
@@ -698,28 +953,45 @@ function createAgentHandlers(overrides = {}) {
               provider: 'langgraph',
               intent: 'date_coordination_state',
               risk_level: 'safe',
-              error_code: dateGraphResult.errorCode || ''
+              error_code: dateGraphResult.errorCode || dateGraphResult.graph_fallback_code || '',
+              ...graphDiagnosticFields({
+                graphStage: graphStep.toolName ? 'resume_agent_graph' : 'invoke_agent_graph',
+                graphFallbackCode: dateGraphResult.graph_fallback_code || '',
+                modelErrorCode: dateGraphResult.model_error_code || '',
+                toolName: graphStep.toolName || '',
+                toolErrorCode: graphStep.toolErrorCode || ''
+              })
             }, 'agent_run')
             if (dateGraphResult.status === 'fallback') {
               graphFailure = { kind: 'fallback', code: dateGraphResult.errorCode || 'graph_unavailable' }
             }
           } else {
             graphFailure = graphStep
-            await dep('addWithId')('agent_run', {
-              session_id: session.id,
-              user_id: user.id,
-              agent_type: session.agent_type,
-              coordination_id: Number(coordination.id),
-              coordination_version: Number(coordination.coordination_version || 1),
-              status: 'fallback',
-              provider: 'langgraph',
-              intent: 'date_coordination_state',
-              risk_level: 'safe',
-              error_code: String(graphStep.code || graphStep.kind || 'graph_fallback').slice(0, 80)
-            }, 'agent_run')
+            await recordGraphFailure({
+              code: graphStep.code || graphStep.kind || 'graph_fallback',
+              graphStage: graphStep.graphStage || 'invoke_agent_graph',
+              graphFallbackCode: graphStep.graphFallbackCode || graphStep.code || '',
+              modelErrorCode: graphStep.modelErrorCode || '',
+              toolName: graphStep.toolName || '',
+              toolErrorCode: graphStep.toolErrorCode || ''
+            })
           }
           if (dateGraphResult && dateGraphResult.status !== 'fallback') {
             const reply = [resumeText, dateGraphResult.replyDraft].filter(Boolean).join('\n') || '我已按当前协调状态处理这次请求。'
+            const graphToolData = graphStep && graphStep.toolResult && graphStep.toolResult.data
+              && typeof graphStep.toolResult.data === 'object'
+              ? graphStep.toolResult.data
+              : {}
+            const pendingPreviewId = dateGraphResult.pendingPreview && (
+              dateGraphResult.pendingPreview.patchId || dateGraphResult.pendingPreview.patch_id
+            )
+            const pendingPreviewRow = pendingPreviewId
+              ? await dep('byId')('date_application_patch', Number(pendingPreviewId))
+              : null
+            const patchPreview = pendingPreviewRow
+              && ['pending_confirmation', 'pending_primary_selection'].includes(String(pendingPreviewRow.status || ''))
+              ? sanitizeOutput(publicPatch(pendingPreviewRow))
+              : null
             const clearsActionableContext = [
               'CONFIRM_PREVIEW',
               'CANCEL_PREVIEW',
@@ -741,10 +1013,14 @@ function createAgentHandlers(overrides = {}) {
               coordination_command: dateGraphResult.coordinationCommand || null,
               candidate_plan: dateGraphResult.candidatePlan || null,
               pending_preview: dateGraphResult.pendingPreview || null,
-              context_ref: resultContextRef
+              patch_preview: patchPreview,
+              context_ref: resultContextRef,
+              partner_notified: graphToolData.partnerNotified === true,
+              projection_pending: graphToolData.projection_pending === true,
+              event_status: graphToolData.event_status || ''
             })
             await markSeen()
-            return {
+            return finalize({
               session_id: session.id,
               agent_type: session.agent_type,
               reply,
@@ -754,17 +1030,33 @@ function createAgentHandlers(overrides = {}) {
               coordination_command: dateGraphResult.coordinationCommand || null,
               candidate_plan: dateGraphResult.candidatePlan || null,
               pending_preview: dateGraphResult.pendingPreview || null,
+              patch_preview: patchPreview,
               context_ref: resultContextRef,
               requires_confirmation: dateGraphResult.status === 'awaiting_confirmation',
+              partner_notified: graphToolData.partnerNotified === true,
+              projection_pending: graphToolData.projection_pending === true,
+              event_status: graphToolData.event_status || '',
               risk_level: 'safe'
-            }
+            })
           }
-        } catch (_) {
-          graphFailure = { kind: 'fallback', code: 'graph_unavailable' }
-          await recordGraphFailure(graphFailure.code)
+        } catch (error) {
+          const diagnostic = {
+            code: 'graph_error',
+            graphStage: error && error.graphStage || 'graph_workflow',
+            graphFallbackCode: error && error.graphFallbackCode || 'graph_error',
+            modelErrorCode: error && error.modelErrorCode || '',
+            toolName: error && error.toolName || '',
+            toolErrorCode: error && error.toolErrorCode || error && error.code || error && error.message || 'graph_error'
+          }
+          graphFailure = { kind: 'fallback', code: diagnostic.graphFallbackCode }
+          await recordGraphFailure(diagnostic)
         }
       }
-      if (!graphConfig.enabled) await recordGraphFailure(graphFailure.code)
+      if (!graphConfig.enabled) await recordGraphFailure({
+        code: graphFailure.code,
+        graphStage: 'graph_disabled',
+        graphFallbackCode: graphFailure.code
+      })
       const fallback = dateCoordinatorFallback(graphFailure.code)
       const reply = [resumeText, fallback.reply].filter(Boolean).join('\n')
       await saveMessage(session, user, 'assistant', reply, {
@@ -772,7 +1064,7 @@ function createAgentHandlers(overrides = {}) {
         coordination_version: Number(coordination.coordination_version || 1)
       })
       await markSeen()
-      return {
+      return finalize({
         session_id: session.id,
         agent_type: session.agent_type,
         reply,
@@ -781,7 +1073,7 @@ function createAgentHandlers(overrides = {}) {
         coordination_version: Number(coordination.coordination_version || 1),
         risk_level: 'safe',
         suggested_actions: ['retry_coordination']
-      }
+      })
     }
 
     const tool = session.agent_type === AGENT_TYPES.PLATFORM_SERVICE ? inferTool(content) : ''
@@ -790,7 +1082,7 @@ function createAgentHandlers(overrides = {}) {
       const ticket = await createTicketFor(session, user, { priority: 'P2', category: 'user_request', summary: content })
       const reply = '已为你转接人工客服，工作人员会在服务时间内查看并回复。'
       await saveMessage(session, user, 'assistant', reply, { handoff: ticket.handoff })
-      return { session_id: session.id, agent_type: session.agent_type, reply, tool, manual_pending: true, handoff: ticket.handoff }
+      return finalize({ session_id: session.id, agent_type: session.agent_type, reply, tool, manual_pending: true, handoff: ticket.handoff })
     }
     if (tool) {
       try {
@@ -802,19 +1094,19 @@ function createAgentHandlers(overrides = {}) {
         })
         await recordTool(session, user, tool, 'completed')
         await saveMessage(session, user, 'assistant', result.reply)
-        return { session_id: session.id, agent_type: session.agent_type, reply: result.reply, tool, risk_level: 'safe' }
+        return finalize({ session_id: session.id, agent_type: session.agent_type, reply: result.reply, tool, risk_level: 'safe' })
       } catch (err) {
         await recordTool(session, user, tool, 'failed', 'tool_failed')
         const reply = '暂时无法查询你的实时状态，请稍后重试或联系人工客服。'
         await saveMessage(session, user, 'assistant', reply)
-        return { session_id: session.id, agent_type: session.agent_type, reply, tool, tool_failed: true }
+        return finalize({ session_id: session.id, agent_type: session.agent_type, reply, tool, tool_failed: true })
       }
     }
 
     if (session.agent_type === AGENT_TYPES.LOVE_ADVISOR && /会员|审核|VIP|匹配状态|订单|退款/.test(content)) {
       const reply = '这是平台业务问题，请前往“我的 → 平台AI客服”查询真实状态。'
       await saveMessage(session, user, 'assistant', reply)
-      return { session_id: session.id, agent_type: session.agent_type, reply, suggested_actions: ['open_platform_service'] }
+      return finalize({ session_id: session.id, agent_type: session.agent_type, reply, suggested_actions: ['open_platform_service'] })
     }
 
     const records = await dep('list')('knowledge_article', {}, 200)
@@ -822,7 +1114,7 @@ function createAgentHandlers(overrides = {}) {
     if (!knowledge.length && session.agent_type !== AGENT_TYPES.LOVE_ADVISOR) {
       const reply = '现有平台资料暂时没有可靠答案。涉及真实业务状态时，请说明具体想查询的项目或联系人工客服。'
       await saveMessage(session, user, 'assistant', reply)
-      return { session_id: session.id, agent_type: session.agent_type, reply, knowledge_limited: true }
+      return finalize({ session_id: session.id, agent_type: session.agent_type, reply, knowledge_limited: true })
     }
 
     const context = buildContext({
@@ -852,14 +1144,14 @@ function createAgentHandlers(overrides = {}) {
       error_code: decision.errorCode || ''
     }, 'agent_run')
     await saveMessage(session, user, 'assistant', reply)
-    return {
+    return finalize({
       session_id: session.id,
       agent_type: session.agent_type,
       reply,
       provider: decision.provider || 'fallback',
       risk_level: decision.riskLevel || 'safe',
       suggested_actions: decision.suggestedActions || []
-    }
+    })
   }
 
   return { createSession, messages, send, createHumanTicket }

@@ -614,6 +614,17 @@ async function commitCoordinationApplication(input = {}, timestamp = now()) {
   })
 }
 
+async function ensureCollection(name) {
+  const logicalName = String(name || '')
+  const physicalName = collections[logicalName] || logicalName
+  return withCollectionBootstrap({
+    logicalName,
+    physicalName,
+    operation: () => col(logicalName).limit(1).get(),
+    createCollection: (collectionName) => db.createCollection(collectionName)
+  })
+}
+
 async function ensureUserSupportCode(userDoc) {
   if (!userDoc || !userDoc._id || !Number(userDoc.id)) throw new Error('用户记录无效')
   if (isTestUser(userDoc)) return testSupportCode(userDoc)
@@ -1256,5 +1267,6 @@ module.exports = {
   commitInvitationResponse,
   commitPreAcceptInvitationPatch,
   authError,
-  withCollection
+  withCollection,
+  ensureCollection
 }

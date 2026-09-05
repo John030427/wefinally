@@ -18,13 +18,24 @@ async function main() {
     env: { LANGGRAPH_ENABLED: 'true', LANGGRAPH_ACTOR_SECRET: 'secret' },
     invokeFunction: async () => { throw new Error('socket and internal stack must not leak') }
   })
-  assert.deepStrictEqual(unavailable, { kind: 'fallback', code: 'graph_unavailable' })
+  assert.deepStrictEqual(unavailable, {
+    kind: 'fallback',
+    code: 'graph_unavailable',
+    graphStage: 'invoke_agent_graph',
+    graphFallbackCode: 'graph_unavailable',
+    modelErrorCode: ''
+  })
 
   const invalidCheckpoint = await invokeLangGraph(input, {
     env: { LANGGRAPH_ENABLED: 'true', LANGGRAPH_ACTOR_SECRET: 'secret' },
     invokeFunction: async () => ({ result: { success: false, code: 'invalid_checkpoint', stack: 'never expose' } })
   })
-  assert.deepStrictEqual(invalidCheckpoint, { kind: 'fallback', code: 'invalid_checkpoint' })
+  assert.deepStrictEqual(invalidCheckpoint, {
+    kind: 'fallback',
+    code: 'invalid_checkpoint',
+    graphStage: 'invoke_agent_graph',
+    graphFallbackCode: 'invalid_checkpoint'
+  })
 
   let serviceCalls = 0
   let claims = 0

@@ -35,6 +35,7 @@ module.exports = {
   ai_report_task: 'ai_report_tasks',
   agent_session: 'agent_sessions',
   agent_message: 'agent_messages',
+  agent_message_dedupe: 'agent_message_dedupes',
   agent_run: 'agent_runs',
   agent_tool_audit: 'agent_tool_calls',
   agent_tool_call: 'agent_tool_calls',

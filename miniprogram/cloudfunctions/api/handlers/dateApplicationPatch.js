@@ -36,6 +36,31 @@ const {
   allExplicitEvidence
 } = require('../lib/invitationCoordination')
 
+const localPreviewLocks = new Map()
+
+function transactionConflict(error) {
+  const code = String(error && (error.code || error.errorCode || '')).toLowerCase()
+  const message = String(error && error.message || error || '').toLowerCase()
+  return code.includes('transactionconflict')
+    || code.includes('transaction_conflict')
+    || message.includes('transaction conflict')
+    || message.includes('commit conflict')
+}
+
+async function withLocalPreviewLock(key, work) {
+  const previous = localPreviewLocks.get(key) || Promise.resolve()
+  let release
+  const current = new Promise((resolve) => { release = resolve })
+  localPreviewLocks.set(key, current)
+  await previous
+  try {
+    return await work()
+  } finally {
+    release()
+    if (localPreviewLocks.get(key) === current) localPreviewLocks.delete(key)
+  }
+}
+
 async function claimPendingPatch(patch) {
   const db = require('../lib/db')
   const result = await db.col('date_application_patch').where({
@@ -54,6 +79,7 @@ function defaultDeps() {
     byId: db.byId,
     addWithId: db.addWithId,
     updateByDoc: db.updateByDoc,
+    transaction: db.transaction,
     claimPendingPatch,
     commitPreAcceptInvitationPatch: db.commitPreAcceptInvitationPatch,
     publishCoordinationEvent,
@@ -134,6 +160,33 @@ function createDateApplicationPatchHandlers(overrides = {}) {
     }
     if (!defaults) defaults = defaultDeps()
     return defaults[name]
+  }
+
+  async function enqueueProjectionRetry(operation, coordination, payload, error, projectionKind = '') {
+    try {
+      const eventType = String(payload && payload.event_type || operation)
+      const actor = Number(payload && (payload.actor_user_id || payload.user_id) || 0)
+      const version = Number(payload && (payload.coordination_version || payload.event_coordination_version)
+        || coordination && coordination.coordination_version || 1)
+      const key = `coordination:${Number(coordination && coordination.id || 0)}:v${version}:${operation}:${eventType}:${actor}`
+      const existing = await dep('first')('coordination_projection_outbox', { idempotency_key: key }).catch(() => null)
+      if (existing) return existing
+      return await dep('addWithId')('coordination_projection_outbox', {
+        idempotency_key: key,
+        operation,
+        coordination_id: Number(coordination && coordination.id || 0),
+        coordination_version: version,
+        projection_kind: String(projectionKind || ''),
+        payload,
+        status: 'pending',
+        attempts: 0,
+        last_error_code: String(error && (error.code || error.message) || 'projection_failed').slice(0, 120),
+        create_time: dep('now')()
+      }, 'coordination_projection_outbox')
+    } catch (outboxError) {
+      console.warn('coordination projection outbox skipped:', outboxError.message || outboxError)
+      return null
+    }
   }
 
   async function memoryCommitPreAcceptInvitationPatch(input = {}) {
@@ -236,6 +289,72 @@ function createDateApplicationPatchHandlers(overrides = {}) {
     return dep('list')('date_coordination_application', { coordination_id: Number(coordinationId) }, 200)
   }
 
+  async function replacePendingPreviewAtomically(coordinationId, userId, buildRecord) {
+    const key = `coordination:${Number(coordinationId)}:user:${Number(userId)}`
+    const transaction = Object.prototype.hasOwnProperty.call(overrides, 'transaction')
+      ? overrides.transaction
+      : (overrides.first && overrides.addWithId ? null : dep('transaction'))
+    const work = async (adapter) => {
+      const leaseId = `preview_lease_${Number(coordinationId)}_${Number(userId)}`
+      if (typeof adapter.byDocId === 'function' && typeof adapter.setByDocId === 'function') {
+        const lease = await adapter.byDocId('date_application_patch', leaseId)
+        await adapter.setByDocId('date_application_patch', leaseId, {
+          kind: 'preview_replacement_lease',
+          coordination_id: Number(coordinationId),
+          lease_key: key,
+          lease_revision: Number(lease && lease.lease_revision || 0) + 1,
+          acquired_at: adapter.now ? adapter.now() : dep('now')()
+        })
+      }
+      const current = await adapter.byId('date_coordination', Number(coordinationId))
+      if (!current) throw new Error('日期协调不存在')
+      const applicationRows = await adapter.list('date_coordination_application', {
+        coordination_id: Number(coordinationId)
+      }, 200)
+      const record = await buildRecord({ current, applicationRows, adapter })
+      const rows = await adapter.list('date_application_patch', {
+        coordination_id: Number(coordinationId),
+        user_id: Number(userId)
+      }, 100)
+      const pending = rows.filter((row) => ['pending_confirmation', 'pending_primary_selection'].includes(String(row.status || '')))
+      const created = await adapter.addWithId('date_application_patch', record, 'date_application_patch')
+      const timestamp = adapter.now ? adapter.now() : dep('now')()
+      for (const row of pending) {
+        await adapter.updateByDoc('date_application_patch', row, {
+          status: 'superseded',
+          superseded_at: timestamp,
+          superseded_reason: 'replaced_by_new_preview'
+        })
+      }
+      return publicPatch(created)
+    }
+
+    if (typeof transaction === 'function') {
+      let lastError
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        try {
+          return await transaction(work)
+        } catch (error) {
+          lastError = error
+          if (!transactionConflict(error) || attempt === 2) throw error
+          await new Promise((resolve) => setTimeout(resolve, 10 * (attempt + 1)))
+        }
+      }
+      throw lastError
+    }
+
+    return withLocalPreviewLock(key, async () => {
+      const adapter = {
+        now: dep('now'),
+        byId: dep('byId'),
+        list: dep('list'),
+        addWithId: dep('addWithId'),
+        updateByDoc: dep('updateByDoc')
+      }
+      return work(adapter)
+    })
+  }
+
   function latestForUser(rows, userId, maxVersion) {
     return rows
       .filter((row) => Number(row.user_id) === Number(userId) && Number(row.coordination_version || 0) <= Number(maxVersion))
@@ -319,22 +438,30 @@ function createDateApplicationPatchHandlers(overrides = {}) {
         }
       }
     }
-    const now = dep('now')()
-    const created = await dep('addWithId')('date_application_patch', {
-      coordination_id: Number(coordination.id),
-      session_id: Number(data.session_id || (session && session.id) || 0),
-      user_id: Number(user.id),
-      source_message_id: Number(data.source_message_id || 0),
-      base_version: version,
-      operation: 'modify',
-      status: preview.primary_resolution_required ? 'pending_primary_selection' : 'pending_confirmation',
-      changes,
-      preview,
-      primary_selection: preview.primary_selection || null,
-      ...(coordinationPartnerRequest ? { coordination_partner_request: coordinationPartnerRequest } : {}),
-      expires_at: addHours(now, 2)
-    }, 'date_application_patch')
-    return publicPatch(created)
+    return replacePendingPreviewAtomically(coordination.id, user.id, async ({ current, applicationRows, adapter }) => {
+      if (!owns(current, user && user.id)) throw new Error('无权修改该约会协调')
+      if (isExpiredInvitationRow(current)) throw invitationExpiredError()
+      if (Number(current.coordination_version || 1) !== version) throw new Error('约会条件已更新，请重新生成修改预览')
+      const currentMine = latestForUser(applicationRows, user.id, version)
+      if (!currentMine || JSON.stringify(currentMine.application || {}) !== JSON.stringify(mine.application || {})) {
+        throw new Error('约会条件已更新，请重新生成修改预览')
+      }
+      const timestamp = adapter.now ? adapter.now() : dep('now')()
+      return {
+        coordination_id: Number(current.id),
+        session_id: Number(data.session_id || (session && session.id) || 0),
+        user_id: Number(user.id),
+        source_message_id: Number(data.source_message_id || 0),
+        base_version: version,
+        operation: 'modify',
+        status: preview.primary_resolution_required ? 'pending_primary_selection' : 'pending_confirmation',
+        changes,
+        preview,
+        primary_selection: preview.primary_selection || null,
+        ...(coordinationPartnerRequest ? { coordination_partner_request: coordinationPartnerRequest } : {}),
+        expires_at: addHours(timestamp, 2)
+      }
+    })
   }
 
   async function createInitialPreviewForUser(data, user, session) {
@@ -371,21 +498,29 @@ function createDateApplicationPatchHandlers(overrides = {}) {
       affects_existing_proposal: false,
       will_notify_partner: true
     }
-    const now = dep('now')()
-    const created = await dep('addWithId')('date_application_patch', {
-      coordination_id: Number(coordination.id),
-      session_id: Number(data.session_id || (session && session.id) || 0),
-      user_id: Number(user.id),
-      source_message_id: Number(data.source_message_id || 0),
-      base_version: version,
-      operation: 'create',
-      status: 'pending_confirmation',
-      changes: application,
-      preview,
-      ...(coordinationPartnerRequest ? { coordination_partner_request: coordinationPartnerRequest } : {}),
-      expires_at: addHours(now, 2)
-    }, 'date_application_patch')
-    return publicPatch(created)
+    return replacePendingPreviewAtomically(coordination.id, user.id, async ({ current, applicationRows, adapter }) => {
+      if (!owns(current, user && user.id)) throw new Error('无权创建该约会申请')
+      if (WRITE_BLOCKED_STATUSES.includes(current.status) || !canModifyApplication(current, user, { hasOwnApplication: false })) {
+        throw new Error(terminalWriteError(current.status))
+      }
+      if (Number(current.coordination_version || 1) !== version) throw new Error('约会条件已更新，请重新生成修改预览')
+      const currentMine = latestForUser(applicationRows, user.id, version)
+      if (currentMine && currentMine.application) throw new Error('约会申请已经存在，请使用修改预览')
+      const timestamp = adapter.now ? adapter.now() : dep('now')()
+      return {
+        coordination_id: Number(current.id),
+        session_id: Number(data.session_id || (session && session.id) || 0),
+        user_id: Number(user.id),
+        source_message_id: Number(data.source_message_id || 0),
+        base_version: version,
+        operation: 'create',
+        status: 'pending_confirmation',
+        changes: application,
+        preview,
+        ...(coordinationPartnerRequest ? { coordination_partner_request: coordinationPartnerRequest } : {}),
+        expires_at: addHours(timestamp, 2)
+      }
+    })
   }
 
   async function notifyPartner(coordination, user, summary, proposalCreated, version) {
@@ -402,16 +537,24 @@ function createDateApplicationPatchHandlers(overrides = {}) {
         notification_status: 'skipped'
       }
     }
-    const published = await dep('publishCoordinationEvent')({
-      coordination,
-      event: {
-        event_type: 'preference_changed',
-        actor_user_id: Number(user.id),
-        coordination_version: Number(version),
-        has_proposal: Boolean(proposalCreated),
-        changed_dimensions: summary.changed_dimensions
-      }
-    })
+    const eventPayload = {
+      event_type: 'preference_changed',
+      actor_user_id: Number(user.id),
+      coordination_version: Number(version),
+      idempotency_suffix: `patch:${Number(summary.patch_id || 0)}`,
+      has_proposal: Boolean(proposalCreated),
+      changed_dimensions: summary.changed_dimensions,
+      patch_id: Number(summary.patch_id || 0),
+      relay_text: summary.relay_text
+    }
+    let published = null
+    let eventStatus = 'projected'
+    try {
+      published = await dep('publishCoordinationEvent')({ coordination, event: eventPayload })
+    } catch (err) {
+      eventStatus = 'pending'
+      await enqueueProjectionRetry('publish_coordination_event', coordination, eventPayload, err, 'patch_partner_event')
+    }
     let notificationStatus = 'projected'
     try {
       await dep('writeInboxNotification')({
@@ -427,24 +570,50 @@ function createDateApplicationPatchHandlers(overrides = {}) {
     } catch (err) {
       console.warn('inbox preference notification skipped:', err.message || err)
       notificationStatus = 'pending'
+      await enqueueProjectionRetry('write_inbox_notification', coordination, {
+        user_id: partnerId,
+        event_type: 'preference_changed',
+        coordination_version: Number(version),
+        title: '对方更新了可约条件',
+        body: '对方更新了可约时间，目前双方在共同条件上可能出现新的交集。请进入查看共同进度。',
+        changed_dimensions: summary.changed_dimensions || [],
+        stage: 'preference_changed'
+      }, err, 'patch_partner_notification')
     }
-    await dep('addWithId')('agent_notification_job', {
-      coordination_id: Number(coordination.id),
-      user_id: partnerId,
-      stage: 'preference_changed',
-      idempotency_key: `date:${coordination.id}:${partnerId}:preference_changed:v${version}`,
-      scheduled_at: dep('now')(),
-      status: 'pending',
-      attempts: 0
-    }, 'agent_notification_job')
-    const partnerMessage = published.messages.find((item) => Number(item.user_id) === partnerId)
+    try {
+      await dep('addWithId')('agent_notification_job', {
+        coordination_id: Number(coordination.id),
+        user_id: partnerId,
+        stage: 'preference_changed',
+        idempotency_key: `date:${coordination.id}:${partnerId}:preference_changed:v${version}`,
+        scheduled_at: dep('now')(),
+        status: 'pending',
+        attempts: 0
+      }, 'agent_notification_job')
+    } catch (err) {
+      await enqueueProjectionRetry('queue_reminder', coordination, {
+        coordination_id: Number(coordination.id),
+        user_id: partnerId,
+        stage: 'preference_changed',
+        idempotency_key: `date:${coordination.id}:${partnerId}:preference_changed:v${version}`,
+        scheduled_at: dep('now')(),
+        status: 'pending',
+        attempts: 0
+      }, err, 'patch_partner_notification_job')
+    }
+    const projectionPending = eventStatus === 'pending' || notificationStatus === 'pending'
+    const partnerMessage = published && published.messages
+      ? published.messages.find((item) => Number(item.user_id) === partnerId)
+      : null
     return {
       partner_id: partnerId,
       session_id: Number(partnerMessage && partnerMessage.session_id || 0),
       shareable_summary: summary,
-      partner_notified: notificationStatus === 'projected',
+      partner_notified: !projectionPending,
       notification_status: notificationStatus,
-      projection_pending: notificationStatus === 'pending'
+      event_status: eventStatus,
+      projection_pending: projectionPending,
+      partner_session_id: Number(partnerMessage && partnerMessage.session_id || 0)
     }
   }
 
@@ -529,15 +698,23 @@ function createDateApplicationPatchHandlers(overrides = {}) {
         applied_version: oldVersion,
         applied_at: dep('now')()
       })
-      await dep('publishCoordinationEvent')({
-        coordination: handedOff,
-        event: {
-          event_type: 'manual_handoff',
-          actor_user_id: Number(user.id),
-          coordination_version: oldVersion,
-          round_number: 5
-        }
-      })
+      const manualHandoffEvent = {
+        event_type: 'manual_handoff',
+        actor_user_id: Number(user.id),
+        coordination_version: oldVersion,
+        idempotency_suffix: `patch:${Number(patch.id)}`,
+        round_number: 5
+      }
+      let manualEventStatus = 'projected'
+      try {
+        await dep('publishCoordinationEvent')({
+          coordination: handedOff,
+          event: manualHandoffEvent
+        })
+      } catch (err) {
+        manualEventStatus = 'pending'
+        await enqueueProjectionRetry('publish_coordination_event', handedOff, manualHandoffEvent, err, 'patch_manual_handoff')
+      }
       return {
         patch: publicPatch(referredPatch),
         coordination_version: oldVersion,
@@ -545,8 +722,10 @@ function createDateApplicationPatchHandlers(overrides = {}) {
         business_state: handedOff.business_state,
         proposal_generated: false,
         applied: true,
-        partner_notified: true,
-        notification_status: 'projected'
+        partner_notified: manualEventStatus === 'projected',
+        notification_status: manualEventStatus,
+        event_status: manualEventStatus,
+        projection_pending: manualEventStatus === 'pending'
       }
     }
     const newVersion = oldVersion + 1
@@ -653,7 +832,9 @@ function createDateApplicationPatchHandlers(overrides = {}) {
         await dep('updateByDoc')('date_application_patch', patch, { status: 'pending_confirmation' })
         throw err
       }
-      const summary = shareableSummary(patch.preview)
+      const summary = Object.assign({}, shareableSummary(patch.preview), {
+        patch_id: Number(patch.id)
+      })
       const notification = await notifyPartner(committed.coordination, user, summary, false, newVersion)
       return {
         patch: publicPatch(committed.patch || patch),
@@ -664,6 +845,7 @@ function createDateApplicationPatchHandlers(overrides = {}) {
         applied: true,
         partner_notified: notification.partner_notified === true,
         notification_status: notification.notification_status || 'projected',
+        event_status: notification.event_status || 'projected',
         projection_pending: notification.projection_pending === true,
         skipped: notification.skipped || false,
         partner_session_id: notification.session_id
@@ -732,7 +914,9 @@ function createDateApplicationPatchHandlers(overrides = {}) {
       applied_version: newVersion,
       applied_at: dep('now')()
     })
-    const summary = shareableSummary(patch.preview)
+    const summary = Object.assign({}, shareableSummary(patch.preview), {
+      patch_id: Number(patch.id)
+    })
     const notification = await notifyPartner(updatedCoordination, user, summary, false, newVersion)
     return {
       patch: publicPatch(appliedPatch),
@@ -743,6 +927,7 @@ function createDateApplicationPatchHandlers(overrides = {}) {
       applied: true,
       partner_notified: notification.partner_notified === true,
       notification_status: notification.notification_status || 'projected',
+      event_status: notification.event_status || 'projected',
       projection_pending: notification.projection_pending === true,
       skipped: notification.skipped || false,
       partner_session_id: notification.session_id
@@ -798,5 +983,6 @@ module.exports = {
   confirm: handlers.confirm,
   cancel: handlers.cancel,
   createDateApplicationPatchHandlers,
-  claimPendingPatch
+  claimPendingPatch,
+  publicPatch
 }

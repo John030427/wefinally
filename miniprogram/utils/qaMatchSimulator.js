@@ -7,7 +7,7 @@ const QA_SCENARIOS = [
   { value: 'decline', label: '暂不方便' },
   { value: 'no_response', label: '不回应' },
   { value: 'accept_no_prefs', label: '接受未填偏好' },
-  { value: 'manual_step', label: '手动推进' }
+  { value: 'manual_step', label: '合成对象 · 约会流程手动推进' }
 ]
 
 function buildRequestId() {
@@ -20,6 +20,13 @@ function sleep(ms) {
 
 function qaEnabledFromProfile(profile) {
   return !!(profile && (profile.qa_test_run_enabled === true || profile.qa_test_run_enabled === 1))
+}
+
+function registrationReplayEnabledFromProfile(profile) {
+  return !!(profile && (
+    profile.qa_registration_replay_enabled === true
+    || profile.qa_registration_replay_enabled === 1
+  ))
 }
 
 async function refreshQaAccess(options = {}) {
@@ -39,6 +46,7 @@ async function refreshQaAccess(options = {}) {
   }
   return {
     enabled: qaEnabledFromProfile(profile),
+    registrationReplayEnabled: registrationReplayEnabledFromProfile(profile),
     profile
   }
 }
@@ -48,5 +56,6 @@ module.exports = {
   buildRequestId,
   sleep,
   refreshQaAccess,
-  qaEnabledFromProfile
+  qaEnabledFromProfile,
+  registrationReplayEnabledFromProfile
 }
