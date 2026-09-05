@@ -69,6 +69,9 @@ assert.strictEqual(canBootstrapCollection('system_counters'), true)
 assert.strictEqual(canBootstrapCollection('match_experience_feedback'), true)
 assert.strictEqual(canBootstrapCollection('date_experience_feedback'), true)
 assert.strictEqual(canBootstrapCollection('controlled_date_scenario_run'), true)
+assert.strictEqual(canBootstrapCollection('date_coordination_event_dedupe'), true)
+assert.strictEqual(canBootstrapCollection('coordination_notification_dedupe'), true)
+assert.strictEqual(canBootstrapCollection('date_submission_outbox'), true)
 assert.strictEqual(canBootstrapCollection('user'), false)
 assert.strictEqual(isMissingCollectionError(new Error('collection not exists: agent_sessions')), true)
 assert.strictEqual(isMissingCollectionError(new Error('permission denied')), false)
@@ -101,6 +104,31 @@ async function bootstrapChecks() {
     createCollection: async () => { deniedCreates += 1 }
   }), /collection not exists/)
   assert.strictEqual(deniedCreates, 0)
+
+  for (const [logicalName, physicalName] of [
+    ['date_coordination_event_dedupe', 'date_coordination_event_dedupe'],
+    ['coordination_notification_dedupe', 'coordination_notification_dedupe'],
+    ['date_submission_outbox', 'date_submission_outbox']
+  ]) {
+    let attempts = 0
+    let creates = 0
+    const result = await withCollectionBootstrap({
+      logicalName,
+      physicalName,
+      operation: async () => {
+        attempts += 1
+        if (attempts === 1) throw new Error(`collection not exists: ${physicalName}`)
+        return 'ready'
+      },
+      createCollection: async (name) => {
+        creates += 1
+        assert.strictEqual(name, physicalName)
+      }
+    })
+    assert.strictEqual(result, 'ready')
+    assert.strictEqual(attempts, 2)
+    assert.strictEqual(creates, 1)
+  }
 }
 
 bootstrapChecks().then(() => {
