@@ -106,6 +106,7 @@ async function publishCoordinationEvent(input = {}, overrides) {
       partner_user_id: participants.find((id) => id !== userId) || 0
     })
     const eventCard = buildCoordinationEventCard({
+      viewer_user_id: userId,
       event: Object.assign({}, event, {
         id: stored.id,
         coordination_id: coordination.id,

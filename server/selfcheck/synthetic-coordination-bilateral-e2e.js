@@ -48,7 +48,8 @@ function scriptedDateGraph(name, payload) {
     const data = result.data || {}
     if (result.ok === true && data.status === 'pending_confirmation' && Number(data.patchId || 0) > 0) {
       const patchId = Number(data.patchId)
-      const version = Number(data.coordinationVersion || payload.coordinationVersion || 1)
+      const version = Number(data.coordinationVersion || payload.coordinationVersion || payload.canonicalState && payload.canonicalState.coordination_version || 1)
+      const coordinationId = Number(payload.coordinationId || payload.canonicalState && payload.canonicalState.coordination_id || 0)
       return {
         result: {
           success: true,
@@ -59,13 +60,13 @@ function scriptedDateGraph(name, payload) {
             coordinationVersion: version,
             pendingPreview: {
               patchId,
-              baseVersion: Number(payload.coordinationVersion || 1),
+              baseVersion: version,
               candidatePlan: payload.canonicalState && payload.canonicalState.current_plan || {},
               candidateChanges: {},
               contextRef: {
                 type: 'patch_preview',
-                coordination_id: Number(payload.coordinationId),
-                coordination_version: Number(payload.coordinationVersion || 1),
+                coordination_id: coordinationId,
+                coordination_version: version,
                 patch_id: patchId
               }
             }
@@ -97,9 +98,33 @@ function scriptedDateGraph(name, payload) {
       }
     }
   }
+  if (payload.userText === '可以' && payload.canonicalState && payload.canonicalState.current_proposal_id) {
+    return {
+      result: {
+        success: true,
+        data: Object.assign({}, base, {
+          status: 'awaiting_tool',
+          phase: 'awaiting_tool',
+          replyDraft: '正在提交你确认的当前方案。',
+          pendingAction: {
+            type: 'confirm_date_application',
+            arguments: {
+              coordinationId: Number(payload.coordinationId),
+              coordinationVersion: Number(payload.coordinationVersion),
+              proposalId: Number(payload.canonicalState.current_proposal_id),
+              contextRef: payload.contextRef
+            },
+            requiresConfirmation: false
+          }
+        })
+      }
+    }
+  }
   const changes = payload.userText === '周六下午也可以'
     ? { date: SAT, period: 'afternoon' }
-    : (payload.userText === '区域也可以换成车公庙' ? { area: '车公庙' } : null)
+    : (payload.userText === '区域也可以换成车公庙'
+      ? { area: '车公庙' }
+      : (payload.userText === '火锅更好' ? { activity_detail: '火锅更好' } : null))
   if (changes) {
     return {
       result: {
@@ -249,6 +274,10 @@ async function main() {
   const agent = createAgentHandlers({
     currentUser, first: db.first, list: db.list, byId: db.byId, addWithId: db.addWithId, updateByDoc: db.updateByDoc,
     claimPendingPatch: db.claimPendingPatch, now,
+    transaction: null,
+    commitConfirmation: db.commitConfirmation,
+    publishCoordinationEvent: publishEvent,
+    writeInboxNotification: writeInbox,
     env: Object.assign({}, process.env, { LANGGRAPH_ENABLED: 'true', LANGGRAPH_ACTOR_SECRET: 'phase-c-secret' }),
     invokeGraphFunction: scriptedDateGraph
   })
@@ -354,9 +383,17 @@ async function main() {
   const partnerSession = await agent.createSession({ agent_type: 'date_coordinator', coordination_id: 50 }, { userIndex: 1 })
   const partnerHistory = await agent.messages({ id: partnerSession.id }, { userIndex: 1 })
   assert.ok(partnerHistory.messages.some((row) => row.event_card && row.event_card.patch_id === Number(first.pending_preview.patchId)), 'B AI session must expose the committed patch event card')
-  const afterB = await coordination.confirmProposal({ coordination_id: 50, proposal_id: proposalId, coordination_version: 3, decision: 'confirm' }, { userIndex: 1 })
-  assert.strictEqual(afterB.status, STATUS.ARRANGED, 'B confirm => arranged')
+  const afterB = await agent.send({
+    session_id: partnerSession.id,
+    message: '可以',
+    context_ref: { type: 'proposal', coordination_id: 50, coordination_version: 3, proposal_id: proposalId },
+    client_request_id: 'bilateral-b-confirm-v3'
+  }, { userIndex: 1 })
+  assert.strictEqual(afterB.provider, 'langgraph', 'B current proposal confirmation must use Graph chat')
+  assert.match(afterB.reply, /协调事实已更新|已确认这次调整/)
+  assert.strictEqual(db.tables.date_coordination[0].status, STATUS.ARRANGED, 'B chat confirm => arranged')
   assert.strictEqual(db.tables.date_coordination[0].final_proposal_id, Number(proposalId))
+  assert.ok(db.tables.date_coordination_confirmation.some((row) => Number(row.user_id) === 2 && Number(row.proposal_id) === Number(proposalId)), 'B chat confirmation row exists')
   assert.ok(db.tables.agent_message.some((row) => Number(row.user_id) === 1 && row.event_type === 'proposal_confirmed' && String(row.content).includes('对方已确认')), 'A AI session must receive B confirmation')
 
   // ======== B: counter proposal is projected back to A ========
@@ -366,15 +403,30 @@ async function main() {
     { id: 601, coordination_id: 60, user_id: 1, coordination_version: 3, application: app({ activities: ['吃饭'] }) },
     { id: 602, coordination_id: 60, user_id: 2, coordination_version: 3, application: app({ activities: ['吃饭'] }) }
   )
-  const counterPreview = await patches.createPreviewForUser({
-    coordination_id: 60,
-    changes: { activities: ['看展'] }
-  }, db.tables.user[1])
-  const counterApplied = await patches.confirmForUser({ coordination_id: 60, patch_id: counterPreview.id }, db.tables.user[1])
-  assert.strictEqual(counterApplied.coordination_version, 4, 'B counter confirmation must create a new canonical version')
+  const counterSession = await agent.createSession({ agent_type: 'date_coordinator', coordination_id: 60 }, { userIndex: 1 })
+  const counterPreviewChat = await agent.send({
+    session_id: counterSession.id,
+    message: '火锅更好',
+    client_request_id: 'bilateral-b-counter-preview-v3'
+  }, { userIndex: 1 })
+  assert.ok(counterPreviewChat.pending_preview, 'B counter chat must create a preview')
+  const counterApplied = await agent.send({
+    session_id: counterSession.id,
+    message: '确认修改',
+    context_ref: counterPreviewChat.pending_preview.contextRef,
+    client_request_id: 'bilateral-b-counter-confirm-v3'
+  }, { userIndex: 1 })
+  assert.strictEqual(counterApplied.provider, 'langgraph', 'B counter confirmation must use Graph chat')
+  assert.strictEqual(db.tables.date_coordination.find((row) => Number(row.id) === 60).coordination_version, 4, 'B counter confirmation must create a new canonical version')
   const counterRelay = db.tables.agent_message.find((row) => Number(row.user_id) === 1 && Number(row.coordination_id) === 60 && row.event_type === 'preference_changed')
-  assert.ok(counterRelay && String(counterRelay.content).includes('看展'), 'A AI must receive the concrete B counter relay')
+  assert.ok(counterRelay && String(counterRelay.content).includes('火锅更好'), 'A AI must receive the concrete B counter relay')
   assert.strictEqual(String(counterRelay.content).includes('吃饭'), false, 'counter relay must not copy the old private source text')
+  const counterHistory = await agent.messages({ id: counterSession.id }, { userIndex: 1 })
+  const counterPatchMessages = counterHistory.messages.filter((row) => row.patch_preview)
+  assert.ok(counterPatchMessages.length >= 1, 'counter preview must remain in chat history')
+  const latestCounterPatch = counterPatchMessages[counterPatchMessages.length - 1]
+  assert.ok(['applied', 'superseded', 'cancelled'].includes(String(latestCounterPatch.patch_preview.status)), 'history must hydrate the current counter patch status')
+  assert.strictEqual(latestCounterPatch.context_ref, null, 'applied counter patch must not resurrect an actionable context')
 
   // ======== privacy ========
   const bMessages = db.tables.agent_message.filter((r) => r.user_id === 2)

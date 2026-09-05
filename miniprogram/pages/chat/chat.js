@@ -71,6 +71,7 @@ function normalizePatchPreview(raw, requiresConfirmation) {
   const preview = patch && patch.preview
   if (!patch || !preview || !Array.isArray(preview.changed_fields)) return null
   const status = patch.status || 'pending_confirmation'
+  const actionable = ['pending_confirmation', 'pending_primary_selection'].includes(String(status))
   const primaryResolutionRequired = Boolean(preview.primary_resolution_required) || status === 'pending_primary_selection'
   return {
     id: String(patch.id || patch.patch_id || ''),
@@ -79,7 +80,7 @@ function normalizePatchPreview(raw, requiresConfirmation) {
     title: patch.operation === 'create' ? '💌 约会申请发送预览' : '💗 约会条件修改预览',
     confirmLabel: patch.operation === 'create' ? '确认发送' : '确认修改',
     cancelLabel: patch.operation === 'create' ? '暂不发送' : '暂不修改',
-    requiresConfirmation: !primaryResolutionRequired && (
+    requiresConfirmation: actionable && !primaryResolutionRequired && (
       requiresConfirmation === true
       || patch.requires_confirmation === true
       || status === 'pending_confirmation'
@@ -105,7 +106,7 @@ function normalizePatchPreview(raw, requiresConfirmation) {
     }),
     affectsExistingProposal: Boolean(preview.affects_existing_proposal),
     willNotifyPartner: Boolean(preview.will_notify_partner),
-    contextRef: patch.context_ref || patch.contextRef || preview.context_ref || preview.contextRef || (
+    contextRef: actionable && (patch.context_ref || patch.contextRef || preview.context_ref || preview.contextRef || (
       patch.id && patch.base_version
         ? {
           type: 'patch_preview',
@@ -114,7 +115,7 @@ function normalizePatchPreview(raw, requiresConfirmation) {
           patch_id: Number(patch.id)
         }
         : null
-    )
+    ))
   }
 }
 
@@ -217,9 +218,62 @@ Page({
   },
 
   _waitingTimer: null,
+  _reconcileTimer: null,
+  _reconcileInFlight: false,
 
   onUnload() {
     this.clearWaitingTimers()
+    this.stopCoordinatorReconcile()
+  },
+
+  onShow() {
+    this.pageVisible = true
+    if (this.data.agentType === AGENT_TYPES.DATE_COORDINATOR && this.data.sessionReady) {
+      this.reconcileCoordinatorMessages()
+      this.startCoordinatorReconcile()
+    }
+  },
+
+  onHide() {
+    this.pageVisible = false
+    this.stopCoordinatorReconcile()
+  },
+
+  stopCoordinatorReconcile() {
+    if (this._reconcileTimer) {
+      clearInterval(this._reconcileTimer)
+      this._reconcileTimer = null
+    }
+  },
+
+  startCoordinatorReconcile() {
+    this.stopCoordinatorReconcile()
+    this._reconcileTimer = setInterval(() => {
+      if (this.pageVisible !== false) this.reconcileCoordinatorMessages()
+    }, 15000)
+  },
+
+  async reconcileCoordinatorMessages() {
+    if (this._reconcileInFlight || this.data.sending || this.data.agentType !== AGENT_TYPES.DATE_COORDINATOR) return
+    this._reconcileInFlight = true
+    try {
+      const messages = await this.loadAgentHistory()
+      if (!messages.length) return
+      const currentIds = this.data.messages.map((item) => item && item.id).join(',')
+      const nextIds = messages.map((item) => item && item.id).join(',')
+      if (currentIds !== nextIds || JSON.stringify(this.data.messages) !== JSON.stringify(messages)) {
+        this.setData({
+          messages,
+          activeContextRef: activeContextFromMessages(messages),
+          scrollToView: `msg-${messages[messages.length - 1].id}`
+        })
+      }
+    } catch (err) {
+      // Reconcile is presentation refresh only; the canonical backend remains
+      // authoritative and a transient poll error must not create a turn.
+    } finally {
+      this._reconcileInFlight = false
+    }
   },
 
   clearWaitingTimers() {
@@ -375,6 +429,9 @@ Page({
       activeContextRef: activeContextFromMessages(messages),
       scrollToView: `msg-${messages[messages.length - 1].id}`
     })
+    if (this.data.agentType === AGENT_TYPES.DATE_COORDINATOR && this.pageVisible !== false) {
+      this.startCoordinatorReconcile()
+    }
     this.autoSendHandoffMessage()
   },
 
@@ -395,19 +452,21 @@ Page({
     this.setData({ inputText: e.detail.value })
   },
 
-  async sendAgentMessage(text) {
+  async sendAgentMessage(text, clientRequestId) {
     const sessionId = await this.ensureSession()
     return post(`${API_PATHS.AGENT_SESSIONS}/${sessionId}/messages`, Object.assign({
       content: text,
       message: text,
       agent_type: this.data.agentType,
+      client_request_id: clientRequestId,
     }, contextRefPayload(this.data.activeContextRef), this.data.handoffContext || {}), { showError: false })
   },
 
-  async sendLegacyMessage(text) {
+  async sendLegacyMessage(text, clientRequestId) {
     return post(API_PATHS.CHAT_SEND, Object.assign({
       message: text,
       content: text,
+      client_request_id: clientRequestId,
     }, contextRefPayload(this.data.activeContextRef), this.data.handoffContext || {}), { showError: false })
   },
 
@@ -442,10 +501,10 @@ Page({
     try {
       let reply
       try {
-        reply = await this.sendAgentMessage(text)
+        reply = await this.sendAgentMessage(text, requestId)
       } catch (err) {
         if (this.data.agentType !== AGENT_TYPES.PLATFORM_SERVICE) throw err
-        reply = await this.sendLegacyMessage(text)
+        reply = await this.sendLegacyMessage(text, requestId)
       }
       const response = typeof reply === 'object' && reply !== null
         ? reply
@@ -476,6 +535,7 @@ Page({
       if (completed.status === 'error') {
         wx.showToast({ title: completed.errorText, icon: 'none', duration: 3000 })
       }
+      if (this.data.agentType === AGENT_TYPES.DATE_COORDINATOR) await this.reconcileCoordinatorMessages()
     } catch (err) {
       this.clearWaitingTimers()
       const waitMs = elapsedAtLeast(startedAt, MIN_LOADER_MS)
@@ -519,7 +579,7 @@ Page({
     await this.runAssistantTurn({
       text,
       pendingMessageId: messageId,
-      requestId: `retry_${Date.now()}`,
+      requestId: message.requestId,
       appendUser: false
     })
   },

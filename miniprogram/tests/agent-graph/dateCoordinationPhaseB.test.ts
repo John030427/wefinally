@@ -473,6 +473,38 @@ test('preview confirmation reply is grounded in backend projection status', asyn
   assert.match(pending.replyDraft, /已确认这次调整，正在向对方同步/)
 })
 
+test('current plan confirmation reply is grounded only when backend returns applied=true', async () => {
+  const graph = buildDateCoordinationGraph({
+    checkpointer: new MemorySaver(),
+    model: command({
+      type: 'CONFIRM_CURRENT_PLAN',
+      target_version: 3,
+      context_ref: { type: 'proposal', coordination_id: 716, coordination_version: 3, proposal_id: 99 }
+    })
+  })
+  const action = {
+    type: 'confirm_date_application',
+    arguments: { coordinationId: 716, coordinationVersion: 3, proposalId: 99 },
+    requiresConfirmation: false
+  } as const
+  const result = await graph.invoke(state(canonical(), {
+    pendingAction: action,
+    pendingTool: action,
+    contextRef: { type: 'proposal', coordination_id: 716, coordination_version: 3, proposal_id: 99 },
+    resumeToolResult: {
+      ok: true,
+      data: {
+        status: 'arranged',
+        applied: true,
+        partnerNotified: true,
+        coordinationVersion: 3
+      }
+    }
+  }), { configurable: { thread_id: 'wf_thread_current_plan_grounded_confirm' } })
+  assert.match(result.replyDraft, /已确认这次调整/)
+  assert.doesNotMatch(result.replyDraft, /还没有生效/)
+})
+
 test('combined preview confirmation carries the partner request into the commit tool', async () => {
   const graph = buildDateCoordinationGraph({
     checkpointer: new MemorySaver(),

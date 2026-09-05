@@ -112,6 +112,7 @@ function defaultDeps() {
     byId: db.byId,
     addWithId: db.addWithId,
     updateByDoc: db.updateByDoc,
+    transaction: db.transaction,
     claimIfStatus: db.claimIfStatus,
     acquireFixtureResponseJob: db.acquireFixtureResponseJob,
     upsertConfirmation,
@@ -833,6 +834,9 @@ function createDateCoordinationHandlers(overrides = {}) {
       byId: dep('byId'),
       addWithId: dep('addWithId'),
       updateByDoc: dep('updateByDoc'),
+      transaction: Object.prototype.hasOwnProperty.call(overrides, 'transaction')
+        ? dep('transaction')
+        : (overrides.first && overrides.addWithId ? null : dep('transaction')),
       now: dep('now'),
       publishCoordinationEvent: (input) => dep('publishCoordinationEvent')(input),
       writeInboxNotification: (input) => dep('writeInboxNotification')(input),
@@ -1430,7 +1434,10 @@ function createDateCoordinationHandlers(overrides = {}) {
       if (completed && completed.decision === 'confirm'
         && Number(completed.proposal_id) === Number(proposal.id)
         && Number(coordination.final_proposal_id) === Number(proposal.id)) {
-        return detailFor(coordination, user)
+        return Object.assign(await detailFor(coordination, user), {
+          applied: true,
+          partner_notified: true
+        })
       }
     }
     const decision = String(data.decision || '')
@@ -1555,9 +1562,15 @@ function createDateCoordinationHandlers(overrides = {}) {
           proposal
         }
       })
-      return detailFor(updated, user)
+      return Object.assign(await detailFor(updated, user), {
+        applied: true,
+        partner_notified: true
+      })
     }
-    return detailFor(updated, user)
+    return Object.assign(await detailFor(updated, user), {
+      applied: true,
+      partner_notified: true
+    })
   }
 
   async function recoordinate(data, wxContext) {

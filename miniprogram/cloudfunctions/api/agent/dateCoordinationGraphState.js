@@ -276,6 +276,16 @@ function buildDateCoordinationGraphInput(coordination, applications, user, optio
     waitingInviteePreference,
     party
   })
+  const persistedProposal = (options.proposals || [])
+    .filter((proposal) => Number(proposal.coordination_version || 0) === version)
+    .filter((proposal) => proposal.status === 'active' || Number(proposal.id) === Number(coordination.final_proposal_id || 0))
+    .sort((left, right) => Number(right.id || 0) - Number(left.id || 0))[0] || null
+  if (persistedProposal && canonicalOverlap.proposal) {
+    canonicalOverlap.proposal = Object.assign({}, canonicalOverlap.proposal, {
+      ...toCanonicalCoordinationPlan(persistedProposal),
+      proposal_id: Number(persistedProposal.id)
+    })
+  }
   const confirmations = options.confirmations || []
   const snapshot = confirmationSnapshot(coordination, confirmations, user)
   const actionRequired = canonicalOverlap.hasOverlap

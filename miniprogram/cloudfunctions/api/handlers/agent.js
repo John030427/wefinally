@@ -1,3 +1,4 @@
+const crypto = require('crypto')
 const { AGENT_TYPES, isAgentType } = require('../agent/types')
 const { RISK, classifyRisk, sanitizeOutput } = require('../agent/safety')
 const { buildContext } = require('../agent/context')
@@ -32,6 +33,7 @@ const { buildCoordinationEventCard } = require('../lib/coordinationProjection')
 
 const FREE_DAILY_LIMIT = 5
 const VIP_DAILY_LIMIT = 30
+const localClientRequestClaims = new Map()
 
 function dateCoordinatorFallback(code) {
   const rawCode = String(code || 'graph_unavailable')
@@ -58,6 +60,13 @@ function graphDiagnosticFields(input = {}) {
   }
 }
 
+function clientRequestDocumentId(sessionId, userId, clientRequestId) {
+  return `agent-message-dedupe-${crypto.createHash('sha256')
+    .update(`${Number(sessionId)}:${Number(userId)}:${String(clientRequestId)}`)
+    .digest('hex')
+    .slice(0, 40)}`
+}
+
 function defaultDeps() {
   const db = require('../lib/db')
   const cloud = require('wx-server-sdk')
@@ -68,7 +77,14 @@ function defaultDeps() {
     byId: db.byId,
     addWithId: db.addWithId,
     updateByDoc: db.updateByDoc,
+    transaction: db.transaction,
     claimPendingPatch,
+    commitConfirmation: db.commitCoordinationConfirmation,
+    publishCoordinationEvent,
+    writeInboxNotification(input) {
+      const { notifyInbox } = require('../lib/coordinationInbox')
+      return notifyInbox(input)
+    },
     now: db.now,
     generateDecision,
     env: process.env,
@@ -88,7 +104,13 @@ function publicSession(row) {
   }
 }
 
-function publicMessage(row) {
+function patchPreviewId(value) {
+  const patch = value && typeof value === 'object' ? value : {}
+  const id = Number(patch.id || patch.patch_id || 0)
+  return Number.isSafeInteger(id) && id > 0 ? id : 0
+}
+
+function publicMessage(row, facts = {}) {
   const result = {
     id: row.id,
     session_id: row.session_id,
@@ -97,10 +119,38 @@ function publicMessage(row) {
     content: sanitizeOutput(String(row.content || '')).slice(0, 2000),
     create_time: row.create_time
   }
-  if (row.patch_preview) result.patch_preview = sanitizeOutput(row.patch_preview)
-  if (Object.prototype.hasOwnProperty.call(row, 'context_ref')) result.context_ref = row.context_ref ? sanitizeOutput(row.context_ref) : null
+  const patchFact = facts.patchFacts && facts.patchFacts.get(patchPreviewId(row.patch_preview))
+  if (row.patch_preview) {
+    result.patch_preview = sanitizeOutput(patchFact
+      ? Object.assign({}, row.patch_preview, publicPatch(patchFact), {
+        status: patchFact.status,
+        preview: patchFact.preview
+      })
+      : row.patch_preview)
+  }
+  if (Object.prototype.hasOwnProperty.call(row, 'context_ref')) {
+    const patchStatus = patchFact && String(patchFact.status || '')
+    const patchIsActionable = ['pending_confirmation', 'pending_primary_selection'].includes(patchStatus)
+    result.context_ref = patchFact && patchPreviewId(row.patch_preview) > 0 && !patchIsActionable
+      ? null
+      : (row.context_ref ? sanitizeOutput(row.context_ref) : null)
+  }
   if (row.handoff) result.handoff = sanitizeOutput(row.handoff)
-  if (row.event_card) result.event_card = sanitizeOutput(row.event_card)
+  const eventFact = facts.eventFacts && facts.eventFacts.get(Number(row.coordination_event_id || 0))
+  if (eventFact) {
+    const eventCard = buildCoordinationEventCard({
+      viewer_user_id: Number(row.user_id || 0),
+      event: Object.assign({}, eventFact, { id: Number(eventFact.id || row.coordination_event_id || 0) }),
+      content: result.content
+    })
+    if (patchFact
+      && !['pending_confirmation', 'pending_primary_selection'].includes(String(patchFact.status || ''))
+      && eventCard.context_ref
+      && eventCard.context_ref.type === 'patch_preview') {
+      eventCard.context_ref = null
+    }
+    result.event_card = sanitizeOutput(eventCard)
+  } else if (row.event_card) result.event_card = sanitizeOutput(row.event_card)
   else if (row.coordination_event_id || row.coordination_event_key) {
     result.event_card = sanitizeOutput(buildCoordinationEventCard({
       event: row,
@@ -131,7 +181,7 @@ function riskReply(category) {
 function createAgentHandlers(overrides = {}) {
   let defaults = null
   function dep(name) {
-    if (overrides[name]) return overrides[name]
+    if (Object.prototype.hasOwnProperty.call(overrides, name)) return overrides[name]
     if (!defaults) defaults = defaultDeps()
     return defaults[name]
   }
@@ -170,6 +220,67 @@ function createAgentHandlers(overrides = {}) {
       }
     }
     return saved
+  }
+
+  async function claimClientRequest(session, user, clientRequestId) {
+    const normalized = String(clientRequestId || '').trim().slice(0, 120)
+    if (!normalized) return null
+    const documentId = clientRequestDocumentId(session.id, user.id, normalized)
+    const transaction = Object.prototype.hasOwnProperty.call(overrides, 'transaction')
+      ? overrides.transaction
+      : (overrides.first && overrides.addWithId ? null : dep('transaction'))
+    const work = async (adapter) => {
+      const existing = await adapter.byDocId('agent_message_dedupe', documentId)
+      if (existing) return { claimed: false, row: existing }
+      const row = {
+        session_id: Number(session.id),
+        user_id: Number(user.id),
+        client_request_id: normalized,
+        status: 'processing',
+        response: null,
+        create_time: adapter.now ? adapter.now() : dep('now')()
+      }
+      await adapter.setByDocId('agent_message_dedupe', documentId, row)
+      return { claimed: true, row: Object.assign({ _id: documentId }, row) }
+    }
+    if (typeof transaction === 'function') return transaction(work)
+    const previous = localClientRequestClaims.get(documentId)
+    if (previous) return { claimed: false, row: previous }
+    const row = {
+      _id: documentId,
+      session_id: Number(session.id),
+      user_id: Number(user.id),
+      client_request_id: normalized,
+      status: 'processing',
+      response: null,
+      create_time: dep('now')()
+    }
+    localClientRequestClaims.set(documentId, row)
+    return { claimed: true, row }
+  }
+
+  async function completeClientRequest(claim, response) {
+    if (!claim || !claim.row || !claim.row._id) return response
+    const transaction = Object.prototype.hasOwnProperty.call(overrides, 'transaction')
+      ? overrides.transaction
+      : (overrides.first && overrides.addWithId ? null : dep('transaction'))
+    const work = async (adapter) => {
+      const current = await adapter.byDocId('agent_message_dedupe', claim.row._id)
+      if (!current) return response
+      await adapter.setByDocId('agent_message_dedupe', claim.row._id, Object.assign({}, current, {
+        status: 'completed',
+        response,
+        completed_at: adapter.now ? adapter.now() : dep('now')()
+      }))
+      return response
+    }
+    if (typeof transaction === 'function') return transaction(work)
+    localClientRequestClaims.set(claim.row._id, Object.assign({}, claim.row, {
+      status: 'completed',
+      response,
+      completed_at: dep('now')()
+    }))
+    return response
   }
 
   async function createSession(data, wxContext) {
@@ -231,7 +342,17 @@ function createAgentHandlers(overrides = {}) {
     const session = await ownedSession(data.id || data.session_id || data.sessionId, user)
     const rows = await dep('list')('agent_message', { session_id: session.id }, 100)
     rows.sort((a, b) => Number(a.id || 0) - Number(b.id || 0))
-    return { session: publicSession(session), messages: rows.map(publicMessage) }
+    const patchIds = Array.from(new Set(rows.map((row) => patchPreviewId(row.patch_preview)).filter(Boolean)))
+    const eventIds = Array.from(new Set(rows.map((row) => Number(row.coordination_event_id || 0)).filter((id) => id > 0)))
+    const [patchRows, eventRows] = await Promise.all([
+      Promise.all(patchIds.map((id) => dep('byId')('date_application_patch', id).catch(() => null))),
+      Promise.all(eventIds.map((id) => dep('byId')('date_coordination_event', id).catch(() => null)))
+    ])
+    const facts = {
+      patchFacts: new Map(patchRows.filter(Boolean).map((row) => [Number(row.id), row])),
+      eventFacts: new Map(eventRows.filter(Boolean).map((row) => [Number(row.id), row]))
+    }
+    return { session: publicSession(session), messages: rows.map((row) => publicMessage(row, facts)) }
   }
 
   async function createTicketFor(session, user, input) {
@@ -313,6 +434,20 @@ function createAgentHandlers(overrides = {}) {
     const session = await ownedSession(data.session_id || data.sessionId, user)
     const content = String(data.message || data.content || '').trim()
     if (!content) throw new Error('请输入内容')
+    const clientRequestId = String(data.client_request_id || data.clientRequestId || '').trim().slice(0, 120)
+    const requestClaim = clientRequestId ? await claimClientRequest(session, user, clientRequestId) : null
+    if (requestClaim && !requestClaim.claimed) {
+      if (requestClaim.row && requestClaim.row.status === 'completed' && requestClaim.row.response) return requestClaim.row.response
+      return {
+        session_id: session.id,
+        agent_type: session.agent_type,
+        reply: '上一次请求仍在处理中，请稍后刷新协调状态。',
+        provider: 'deduplicated',
+        deduplicated: true,
+        pending: true
+      }
+    }
+    const finalize = (response) => completeClientRequest(requestClaim, response)
     const rawContextRef = data.context_ref || data.contextRef
     const contextRef = rawContextRef ? normalizeContextRef(rawContextRef) : null
     if (rawContextRef && (!contextRef || (session.agent_type === AGENT_TYPES.DATE_COORDINATOR
@@ -320,13 +455,13 @@ function createAgentHandlers(overrides = {}) {
       throw new Error('invalid_context_ref')
     }
     if (session.status === 'manual_pending') {
-      return {
+      return finalize({
         session_id: session.id,
         agent_type: session.agent_type,
         reply: '你的会话已转人工客服，请耐心等待工作人员回复。',
         manual_pending: true,
         handoff: buildHumanServiceHandoff()
-      }
+      })
     }
     if (session.agent_type === AGENT_TYPES.DATE_COORDINATOR && Number(session.coordination_id || 0)) {
       const coordination = await dep('byId')('date_coordination', Number(session.coordination_id))
@@ -339,23 +474,26 @@ function createAgentHandlers(overrides = {}) {
       if (coordination && coordination.status === 'inviting_partner' && isInvitee(coordination, user)) {
         const reply = inviteeCoordinatorBlockedError()
         await saveMessage(session, user, 'assistant', reply)
-        return { session_id: session.id, agent_type: session.agent_type, reply, declined: false }
+        return finalize({ session_id: session.id, agent_type: session.agent_type, reply, declined: false })
       }
       if (coordination && isTerminalCoordination(coordination.status) && !canWriteCoordinatorAction(coordination, user, { hasOwnApplication: Boolean(ownApp) })) {
         const role = isInitiator(coordination, user) ? 'initiator' : 'invitee'
         const reply = coordinatorWelcomeText(coordination, role) || terminalWriteError(coordination.status)
         await saveMessage(session, user, 'assistant', reply)
-        return {
+        return finalize({
           session_id: session.id,
           agent_type: session.agent_type,
           reply,
           declined: coordination.status === 'invitation_declined',
           read_only: true
-        }
+        })
       }
     }
     if (session.agent_type === AGENT_TYPES.LOVE_ADVISOR) await enforceLoveQuota(user)
-    const userMessage = await saveMessage(session, user, 'user', content, contextRef ? { context_ref: contextRef } : {})
+    const userMessage = await saveMessage(session, user, 'user', content, Object.assign(
+      contextRef ? { context_ref: contextRef } : {},
+      clientRequestId ? { client_request_id: clientRequestId } : {}
+    ))
 
     const risk = classifyRisk(content)
     if (!risk.allowed) {
@@ -364,7 +502,7 @@ function createAgentHandlers(overrides = {}) {
       }
       const reply = riskReply(risk.category)
       await saveMessage(session, user, 'assistant', reply, { risk_level: risk.category })
-      return { session_id: session.id, agent_type: session.agent_type, reply, risk_level: risk.category, manual_pending: risk.category === RISK.HIGH_RISK }
+      return finalize({ session_id: session.id, agent_type: session.agent_type, reply, risk_level: risk.category, manual_pending: risk.category === RISK.HIGH_RISK })
     }
 
     const graphConfig = readLangGraphConfig(dep('env'))
@@ -418,14 +556,14 @@ function createAgentHandlers(overrides = {}) {
             error_code: graphResult.errorCode || ''
           }, 'agent_run')
           await saveMessage(session, user, 'assistant', reply, { graph_phase: graphResult.phase })
-          return {
+          return finalize({
             session_id: session.id,
             agent_type: session.agent_type,
             reply,
             provider: 'langgraph',
             manual_pending: graphResult.status === 'manual_pending',
             risk_level: 'safe'
-          }
+          })
         }
       } catch (_) {
         // A typed graph/config/tool failure deliberately falls through to the legacy path.
@@ -437,20 +575,27 @@ function createAgentHandlers(overrides = {}) {
       if (!coordination || ![Number(coordination.user_a_id), Number(coordination.user_b_id)].includes(Number(user.id))) {
         throw new Error('无权读取该约会协调任务')
       }
-      const coordinationHandlers = createDateCoordinationHandlers({
+      const coordinationHandlerDeps = {
         first: dep('first'),
         list: dep('list'),
         byId: dep('byId'),
         addWithId: dep('addWithId'),
         updateByDoc: dep('updateByDoc'),
         now: dep('now')
-      })
+      }
+      for (const name of ['commitConfirmation', 'publishCoordinationEvent', 'writeInboxNotification']) {
+        if (Object.prototype.hasOwnProperty.call(overrides, name)) coordinationHandlerDeps[name] = overrides[name]
+      }
+      const coordinationHandlers = createDateCoordinationHandlers(coordinationHandlerDeps)
       const patchHandlers = createDateApplicationPatchHandlers({
         first: dep('first'),
         list: dep('list'),
         byId: dep('byId'),
         addWithId: dep('addWithId'),
         updateByDoc: dep('updateByDoc'),
+        transaction: Object.prototype.hasOwnProperty.call(overrides, 'transaction')
+          ? dep('transaction')
+          : (overrides.first && overrides.addWithId ? null : dep('transaction')),
         claimPendingPatch: dep('claimPendingPatch'),
         now: dep('now'),
         saveApplicationForUser: coordinationHandlers.saveApplicationForUser
@@ -554,7 +699,13 @@ function createAgentHandlers(overrides = {}) {
             proposal_id: Number(args.proposalId || 0),
             decision: 'confirm'
           }, user)
-          return { ok: true, data: { status: confirmed.status, coordinationVersion: Number(confirmed.coordination_version || args.coordinationVersion), applicationSent: false, partnerNotified: true } }
+          return { ok: true, data: {
+            status: confirmed.status,
+            coordinationVersion: Number(confirmed.coordination_version || args.coordinationVersion),
+            applicationSent: false,
+            applied: confirmed.applied === true,
+            partnerNotified: confirmed.partner_notified !== false
+          } }
         },
         reject_date_application: async (args) => {
           const rejected = await coordinationHandlers.confirmProposalForUser({
@@ -621,6 +772,9 @@ function createAgentHandlers(overrides = {}) {
       const allApplications = await dep('list')('date_coordination_application', {
         coordination_id: Number(coordination.id)
       }, 200)
+      const allProposals = await dep('list')('date_coordination_proposal', {
+        coordination_id: Number(coordination.id)
+      }, 50).catch(() => [])
       const confirmations = await dep('list')('date_coordination_confirmation', {
         coordination_id: Number(coordination.id)
       }, 50).catch(() => [])
@@ -666,12 +820,14 @@ function createAgentHandlers(overrides = {}) {
         const graphInput = buildDateCoordinationGraphInput(coordination, allApplications, user, {
           confirmations,
           pendingPatch: graphPendingPatch,
+          proposals: allProposals,
           contextRef
         })
         const refreshGraphInput = async () => {
           const freshCoordination = await dep('byId')('date_coordination', Number(coordination.id))
           const freshApplications = await dep('list')('date_coordination_application', { coordination_id: Number(coordination.id) }, 200)
           const freshConfirmations = await dep('list')('date_coordination_confirmation', { coordination_id: Number(coordination.id) }, 50).catch(() => [])
+          const freshProposals = await dep('list')('date_coordination_proposal', { coordination_id: Number(coordination.id) }, 50).catch(() => [])
           const freshPendingPatches = await dep('list')('date_application_patch', {
             coordination_id: Number(coordination.id),
             session_id: Number(session.id),
@@ -683,6 +839,7 @@ function createAgentHandlers(overrides = {}) {
           return buildDateCoordinationGraphInput(freshCoordination, freshApplications, user, {
             confirmations: freshConfirmations,
             pendingPatch: freshPendingPatch,
+            proposals: freshProposals,
             contextRef
           })
         }
@@ -778,7 +935,7 @@ function createAgentHandlers(overrides = {}) {
               context_ref: resultContextRef
             })
             await markSeen()
-            return {
+            return finalize({
               session_id: session.id,
               agent_type: session.agent_type,
               reply,
@@ -792,7 +949,7 @@ function createAgentHandlers(overrides = {}) {
               context_ref: resultContextRef,
               requires_confirmation: dateGraphResult.status === 'awaiting_confirmation',
               risk_level: 'safe'
-            }
+            })
           }
         } catch (error) {
           const diagnostic = {
@@ -819,7 +976,7 @@ function createAgentHandlers(overrides = {}) {
         coordination_version: Number(coordination.coordination_version || 1)
       })
       await markSeen()
-      return {
+      return finalize({
         session_id: session.id,
         agent_type: session.agent_type,
         reply,
@@ -828,7 +985,7 @@ function createAgentHandlers(overrides = {}) {
         coordination_version: Number(coordination.coordination_version || 1),
         risk_level: 'safe',
         suggested_actions: ['retry_coordination']
-      }
+      })
     }
 
     const tool = session.agent_type === AGENT_TYPES.PLATFORM_SERVICE ? inferTool(content) : ''
@@ -837,7 +994,7 @@ function createAgentHandlers(overrides = {}) {
       const ticket = await createTicketFor(session, user, { priority: 'P2', category: 'user_request', summary: content })
       const reply = '已为你转接人工客服，工作人员会在服务时间内查看并回复。'
       await saveMessage(session, user, 'assistant', reply, { handoff: ticket.handoff })
-      return { session_id: session.id, agent_type: session.agent_type, reply, tool, manual_pending: true, handoff: ticket.handoff }
+      return finalize({ session_id: session.id, agent_type: session.agent_type, reply, tool, manual_pending: true, handoff: ticket.handoff })
     }
     if (tool) {
       try {
@@ -849,19 +1006,19 @@ function createAgentHandlers(overrides = {}) {
         })
         await recordTool(session, user, tool, 'completed')
         await saveMessage(session, user, 'assistant', result.reply)
-        return { session_id: session.id, agent_type: session.agent_type, reply: result.reply, tool, risk_level: 'safe' }
+        return finalize({ session_id: session.id, agent_type: session.agent_type, reply: result.reply, tool, risk_level: 'safe' })
       } catch (err) {
         await recordTool(session, user, tool, 'failed', 'tool_failed')
         const reply = '暂时无法查询你的实时状态，请稍后重试或联系人工客服。'
         await saveMessage(session, user, 'assistant', reply)
-        return { session_id: session.id, agent_type: session.agent_type, reply, tool, tool_failed: true }
+        return finalize({ session_id: session.id, agent_type: session.agent_type, reply, tool, tool_failed: true })
       }
     }
 
     if (session.agent_type === AGENT_TYPES.LOVE_ADVISOR && /会员|审核|VIP|匹配状态|订单|退款/.test(content)) {
       const reply = '这是平台业务问题，请前往“我的 → 平台AI客服”查询真实状态。'
       await saveMessage(session, user, 'assistant', reply)
-      return { session_id: session.id, agent_type: session.agent_type, reply, suggested_actions: ['open_platform_service'] }
+      return finalize({ session_id: session.id, agent_type: session.agent_type, reply, suggested_actions: ['open_platform_service'] })
     }
 
     const records = await dep('list')('knowledge_article', {}, 200)
@@ -869,7 +1026,7 @@ function createAgentHandlers(overrides = {}) {
     if (!knowledge.length && session.agent_type !== AGENT_TYPES.LOVE_ADVISOR) {
       const reply = '现有平台资料暂时没有可靠答案。涉及真实业务状态时，请说明具体想查询的项目或联系人工客服。'
       await saveMessage(session, user, 'assistant', reply)
-      return { session_id: session.id, agent_type: session.agent_type, reply, knowledge_limited: true }
+      return finalize({ session_id: session.id, agent_type: session.agent_type, reply, knowledge_limited: true })
     }
 
     const context = buildContext({
@@ -899,14 +1056,14 @@ function createAgentHandlers(overrides = {}) {
       error_code: decision.errorCode || ''
     }, 'agent_run')
     await saveMessage(session, user, 'assistant', reply)
-    return {
+    return finalize({
       session_id: session.id,
       agent_type: session.agent_type,
       reply,
       provider: decision.provider || 'fallback',
       risk_level: decision.riskLevel || 'safe',
       suggested_actions: decision.suggestedActions || []
-    }
+    })
   }
 
   return { createSession, messages, send, createHumanTicket }

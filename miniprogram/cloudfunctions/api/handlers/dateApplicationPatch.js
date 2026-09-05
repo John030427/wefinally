@@ -36,6 +36,31 @@ const {
   allExplicitEvidence
 } = require('../lib/invitationCoordination')
 
+const localPreviewLocks = new Map()
+
+function transactionConflict(error) {
+  const code = String(error && (error.code || error.errorCode || '')).toLowerCase()
+  const message = String(error && error.message || error || '').toLowerCase()
+  return code.includes('transactionconflict')
+    || code.includes('transaction_conflict')
+    || message.includes('transaction conflict')
+    || message.includes('commit conflict')
+}
+
+async function withLocalPreviewLock(key, work) {
+  const previous = localPreviewLocks.get(key) || Promise.resolve()
+  let release
+  const current = new Promise((resolve) => { release = resolve })
+  localPreviewLocks.set(key, current)
+  await previous
+  try {
+    return await work()
+  } finally {
+    release()
+    if (localPreviewLocks.get(key) === current) localPreviewLocks.delete(key)
+  }
+}
+
 async function claimPendingPatch(patch) {
   const db = require('../lib/db')
   const result = await db.col('date_application_patch').where({
@@ -54,6 +79,7 @@ function defaultDeps() {
     byId: db.byId,
     addWithId: db.addWithId,
     updateByDoc: db.updateByDoc,
+    transaction: db.transaction,
     claimPendingPatch,
     commitPreAcceptInvitationPatch: db.commitPreAcceptInvitationPatch,
     publishCoordinationEvent,
@@ -236,20 +262,70 @@ function createDateApplicationPatchHandlers(overrides = {}) {
     return dep('list')('date_coordination_application', { coordination_id: Number(coordinationId) }, 200)
   }
 
-  async function supersedePendingPreviews(coordinationId, userId) {
-    const rows = await dep('list')('date_application_patch', {
-      coordination_id: Number(coordinationId),
-      user_id: Number(userId)
-    }, 100)
-    const pending = rows.filter((row) => ['pending_confirmation', 'pending_primary_selection'].includes(String(row.status || '')))
-    for (const row of pending) {
-      await dep('updateByDoc')('date_application_patch', row, {
-        status: 'superseded',
-        superseded_at: dep('now')(),
-        superseded_reason: 'replaced_by_new_preview'
-      })
+  async function replacePendingPreviewAtomically(coordinationId, userId, buildRecord) {
+    const key = `coordination:${Number(coordinationId)}:user:${Number(userId)}`
+    const transaction = Object.prototype.hasOwnProperty.call(overrides, 'transaction')
+      ? overrides.transaction
+      : (overrides.first && overrides.addWithId ? null : dep('transaction'))
+    const work = async (adapter) => {
+      const leaseId = `preview_lease_${Number(coordinationId)}_${Number(userId)}`
+      if (typeof adapter.byDocId === 'function' && typeof adapter.setByDocId === 'function') {
+        const lease = await adapter.byDocId('date_application_patch', leaseId)
+        await adapter.setByDocId('date_application_patch', leaseId, {
+          kind: 'preview_replacement_lease',
+          coordination_id: Number(coordinationId),
+          lease_key: key,
+          lease_revision: Number(lease && lease.lease_revision || 0) + 1,
+          acquired_at: adapter.now ? adapter.now() : dep('now')()
+        })
+      }
+      const current = await adapter.byId('date_coordination', Number(coordinationId))
+      if (!current) throw new Error('日期协调不存在')
+      const applicationRows = await adapter.list('date_coordination_application', {
+        coordination_id: Number(coordinationId)
+      }, 200)
+      const record = await buildRecord({ current, applicationRows, adapter })
+      const rows = await adapter.list('date_application_patch', {
+        coordination_id: Number(coordinationId),
+        user_id: Number(userId)
+      }, 100)
+      const pending = rows.filter((row) => ['pending_confirmation', 'pending_primary_selection'].includes(String(row.status || '')))
+      const created = await adapter.addWithId('date_application_patch', record, 'date_application_patch')
+      const timestamp = adapter.now ? adapter.now() : dep('now')()
+      for (const row of pending) {
+        await adapter.updateByDoc('date_application_patch', row, {
+          status: 'superseded',
+          superseded_at: timestamp,
+          superseded_reason: 'replaced_by_new_preview'
+        })
+      }
+      return publicPatch(created)
     }
-    return pending
+
+    if (typeof transaction === 'function') {
+      let lastError
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        try {
+          return await transaction(work)
+        } catch (error) {
+          lastError = error
+          if (!transactionConflict(error) || attempt === 2) throw error
+          await new Promise((resolve) => setTimeout(resolve, 10 * (attempt + 1)))
+        }
+      }
+      throw lastError
+    }
+
+    return withLocalPreviewLock(key, async () => {
+      const adapter = {
+        now: dep('now'),
+        byId: dep('byId'),
+        list: dep('list'),
+        addWithId: dep('addWithId'),
+        updateByDoc: dep('updateByDoc')
+      }
+      return work(adapter)
+    })
   }
 
   function latestForUser(rows, userId, maxVersion) {
@@ -335,23 +411,30 @@ function createDateApplicationPatchHandlers(overrides = {}) {
         }
       }
     }
-    await supersedePendingPreviews(coordination.id, user.id)
-    const now = dep('now')()
-    const created = await dep('addWithId')('date_application_patch', {
-      coordination_id: Number(coordination.id),
-      session_id: Number(data.session_id || (session && session.id) || 0),
-      user_id: Number(user.id),
-      source_message_id: Number(data.source_message_id || 0),
-      base_version: version,
-      operation: 'modify',
-      status: preview.primary_resolution_required ? 'pending_primary_selection' : 'pending_confirmation',
-      changes,
-      preview,
-      primary_selection: preview.primary_selection || null,
-      ...(coordinationPartnerRequest ? { coordination_partner_request: coordinationPartnerRequest } : {}),
-      expires_at: addHours(now, 2)
-    }, 'date_application_patch')
-    return publicPatch(created)
+    return replacePendingPreviewAtomically(coordination.id, user.id, async ({ current, applicationRows, adapter }) => {
+      if (!owns(current, user && user.id)) throw new Error('无权修改该约会协调')
+      if (isExpiredInvitationRow(current)) throw invitationExpiredError()
+      if (Number(current.coordination_version || 1) !== version) throw new Error('约会条件已更新，请重新生成修改预览')
+      const currentMine = latestForUser(applicationRows, user.id, version)
+      if (!currentMine || JSON.stringify(currentMine.application || {}) !== JSON.stringify(mine.application || {})) {
+        throw new Error('约会条件已更新，请重新生成修改预览')
+      }
+      const timestamp = adapter.now ? adapter.now() : dep('now')()
+      return {
+        coordination_id: Number(current.id),
+        session_id: Number(data.session_id || (session && session.id) || 0),
+        user_id: Number(user.id),
+        source_message_id: Number(data.source_message_id || 0),
+        base_version: version,
+        operation: 'modify',
+        status: preview.primary_resolution_required ? 'pending_primary_selection' : 'pending_confirmation',
+        changes,
+        preview,
+        primary_selection: preview.primary_selection || null,
+        ...(coordinationPartnerRequest ? { coordination_partner_request: coordinationPartnerRequest } : {}),
+        expires_at: addHours(timestamp, 2)
+      }
+    })
   }
 
   async function createInitialPreviewForUser(data, user, session) {
@@ -388,22 +471,29 @@ function createDateApplicationPatchHandlers(overrides = {}) {
       affects_existing_proposal: false,
       will_notify_partner: true
     }
-    await supersedePendingPreviews(coordination.id, user.id)
-    const now = dep('now')()
-    const created = await dep('addWithId')('date_application_patch', {
-      coordination_id: Number(coordination.id),
-      session_id: Number(data.session_id || (session && session.id) || 0),
-      user_id: Number(user.id),
-      source_message_id: Number(data.source_message_id || 0),
-      base_version: version,
-      operation: 'create',
-      status: 'pending_confirmation',
-      changes: application,
-      preview,
-      ...(coordinationPartnerRequest ? { coordination_partner_request: coordinationPartnerRequest } : {}),
-      expires_at: addHours(now, 2)
-    }, 'date_application_patch')
-    return publicPatch(created)
+    return replacePendingPreviewAtomically(coordination.id, user.id, async ({ current, applicationRows, adapter }) => {
+      if (!owns(current, user && user.id)) throw new Error('无权创建该约会申请')
+      if (WRITE_BLOCKED_STATUSES.includes(current.status) || !canModifyApplication(current, user, { hasOwnApplication: false })) {
+        throw new Error(terminalWriteError(current.status))
+      }
+      if (Number(current.coordination_version || 1) !== version) throw new Error('约会条件已更新，请重新生成修改预览')
+      const currentMine = latestForUser(applicationRows, user.id, version)
+      if (currentMine && currentMine.application) throw new Error('约会申请已经存在，请使用修改预览')
+      const timestamp = adapter.now ? adapter.now() : dep('now')()
+      return {
+        coordination_id: Number(current.id),
+        session_id: Number(data.session_id || (session && session.id) || 0),
+        user_id: Number(user.id),
+        source_message_id: Number(data.source_message_id || 0),
+        base_version: version,
+        operation: 'create',
+        status: 'pending_confirmation',
+        changes: application,
+        preview,
+        ...(coordinationPartnerRequest ? { coordination_partner_request: coordinationPartnerRequest } : {}),
+        expires_at: addHours(timestamp, 2)
+      }
+    })
   }
 
   async function notifyPartner(coordination, user, summary, proposalCreated, version) {
