@@ -289,6 +289,95 @@ function createDateApplicationPatchHandlers(overrides = {}) {
     return dep('list')('date_coordination_application', { coordination_id: Number(coordinationId) }, 200)
   }
 
+  async function partnerInquiryContextForPatch(patch, coordination) {
+    const sourceMessageId = Number(patch && patch.source_message_id || 0)
+    if (!sourceMessageId) return null
+    const sourceMessage = await dep('byId')('agent_message', sourceMessageId).catch(() => null)
+    const contextRef = sourceMessage && sourceMessage.context_ref
+    if (!contextRef || contextRef.type !== 'partner_inquiry') return null
+    if (Number(contextRef.coordination_id) !== Number(coordination && coordination.id)) return null
+    if (Number(contextRef.coordination_version) !== Number(patch && patch.base_version)) return null
+    return contextRef
+  }
+
+  function proposalFromApplication(application, coordinationId, version, patch, actorUserId) {
+    const slot = Array.isArray(application && application.availability)
+      ? application.availability[0]
+      : null
+    const date = String(slot && slot.date || '').trim()
+    const period = String(slot && Array.isArray(slot.periods) && slot.periods[0] || '').trim()
+    const area = String(application && Array.isArray(application.areas) && application.areas[0] || '').trim()
+    const activity = String(application && Array.isArray(application.activities) && application.activities[0] || '').trim()
+    if (!date || !period || !area || !activity) return null
+    return {
+      coordination_id: Number(coordinationId),
+      coordination_version: Number(version),
+      proposal_key: `v${Number(version)}-${date}-${period}-${area}-${activity}`,
+      date,
+      period,
+      area,
+      activity,
+      ...(application.other_requirements ? { activity_detail: application.other_requirements } : {}),
+      ...(application.activity_venue ? { activity_venue: application.activity_venue } : {}),
+      budget: application.budget,
+      payment_preference: application.payment_preference,
+      duration: application.duration,
+      source: 'partner_inquiry_patch',
+      source_patch_id: Number(patch.id),
+      source_actor_user_id: Number(actorUserId),
+      status: 'active'
+    }
+  }
+
+  async function persistPartnerInquiryProposal(coordination, user, nextApplication, version, patch) {
+    const existing = await dep('first')('date_coordination_proposal', {
+      coordination_id: Number(coordination.id),
+      source_patch_id: Number(patch.id)
+    }).catch(() => null)
+    const proposal = existing || await dep('addWithId')('date_coordination_proposal', proposalFromApplication(
+      nextApplication,
+      coordination.id,
+      version,
+      patch,
+      user.id
+    ), 'date_coordination_proposal')
+    if (!proposal) return null
+
+    const confirmationQuery = {
+      coordination_id: Number(coordination.id),
+      user_id: Number(user.id),
+      coordination_version: Number(version)
+    }
+    const existingConfirmation = await dep('first')('date_coordination_confirmation', confirmationQuery).catch(() => null)
+    if (!existingConfirmation) {
+      await dep('addWithId')('date_coordination_confirmation', Object.assign({}, confirmationQuery, {
+        proposal_id: Number(proposal.id),
+        decision: 'confirm',
+        status: 'active',
+        source: 'agent_confirmed_partner_inquiry'
+      }), 'date_coordination_confirmation')
+    }
+
+    const current = await dep('byId')('date_coordination', Number(coordination.id))
+    const updated = current && current.status !== STATUS.WAITING_CONFIRMATIONS
+      ? await dep('updateByDoc')('date_coordination', current, {
+        status: STATUS.WAITING_CONFIRMATIONS,
+        business_state: 'proposal_generated',
+        missing_dimensions: [],
+        final_proposal_id: 0,
+        confirmation_deadline_at: addHours(dep('now')(), 24),
+        processing_status: '',
+        processing_version: 0,
+        processing_token: '',
+        processing_attempts: 0,
+        processing_started_at: null,
+        processing_completed_at: null,
+        processing_error_code: ''
+      })
+      : current
+    return { proposal, coordination: updated || coordination }
+  }
+
   async function replacePendingPreviewAtomically(coordinationId, userId, buildRecord) {
     const key = `coordination:${Number(coordinationId)}:user:${Number(userId)}`
     const transaction = Object.prototype.hasOwnProperty.call(overrides, 'transaction')
@@ -523,7 +612,7 @@ function createDateApplicationPatchHandlers(overrides = {}) {
     })
   }
 
-  async function notifyPartner(coordination, user, summary, proposalCreated, version) {
+  async function notifyPartner(coordination, user, summary, proposalCreated, version, proposal = null) {
     const partnerId = Number(coordination.user_a_id) === Number(user.id)
       ? Number(coordination.user_b_id)
       : Number(coordination.user_a_id)
@@ -545,7 +634,10 @@ function createDateApplicationPatchHandlers(overrides = {}) {
       has_proposal: Boolean(proposalCreated),
       changed_dimensions: summary.changed_dimensions,
       patch_id: Number(summary.patch_id || 0),
-      relay_text: summary.relay_text
+      relay_text: summary.relay_text,
+      ...(proposal && Number(proposal.id || 0) > 0
+        ? { proposal_id: Number(proposal.id), proposal }
+        : {})
     }
     let published = null
     let eventStatus = 'projected'
@@ -914,16 +1006,38 @@ function createDateApplicationPatchHandlers(overrides = {}) {
       applied_version: newVersion,
       applied_at: dep('now')()
     })
+    const partnerInquiryContext = await partnerInquiryContextForPatch(patch, coordination)
+    let partnerProposal = null
+    let proposalCoordination = updatedCoordination
+    if (partnerInquiryContext) {
+      const generated = await persistPartnerInquiryProposal(
+        updatedCoordination,
+        user,
+        nextApplication,
+        newVersion,
+        patch
+      )
+      partnerProposal = generated && generated.proposal
+      proposalCoordination = generated && generated.coordination || updatedCoordination
+    }
     const summary = Object.assign({}, shareableSummary(patch.preview), {
       patch_id: Number(patch.id)
     })
-    const notification = await notifyPartner(updatedCoordination, user, summary, false, newVersion)
+    const notification = await notifyPartner(
+      proposalCoordination,
+      user,
+      summary,
+      Boolean(partnerProposal),
+      newVersion,
+      partnerProposal
+    )
     return {
       patch: publicPatch(appliedPatch),
       coordination_version: newVersion,
-      status: updatedCoordination.status,
-      business_state: updatedCoordination.business_state,
-      proposal_generated: false,
+      status: proposalCoordination.status,
+      business_state: proposalCoordination.business_state,
+      proposal_generated: Boolean(partnerProposal),
+      proposal_id: Number(partnerProposal && partnerProposal.id || 0),
       applied: true,
       partner_notified: notification.partner_notified === true,
       notification_status: notification.notification_status || 'projected',
