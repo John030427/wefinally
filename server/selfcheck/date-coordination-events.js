@@ -62,10 +62,27 @@ async function main() {
   assert(!serialized.includes('13800000000'))
   assert(!serialized.includes('om-private'))
 
+  const preference = await publishCoordinationEvent({
+    coordination,
+    event: {
+      event_type: 'preference_changed',
+      actor_user_id: 2,
+      coordination_version: 1,
+      changed_dimensions: ['time'],
+      relay_text: '对方更倾向把时间调整到9月13日（周日）晚上。其他安排保持不变。'
+    }
+  }, deps)
+  const preferenceForA = preference.messages.find((row) => row.user_id === 1)
+  assert(preferenceForA.content.includes('9月13日（周日）晚上'))
+  assert.deepStrictEqual(preferenceForA.event_card.changed_dimensions, ['time'])
+  assert.strictEqual(preferenceForA.event_card.event_type, 'PREFERENCES_UPDATED')
+  assert.strictEqual(preferenceForA.event_card.context_ref.type, 'partner_inquiry')
+  assert.strictEqual(preferenceForA.event_card.context_ref.event_id, preference.event.id)
+
   await publishCoordinationEvent({ coordination, event }, deps)
   assert.strictEqual(deps.tables.agent_session.length, 2)
-  assert.strictEqual(deps.tables.agent_message.length, 2)
-  assert.strictEqual(deps.tables.date_coordination_event.length, 1)
+  assert.strictEqual(deps.tables.agent_message.length, 4)
+  assert.strictEqual(deps.tables.date_coordination_event.length, 2)
 
   await assert.rejects(
     publishCoordinationEvent({ coordination, event: { event_type: 'unmapped_event', actor_user_id: 2 } }, deps),
