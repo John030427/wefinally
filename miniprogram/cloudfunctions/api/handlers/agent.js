@@ -12,7 +12,7 @@ const { readHumanServiceConfig, buildHumanServiceHandoff } = require('../agent/h
 const { readLangGraphConfig, createActorRef, createThreadId, runLangGraphStep } = require('../agent/langgraphClient')
 const { executeGraphTool } = require('../agent/langgraphToolBridge')
 const { buildDateCoordinationGraphInput, normalizeContextRef } = require('../agent/dateCoordinationGraphState')
-const { buildResumeSummary } = require('../lib/coordinationConcurrency')
+const { buildResumeSummary, buildActiveContextSummary } = require('../lib/coordinationConcurrency')
 const { publishCoordinationEvent } = require('../agent/dateCoordinationEvents')
 const {
   toRuntimeCoordinationChanges,
@@ -868,6 +868,7 @@ function createAgentHandlers(overrides = {}) {
       const lastSeenVersion = Number(session.last_seen_coordination_version || 0)
       const resume = buildResumeSummary(coordinationEvents, lastSeenVersion)
       const resumeText = resume.has_updates ? resume.lines.join('\n') : ''
+      const activeContextSummary = buildActiveContextSummary(coordinationEvents, contextRef)
       const markSeen = async () => {
         await dep('updateByDoc')('agent_session', session, {
           last_seen_coordination_version: Number(coordination.coordination_version || 1)
@@ -932,7 +933,7 @@ function createAgentHandlers(overrides = {}) {
             actorRef: createActorRef(user.id, graphConfig.actorSecret),
             mode: 'date_coordination',
             userText: content,
-            safeSummary: String([session.summary, resumeText].filter(Boolean).join('\n')).slice(0, 800),
+            safeSummary: String([session.summary, resumeText, activeContextSummary].filter(Boolean).join('\n')).slice(0, 800),
             ...graphInput
           }, {
             env: dep('env'),
