@@ -348,14 +348,24 @@ function createDateApplicationPatchHandlers(overrides = {}) {
       user_id: Number(user.id),
       coordination_version: Number(version)
     }
-    const existingConfirmation = await dep('first')('date_coordination_confirmation', confirmationQuery).catch(() => null)
-    if (!existingConfirmation) {
-      await dep('addWithId')('date_coordination_confirmation', Object.assign({}, confirmationQuery, {
+    const confirmationRecord = Object.assign({}, confirmationQuery, {
         proposal_id: Number(proposal.id),
         decision: 'confirm',
         status: 'active',
         source: 'agent_confirmed_partner_inquiry'
-      }), 'date_coordination_confirmation')
+      })
+    const transaction = dep('transaction')
+    if (typeof transaction === 'function') {
+      await transaction(async (adapter) => {
+        const documentId = `date-confirmation-${Number(coordination.id)}-${Number(user.id)}-v${Number(version)}`
+        const existing = await adapter.byDocId('date_coordination_confirmation', documentId)
+        if (!existing) await adapter.setByDocId('date_coordination_confirmation', documentId, confirmationRecord)
+      })
+    } else {
+      const existingConfirmation = await dep('first')('date_coordination_confirmation', confirmationQuery).catch(() => null)
+      if (!existingConfirmation) {
+        await dep('addWithId')('date_coordination_confirmation', confirmationRecord, 'date_coordination_confirmation')
+      }
     }
 
     const current = await dep('byId')('date_coordination', Number(coordination.id))
